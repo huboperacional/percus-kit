@@ -1,7 +1,7 @@
 {
   "name": "percus-review",
-  "version": "5.0.5",
-  "description": "Review cross-provider Percus (DeepSeek + Cross-Claude) + skills/hooks de adoção (Fase 5). v5.0.5: .cmd wrappers usam -Command + exit $LASTEXITCODE (powershell.exe -File não passa stdin via cmd.exe).",
+  "version": "5.0.6",
+  "description": "Review cross-provider Percus (DeepSeek + Cross-Claude) + skills/hooks de adoção (Fase 5). v5.0.6: corrige regex tool_name->name no on-stop e BLOCK messages via stderr (visiveis pro usuario).",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",

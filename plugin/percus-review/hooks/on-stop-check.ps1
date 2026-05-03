@@ -27,7 +27,7 @@ try {
     # foreach loop normal (NÃO ForEach-Object) pra preservar scope de variáveis no PS 5.1
     $lines = Get-Content $transcriptPath -ErrorAction SilentlyContinue
     foreach ($line in $lines) {
-        if ($line -match '"tool_name"\s*:\s*"(Edit|Write|NotebookEdit)"') {
+        if ($line -match '"name"\s*:\s*"(Edit|Write|NotebookEdit)"') {
             if ($line -match '"file_path"\s*:\s*"([^"]+)"') {
                 $file = $matches[1]
                 $ext = [System.IO.Path]::GetExtension($file).ToLower()
@@ -42,9 +42,9 @@ try {
     if ($handoffEdited) { exit 0 }
 
     # Bloqueia
-    Write-Host "[percus:hook on-stop] BLOCK: sessao tocou $codeEdits arquivo(s) de codigo mas HANDOFF.md nao foi atualizado (R8)." -ForegroundColor Red
-    Write-Host "Atualize HANDOFF.md antes de encerrar OU defina `$env:PERCUS_SKIP_HANDOFF=1 com motivo declarado em voz alta." -ForegroundColor Yellow
-    Write-Host "Skip fica logado em .deepseek/handoff-skipped.log." -ForegroundColor DarkYellow
+    [Console]::Error.WriteLine("[percus:hook on-stop] BLOCK: sessao tocou $codeEdits arquivo(s) de codigo mas HANDOFF.md nao foi atualizado (R8).")
+    [Console]::Error.WriteLine("Atualize HANDOFF.md antes de encerrar OU defina `$env:PERCUS_SKIP_HANDOFF=1 com motivo declarado em voz alta.")
+    [Console]::Error.WriteLine("Skip fica logado em .deepseek/handoff-skipped.log.")
     exit 2
 } catch {
     exit 0
