@@ -1,32 +1,9 @@
 {
   "name": "percus-review",
-  "version": "5.0.3",
-  "description": "Review cross-provider Percus (DeepSeek + Cross-Claude) + skills/hooks de adoção (Fase 5). v5.0.3: hook commands via .cmd wrappers (Windows não executa .ps1 direto).",
+  "version": "5.0.4",
+  "description": "Review cross-provider Percus (DeepSeek + Cross-Claude) + skills/hooks de adoção (Fase 5). v5.0.4: hooks via standard location hooks/hooks.json (Claude Code Windows ignora inline).",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",
-  "skills": "./skills",
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/pre-commit-check.cmd\""
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/on-stop-check.cmd\""
-          }
-        ]
-      }
-    ]
-  }
+  "skills": "./skills"
 }
