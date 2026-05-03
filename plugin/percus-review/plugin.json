@@ -1,7 +1,7 @@
 {
   "name": "percus-review",
-  "version": "5.0.1",
-  "description": "Review cross-provider Percus (DeepSeek + Cross-Claude) + skills/hooks de adoção (Fase 5). v5.0.1: PS 5.1 BOM + console UTF-8 + git stderr guard.",
+  "version": "5.0.2",
+  "description": "Review cross-provider Percus (DeepSeek + Cross-Claude) + skills/hooks de adoção (Fase 5). v5.0.2: corrige schema de hooks no manifest + PS 5.1 compat (BOM, UTF-8, git stderr guard).",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",
@@ -10,12 +10,22 @@
     "PreToolUse": [
       {
         "matcher": "Bash",
-        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-commit-check.ps1"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-commit-check.ps1"
+          }
+        ]
       }
     ],
     "Stop": [
       {
-        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-stop-check.ps1"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-stop-check.ps1"
+          }
+        ]
       }
     ]
   }
