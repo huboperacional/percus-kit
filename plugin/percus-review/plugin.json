@@ -2,7 +2,7 @@
   "name": "percus-review",
   "version": "1.0.0",
   "description": "Review cross-provider Percus (DeepSeek + Cross-Claude) — substitui Codex CLI",
-  "author": "Percus",
+  "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts"
 }
