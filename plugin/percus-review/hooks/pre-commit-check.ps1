@@ -1,6 +1,13 @@
 ﻿#requires -Version 5.1
-# Hook pre-commit Percus — bloqueia commit sem /percus-review:review recente.
+# Hook pre-commit Percus (Layer 1 — UX dentro do Claude Code).
+# Bloqueia commit sem /percus-review:review recente quando Claude executa via Bash tool.
 # Falha graceful: qualquer erro -> exit 0.
+#
+# IMPORTANTE: este hook tem brecha conhecida em comandos bash compostos
+# (ex: `rm -rf .deepseek/reviews && git commit`) porque PreToolUse avalia o estado
+# UMA vez antes do bash rodar e nao observa mudancas durante a execucao.
+# Layer 2 (anti-bypass) eh `.git/hooks/pre-commit` nativo do git, instalado por
+# `/percus-review:install-git-hooks` no projeto-alvo. Ver git-hooks/pre-commit.template.sh.
 
 try {
     $stdin = [Console]::In.ReadToEnd()

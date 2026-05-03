@@ -33,18 +33,38 @@ Trazer um projeto Percus para o estado canônico atual (Fase 4, 2026-05-03):
 
 ### Passo 0 — Diagnóstico inicial
 
-Detectar estado atual sem mexer em nada:
+Detectar estado atual sem mexer em nada.
+
+> ⚠️ **CRÍTICO:** Claude Code lê config de `$env:CLAUDE_CONFIG_DIR` quando setado, senão `~/.claude/`. Em máquinas Percus é `D:\Claud Automations\.claude-home\`. Hardcodar `$env:USERPROFILE\.claude` dá falso-negativo "plugin não instalado" mesmo com plugin ativo. **Detecte o path real primeiro:**
 
 ```powershell
-# Plugin @percus/review já configurado?
-Get-ChildItem "$env:USERPROFILE\.claude\plugins" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -match 'percus-review|@percus' }
+# Detectar config dir REAL
+$claudeHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { "$env:USERPROFILE\.claude" }
+$pluginsDir = Join-Path $claudeHome "plugins"
+$userSettings = Join-Path $claudeHome "settings.json"
+Write-Host "Claude config dir: $claudeHome"
+
+# Helper: plugin habilitado em settings.json (fonte da verdade) ou pasta presente?
+function Test-PluginEnabled([string]$pattern) {
+    if (Test-Path $userSettings) {
+        $cfg = Get-Content $userSettings -Raw | ConvertFrom-Json
+        if ($cfg.enabledPlugins) {
+            foreach ($k in $cfg.enabledPlugins.PSObject.Properties.Name) {
+                if ($k -match $pattern -and $cfg.enabledPlugins.$k) { return $true }
+            }
+        }
+    }
+    return [bool](Get-ChildItem $pluginsDir -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match $pattern })
+}
+
+# Plugin percus-review já configurado?
+Test-PluginEnabled 'percus-review|@percus'
 Test-Path AGENTS.md
 
 # Resíduo Codex (Fase 2 anterior)?
 Test-Path .codex/config.toml
-Get-ChildItem "$env:USERPROFILE\.claude\plugins" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -match 'codex' }
+Test-PluginEnabled 'codex'
 Select-String -Path CLAUDE.md, AGENTS.md -Pattern '/codex:review|codex CLI' -Quiet -ErrorAction SilentlyContinue
 
 # Ambiente VS Code Codex (Fase 2 — descontinuado mas pode estar instalado)
@@ -55,20 +75,10 @@ $claudeCli = Get-Command claude -ErrorAction SilentlyContinue
 $vscodeExt = (code --list-extensions 2>$null | Select-String "anthropic.claude-code")
 # Resultado: CLI standalone | Extensão VS Code | Ambos | Nenhum (raro)
 
-# Plugin Codex Claude Code instalado A NÍVEL DE USUÁRIO?
-# CRÍTICO: plugins ficam em ~/.claude/, NÃO em .claude/ do projeto.
-# Não confunda — checar settings.json local do projeto vai dar falso negativo
-# mesmo quando o plugin estiver corretamente instalado global.
-
-# 1) Settings de usuário menciona marketplace openai-codex?
-$userSettings = "$env:USERPROFILE\.claude\settings.json"
+# Settings de usuário menciona marketplace openai-codex?
 if (Test-Path $userSettings) {
     Select-String -Path $userSettings -Pattern 'openai-codex|codex-plugin-cc|codex@openai' -Quiet
 }
-
-# 2) Pasta do plugin existe em ~/.claude/plugins/?
-Get-ChildItem "$env:USERPROFILE\.claude\plugins" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -match 'codex' }
 
 # 3) Validação definitiva (slash command no chat — não no terminal):
 #    Pede pro usuário rodar `/codex:review` (NÃO `/codex:status` — esse pode
@@ -142,8 +152,7 @@ Aplicar fluxo de `comandos/SETUP_REVIEW_ROUTING.md` em modo "skip o que já exis
   /plugin marketplace add huboperacional/percus-kit
   /plugin install percus-review
   ```
-  Alternativo (kit local): `/plugin marketplace add D:/Claud Automations/_Novo_Projeto` + `/plugin install percus-review
-  ```
+  Alternativo (kit local): `/plugin marketplace add D:/Claud Automations/_Novo_Projeto` + `/plugin install percus-review`
 - Validar com `/percus-review:review` em smoke trivial (Passo 6)
 
 **Bifurcação CLI standalone vs Extensão VS Code (informativo):**

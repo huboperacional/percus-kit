@@ -26,7 +26,7 @@ Execute os 3 níveis em sequência e me devolva relatório estruturado no fim. N
 Verifique e reporte status (✅ OK / ❌ FALTA) pra cada item:
 
 **Plugin @percus/review:**
-- Pasta do plugin existe em `$env:USERPROFILE\.claude\plugins\` (procurar `percus-review` ou `@percus`)?
+- Plugin habilitado em `enabledPlugins` do settings.json do Claude Code? **Detecte o config dir real primeiro:** `$claudeHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { "$env:USERPROFILE\.claude" }`. Procure `percus-review|@percus` em `$claudeHome\settings.json` (campo `enabledPlugins`) E como pasta em `$claudeHome\plugins\`. **Não use `~/.claude/` direto** — em máquinas Percus `CLAUDE_CONFIG_DIR` aponta pra `D:\Claud Automations\.claude-home\` e ler o path default dá falso-negativo.
 - AGENTS.md existe na raiz?
 - AGENTS.md tem versão slim (~4-5 KB) e menciona "revisor cross-provider" (não "Codex")?
 
@@ -42,7 +42,7 @@ Verifique e reporte status (✅ OK / ❌ FALTA) pra cada item:
 
 **Resíduo Codex (Fase 2 anterior — deve estar AUSENTE em projeto Fase 4):**
 - `.codex/` ausente do repo? (deve estar limpo)
-- Plugin `codex@openai-codex` ausente do `$env:USERPROFILE\.claude\plugins\`?
+- Plugin `codex@openai-codex` ausente do `$claudeHome\plugins\` E ausente de `enabledPlugins` em `$claudeHome\settings.json` (use o `$claudeHome` definido acima — `CLAUDE_CONFIG_DIR` ou fallback)?
 - Zero matches em `Select-String -Path CLAUDE.md, AGENTS.md -Pattern '/codex:review|codex CLI|gpt-5'`?
 
 **HANDOFF.md:**

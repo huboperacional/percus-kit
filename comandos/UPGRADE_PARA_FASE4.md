@@ -33,10 +33,33 @@ Não toque em código de negócio. Só ferramentas, configs, CLAUDE.md, AGENTS.m
 
 Detectar qual fase o projeto está. Não modificar nada.
 
+> ⚠️ **CRÍTICO — config dir do Claude Code não é sempre `~/.claude/`.** Em máquinas Percus o `CLAUDE_CONFIG_DIR` aponta pra `D:\Claud Automations\.claude-home\` (ou similar). Ler `~/.claude/settings.json` direto vai dar falso-negativo "plugin não instalado" mesmo com plugin ativo. **Sempre detectar via `$env:CLAUDE_CONFIG_DIR` primeiro**, com fallback pra `$env:USERPROFILE\.claude`.
+
 ```powershell
-# === FASE 4 — plugin @percus/review já instalado? ===
-$fase4_plugin = Get-ChildItem "$env:USERPROFILE\.claude\plugins" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -match 'percus-review|@percus' }
+# === Detectar config dir REAL do Claude Code ===
+$claudeHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { "$env:USERPROFILE\.claude" }
+$pluginsDir = Join-Path $claudeHome "plugins"
+$settingsFile = Join-Path $claudeHome "settings.json"
+$installedFile = Join-Path $claudeHome "installed_plugins.json"
+Write-Host "Claude config dir: $claudeHome"
+
+# Helper: plugin habilitado em settings.json (fonte da verdade) ou pasta presente (fallback)?
+function Test-PluginEnabled([string]$pattern) {
+    if (Test-Path $settingsFile) {
+        $cfg = Get-Content $settingsFile -Raw | ConvertFrom-Json
+        if ($cfg.enabledPlugins) {
+            foreach ($key in $cfg.enabledPlugins.PSObject.Properties.Name) {
+                if ($key -match $pattern -and $cfg.enabledPlugins.$key) { return $true }
+            }
+        }
+    }
+    # Fallback: pasta presente (plugin pode ter sido instalado mas ainda não recarregado)
+    return [bool](Get-ChildItem $pluginsDir -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match $pattern })
+}
+
+# === FASE 4 — plugin percus-review já instalado? ===
+$fase4_plugin = Test-PluginEnabled 'percus-review|@percus'
 $fase4_agents_slim = (Test-Path AGENTS.md) -and `
     (Select-String -Path AGENTS.md -Pattern 'revisor cross-provider|/percus-review:review' -Quiet -ErrorAction SilentlyContinue)
 $fase4_claude = (Test-Path CLAUDE.md) -and `
@@ -44,8 +67,7 @@ $fase4_claude = (Test-Path CLAUDE.md) -and `
 
 # === FASE 2/3 — Codex configurado? (legado a migrar) ===
 $fase2_codex_dir = Test-Path .codex
-$fase2_codex_plugin = Get-ChildItem "$env:USERPROFILE\.claude\plugins" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -match 'codex@openai|codex-plugin-cc' }
+$fase2_codex_plugin = Test-PluginEnabled 'codex@openai|codex-plugin-cc'
 $fase2_codex_refs = @(
     Test-Path AGENTS.md,
     Test-Path CLAUDE.md
@@ -60,6 +82,10 @@ $tem_qualquer_regra = (Test-Path AGENTS.md) -or `
 $deepseek_key = (Test-Path .env) -and (Select-String -Path .env -Pattern '^DEEPSEEK_API_KEY=' -Quiet)
 $gitignore_deepseek = (Test-Path .gitignore) -and (Select-String -Path .gitignore -Pattern '^\.deepseek/' -Quiet)
 $espelho3 = Test-Path GEMINI.md
+
+# === Git hook nativo Percus (Layer 2 anti-bypass, v5.0.8+) ===
+$git_hook_percus = (Test-Path .git/hooks/pre-commit) -and `
+    (Select-String -Path .git/hooks/pre-commit -Pattern 'percus-review pre-commit hook' -Quiet -ErrorAction SilentlyContinue)
 ```
 
 ### Decidir caminho
@@ -91,6 +117,7 @@ Componentes Percus:
   .gitignore com .deepseek/           | ✅/❌
   GEMINI.md (espelho-3)               | presente/ausente
   CLAUDE.md/AGENTS.md presentes       | ✅/❌
+  Git hook nativo Percus (.git/hooks/pre-commit, v5.0.8+) | ✅/❌
 
 ──────────────────────────────────────────
 ESTADO DETECTADO: {A | B | C | INCONSISTENTE}
@@ -105,15 +132,30 @@ Aguardando confirmação para prosseguir com Caminho {A/B/C}.
 
 ---
 
-## Caminho A — Já em Fase 4 ✅
+## Caminho A — Já em Fase 4/5 ✅
 
-Nada a fazer. Reportar:
+Quase nada a fazer. Único passo se faltar:
+
+### A.1 — Instalar git hook nativo se ausente (v5.0.8+)
+
+Se `$git_hook_percus = $false` no diagnóstico:
+
+> Diagnóstico detectou ausência do git hook nativo Percus (`.git/hooks/pre-commit` versão Percus). Vou instalar — fecha brecha do PreToolUse contra bypass via comandos compostos. Rode no chat:
+>
+> `/percus-review:install-git-hooks`
+>
+> Aguarde confirmação do usuário antes de continuar — slash commands precisam ser disparados pelo usuário, não pelo agente.
+
+Se `$git_hook_percus = $true`: pular.
+
+### A.2 — Reportar
 
 ```
-✅ PROJETO JÁ EM FASE 4 — {Nome}
+✅ PROJETO JÁ EM FASE 4/5 — {Nome}
 
-Plugin @percus/review instalado, AGENTS.md slim, CLAUDE.md atualizado.
-Nenhuma ação necessária.
+Plugin percus-review instalado, AGENTS.md slim, CLAUDE.md atualizado.
+{Se git hook nativo foi instalado neste turno: "Git hook nativo (.git/hooks/pre-commit) instalado em v5.0.8."}
+{Se já estava instalado: "Git hook nativo (.git/hooks/pre-commit) já presente."}
 
 Para validar saúde de uso (não só configuração), rode:
 `comandos/HEALTHCHECK_FASE2.md`
@@ -146,8 +188,7 @@ Caminho rápido (CLI standalone):
 /plugin install percus-review
 ```
 
-**Alternativo (kit local):** `/plugin marketplace add D:/Claud Automations/_Novo_Projeto` + `/plugin install percus-review
-```
+**Alternativo (kit local):** `/plugin marketplace add D:/Claud Automations/_Novo_Projeto` + `/plugin install percus-review`
 
 ### B.3 — Validar `DEEPSEEK_API_KEY`
 
@@ -208,6 +249,18 @@ git add -A  # se há mudanças no AGENTS.md/CLAUDE.md
 
 Esperado: router decide DeepSeek (default), retorna findings em < 5s, custo ~$0.001-0.01.
 
+### B.7.1 — Instalar git hook nativo (Layer 2 anti-bypass, v5.0.8+)
+
+Pedir ao usuário pra rodar no chat:
+
+```
+/percus-review:install-git-hooks
+```
+
+(Slash command precisa ser disparado pelo usuário, não pelo agente.)
+
+Esperado: cria `.git/hooks/pre-commit` self-contained POSIX sh. Defesa em profundidade: PreToolUse cobre UX dentro do Claude Code, git hook nativo cobre bypass via `rm && commit` encadeado e commits do terminal direto.
+
 ### B.8 — HANDOFF.md
 
 Adicionar nota:
@@ -267,8 +320,9 @@ Delegar pro fluxo completo de [`UPGRADE_PROJETO_FASE2.md`](UPGRADE_PROJETO_FASE2
 5. **Passo 4** — Mesclar R10/R11/R13 em `CLAUDE.md` + `AGENTS.md` (+ `GEMINI.md` se espelho-3)
 6. **Passo 5** — `.gitignore` com `.deepseek/`
 7. **Passo 6** — Smoke test combinado (`/percus-review:review` + DeepSeek dry-run)
-8. **Passo 7** — HANDOFF
-9. **Passo 8** — Reportar
+8. **Passo 6.5** — Instalar git hook nativo: pedir ao usuário rodar `/percus-review:install-git-hooks` (Layer 2 anti-bypass, v5.0.8+)
+9. **Passo 7** — HANDOFF
+10. **Passo 8** — Reportar
 
 Tempo estimado: ~10-15 min.
 

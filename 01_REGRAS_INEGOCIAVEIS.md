@@ -23,6 +23,18 @@ Paths citados nas regras seguem duas formas:
 
 **Para revisores não-Claude (Codex, etc.):** se um path absoluto começando com `D:/Claud Automations/_Novo_Projeto/` for citado, **NÃO** trate como referência morta no repo do projeto — é arquivo do kit, fora do repo, propositalmente externo.
 
+### Config dir do Claude Code (`CLAUDE_CONFIG_DIR`)
+
+Em máquinas Percus o Claude Code roda com `CLAUDE_CONFIG_DIR=D:\Claud Automations\.claude-home\` (custom), **não** o default `~/.claude/`. Plugins instalados a nível de usuário (`percus-review@percus-tools`, `superpowers`, etc.) ficam em `D:\Claud Automations\.claude-home\plugins\` e o registro autoritativo é `D:\Claud Automations\.claude-home\settings.json` (campo `enabledPlugins`).
+
+**Ao diagnosticar instalação de plugin, sempre detectar o path real:**
+
+```powershell
+$claudeHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { "$env:USERPROFILE\.claude" }
+```
+
+Hardcodar `~/.claude/` ou `$env:USERPROFILE\.claude` dá **falso-negativo** — plugin aparece "ausente" mesmo estando enabled e ativo. Erro real ocorrido em diagnóstico de upgrade Fase 5.
+
 ---
 
 ## R1. Critério único de "feito" para feature: ciclo CRUD com F5
@@ -173,7 +185,12 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 | Finalização | `superpowers:verification-before-completion` | Antes de marcar `[5-T]` |
 | Marco | `percus-review:close-milestone` | Antes de marcar `✓` no PLANO (fechar fase/feature/épico) |
 
-**Cobertura mecânica:** plugin `@percus/review` instala hook `pre-commit` que bloqueia commit sem `/percus-review:review` rodado nos últimos 5 min (R11 reforço). Não confiar só em disciplina — hook é gate.
+**Cobertura mecânica (defesa em profundidade — dois layers):**
+
+1. **Layer 1 — Hook PreToolUse:Bash do plugin** (`hooks/pre-commit-check.ps1`). Bloqueia commit dentro do Claude Code com stderr formatado em PT-BR. UX boa, mas tem brecha conhecida em comandos bash compostos (`rm -rf .deepseek/reviews && git commit` burla porque PreToolUse avalia estado uma vez antes do bash rodar).
+2. **Layer 2 — Git hook nativo** (`.git/hooks/pre-commit`, instalado via `/percus-review:install-git-hooks` no projeto). POSIX sh self-contained, dispara no momento real do `git commit`. Fecha a brecha do Layer 1 e cobre commits feitos direto no terminal fora do Claude Code. **Obrigatório em todo projeto Fase 5+.**
+
+Não confiar em disciplina — os hooks são gate. Escape declarável em voz alta: `PERCUS_HOOKS_DISABLED=1 git commit ...`.
 
 **Anti-padrão proibido:** pular brainstorming porque "já sei o que fazer". TDD opcional. Code-review pulado em bulk edit. Implementar plano grande serialmente quando subagent-driven-development cabe.
 

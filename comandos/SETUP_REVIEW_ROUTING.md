@@ -28,12 +28,23 @@ Habilitar **review cross-provider** (DeepSeek API + Cross-Claude subagent) antes
 
 ### Passo 1 — Diagnóstico
 
+> ⚠️ **CRÍTICO:** plugins do Claude Code ficam em `$env:CLAUDE_CONFIG_DIR` (custom) ou `~/.claude/` (default). Em máquinas Percus o custom é `D:\Claud Automations\.claude-home\`. Detecte o path real antes de checar — `~/.claude/` vai dar falso-negativo.
+
 ```powershell
+# Detectar config dir REAL do Claude Code
+$claudeHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { "$env:USERPROFILE\.claude" }
+$settingsFile = Join-Path $claudeHome "settings.json"
+
 # DeepSeek API key carregada?
 Select-String -Path .env -Pattern '^DEEPSEEK_API_KEY=' -Quiet
 
-# Plugin @percus/review instalado a nível de usuário?
-Get-ChildItem "$env:USERPROFILE\.claude\plugins" -ErrorAction SilentlyContinue |
+# Plugin percus-review habilitado em settings.json (fonte da verdade)?
+if (Test-Path $settingsFile) {
+    $cfg = Get-Content $settingsFile -Raw | ConvertFrom-Json
+    $cfg.enabledPlugins.PSObject.Properties.Name | Where-Object { $_ -match 'percus-review|@percus' }
+}
+# Fallback: pasta do plugin presente em disco?
+Get-ChildItem (Join-Path $claudeHome "plugins") -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -match 'percus-review|@percus' }
 
 # AGENTS.md presente na raiz do projeto?
@@ -141,6 +152,27 @@ Se falhar:
 
 ---
 
+### Passo 6.5 — Instalar git hook nativo (Layer 2 anti-bypass, v5.0.8+)
+
+PreToolUse:Bash do plugin tem brecha em comandos compostos (`rm -rf .deepseek/reviews && git commit` burla porque PreToolUse avalia estado antes do bash rodar). `.git/hooks/pre-commit` nativo do git fecha essa brecha — dispara no momento real do commit, e cobre commits do terminal direto fora do Claude Code.
+
+Pedir ao usuário rodar no chat:
+
+```
+/percus-review:install-git-hooks
+```
+
+(Slash command precisa ser disparado pelo usuário, não pelo agente.)
+
+Comando é idempotente: instala se ausente, atualiza se já era versão Percus, aborta se detectar hook custom não-Percus.
+
+Smoke do bypass (opcional, autoriza usuário antes — custo ~$0.01):
+1. `/percus-review:review` → gera review fresco
+2. `rm -rf .deepseek/reviews && git commit -m "tentativa de bypass"`
+3. ESPERADO: hook nativo BLOCK com stderr `[percus:hook pre-commit native] BLOCK: nenhum review...`
+
+---
+
 ### Passo 7 — Migração de projeto Fase 2 anterior (se aplicável)
 
 Se diagnóstico do Passo 1 detectou resíduo Codex:
@@ -183,6 +215,7 @@ SETUP REVIEW ROUTING CONCLUÍDO — {Nome do Projeto}
 ✅ AGENTS.md slim criado/atualizado (~4.4 KB)
 ✅ .gitignore com .deepseek/
 ✅ Smoke /percus-review:review respondeu OK
+✅ Git hook nativo (.git/hooks/pre-commit, v5.0.8+) instalado
 ✅ Resíduo Codex limpo (se aplicável)
 
 Próximo commit obrigatoriamente passa por /percus-review:review.
@@ -220,6 +253,7 @@ Custo estimado mensal: $2-5 total (vs $200-400 com Codex anterior).
 - [ ] `AGENTS.md` na raiz do projeto (template slim)
 - [ ] `.deepseek/` no `.gitignore`
 - [ ] Smoke `/percus-review:review` respondeu
+- [ ] Git hook nativo instalado: `/percus-review:install-git-hooks` (1× por projeto)
 - [ ] (Se Fase 2 anterior) `.codex/` removido + referências `/codex:review` substituídas
 
 ---
