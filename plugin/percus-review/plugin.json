@@ -1,7 +1,7 @@
 {
   "name": "percus-review",
-  "version": "5.0.8",
-  "description": "Review cross-provider Percus (DeepSeek + Cross-Claude) + skills/hooks de adoção (Fase 5). Pre-commit defesa em profundidade: PreToolUse:Bash + git hook nativo (.git/hooks/pre-commit) via /percus-review:install-git-hooks.",
+  "version": "5.0.9",
+  "description": "Review cross-provider Percus (DeepSeek + Cross-Claude) + skills/hooks de adoção (Fase 5). Pre-commit defesa em profundidade: PreToolUse:Bash + git hook nativo via /percus-review:install-git-hooks (detecta core.hooksPath, suporta hybrid merge com hooks custom).",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",

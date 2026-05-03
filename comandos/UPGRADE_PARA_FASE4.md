@@ -83,9 +83,26 @@ $deepseek_key = (Test-Path .env) -and (Select-String -Path .env -Pattern '^DEEPS
 $gitignore_deepseek = (Test-Path .gitignore) -and (Select-String -Path .gitignore -Pattern '^\.deepseek/' -Quiet)
 $espelho3 = Test-Path GEMINI.md
 
-# === Git hook nativo Percus (Layer 2 anti-bypass, v5.0.8+) ===
-$git_hook_percus = (Test-Path .git/hooks/pre-commit) -and `
-    (Select-String -Path .git/hooks/pre-commit -Pattern 'percus-review pre-commit hook' -Quiet -ErrorAction SilentlyContinue)
+# === Git hook nativo Percus (Layer 2 anti-bypass, v5.0.8+; v5.0.9+ detecta core.hooksPath) ===
+# Resolver hooks dir real (core.hooksPath se setado, senao .git/hooks)
+$hooksPath = (git config --local --get core.hooksPath 2>$null)
+if (-not $hooksPath) { $hooksPath = (git config --global --get core.hooksPath 2>$null) }
+if (-not $hooksPath) { $hooksPath = ".git/hooks" }
+$hookFile = Join-Path $hooksPath "pre-commit"
+# Detecta tanto v5.0.9 (markers BEGIN/END) quanto v5.0.8 legado (so 'percus-review pre-commit hook')
+$git_hook_percus = (Test-Path $hookFile) -and `
+    (Select-String -Path $hookFile -Pattern 'PERCUS-MERGED-HOOK BEGIN|percus-review pre-commit hook' -Quiet -ErrorAction SilentlyContinue)
+# Sinalizar se eh hibrido (v5.0.9 com custom logic apos END marker)
+$git_hook_hybrid = $false
+if ($git_hook_percus -and (Select-String -Path $hookFile -Pattern 'PERCUS-MERGED-HOOK END' -Quiet -ErrorAction SilentlyContinue)) {
+    # Le linhas apos END marker; se houver mais que 'exit 0' + comentarios, eh hibrido
+    $lines = Get-Content $hookFile
+    $endIdx = ($lines | Select-String -Pattern 'PERCUS-MERGED-HOOK END' | Select-Object -First 1).LineNumber
+    if ($endIdx) {
+        $tail = $lines[$endIdx..($lines.Count - 1)] -join "`n"
+        if ($tail -notmatch '^\s*(#.*\n|\s*\n)*\s*exit 0\s*$') { $git_hook_hybrid = $true }
+    }
+}
 ```
 
 ### Decidir caminho
@@ -117,7 +134,8 @@ Componentes Percus:
   .gitignore com .deepseek/           | ✅/❌
   GEMINI.md (espelho-3)               | presente/ausente
   CLAUDE.md/AGENTS.md presentes       | ✅/❌
-  Git hook nativo Percus (.git/hooks/pre-commit, v5.0.8+) | ✅/❌
+  Git hook nativo Percus ($hooksPath/pre-commit, v5.0.8+) | ✅ puro / ✅ híbrido / ❌
+  core.hooksPath custom               | (path) / default (.git/hooks)
 
 ──────────────────────────────────────────
 ESTADO DETECTADO: {A | B | C | INCONSISTENTE}
@@ -136,17 +154,24 @@ Aguardando confirmação para prosseguir com Caminho {A/B/C}.
 
 Quase nada a fazer. Único passo se faltar:
 
-### A.1 — Instalar git hook nativo se ausente (v5.0.8+)
+### A.1 — Instalar/atualizar git hook nativo (v5.0.8+; v5.0.9 detecta core.hooksPath e híbrido)
 
-Se `$git_hook_percus = $false` no diagnóstico:
+Lógica baseada no diagnóstico:
 
-> Diagnóstico detectou ausência do git hook nativo Percus (`.git/hooks/pre-commit` versão Percus). Vou instalar — fecha brecha do PreToolUse contra bypass via comandos compostos. Rode no chat:
+| Estado | Ação |
+|---|---|
+| `$git_hook_percus = $false` | Pedir usuário rodar `/percus-review:install-git-hooks` (cria do zero) |
+| `$git_hook_percus = $true` E hook é v5.0.8 legado (sem markers BEGIN/END) | Pedir usuário rodar `/percus-review:install-git-hooks` (upgrade pra v5.0.9 format) |
+| `$git_hook_percus = $true` E `$git_hook_hybrid = $true` | Pedir usuário rodar `/percus-review:install-git-hooks` se quiser update do bloco Percus (preserva custom). Opcional. |
+| `$git_hook_percus = $true` E v5.0.9 puro já | Pular (idempotente, nada a fazer) |
+
+Mensagem padrão pro usuário (adapte ao caso):
+
+> Diagnóstico detectou {ausência | versão legada v5.0.8 | hook híbrido | ausência por core.hooksPath}. Rode no chat:
 >
 > `/percus-review:install-git-hooks`
 >
-> Aguarde confirmação do usuário antes de continuar — slash commands precisam ser disparados pelo usuário, não pelo agente.
-
-Se `$git_hook_percus = $true`: pular.
+> Slash commands precisam ser disparados pelo usuário, não pelo agente. O comando v5.0.9 detecta `core.hooksPath`, oferece 3 opções (hybrid merge / replace / abort) se houver hook custom, e é idempotente em re-runs.
 
 ### A.2 — Reportar
 
