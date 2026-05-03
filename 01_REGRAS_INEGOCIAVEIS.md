@@ -151,6 +151,8 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 
 **Gate de verificação:** abrir o HANDOFF gerado e perguntar: "se eu fechar tudo agora e voltar amanhã sem memória, consigo retomar?". Se a resposta é "talvez", o handoff está incompleto.
 
+**Gate mecânico:** plugin `@percus/review` instala hook `on-stop` que bloqueia encerramento de sessão com edições de código se HANDOFF.md não foi atualizado. Pra burlar: `$env:PERCUS_SKIP_HANDOFF=1` antes do Stop, motivo declarado em voz alta. Skip fica logado em `.deepseek/handoff-skipped.log`.
+
 ---
 
 ## R9. Superpowers — não são opcionais
@@ -159,16 +161,23 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 
 | Fase | Skill | Disparo |
 |------|-------|---------|
-| Início | `superpowers:brainstorming` | Feature não-trivial, antes de qualquer código |
+| Início orquestrado | `percus:feature-flow` | **Toda feature/bugfix não-trivial** — substitui carregar R1+R9+R11+R13 separadamente |
+| Brainstorming | `superpowers:brainstorming` | Feature não-trivial, antes de qualquer código |
 | Exploração | `Explore` (subagent) | Código desconhecido em projeto grande |
 | Plano | `superpowers:writing-plans` | Multi-step com 3+ arquivos a tocar |
-| Paralelização | `superpowers:dispatching-parallel-agents` | Backend + Frontend independentes |
+| Execução paralela | `superpowers:subagent-driven-development` | **Plano com 3+ tasks independentes — OBRIGATÓRIO** (corta contexto principal em ~60%) |
+| Paralelização B/F | `superpowers:dispatching-parallel-agents` | Backend + Frontend independentes |
 | Testes | `superpowers:test-driven-development` | **Todo endpoint novo** — vitest antes do código |
 | Debug | `superpowers:systematic-debugging` | Qualquer bug ou teste quebrado |
 | Revisão | `superpowers:requesting-code-review` | Em background antes do commit |
 | Finalização | `superpowers:verification-before-completion` | Antes de marcar `[5-T]` |
+| Marco | `percus:close-milestone` | Antes de marcar `✓` no PLANO (fechar fase/feature/épico) |
 
-**Anti-padrão proibido:** pular brainstorming porque "já sei o que fazer". TDD opcional. Code-review pulado em bulk edit.
+**Cobertura mecânica:** plugin `@percus/review` instala hook `pre-commit` que bloqueia commit sem `/percus:review` rodado nos últimos 5 min (R11 reforço). Não confiar só em disciplina — hook é gate.
+
+**Anti-padrão proibido:** pular brainstorming porque "já sei o que fazer". TDD opcional. Code-review pulado em bulk edit. Implementar plano grande serialmente quando subagent-driven-development cabe.
+
+**Guia rápido de skills:** `comandos/USANDO_SUPERPOWERS.md`.
 
 **Detalhes do fluxo passo-a-passo:** `checklists/CHECKLIST_FEATURE_NOVA.md`.
 
@@ -337,3 +346,5 @@ O router de review (R11) detecta esse trailer e roteia revisão pra Cross-Claude
 14. ❌ Rodar DeepSeek em `--apply` direto sem dry-run (R13)
 15. ❌ Delegar pra DeepSeek tasks em pasta sensível (auth/payment/migrations) ou sem plano explícito (R13)
 16. ❌ Aplicar saída DeepSeek sem trailer `Co-implemented-by: deepseek-v4` no commit (R13 + R11) — router não detecta auto-revisão
+17. ❌ Implementar plano com 3+ tasks independentes serialmente em vez de via `superpowers:subagent-driven-development` (R9) — desperdiça contexto principal e tempo
+18. ❌ Editar PLANO.md adicionando ✓ sem invocar `percus:close-milestone` antes (R11 ampliada)
