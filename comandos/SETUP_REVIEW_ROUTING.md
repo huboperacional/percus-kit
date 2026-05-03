@@ -64,7 +64,8 @@ claude
 
 No chat:
 ```
-/plugin install D:/Claud Automations/_Novo_Projeto/plugin/percus-review
+/plugin marketplace add D:/Claud Automations/_Novo_Projeto/plugin
+/plugin install percus-review
 ```
 
 **Caminho B — UI Extensão VS Code**

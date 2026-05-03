@@ -139,7 +139,8 @@ Aplicar fluxo de `comandos/SETUP_REVIEW_ROUTING.md` em modo "skip o que já exis
 - Verificar `DEEPSEEK_API_KEY` no `.env` do projeto (PARAR se ausente — instruir obtenção em https://platform.deepseek.com)
 - Instalar plugin `@percus/review` a nível de usuário (1× por máquina) via:
   ```
-  /plugin install D:/Claud Automations/_Novo_Projeto/plugin/percus-review
+  /plugin marketplace add D:/Claud Automations/_Novo_Projeto/plugin
+  /plugin install percus-review
   ```
 - Validar com `/percus:review` em smoke trivial (Passo 6)
 
@@ -154,7 +155,7 @@ $ext = (code --list-extensions 2>$null | Select-String "anthropic.claude-code")
 
 | Cenário detectado | Caminho de instalação |
 |---|---|
-| CLI standalone presente | **Caminho A** — abrir `claude` no PowerShell e rodar `/plugin install D:/Claud Automations/_Novo_Projeto/plugin/percus-review` no chat do terminal |
+| CLI standalone presente | **Caminho A** — abrir `claude` no PowerShell e rodar `/plugin marketplace add D:/Claud Automations/_Novo_Projeto/plugin` + `/plugin install percus-review` no chat do terminal |
 | Só Extensão VS Code | **Caminho B** — UI: `/plu` → "Manage plugins" → aba Plugins → "Install from local" → cola path do plugin |
 | Ambos | Caminho A (mais rápido) ou B (UI) |
 | Nenhum (raro) | `npm i -g @anthropic-ai/claude-code` → reabrir → seguir Caminho A |

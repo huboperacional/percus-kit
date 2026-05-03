@@ -142,7 +142,8 @@ Se não estiver instalado a nível de usuário, seguir [`SETUP_REVIEW_ROUTING.md
 
 Caminho rápido (CLI standalone):
 ```
-/plugin install D:/Claud Automations/_Novo_Projeto/plugin/percus-review
+/plugin marketplace add D:/Claud Automations/_Novo_Projeto/plugin
+/plugin install percus-review
 ```
 
 ### B.3 — Validar `DEEPSEEK_API_KEY`
