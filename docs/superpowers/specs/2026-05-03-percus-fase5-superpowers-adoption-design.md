@@ -286,9 +286,11 @@ HOOK on-stop: parseia transcript
 
 | Dia | Atividade | Tempo |
 |---|---|---|
-| **D1** | Resolver problema de instalação (criar `.claude-plugin/marketplace.json` wrapper) | ~30 min |
-| **D1** | Criar 2 skills (feature-flow, close-milestone) | ~1 h |
-| **D1** | Criar 2 hooks (pre-commit, on-stop) + handlers PS+SH | ~1 h |
+| **D1** | **T0a — Smoke test:** validar formato `tool_input.command` no hook `PreToolUse` matcher `Bash` (criar hook minimal que só `echo` o stdin recebido, disparar via Bash trivial, conferir formato real vs esperado pelo spec) | ~15 min |
+| **D1** | **T0b — Smoke test:** validar evento `Stop` recebe `transcript_path` (mesma técnica — hook minimal `echo` stdin) | ~15 min |
+| **D1** | Resolver problema de instalação — criar `.claude-plugin/marketplace.json` wrapper (ver **Anexo A**) | ~15 min |
+| **D1** | Criar 2 skills (feature-flow, close-milestone) — feature-flow inclui nota explícita "INVOQUE `/percus:review` ativamente, não espere o hook bloquear" | ~1 h |
+| **D1** | Criar 2 hooks (pre-commit, on-stop) + handlers PS+SH — formato baseado nos resultados de T0a/T0b | ~1 h |
 | **D1** | Editar canon (R8, R9, anti-padrões) | ~20 min |
 | **D1** | Criar `USANDO_SUPERPOWERS.md` | ~20 min |
 | **D1** | Atualizar `SETUP_REVIEW_ROUTING.md` + `UPGRADE_PARA_FASE4.md` (nova sintaxe) | ~30 min |
@@ -300,8 +302,16 @@ HOOK on-stop: parseia transcript
 ### Critérios de pivô
 
 - **Pivô leve:** >2 falsos positivos no on-stop em 24h → adicionar extensão à lista de ignore
-- **Pivô médio:** feature-flow auto-trigger < 50% após 5 dias → reescrever description
+- **Pivô médio:** feature-flow auto-invocada em **menos de 4 das próximas 5 features novas observadas** → reescrever `description` ou aceitar invocação manual reforçada em R9
 - **Rollback completo:** 5+ reclamações de fricção/dia OU custo DeepSeek > $10/semana → desativar hooks via `$env:PERCUS_HOOKS_DISABLED=1`
+
+### Mínimo viável de calibração (para D7 retrospectiva ter base)
+
+Pra retrospectiva D7 ter dados suficientes:
+- **Mínimo:** 5+ features novas iniciadas + 10+ commits totais entre D3 e D7
+- **Se uso real for menor:** prolongar janela de calibração até D14 antes de promover pra estado canônico
+- **Métrica de adoção feature-flow:** contar invocações em `git log --grep` ou inspeção de transcripts. Se < 4/5 features observadas, dispara pivô médio.
+- **Métrica on-stop:** contar entradas em `.deepseek/handoff-skipped.log` por dia. > 1/dia consistente sinaliza fricção indevida.
 
 ---
 
@@ -349,3 +359,71 @@ Itens fora do escopo da V1, registrados pra revisita:
 - Métrica formal de tokens consumidos (instrumentação) — adiar pra Fase 6 se necessário
 - Integração `percus:feature-flow` com `superpowers:executing-plans` em sessão separada (otimização Tier 2)
 - Hook que detecta uso de `localStorage` em código TS (R7 reforço mecânico)
+- **Git invocado fora da Bash tool não é detectado pelo hook pre-commit.** Cenário raro em Percus (DeepSeek wrapper não commita; subagentes geralmente delegam volta pro main). Documentar limitação em R13 quando virar problema. Eventual mecanismo: hook `PostToolUse` + Stop hook que detecta commits feitos via subprocess próprio comparando `git log` antes/depois da sessão.
+
+---
+
+## Anexo A — `marketplace.json` wrapper para instalação local do plugin
+
+**Problema observado:** `/plugin install <path>` direto não funciona no Claude Code v2.x — comando espera `marketplace_source` que aponta pra um diretório com `.claude-plugin/marketplace.json` registrando os plugins disponíveis.
+
+**Solução:** criar wrapper em `D:/Claud Automations/_Novo_Projeto/plugin/.claude-plugin/marketplace.json` (1 nível acima do plugin `percus-review/`):
+
+### Estrutura de pastas final
+
+```
+D:/Claud Automations/_Novo_Projeto/plugin/
+├── .claude-plugin/
+│   └── marketplace.json          ← wrapper criado
+└── percus-review/
+    ├── plugin.json
+    ├── commands/
+    ├── scripts/
+    └── (Fase 5) skills/, hooks/
+```
+
+### Conteúdo do `marketplace.json`
+
+```json
+{
+  "name": "percus-tools",
+  "description": "Percus internal tooling — review cross-provider plugin",
+  "owner": { "name": "Percus" },
+  "plugins": [
+    {
+      "name": "percus-review",
+      "description": "Review cross-provider Percus (DeepSeek + Cross-Claude)",
+      "version": "1.0.0",
+      "source": "./percus-review"
+    }
+  ]
+}
+```
+
+### Como usar (substitui doc atual de SETUP_REVIEW_ROUTING.md Passo 2)
+
+```
+/plugin marketplace add D:/Claud Automations/_Novo_Projeto/plugin
+/plugin install percus-review
+```
+
+A primeira linha **registra o marketplace** (a pasta `_Novo_Projeto/plugin/` que tem o `.claude-plugin/marketplace.json`).
+A segunda linha **instala o plugin** pelo nome (`percus-review`) registrado no marketplace.
+
+Após instalado, o plugin fica em `~/.claude/plugins/` a nível de usuário, disponível em todos os projetos.
+
+### Atualização do SETUP_REVIEW_ROUTING.md
+
+Após implementar Fase 5, atualizar `comandos/SETUP_REVIEW_ROUTING.md` Passo 2 com a sintaxe acima. Atualizar também `comandos/UPGRADE_PARA_FASE4.md` Caminho B/C com a mesma instrução.
+
+### Validação
+
+```powershell
+# Após instalação
+Get-ChildItem "$env:USERPROFILE\.claude\plugins" | Where-Object { $_.Name -match 'percus' }
+# Esperado: pasta percus-review listada
+
+# No chat Claude Code
+/plugin
+# Esperado: percus-review listado como instalado, com 4 commands + (Fase 5) 2 skills + 2 hooks
+```
