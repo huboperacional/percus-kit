@@ -64,7 +64,13 @@ claude
 
 No chat:
 ```
-/plugin marketplace add D:/Claud Automations/_Novo_Projeto/plugin
+/plugin marketplace add huboperacional/percus-kit
+/plugin install percus-review
+```
+
+**Caminho alternativo (sem internet, kit local):**
+```
+/plugin marketplace add D:/Claud Automations/_Novo_Projeto
 /plugin install percus-review
 ```
 
