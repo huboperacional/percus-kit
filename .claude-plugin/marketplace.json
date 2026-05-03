@@ -1,0 +1,13 @@
+{
+  "name": "percus-tools",
+  "description": "Percus internal tooling — kit Percus completo (review cross-provider plugin + futuras extensões)",
+  "owner": { "name": "Percus" },
+  "plugins": [
+    {
+      "name": "percus-review",
+      "description": "Review cross-provider Percus (DeepSeek + Cross-Claude)",
+      "version": "1.0.0",
+      "source": "./plugin/percus-review"
+    }
+  ]
+}
