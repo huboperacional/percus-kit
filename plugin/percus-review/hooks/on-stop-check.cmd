@@ -1,2 +1,2 @@
 @echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0on-stop-check.ps1" %*
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& \"%~dp0on-stop-check.ps1\"; exit $LASTEXITCODE"
