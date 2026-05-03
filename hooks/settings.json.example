@@ -1,0 +1,58 @@
+{
+  "_comentario": "Exemplo de configuracao de hooks do Claude Code para forcar adesao as regras Percus. Copie o que fizer sentido para .claude/settings.json do seu projeto. Documentacao: claude-code-guide skill ou https://docs.claude.com/claude-code/hooks",
+
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "mcp__*"
+    ],
+    "deny": []
+  },
+
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "_comentario_trigger_visual": "Quando o usuario menciona palavras-chave de UI/visual, injeta lembrete sobre design via v0.dev + shadcn MCP (R10 do 01_REGRAS_INEGOCIAVEIS, atualizada na Fase 2).",
+        "matcher": ".*(landing page|p[aá]gina inicial|home|redesign|redesenhar|refazer tela|hero section|banner|CTA|dashboard|painel|tela de m[eé]tricas|fluxo de onboarding|fluxo de cadastro|fluxo de checkout|pitch deck|apresenta[cç][aã]o|one-pager|melhorar UI|melhorar UX|deixar mais bonito|modernizar visual).*",
+        "command": "echo '[GATE R10] Trigger visual detectado. PARE antes de codar e siga comandos/DESIGN_WORKFLOW.md. Componente isolado -> shadcn MCP (npx shadcn@latest add). Tela/fluxo novo -> v0.dev (browser, creditos Vercel). Claude artifacts esta vetado pra producao (R10).'"
+      },
+      {
+        "_comentario_trigger_inicio_sessao": "Quando o usuario abre uma sessao com saudacao tipica, lembra do checklist de inicio.",
+        "matcher": "^(oi|ola|bom dia|boa tarde|boa noite|hey|hi)[ ,!\\.].*",
+        "command": "echo '[GATE INICIO] Antes de qualquer acao: rode checklists/CHECKLIST_INICIO_SESSAO.md (5 passos: ler HANDOFF, ler PLANO, ler mock-audit, alinhar HANDOFF<->PLANO, propor proximo passo).'"
+      }
+    ],
+
+    "PreToolUse": [
+      {
+        "_comentario_bloqueio_commit_sem_handoff": "Antes de cada git commit, lembra de checar HANDOFF e PLANO atualizados (R8). Nao bloqueia, so avisa.",
+        "matcher": "Bash",
+        "argumentMatcher": ".*git commit.*",
+        "command": "echo '[GATE R8] git commit detectado. Confirme antes de prosseguir: (1) HANDOFF.md atualizado? (2) docs/PLANO.md espelha estado real? (3) docs/mock-audit.md atualizado se mexeu em frontend? (4) Mensagem de commit referencia mudanca de status [X-Y] -> [X-Z]?'"
+      },
+      {
+        "_comentario_bloqueio_db_drop": "Avisa antes de operacoes destrutivas em DB (R5).",
+        "matcher": "Bash",
+        "argumentMatcher": ".*(DROP DATABASE|DROP TABLE|TRUNCATE|DELETE FROM.*WHERE.*=).*",
+        "command": "echo '[GATE R5] Operacao destrutiva em DB detectada. CONFIRME COM O USUARIO antes de executar (mesmo em auto-approve).'"
+      }
+    ],
+
+    "Stop": [
+      {
+        "_comentario_lembrete_encerramento": "Quando o agente finaliza uma resposta longa, lembra do checklist de encerramento de sessao.",
+        "command": "echo '[LEMBRETE] Se essa foi a ultima acao da sessao: rode checklists/CHECKLIST_ENCERRAR_SESSAO.md antes de fechar (HANDOFF + PLANO + mock-audit).'"
+      }
+    ]
+  },
+
+  "_NOTAS_DE_USO": {
+    "1_adapte_caminhos": "Os hooks acima usam echo simples. Se voce quiser carregar mensagens de arquivos, troque por: 'cat \"D:/Claud Automations/_Novo_Projeto/checklists/CHECKLIST_INICIO_SESSAO.md\"'. Cuidado com escape de aspas no JSON.",
+    "2_tester_hooks": "Apos colar em .claude/settings.json, reinicie o Claude Code. Teste digitando 'ola' ou 'preciso de uma landing page' para ver os hooks dispararem.",
+    "3_personalize_por_projeto": "Cada projeto pode ter regras adicionais. Ex: projeto com auth pode ter PreToolUse que lembra de validar JWT em qualquer mudanca em routers de auth.",
+    "4_evite_excesso": "Hooks demais geram ruido. Mantenha so os que cobrem regras que voce esta violando recorrentemente. Comece com 3-5 e ajuste."
+  }
+}

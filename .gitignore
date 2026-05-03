@@ -1,0 +1,47 @@
+# =============================================================================
+# Percus Kit — .gitignore
+# =============================================================================
+
+# Logs de runs/reviews do DeepSeek (R13 + R11) — podem conter prompts/respostas
+.deepseek/
+**/runs/
+**/reviews/
+
+# Secrets (não deve haver em projetos do kit, mas garantia anti-acidente)
+.env
+.env.*
+*.key
+*.pem
+
+# Smoke test artifacts (do canon e dos comandos)
+_smoke*
+_healthcheck-*.md
+_healthcheck-*.py
+
+# Backups e temporários
+*.bak
+*.tmp
+*.log
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/
+*.iml
+
+# Python (caso projetos auxiliares apareçam aqui)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node (caso projetos auxiliares apareçam aqui)
+node_modules/
+.pnpm-store/
+
+# Codex residual (Fase 2 antiga, não deve mais aparecer)
+.codex/

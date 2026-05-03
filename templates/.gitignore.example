@@ -1,0 +1,65 @@
+# ============================================================
+# .gitignore base — projetos Percus
+# Copie pra raiz do seu projeto e adicione regras específicas.
+# ============================================================
+
+# --- Tooling cross-provider (Fase 1 + Fase 2) ---
+.codex/                 # Configs locais do Codex CLI (R11 — reviewer)
+.deepseek/              # Logs de execução do worker DeepSeek (R13 — implementador)
+
+# --- Secrets ---
+.env
+.env.local
+.env.*.local
+credentials.json
+token.json
+*.pem
+*.key
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+
+# --- Node / TypeScript ---
+node_modules/
+*.tsbuildinfo
+.next/
+.nuxt/
+dist/
+build/
+.turbo/
+.cache/
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Editor / OS ---
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Coverage / test artifacts ---
+coverage/
+.coverage
+htmlcov/
+.nyc_output/
+
+# --- Sandbox/temp ---
+_smoke-*
+_teste-*
+tmp/
+temp/
