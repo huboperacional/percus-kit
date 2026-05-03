@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Router de review: decide entre DeepSeek, Cross-Claude, ou ambos (dual).
@@ -22,11 +22,28 @@ param(
 )
 $ErrorActionPreference = "Stop"
 
+# Force UTF-8 console (Windows PS 5.1 default is Win-1252, mangles PT-BR)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Helper: roda git sem deixar stderr virar NativeCommandError em PS 5.1
+function Invoke-GitSafe {
+    param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & git @Arguments 2>$null
+        return $output
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
 # === DETECT FILES TOCADOS ===
 if ($Base) {
-    $files = @(git diff --name-only "$Base...HEAD" 2>$null)
+    $files = @(Invoke-GitSafe diff --name-only "$Base...HEAD")
 } else {
-    $files = @(git diff --name-only --cached 2>$null) + @(git diff --name-only 2>$null) | Sort-Object -Unique
+    $files = @(Invoke-GitSafe diff --name-only --cached) + @(Invoke-GitSafe diff --name-only) | Sort-Object -Unique
 }
 $files = $files | Where-Object { $_ -and $_.Trim() -ne "" }
 
@@ -47,7 +64,7 @@ foreach ($f in $files) {
 }
 
 # === CHECK COMMIT TRAILER (último commit) ===
-$lastCommitMsg = git log -1 --pretty=%B 2>$null
+$lastCommitMsg = Invoke-GitSafe log -1 --pretty=%B
 $fromDeepseek = $false
 if ($lastCommitMsg) {
     $fromDeepseek = $lastCommitMsg -match '(?im)^Co-implemented-by:\s*deepseek'

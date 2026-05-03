@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Revisa git diff usando DeepSeek API (cross-provider review).
@@ -23,6 +23,23 @@ param(
 )
 $ErrorActionPreference = "Stop"
 
+# Force UTF-8 console (Windows PS 5.1 default is Win-1252, mangles PT-BR)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Helper: roda git sem deixar stderr virar NativeCommandError em PS 5.1
+function Invoke-GitSafe {
+    param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & git @Arguments 2>$null
+        return $output
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
 # === LOAD .env ===
 if (-not $env:DEEPSEEK_API_KEY) {
     $envPath = Join-Path (Get-Location) '.env'
@@ -44,10 +61,10 @@ if (-not $env:DEEPSEEK_API_KEY) {
 
 # === COLLECT DIFF ===
 if ($Base) {
-    $diff = git diff "$Base...HEAD"
+    $diff = (Invoke-GitSafe diff "$Base...HEAD") -join "`n"
 } else {
-    $cached = git diff --cached
-    $unstaged = git diff
+    $cached = (Invoke-GitSafe diff --cached) -join "`n"
+    $unstaged = (Invoke-GitSafe diff) -join "`n"
     $diff = "$cached`n$unstaged".Trim()
 }
 if (-not $diff) {

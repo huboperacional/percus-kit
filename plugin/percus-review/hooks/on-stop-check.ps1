@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Hook on-stop Percus — bloqueia stop se sessão tocou código sem atualizar HANDOFF.md (R8).
 # Falha graceful: qualquer erro -> exit 0.
 

@@ -1,7 +1,7 @@
 {
   "name": "percus-review",
-  "version": "5.0.0",
-  "description": "Review cross-provider Percus (DeepSeek + Cross-Claude) + skills/hooks de adoção (Fase 5)",
+  "version": "5.0.1",
+  "description": "Review cross-provider Percus (DeepSeek + Cross-Claude) + skills/hooks de adoção (Fase 5). v5.0.1: PS 5.1 BOM + console UTF-8 + git stderr guard.",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",

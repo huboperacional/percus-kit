@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Hook pre-commit Percus — bloqueia commit sem /percus:review recente.
 # Falha graceful: qualquer erro -> exit 0.
 
