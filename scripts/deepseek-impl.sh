@@ -268,4 +268,4 @@ if [[ "$SHELL_COUNT" -gt 0 ]]; then
 fi
 
 echo
-echo "[deepseek-impl] Pronto. Adicione trailer 'Co-implemented-by: deepseek-v4' ao commit message e rode /percus:review antes de commitar (R11)."
+echo "[deepseek-impl] Pronto. Adicione trailer 'Co-implemented-by: deepseek-v4' ao commit message e rode /percus-review:review antes de commitar (R11)."

@@ -78,7 +78,7 @@ No chat:
 
 `/plu` → Manage plugins → aba Plugins → "Install from local" → cola o path acima.
 
-Após instalar: `/codex:status`-equivalente não existe ainda, validar com `/percus:review` no smoke do Passo 5.
+Após instalar: `/codex:status`-equivalente não existe ainda, validar com `/percus-review:review` no smoke do Passo 5.
 
 ---
 
@@ -124,7 +124,7 @@ git add _smoke.md
 
 No chat Claude Code:
 ```
-/percus:review
+/percus-review:review
 ```
 
 Esperado:
@@ -158,12 +158,12 @@ Atualizar `CLAUDE.md` do projeto: substituir qualquer seção "Code review cross
 ```markdown
 ## Code review cross-provider (R11)
 
-`/percus:review` é obrigatório em DOIS momentos:
+`/percus-review:review` é obrigatório em DOIS momentos:
 1. Antes de cada commit que muda código
 2. Ao concluir cada marco de plano
 
 Em commit pré-commit: router auto decide DeepSeek / Cross-Claude / duplo (matriz em `D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md` R11).
-Em marco: `/percus:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo).
+Em marco: `/percus-review:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo).
 
 Sem review nos últimos 5min antes do commit → não pode commitar.
 Plugin Codex (`codex@openai-codex`) descontinuado em 2026-05-03 por custo.
@@ -182,11 +182,11 @@ SETUP REVIEW ROUTING CONCLUÍDO — {Nome do Projeto}
 ✅ DEEPSEEK_API_KEY validada (.env do projeto)
 ✅ AGENTS.md slim criado/atualizado (~4.4 KB)
 ✅ .gitignore com .deepseek/
-✅ Smoke /percus:review respondeu OK
+✅ Smoke /percus-review:review respondeu OK
 ✅ Resíduo Codex limpo (se aplicável)
 
-Próximo commit obrigatoriamente passa por /percus:review.
-Próximo marco obrigatoriamente passa por /percus:milestone-review --base <commit>.
+Próximo commit obrigatoriamente passa por /percus-review:review.
+Próximo marco obrigatoriamente passa por /percus-review:milestone-review --base <commit>.
 
 Custo estimado mensal: $2-5 total (vs $200-400 com Codex anterior).
 ```
@@ -206,7 +206,7 @@ Custo estimado mensal: $2-5 total (vs $200-400 com Codex anterior).
 
 | Sintoma | Causa | Solução |
 |---|---|---|
-| `/percus:review` retorna "command not found" | Plugin não instalado ou Claude Code não reiniciado | Reload do VS Code após `/plugin install` |
+| `/percus-review:review` retorna "command not found" | Plugin não instalado ou Claude Code não reiniciado | Reload do VS Code após `/plugin install` |
 | DeepSeek retorna 401 | API key inválida ou expirada | Conferir `DEEPSEEK_API_KEY` no `.env`, regenerar em platform.deepseek.com |
 | PowerShell 5.1 erro UTF-8 no wrapper | Bug conhecido | Wrapper já tem fix `[System.Text.Encoding]::UTF8.GetBytes` aplicado |
 | Router decide errado em commit misto (sensível + trivial) | Conservador por design | Qualquer arquivo em pasta sensível → escala pra duplo. Comportamento esperado |
@@ -219,7 +219,7 @@ Custo estimado mensal: $2-5 total (vs $200-400 com Codex anterior).
 - [ ] Plugin `@percus/review` instalado a nível de usuário (1× por máquina)
 - [ ] `AGENTS.md` na raiz do projeto (template slim)
 - [ ] `.deepseek/` no `.gitignore`
-- [ ] Smoke `/percus:review` respondeu
+- [ ] Smoke `/percus-review:review` respondeu
 - [ ] (Se Fase 2 anterior) `.codex/` removido + referências `/codex:review` substituídas
 
 ---

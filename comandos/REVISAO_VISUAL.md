@@ -77,7 +77,7 @@ REGRAS:
    - **Página/fluxo novo** → cole o prompt sugerido no v0.dev (browser, créditos Vercel próprios)
    - **Componente isolado** → rode `npx shadcn@latest add <componente>` direto no projeto
 5. Código aprovado → volta ao Claude Code → integra seguindo `[1-S]→[5-T]`
-6. Antes de declarar a tela em `[5-T]`: rodar `/percus:review` (R11)
+6. Antes de declarar a tela em `[5-T]`: rodar `/percus-review:review` (R11)
 
 ---
 
@@ -85,4 +85,4 @@ REGRAS:
 
 - Workflow detalhado de design: `comandos/DESIGN_WORKFLOW.md`
 - Regra (gate lexical): `01_REGRAS_INEGOCIAVEIS.md` R10
-- Review cross-provider obrigatório por marco: R11 (`/percus:milestone-review --base <commit>`)
+- Review cross-provider obrigatório por marco: R11 (`/percus-review:milestone-review --base <commit>`)

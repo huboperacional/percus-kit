@@ -90,15 +90,15 @@ Auditoria em `docs/mock-audit.md`, atualizada toda sessão com frontend.
 
 Ver `checklists/CHECKLIST_FEATURE_NOVA.md` (na pasta `_Novo_Projeto`).
 
-Resumo: brainstorming → plano → TDD → execução vertical [0]→[5-T] → `/percus:review` → commit.
+Resumo: brainstorming → plano → TDD → execução vertical [0]→[5-T] → `/percus-review:review` → commit.
 
 ## Review cross-provider (R11)
 
 Review é obrigatório em **dois momentos:**
-1. Antes de cada commit que muda código — `/percus:review` (router auto)
-2. Ao concluir cada marco de plano — `/percus:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo)
+1. Antes de cada commit que muda código — `/percus-review:review` (router auto)
+2. Ao concluir cada marco de plano — `/percus-review:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo)
 
-**Matriz de roteamento automática (`/percus:review`):**
+**Matriz de roteamento automática (`/percus-review:review`):**
 
 | Cenário | Reviewer |
 |---|---|
@@ -107,7 +107,7 @@ Review é obrigatório em **dois momentos:**
 | Pre-commit de saída DeepSeek (commit com trailer `Co-implemented-by: deepseek-v4`) | Cross-Claude apenas (Sonnet subagent) |
 | Marco | DeepSeek + Cross-Claude duplo |
 
-Override manual: `/percus:deepseek-review`, `/percus:cross-claude-review`.
+Override manual: `/percus-review:deepseek-review`, `/percus-review:cross-claude-review`.
 
 **Tratamento de findings:**
 1. Bug ou regressão → corrigir antes de commitar

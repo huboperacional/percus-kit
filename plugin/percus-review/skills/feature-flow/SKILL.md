@@ -1,6 +1,6 @@
 ---
 name: feature-flow
-description: Use when starting any feature or bugfix in a Percus project. Orchestrates R1->R13 workflow (brainstorming -> plan -> subagent-driven execution -> TDD -> /percus:review -> mark [5-T]). Replaces loading R1+R9+R11+R13 separately.
+description: Use when starting any feature or bugfix in a Percus project. Orchestrates R1->R13 workflow (brainstorming -> plan -> subagent-driven execution -> TDD -> /percus-review:review -> mark [5-T]). Replaces loading R1+R9+R11+R13 separately.
 ---
 
 # Percus Feature Flow
@@ -8,7 +8,7 @@ description: Use when starting any feature or bugfix in a Percus project. Orches
 Quando começar feature nova OU bugfix em projeto Percus, siga este fluxo.
 
 ## Quando NÃO usar
-- Bug fix de 1 linha, rename trivial, typo → só faz e roda `/percus:review`
+- Bug fix de 1 linha, rename trivial, typo → só faz e roda `/percus-review:review`
 - Sessão de consulta (ler código, explicar) → não aplicável
 
 ## Fluxo (passos numerados)
@@ -34,12 +34,12 @@ Invoque `superpowers:test-driven-development`. Vitest/pytest antes do código.
 Avança SÓ com verificação. Não arredondar.
 
 ### 6. Review pre-commit (R11) — IMPORTANTE
-**INVOQUE `/percus:review` ATIVAMENTE antes de commitar.** Não espere o hook bloquear — o hook é safety net, não fluxo.
+**INVOQUE `/percus-review:review` ATIVAMENTE antes de commitar.** Não espere o hook bloquear — o hook é safety net, não fluxo.
 
 Por quê: se commitar sem review, hook pre-commit bloqueia E você perde 5-10s de retrabalho. Rodar review proativamente é mais rápido E garante que findings são tratados antes do commit.
 
 ### 7. Marco
-Invoque `percus:close-milestone` ao fechar fase/feature/épico (skill irmã).
+Invoque `percus-review:close-milestone` ao fechar fase/feature/épico (skill irmã).
 
 ### 8. Marcações visuais (R2)
 - 🤖 = delegado pro DeepSeek (commit deve ter trailer `Co-implemented-by: deepseek-v4`)

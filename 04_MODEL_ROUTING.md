@@ -74,7 +74,7 @@ Mantenha localmente (Claude Opus/Sonnet) quando:
 - ❌ Mudanças que cruzam >3 arquivos sem padrão claro
 - ❌ Task em pasta sensível: `**/auth/**`, `**/payment*/**`, `**/migrations/**`, `**/credentials/**`, arquivos `.env*`
 - ❌ Brainstorm ou exploração (`superpowers:brainstorming`, `Explore`)
-- ❌ Code review de output de outro modelo (use revisor cross-provider via `/percus:review`)
+- ❌ Code review de output de outro modelo (use revisor cross-provider via `/percus-review:review`)
 - ❌ Tasks visuais (segue `comandos/DESIGN_WORKFLOW.md`)
 
 Para tasks tão pequenas que não compensam orquestrar (ex.: trocar uma string em um arquivo), faça você mesmo via Edit. O custo de orquestrar (montar plano, invocar wrapper, validar) supera o ganho.
@@ -155,7 +155,7 @@ powershell -File "D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.ps1" 
 
 Após apply:
 1. Rode `git status` pra confirmar o que mudou
-2. **Avise o usuário:** *"Saída aplicada. Lembrar de incluir trailer `Co-implemented-by: deepseek-v4` no commit (R13). Antes de commit, rodar `/percus:review` — router detecta o trailer e roteia pra Cross-Claude (não-DeepSeek auto-revisão). Antes de fechar marco, `/percus:milestone-review --base <commit>`. R11."*
+2. **Avise o usuário:** *"Saída aplicada. Lembrar de incluir trailer `Co-implemented-by: deepseek-v4` no commit (R13). Antes de commit, rodar `/percus-review:review` — router detecta o trailer e roteia pra Cross-Claude (não-DeepSeek auto-revisão). Antes de fechar marco, `/percus-review:milestone-review --base <commit>`. R11."*
 
 ### Passo 6 — Marcar feature no PLANO + HANDOFF com `🤖`
 
@@ -192,7 +192,7 @@ Validações Percus:
   ✅ R7 (auth Percus / stack): OK | ALERTA: <...>
   ✅ Pastas sensíveis intactas: OK
 
-Próximo passo: /percus:review antes do commit OU /percus:milestone-review --base <branch> ao fechar marco (R11). Commit deve incluir trailer `Co-implemented-by: deepseek-v4` (R13).
+Próximo passo: /percus-review:review antes do commit OU /percus-review:milestone-review --base <branch> ao fechar marco (R11). Commit deve incluir trailer `Co-implemented-by: deepseek-v4` (R13).
 ```
 
 ---
@@ -202,7 +202,7 @@ Próximo passo: /percus:review antes do commit OU /percus:milestone-review --bas
 Toda saída do DeepSeek é **rascunho** até passar por:
 
 1. **Validação Claude (você, na sessão principal)**: confere contra R1–R13 antes de aceitar
-2. **Review cross-provider (R11)**: gate de commit/marco via `/percus:review` — router escolhe reviewer (Cross-Claude obrigatório quando a saída é DeepSeek, evitando auto-revisão)
+2. **Review cross-provider (R11)**: gate de commit/marco via `/percus-review:review` — router escolhe reviewer (Cross-Claude obrigatório quando a saída é DeepSeek, evitando auto-revisão)
 3. **Ciclo CRUD com F5 (R1)**: se a task afetou feature visível, ainda precisa rodar
 
 Sem essas três camadas, output do DeepSeek **não vai pra produção**.
@@ -230,7 +230,7 @@ Multiplicado pelo volume diário Percus, libera margem de cota Anthropic pra o q
 ## Anti-padrões
 
 - ❌ Delegar pra DeepSeek e pular revisão Claude ("ele já é bom") — viola garantia cross-provider
-- ❌ Pular `/percus:review` porque "DeepSeek + Claude já revisaram" — revisor cross-provider é gate independente, propósito é cobertura cross-provider sem auto-revisão
+- ❌ Pular `/percus-review:review` porque "DeepSeek + Claude já revisaram" — revisor cross-provider é gate independente, propósito é cobertura cross-provider sem auto-revisão
 - ❌ Delegar tasks ambíguas e esperar que DeepSeek "se vire" — wrapper retorna `===REJECT===` corretamente, mas é desperdício de tokens
 - ❌ Aplicar `--apply` direto sem dry-run — nunca confiar cego, mesmo em task simples
 - ❌ Implementar direto algo que cabe no DeepSeek "porque é mais rápido" — defaulta a delegar quando elegível

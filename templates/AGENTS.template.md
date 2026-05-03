@@ -1,6 +1,6 @@
 # {Nome do Projeto} — AGENTS.md
 
-> Regras Percus deste projeto. Lido pelo **revisor cross-provider** (DeepSeek + Cross-Claude) durante `/percus:review` e `/percus:milestone-review`.
+> Regras Percus deste projeto. Lido pelo **revisor cross-provider** (DeepSeek + Cross-Claude) durante `/percus-review:review` e `/percus-review:milestone-review`.
 > Mantenha sincronizado com `CLAUDE.md`. Em conflito, `CLAUDE.md` prevalece (fonte canônica).
 
 ---
@@ -12,7 +12,7 @@
 - ✅ **Faz:** revisa diffs antes do commit, aponta bugs, regressões, violações de regras Percus, melhorias de clareza
 - ❌ **Não faz:** escreve código novo, refatora, propõe arquiteturas, executa migrations
 
-Quando o Claude pede `/percus:review`:
+Quando o Claude pede `/percus-review:review`:
 1. Router lê `git diff` ativo + paths tocados + último commit message
 2. Decide: DeepSeek apenas / Cross-Claude apenas / duplo
 3. Reviewer(s) lê(em) este `AGENTS.md` para conhecer regras

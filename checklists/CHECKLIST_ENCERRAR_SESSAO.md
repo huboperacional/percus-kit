@@ -52,7 +52,7 @@ Se a resposta é "talvez" ou "depende": handoff incompleto. Volte e adicione o q
 Antes de `git commit`:
 - ✅ Cobertura de R1 (`[5-T]`) confirmada para o que mudou
 - ✅ HANDOFF e PLANO atualizados (passos 1-2 acima)
-- ✅ **`/percus:review` rodado nos últimos 5 minutos** (R11 — OBRIGATÓRIO em commits de código)
+- ✅ **`/percus-review:review` rodado nos últimos 5 minutos** (R11 — OBRIGATÓRIO em commits de código)
   - Findings de bugs ou violações de regras Percus tratados
   - Findings de preferência de estilo declarados em voz alta se ignorados
 - ✅ Code review extra do Claude Code se diff > 500 linhas ou mexeu em auth/segurança
@@ -94,4 +94,4 @@ Bloqueios / itens que precisam de você:
 - ❌ Esquecer de atualizar mock-audit em sessão de frontend.
 - ❌ Mensagem final de "ok, terminei" sem o bloco estruturado acima.
 - ❌ Commit com mensagem genérica ("update files") quando mudou status de feature.
-- ❌ Commitar sem `/percus:review` rodado antes (R11).
+- ❌ Commitar sem `/percus-review:review` rodado antes (R11).

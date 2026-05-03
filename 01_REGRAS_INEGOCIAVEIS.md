@@ -66,7 +66,7 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 | `🎨` | Draft de design aprovado (v0.dev export, shadcn add, ou wireframe) | Em features visuais — **obrigatório** antes de sair de `[0]` (R10) |
 | `🎨?` | Feature visual sem draft — BLOQUEADA em `[0]` | Ao classificar feature visual ainda não desenhada (R10) |
 | `🤖` | Implementação delegada ao DeepSeek (R13) | Em qualquer fase `[1-S]→[5-T]` onde o trabalho foi feito via wrapper `deepseek-impl` |
-| `✓` | Reviewer aprovou no marco (não no commit individual) | Em features cujo escopo de marco passou por `/percus:milestone-review --base <commit>` ou `/percus:review` aprovado pré-commit (R11) |
+| `✓` | Reviewer aprovou no marco (não no commit individual) | Em features cujo escopo de marco passou por `/percus-review:milestone-review --base <commit>` ou `/percus-review:review` aprovado pré-commit (R11) |
 
 **Exemplo de PLANO com marcações compostas:**
 ```
@@ -161,7 +161,7 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 
 | Fase | Skill | Disparo |
 |------|-------|---------|
-| Início orquestrado | `percus:feature-flow` | **Toda feature/bugfix não-trivial** — substitui carregar R1+R9+R11+R13 separadamente |
+| Início orquestrado | `percus-review:feature-flow` | **Toda feature/bugfix não-trivial** — substitui carregar R1+R9+R11+R13 separadamente |
 | Brainstorming | `superpowers:brainstorming` | Feature não-trivial, antes de qualquer código |
 | Exploração | `Explore` (subagent) | Código desconhecido em projeto grande |
 | Plano | `superpowers:writing-plans` | Multi-step com 3+ arquivos a tocar |
@@ -171,9 +171,9 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 | Debug | `superpowers:systematic-debugging` | Qualquer bug ou teste quebrado |
 | Revisão | `superpowers:requesting-code-review` | Em background antes do commit |
 | Finalização | `superpowers:verification-before-completion` | Antes de marcar `[5-T]` |
-| Marco | `percus:close-milestone` | Antes de marcar `✓` no PLANO (fechar fase/feature/épico) |
+| Marco | `percus-review:close-milestone` | Antes de marcar `✓` no PLANO (fechar fase/feature/épico) |
 
-**Cobertura mecânica:** plugin `@percus/review` instala hook `pre-commit` que bloqueia commit sem `/percus:review` rodado nos últimos 5 min (R11 reforço). Não confiar só em disciplina — hook é gate.
+**Cobertura mecânica:** plugin `@percus/review` instala hook `pre-commit` que bloqueia commit sem `/percus-review:review` rodado nos últimos 5 min (R11 reforço). Não confiar só em disciplina — hook é gate.
 
 **Anti-padrão proibido:** pular brainstorming porque "já sei o que fazer". TDD opcional. Code-review pulado em bulk edit. Implementar plano grande serialmente quando subagent-driven-development cabe.
 
@@ -217,11 +217,11 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 
 **Regra:** Rodar review cross-provider em **dois momentos** obrigatórios. Reviewer é decidido pelo router automático ou forçado manualmente.
 
-- **Pre-commit:** `/percus:review` (router auto — escolhe DeepSeek, Cross-Claude ou duplo conforme contexto)
-- **Marco:** `/percus:milestone-review --base <commit-de-inicio-do-marco>` (DeepSeek + Cross-Claude duplo, sempre)
-- **Override manual:** `/percus:deepseek-review` ou `/percus:cross-claude-review` quando quiser forçar canal específico
+- **Pre-commit:** `/percus-review:review` (router auto — escolhe DeepSeek, Cross-Claude ou duplo conforme contexto)
+- **Marco:** `/percus-review:milestone-review --base <commit-de-inicio-do-marco>` (DeepSeek + Cross-Claude duplo, sempre)
+- **Override manual:** `/percus-review:deepseek-review` ou `/percus-review:cross-claude-review` quando quiser forçar canal específico
 
-### Matriz de roteamento automática (`/percus:review`)
+### Matriz de roteamento automática (`/percus-review:review`)
 
 | Cenário | Reviewer | Por quê |
 |---|---|---|
@@ -252,7 +252,7 @@ Seguir `D:/Claud Automations/_Novo_Projeto/comandos/SETUP_REVIEW_ROUTING.md`. Ca
 
 ### Gate de verificação
 
-`/percus:review` deve ter sido rodado nos últimos 5 minutos antes do `git commit`. Se passou disso, rode de novo (você pode ter mexido em algo desde então).
+`/percus-review:review` deve ter sido rodado nos últimos 5 minutos antes do `git commit`. Se passou disso, rode de novo (você pode ter mexido em algo desde então).
 
 ### Anti-padrão proibido
 
@@ -315,7 +315,7 @@ O router de review (R11) detecta esse trailer e roteia revisão pra Cross-Claude
 1. `DEEPSEEK_API_KEY` carregada na sessão
 2. Output do DeepSeek inspecionado em `--dry-run` antes de aplicar
 3. Validação contra R1–R12 antes de aceitar
-4. `/percus:review` (R11) sobre o resultado antes de marco/commit — router detecta trailer `Co-implemented-by: deepseek-v4` e roteia pra Cross-Claude
+4. `/percus-review:review` (R11) sobre o resultado antes de marco/commit — router detecta trailer `Co-implemented-by: deepseek-v4` e roteia pra Cross-Claude
 
 **Anti-padrão proibido:** rodar DeepSeek em `--apply` direto sem dry-run; ou aceitar saída sem validação Claude + Codex.
 
@@ -340,11 +340,11 @@ O router de review (R11) detecta esse trailer e roteia revisão pra Cross-Claude
 8. ❌ Avançar status no PLANO sem verificar a condição
 9. ❌ Usar GoTrue/PostgREST/Supabase em projeto novo
 10. ❌ Reaproveitar JWT_SECRET de outro domínio
-11. ❌ Commitar sem rodar `/percus:review` antes (R11)
+11. ❌ Commitar sem rodar `/percus-review:review` antes (R11)
 12. ❌ Manter `AGENTS.md` desatualizado em relação ao `CLAUDE.md` — reviewer revisa com regra defasada
-13. ❌ Avançar marco sem `/percus:milestone-review --base <commit>` do escopo do marco (R11 ampliada)
+13. ❌ Avançar marco sem `/percus-review:milestone-review --base <commit>` do escopo do marco (R11 ampliada)
 14. ❌ Rodar DeepSeek em `--apply` direto sem dry-run (R13)
 15. ❌ Delegar pra DeepSeek tasks em pasta sensível (auth/payment/migrations) ou sem plano explícito (R13)
 16. ❌ Aplicar saída DeepSeek sem trailer `Co-implemented-by: deepseek-v4` no commit (R13 + R11) — router não detecta auto-revisão
 17. ❌ Implementar plano com 3+ tasks independentes serialmente em vez de via `superpowers:subagent-driven-development` (R9) — desperdiça contexto principal e tempo
-18. ❌ Editar PLANO.md adicionando ✓ sem invocar `percus:close-milestone` antes (R11 ampliada)
+18. ❌ Editar PLANO.md adicionando ✓ sem invocar `percus-review:close-milestone` antes (R11 ampliada)

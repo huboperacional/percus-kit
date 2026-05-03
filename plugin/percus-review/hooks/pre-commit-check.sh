@@ -19,15 +19,15 @@ if [ -n "${PERCUS_HOOKS_DISABLED:-}" ]; then exit 0; fi
 
 REVIEW_DIR=".deepseek/reviews"
 if [ ! -d "$REVIEW_DIR" ]; then
-  echo "[percus:hook pre-commit] BLOCK: nenhum /percus:review em $REVIEW_DIR" >&2
-  echo "Rode /percus:review antes de commitar (R11)." >&2
+  echo "[percus:hook pre-commit] BLOCK: nenhum /percus-review:review em $REVIEW_DIR" >&2
+  echo "Rode /percus-review:review antes de commitar (R11)." >&2
   exit 2
 fi
 
 LATEST=$(ls -t "$REVIEW_DIR"/*.jsonl 2>/dev/null | head -1)
 if [ -z "$LATEST" ]; then
   echo "[percus:hook pre-commit] BLOCK: $REVIEW_DIR vazia" >&2
-  echo "Rode /percus:review antes de commitar (R11)." >&2
+  echo "Rode /percus-review:review antes de commitar (R11)." >&2
   exit 2
 fi
 
@@ -39,7 +39,7 @@ AGE=$((NOW - MTIME))
 if [ $AGE -gt 300 ]; then
   AGE_MIN=$(( AGE / 60 ))
   echo "[percus:hook pre-commit] BLOCK: ultimo review tem $AGE_MIN min (max 5)" >&2
-  echo "Rode /percus:review de novo (R11)." >&2
+  echo "Rode /percus-review:review de novo (R11)." >&2
   exit 2
 fi
 

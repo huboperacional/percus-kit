@@ -48,7 +48,7 @@
 | `01_REGRAS_INEGOCIAVEIS.md` | R8 ganha gate mecânico, R9 ganha 2 linhas, anti-padrões 17+18 |
 | `comandos/SETUP_REVIEW_ROUTING.md` | Passo 2 com nova sintaxe `/plugin marketplace add` |
 | `comandos/UPGRADE_PARA_FASE4.md` | Caminhos B e C com nova sintaxe |
-| `templates/PLANO.template.md` | Marcação ✓ menciona `percus:close-milestone` skill |
+| `templates/PLANO.template.md` | Marcação ✓ menciona `percus-review:close-milestone` skill |
 
 ### Princípio de decomposição
 
@@ -204,7 +204,7 @@ Esperado: `percus-review` listado como instalado.
 - [ ] **Step 4: Validar plugin acessível via slash commands**
 
 ```
-/percus:review
+/percus-review:review
 ```
 
 Esperado: comando responde (mesmo que com erro "no diff" — confirma que está roteado).
@@ -282,7 +282,7 @@ Conteúdo:
 ```markdown
 ---
 name: feature-flow
-description: Use when starting any feature or bugfix in a Percus project. Orchestrates R1→R13 workflow (brainstorming → plan → subagent-driven execution → TDD → /percus:review → mark [5-T]). Replaces loading R1+R9+R11+R13 separately.
+description: Use when starting any feature or bugfix in a Percus project. Orchestrates R1→R13 workflow (brainstorming → plan → subagent-driven execution → TDD → /percus-review:review → mark [5-T]). Replaces loading R1+R9+R11+R13 separately.
 ---
 
 # Percus Feature Flow
@@ -290,7 +290,7 @@ description: Use when starting any feature or bugfix in a Percus project. Orches
 Quando começar feature nova OU bugfix em projeto Percus, siga este fluxo.
 
 ## Quando NÃO usar
-- Bug fix de 1 linha, rename trivial, typo → só faz e roda `/percus:review`
+- Bug fix de 1 linha, rename trivial, typo → só faz e roda `/percus-review:review`
 - Sessão de consulta (ler código, explicar) → não aplicável
 
 ## Fluxo (passos numerados)
@@ -316,12 +316,12 @@ Invoque `superpowers:test-driven-development`. Vitest/pytest antes do código.
 Avança SÓ com verificação. Não arredondar.
 
 ### 6. Review pre-commit (R11) — IMPORTANTE
-**INVOQUE `/percus:review` ATIVAMENTE antes de commitar.** Não espere o hook bloquear — o hook é safety net, não fluxo.
+**INVOQUE `/percus-review:review` ATIVAMENTE antes de commitar.** Não espere o hook bloquear — o hook é safety net, não fluxo.
 
 Por quê: se commitar sem review, hook pre-commit bloqueia E você perde 5-10s de retrabalho. Rodar review proativamente é mais rápido E garante que findings são tratados antes do commit.
 
 ### 7. Marco
-Invoque `percus:close-milestone` ao fechar fase/feature/épico (skill irmã).
+Invoque `percus-review:close-milestone` ao fechar fase/feature/épico (skill irmã).
 
 ### 8. Marcações visuais (R2)
 - 🤖 = delegado pro DeepSeek (commit deve ter trailer `Co-implemented-by: deepseek-v4`)
@@ -371,7 +371,7 @@ Conteúdo:
 ```markdown
 ---
 name: close-milestone
-description: Use when closing a milestone in Percus project — end of numbered phase, feature group in epic, or "ready for next step" transition. Runs /percus:milestone-review and marks ✓ in PLANO/HANDOFF.
+description: Use when closing a milestone in Percus project — end of numbered phase, feature group in epic, or "ready for next step" transition. Runs /percus-review:milestone-review and marks ✓ in PLANO/HANDOFF.
 ---
 
 # Percus Close Milestone
@@ -389,7 +389,7 @@ Quando declarar marco fechado (fim de Fase X numerada, fim de feature em épico,
 ### 2. Rodar milestone-review (R11 ampliada)
 
 \`\`\`
-/percus:milestone-review --base <commit-inicio-marco>
+/percus-review:milestone-review --base <commit-inicio-marco>
 \`\`\`
 
 Roda DeepSeek + Cross-Claude duplo. Custo ~$0.05.
@@ -578,7 +578,7 @@ Esperado: erro "hook não encontrado" ou todos os testes falhando. Confirma que 
 Conteúdo (baseado no spec Seção 4.2):
 ```powershell
 #requires -Version 5.1
-# Hook pre-commit Percus — bloqueia commit sem /percus:review recente.
+# Hook pre-commit Percus — bloqueia commit sem /percus-review:review recente.
 # Falha graceful: qualquer erro → exit 0.
 
 try {
@@ -602,8 +602,8 @@ try {
     $reviewDir = Join-Path $cwd ".deepseek/reviews"
     if (-not (Test-Path $reviewDir)) {
         # Nenhum review jamais → bloqueia
-        Write-Host "[percus:hook pre-commit] BLOCK: nenhum /percus:review encontrado em .deepseek/reviews/" -ForegroundColor Red
-        Write-Host "Rode /percus:review antes de commitar (R11)." -ForegroundColor Yellow
+        Write-Host "[percus:hook pre-commit] BLOCK: nenhum /percus-review:review encontrado em .deepseek/reviews/" -ForegroundColor Red
+        Write-Host "Rode /percus-review:review antes de commitar (R11)." -ForegroundColor Yellow
         exit 2
     }
 
@@ -615,8 +615,8 @@ try {
 
     $age = (Get-Date) - $latest.LastWriteTime
     if ($age.TotalMinutes -gt 5) {
-        Write-Host "[percus:hook pre-commit] BLOCK: ultimo /percus:review tem $([math]::Round($age.TotalMinutes,1)) min (max 5)." -ForegroundColor Red
-        Write-Host "Rode /percus:review de novo antes de commitar (R11)." -ForegroundColor Yellow
+        Write-Host "[percus:hook pre-commit] BLOCK: ultimo /percus-review:review tem $([math]::Round($age.TotalMinutes,1)) min (max 5)." -ForegroundColor Red
+        Write-Host "Rode /percus-review:review de novo antes de commitar (R11)." -ForegroundColor Yellow
         exit 2
     }
 
@@ -662,8 +662,8 @@ if [ -n "${PERCUS_HOOKS_DISABLED:-}" ]; then exit 0; fi
 
 REVIEW_DIR=".deepseek/reviews"
 if [ ! -d "$REVIEW_DIR" ]; then
-  echo "[percus:hook pre-commit] BLOCK: nenhum /percus:review em $REVIEW_DIR" >&2
-  echo "Rode /percus:review antes de commitar (R11)." >&2
+  echo "[percus:hook pre-commit] BLOCK: nenhum /percus-review:review em $REVIEW_DIR" >&2
+  echo "Rode /percus-review:review antes de commitar (R11)." >&2
   exit 2
 fi
 
@@ -681,7 +681,7 @@ AGE=$((NOW - MTIME))
 if [ $AGE -gt 300 ]; then
   AGE_MIN=$(( AGE / 60 ))
   echo "[percus:hook pre-commit] BLOCK: ultimo review tem $AGE_MIN min (max 5)" >&2
-  echo "Rode /percus:review de novo." >&2
+  echo "Rode /percus-review:review de novo." >&2
   exit 2
 fi
 
@@ -696,7 +696,7 @@ exit 0
 git add plugin/percus-review/hooks/pre-commit-check.ps1 plugin/percus-review/hooks/pre-commit-check.sh plugin/percus-review/tests/smoke-pre-commit.ps1
 git commit -m "feat(hooks): add pre-commit-check hook with smoke test
 
-- Blocks commit if no /percus:review in last 5 min (R11 enforcement)
+- Blocks commit if no /percus-review:review in last 5 min (R11 enforcement)
 - Allows non-commit Bash, amend --no-edit, and PERCUS_HOOKS_DISABLED escape
 - Graceful failure: any error returns exit 0 (never blocks via hook crash)"
 ```
@@ -936,7 +936,7 @@ git commit -m "feat(hooks): add on-stop-check hook with smoke test
 1. Em projeto Fase 4 de teste, fazer Edit em `.py`
 2. `git add` + `git commit -m "test"` via Bash tool
 3. Esperado: hook bloqueia com mensagem orientativa
-4. Rodar `/percus:review`
+4. Rodar `/percus-review:review`
 5. Repetir commit → libera
 
 - [ ] **Step 3b: Smoke E2E pre-commit DOCS-ONLY (cobre T3 do spec)**
@@ -962,7 +962,7 @@ Sessão de teste:
 - [ ] **Step 4c: Smoke E2E close-milestone skill (cobre T7 do spec)**
 
 1. Em sessão de teste, dizer "fechamos a Fase 1"
-2. Esperado: agente invoca skill `percus:close-milestone`, roda `/percus:milestone-review`, marca ✓ no PLANO
+2. Esperado: agente invoca skill `percus-review:close-milestone`, roda `/percus-review:milestone-review`, marca ✓ no PLANO
 
 - [ ] **Step 5: Commit**
 
@@ -1028,7 +1028,7 @@ git commit -m "docs(commands): add USANDO_SUPERPOWERS guide and link from R9"
 **Files:**
 - Modify: `templates/PLANO.template.md`
 
-- [ ] **Step 1: Atualizar linha do `✓`** mencionando que fluxo é via `percus:close-milestone` skill
+- [ ] **Step 1: Atualizar linha do `✓`** mencionando que fluxo é via `percus-review:close-milestone` skill
 
 - [ ] **Step 2: Commit**
 
@@ -1076,7 +1076,7 @@ Documentar em `HANDOFF.md` da metalibrary local: "Calibração Fase 5 começa em
 Adoção de `feature-flow` (target: ≥4 das próximas 5 features novas):
 ```bash
 # Conta menções/invocações em transcripts da semana
-grep -rE "feature-flow|percus:feature-flow" "$HOME/.claude/projects" --include="*.jsonl" | wc -l
+grep -rE "feature-flow|percus-review:feature-flow" "$HOME/.claude/projects" --include="*.jsonl" | wc -l
 ```
 
 Uso do skip flag `PERCUS_SKIP_HANDOFF`:

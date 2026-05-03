@@ -245,4 +245,4 @@ if ($shellMatches.Count -gt 0) {
 }
 
 Write-Host ''
-Write-Host "[deepseek-impl] Pronto. Rode /percus:review antes de commitar (R11)." -ForegroundColor Green
+Write-Host "[deepseek-impl] Pronto. Rode /percus-review:review antes de commitar (R11)." -ForegroundColor Green

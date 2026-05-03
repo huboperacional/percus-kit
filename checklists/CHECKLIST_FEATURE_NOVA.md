@@ -112,7 +112,7 @@ Adicione a feature na frente correta, status `[0]`. Marcação visual:
 Antes de declarar a feature em `[5-T]` **ou** antes de seguir pra próxima fase numerada de um plano em execução, rodar:
 
 ```
-/percus:milestone-review --base <commit-de-inicio-do-marco>
+/percus-review:milestone-review --base <commit-de-inicio-do-marco>
 ```
 
 Cobre o **conjunto** de mudanças do marco (DeepSeek + Cross-Claude duplo) — não só o último diff.
@@ -127,11 +127,11 @@ Cobre o **conjunto** de mudanças do marco (DeepSeek + Cross-Claude duplo) — n
 Exemplo de antes/depois:
 ```
 - [5-T] {Feature X} — testada
-  ↓ após /percus:milestone-review aprovado
+  ↓ após /percus-review:milestone-review aprovado
 - [5-T] ✓ {Feature X} — testada, marco aprovado
 ```
 
-Esse gate é **adicional** ao `/percus:review` antes do commit (G1) — propósitos diferentes: G1 protege o commit individual (pode disparar DeepSeek apenas); G-MARCO protege a transição de etapa com defesa em profundidade (sempre duplo).
+Esse gate é **adicional** ao `/percus-review:review` antes do commit (G1) — propósitos diferentes: G1 protege o commit individual (pode disparar DeepSeek apenas); G-MARCO protege a transição de etapa com defesa em profundidade (sempre duplo).
 
 ---
 
@@ -147,11 +147,11 @@ Você orquestra + decide.
 
 ## Antes de commit
 
-### G1. Review cross-provider — `/percus:review` (R11, OBRIGATÓRIO)
+### G1. Review cross-provider — `/percus-review:review` (R11, OBRIGATÓRIO)
 
-Rodar `/percus:review` no chat (router decide reviewer auto: DeepSeek default, Cross-Claude se commit veio do wrapper DeepSeek com trailer `Co-implemented-by: deepseek-v4`, duplo se toca pasta sensível).
+Rodar `/percus-review:review` no chat (router decide reviewer auto: DeepSeek default, Cross-Claude se commit veio do wrapper DeepSeek com trailer `Co-implemented-by: deepseek-v4`, duplo se toca pasta sensível).
 
-Override manual: `/percus:deepseek-review`, `/percus:cross-claude-review` quando quiser forçar canal específico.
+Override manual: `/percus-review:deepseek-review`, `/percus-review:cross-claude-review` quando quiser forçar canal específico.
 
 - **Bug ou regressão:** corrigir antes de commitar
 - **Violação de regra Percus:** corrigir OU declarar em voz alta por que ignora
@@ -194,5 +194,5 @@ Antes do `git commit`, atualize:
 - ❌ "Deixo pra atualizar PLANO no fim" → no fim você esquece, fica defasado.
 - ❌ "TDD pra esse endpoint pequeno é overkill" → endpoint pequeno hoje vira regressão amanhã.
 - ❌ "Code review em commit pequeno é overkill" → pequeno não é o critério; sensibilidade é.
-- ❌ "Vou commitar e rodar `/percus:review` depois" → derrota o propósito. Antes do commit, sempre.
+- ❌ "Vou commitar e rodar `/percus-review:review` depois" → derrota o propósito. Antes do commit, sempre.
 - ❌ "Termino a fase inteira e rodo review só no fim do épico" → marco intermediário tem gate próprio (G-MARCO). Erros se acumulam.

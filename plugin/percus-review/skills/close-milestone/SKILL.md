@@ -1,6 +1,6 @@
 ---
 name: close-milestone
-description: Use when closing a milestone in Percus project — end of numbered phase, feature group in epic, or "ready for next step" transition. Runs /percus:milestone-review and marks ✓ in PLANO/HANDOFF.
+description: Use when closing a milestone in Percus project — end of numbered phase, feature group in epic, or "ready for next step" transition. Runs /percus-review:milestone-review and marks ✓ in PLANO/HANDOFF.
 ---
 
 # Percus Close Milestone
@@ -18,7 +18,7 @@ Quando declarar marco fechado (fim de Fase X numerada, fim de feature em épico,
 ### 2. Rodar milestone-review (R11 ampliada)
 
 ```
-/percus:milestone-review --base <commit-inicio-marco>
+/percus-review:milestone-review --base <commit-inicio-marco>
 ```
 
 Roda DeepSeek + Cross-Claude duplo. Custo ~$0.05.

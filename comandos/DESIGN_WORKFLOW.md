@@ -119,7 +119,7 @@ Sem mockup. Sem v0. Sem shadcn (a menos que falte componente):
 
 1. Edita direto, recarrega `npm run dev`, vê na tela.
 2. Faz commit pequeno por mudança.
-3. `/percus:review` antes do commit (R11 normal).
+3. `/percus-review:review` antes do commit (R11 normal).
 
 ---
 
@@ -154,7 +154,7 @@ Antes de declarar "tela pronta":
 - [ ] Stack do código gerado bate com o stack Percus do projeto (Vite ou Next conforme `02_INFRA_E_STACK_PERCUS.md` 5.1)
 - [ ] Sem dados mock escondidos (R3 — banner MODO DEMO se ainda não conectou backend)
 - [ ] Componentes shadcn estão na pasta correta do projeto, não importados de pacote externo
-- [ ] `/percus:review` passou (R11)
+- [ ] `/percus-review:review` passou (R11)
 - [ ] Tela aparece no fluxo navegacional (rota registrada)
 
 ---

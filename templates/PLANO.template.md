@@ -22,7 +22,7 @@ _Fonte da verdade do tracking. Atualize imediatamente após cada etapa concluíd
 - `🎨` = draft de design aprovado (v0.dev export, shadcn add aplicado, ou wireframe Excalidraw/Mermaid)
 - `🎨?` = feature visual sem draft (BLOQUEADA em `[0]` até virar `🎨` — ver `comandos/DESIGN_WORKFLOW.md`)
 - `🤖` = implementação delegada ao DeepSeek (R13) — adicione ao delegar via wrapper
-- `✓` = Reviewer aprovou no marco (não no commit) — adicione invocando skill `percus:close-milestone` que roda `/percus:milestone-review --base <commit>` e marca aqui
+- `✓` = Reviewer aprovou no marco (não no commit) — adicione invocando skill `percus-review:close-milestone` que roda `/percus-review:milestone-review --base <commit>` e marca aqui
 - (sem ícone) = feature backend-only sem delegação nem marco fechado
 
 **Regra de profundidade:** não inicie feature nova enquanto outra da mesma frente estiver entre `[1-S]` e `[3-H]`.

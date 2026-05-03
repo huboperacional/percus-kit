@@ -24,8 +24,8 @@ Após Fase 4 (review cross-provider via DeepSeek + Cross-Claude), foi observado 
 
 ### Outcome esperado
 - Sessões 60+ turnos viáveis (vs ~30 hoje)
-- Adoção de `percus:feature-flow` em 80%+ das features novas
-- 100% dos commits passam por `/percus:review` (gate mecânico)
+- Adoção de `percus-review:feature-flow` em 80%+ das features novas
+- 100% dos commits passam por `/percus-review:review` (gate mecânico)
 - 95%+ das sessões com edição de código têm HANDOFF.md atualizado
 - Custo DeepSeek mantido em $2-5/mês (target Fase 4 preservado)
 
@@ -35,7 +35,7 @@ Após Fase 4 (review cross-provider via DeepSeek + Cross-Claude), foi observado 
 
 - Adoção forçada de superpowers via 2 hooks bloqueantes (pre-commit, on-stop) e 2 skills internas Percus
 - Cobertura mecânica de R8 e R11 (não confiar só em disciplina)
-- Skill central `percus:feature-flow` que carrega R1+R9+R11+R13 numa invocação (corte de ~70% no contexto consolidado por feature)
+- Skill central `percus-review:feature-flow` que carrega R1+R9+R11+R13 numa invocação (corte de ~70% no contexto consolidado por feature)
 - Roll-out em 7 dias com calibração diária
 
 ## 3. Non-goals
@@ -57,8 +57,8 @@ Sistema dividido em **3 camadas com responsabilidades distintas**:
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ Camada A — SKILLS (memória ativa do agente)             │
-│   percus:feature-flow      (orquestra R1→R13)           │
-│   percus:close-milestone   (gate de marco)              │
+│   percus-review:feature-flow      (orquestra R1→R13)           │
+│   percus-review:close-milestone   (gate de marco)              │
 └─────────────────────────────────────────────────────────┘
                           │ invocadas pelo agente
                           ▼
@@ -83,7 +83,7 @@ Sistema dividido em **3 camadas com responsabilidades distintas**:
 
 ### 4.2 Componentes
 
-#### Skill `percus:feature-flow`
+#### Skill `percus-review:feature-flow`
 
 - **Localização:** `plugin/percus-review/skills/feature-flow/SKILL.md`
 - **Tamanho alvo:** ~4 KB
@@ -92,12 +92,12 @@ Sistema dividido em **3 camadas com responsabilidades distintas**:
 - **Referencia (não duplica):** `superpowers:brainstorming`, `:writing-plans`, `:subagent-driven-development`, `:test-driven-development`
 - **Ganho:** corte de ~70% no contexto consolidado por feature (4 KB vs 24 KB de regras puxadas avulsas)
 
-#### Skill `percus:close-milestone`
+#### Skill `percus-review:close-milestone`
 
 - **Localização:** `plugin/percus-review/skills/close-milestone/SKILL.md`
 - **Tamanho alvo:** ~1.5 KB
 - **Trigger:** auto via `description` ("Use when closing a milestone — end of phase, feature group, or 'next step' transition")
-- **Faz:** identifica commit-inicio-marco → roda `/percus:milestone-review` → trata findings → marca `✓` no PLANO + HANDOFF
+- **Faz:** identifica commit-inicio-marco → roda `/percus-review:milestone-review` → trata findings → marca `✓` no PLANO + HANDOFF
 - **Substitui:** hook frágil de pre-marco (descartado por ter heurística de detecção problemática)
 
 #### Hook `pre-commit-check`
@@ -144,16 +144,16 @@ Após o gate atual ("se eu fechar tudo agora..."):
 
 Adicionar à tabela "Para cada feature nova":
 
-| Início orquestrado | `percus:feature-flow` | Toda feature/bugfix não-trivial |
+| Início orquestrado | `percus-review:feature-flow` | Toda feature/bugfix não-trivial |
 | Execução paralela | `superpowers:subagent-driven-development` | Plano com 3+ tasks independentes — OBRIGATÓRIO |
 
 Após a tabela:
-> **Cobertura mecânica:** plugin `@percus/review` instala hook `pre-commit` que bloqueia commit sem `/percus:review` rodado nos últimos 5 min (R11 reforço).
+> **Cobertura mecânica:** plugin `@percus/review` instala hook `pre-commit` que bloqueia commit sem `/percus-review:review` rodado nos últimos 5 min (R11 reforço).
 
 #### Anti-padrões — adicionar 2
 
 - 17. ❌ Implementar plano com 3+ tasks independentes serialmente em vez de via `subagent-driven-development` (R9)
-- 18. ❌ Editar PLANO.md adicionando ✓ sem invocar `percus:close-milestone` antes (R11 ampliada)
+- 18. ❌ Editar PLANO.md adicionando ✓ sem invocar `percus-review:close-milestone` antes (R11 ampliada)
 
 ### 4.4 Documentação `comandos/USANDO_SUPERPOWERS.md`
 
@@ -169,7 +169,7 @@ Guia de bolso ~1.2 KB com tabela de skills (Tier 1 obrigatórias, Tier 2 otimiza
 Você: "implementa endpoint de produtos"
    │
    ▼
-Agente: auto-invoca `percus:feature-flow` (description matcher)
+Agente: auto-invoca `percus-review:feature-flow` (description matcher)
    │
    ▼ (carrega 4 KB de fluxo consolidado)
    │
@@ -191,16 +191,16 @@ Agente: git commit
    ▼
 HOOK pre-commit: checa .deepseek/reviews/*.jsonl
    │
-   ├──► review > 5min OU ausente → BLOQUEIA, agente roda /percus:review
+   ├──► review > 5min OU ausente → BLOQUEIA, agente roda /percus-review:review
    └──► review fresco → LIBERA
    │
    ▼
 [ciclo repete por feature, marco fechado]
    │
-Agente: invoca `percus:close-milestone` ao fechar fase
+Agente: invoca `percus-review:close-milestone` ao fechar fase
    │
    ▼
-Agente: roda /percus:milestone-review --base <commit>
+Agente: roda /percus-review:milestone-review --base <commit>
 Agente: marca ✓ no PLANO + HANDOFF
    │
    ▼
@@ -229,7 +229,7 @@ HOOK on-stop: parseia transcript
 | `.deepseek/reviews/` ausente em projeto ainda não migrado | hook detecta + exit 0 + warning "rode SETUP_REVIEW_ROUTING primeiro" |
 | Skill `feature-flow` ignorada pelo agente (não auto-trigger) | comportamento antigo, sem regressão — aceita-se na V1, calibra description no D7 |
 | DeepSeek API down durante hook | irrelevante — hook só checa filesystem, não chama DeepSeek |
-| `/percus:review` falha durante o uso (não no hook) | router fallback Cross-Claude (já existente Fase 4) |
+| `/percus-review:review` falha durante o uso (não no hook) | router fallback Cross-Claude (já existente Fase 4) |
 
 ---
 
@@ -246,7 +246,7 @@ HOOK on-stop: parseia transcript
   - Em projeto Fase 4, fazer Edit em arquivo `.py`
   - `git add` + `git commit -m "test"`
   - Esperado: bloqueio com mensagem orientativa
-  - Rodar `/percus:review`, commitar de novo → libera
+  - Rodar `/percus-review:review`, commitar de novo → libera
 
 - **T3 — Hook pre-commit libera commit só de docs:**
   - Edit em `*.md`, `git commit`
@@ -289,7 +289,7 @@ HOOK on-stop: parseia transcript
 | **D1** | **T0a — Smoke test:** validar formato `tool_input.command` no hook `PreToolUse` matcher `Bash` (criar hook minimal que só `echo` o stdin recebido, disparar via Bash trivial, conferir formato real vs esperado pelo spec) | ~15 min |
 | **D1** | **T0b — Smoke test:** validar evento `Stop` recebe `transcript_path` (mesma técnica — hook minimal `echo` stdin) | ~15 min |
 | **D1** | Resolver problema de instalação — criar `.claude-plugin/marketplace.json` wrapper (ver **Anexo A**) | ~15 min |
-| **D1** | Criar 2 skills (feature-flow, close-milestone) — feature-flow inclui nota explícita "INVOQUE `/percus:review` ativamente, não espere o hook bloquear" | ~1 h |
+| **D1** | Criar 2 skills (feature-flow, close-milestone) — feature-flow inclui nota explícita "INVOQUE `/percus-review:review` ativamente, não espere o hook bloquear" | ~1 h |
 | **D1** | Criar 2 hooks (pre-commit, on-stop) + handlers PS+SH — formato baseado nos resultados de T0a/T0b | ~1 h |
 | **D1** | Editar canon (R8, R9, anti-padrões) | ~20 min |
 | **D1** | Criar `USANDO_SUPERPOWERS.md` | ~20 min |
@@ -357,7 +357,7 @@ Itens fora do escopo da V1, registrados pra revisita:
 - Hook que bloqueia `git commit --no-verify` (escape de hook pre-commit)
 - Skill `percus:start-session` que executa CHECKLIST_INICIO_SESSAO automaticamente
 - Métrica formal de tokens consumidos (instrumentação) — adiar pra Fase 6 se necessário
-- Integração `percus:feature-flow` com `superpowers:executing-plans` em sessão separada (otimização Tier 2)
+- Integração `percus-review:feature-flow` com `superpowers:executing-plans` em sessão separada (otimização Tier 2)
 - Hook que detecta uso de `localStorage` em código TS (R7 reforço mecânico)
 - **Git invocado fora da Bash tool não é detectado pelo hook pre-commit.** Cenário raro em Percus (DeepSeek wrapper não commita; subagentes geralmente delegam volta pro main). Documentar limitação em R13 quando virar problema. Eventual mecanismo: hook `PostToolUse` + Stop hook que detecta commits feitos via subprocess próprio comparando `git log` antes/depois da sessão.
 

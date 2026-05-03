@@ -37,7 +37,7 @@ Verifique e reporte status (✅ OK / ❌ FALTA) pra cada item:
 
 **CLAUDE.md (regras):**
 - Menciona R10 (design v0/shadcn, NÃO Claude artifacts)?
-- Menciona R11 nova (`/percus:review` cross-provider, NÃO `/codex:review`)?
+- Menciona R11 nova (`/percus-review:review` cross-provider, NÃO `/codex:review`)?
 - Menciona R13 (DeepSeek routing + trailer `Co-implemented-by: deepseek-v4`)?
 
 **Resíduo Codex (Fase 2 anterior — deve estar AUSENTE em projeto Fase 4):**
@@ -140,7 +140,7 @@ Config 14/14, `.deepseek/runs/` e `.deepseek/reviews/` com chamadas recentes, PL
 ### Cenário B — "Configurado mas não usado"
 Config 14/14, mas `.deepseek/` vazio e PLANO sem 🤖/✓ semanas após upgrade.
 **Causa provável:** as tasks que apareceram no projeto não foram elegíveis pra DeepSeek (decisões arquiteturais, debug, cross-cutting). Não é problema necessariamente.
-**Ação:** na próxima feature mecânica (CRUD novo, refactor de rename, boilerplate), reforçar pro agente: "siga G-DELEGA estritamente". Pra review (R11), confirmar que `/percus:review` está sendo rodado pre-commit.
+**Ação:** na próxima feature mecânica (CRUD novo, refactor de rename, boilerplate), reforçar pro agente: "siga G-DELEGA estritamente". Pra review (R11), confirmar que `/percus-review:review` está sendo rodado pre-commit.
 
 ### Cenário C — "Configuração quebrada"
 Config X/14 com X < 11.
@@ -159,7 +159,7 @@ Wrapper retornou erro mesmo com config OK.
 
 ### Cenário F — "PLANO sem ✓ mas commits frequentes"
 Review por marco está sendo pulado (R11 ampliada).
-**Ação:** reforçar G-MARCO no `CHECKLIST_FEATURE_NOVA.md` na próxima fase de plano. Lembrar: marco usa `/percus:milestone-review --base <commit>`, não `/percus:review` simples.
+**Ação:** reforçar G-MARCO no `CHECKLIST_FEATURE_NOVA.md` na próxima fase de plano. Lembrar: marco usa `/percus-review:milestone-review --base <commit>`, não `/percus-review:review` simples.
 
 ---
 

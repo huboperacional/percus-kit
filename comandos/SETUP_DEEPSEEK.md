@@ -109,7 +109,7 @@ Adicionar (ou confirmar presença) na seção "Workflow obrigatório":
 ```markdown
 ## Routing de modelos (R13)
 
-Tasks de implementação mecânica devem ser delegadas ao DeepSeek V4 via wrapper `D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.{ps1,sh}`. Saída do DeepSeek é tratada como rascunho — sempre revisada por Claude (validação contra R1–R12) e por revisor cross-provider via `/percus:review` (R11) antes de virar commit. Commit message deve incluir trailer `Co-implemented-by: deepseek-v4`.
+Tasks de implementação mecânica devem ser delegadas ao DeepSeek V4 via wrapper `D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.{ps1,sh}`. Saída do DeepSeek é tratada como rascunho — sempre revisada por Claude (validação contra R1–R12) e por revisor cross-provider via `/percus-review:review` (R11) antes de virar commit. Commit message deve incluir trailer `Co-implemented-by: deepseek-v4`.
 
 **Quando delegar (TODOS os critérios):**
 - Plano explícito em markdown, com arquivos-alvo nomeados
@@ -151,7 +151,7 @@ SETUP DEEPSEEK CONCLUÍDO — {Nome do Projeto}
 
 Próximos passos:
 1. Quando aparecer task elegível (plano explícito, mecânica, sem ambiguidade), siga playbook em 04_MODEL_ROUTING.md "Como delegar"
-2. Toda saída do DeepSeek passa por /percus:review antes de commit (R11). Adicionar trailer `Co-implemented-by: deepseek-v4` ao commit message — router roteia pra Cross-Claude (anti auto-revisão)
+2. Toda saída do DeepSeek passa por /percus-review:review antes de commit (R11). Adicionar trailer `Co-implemented-by: deepseek-v4` ao commit message — router roteia pra Cross-Claude (anti auto-revisão)
 3. Logs auditáveis em .deepseek/runs/ a cada chamada
 ```
 

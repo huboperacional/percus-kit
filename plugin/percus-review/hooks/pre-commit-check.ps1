@@ -1,5 +1,5 @@
 ﻿#requires -Version 5.1
-# Hook pre-commit Percus — bloqueia commit sem /percus:review recente.
+# Hook pre-commit Percus — bloqueia commit sem /percus-review:review recente.
 # Falha graceful: qualquer erro -> exit 0.
 
 try {
@@ -22,23 +22,23 @@ try {
     $cwd = (Get-Location).Path
     $reviewDir = Join-Path $cwd ".deepseek/reviews"
     if (-not (Test-Path $reviewDir)) {
-        [Console]::Error.WriteLine("[percus:hook pre-commit] BLOCK: nenhum /percus:review encontrado em .deepseek/reviews/")
-        [Console]::Error.WriteLine("Rode /percus:review antes de commitar (R11).")
+        [Console]::Error.WriteLine("[percus:hook pre-commit] BLOCK: nenhum /percus-review:review encontrado em .deepseek/reviews/")
+        [Console]::Error.WriteLine("Rode /percus-review:review antes de commitar (R11).")
         exit 2
     }
 
     $latest = Get-ChildItem $reviewDir -Filter "*.jsonl" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $latest) {
         [Console]::Error.WriteLine("[percus:hook pre-commit] BLOCK: pasta .deepseek/reviews/ vazia")
-        [Console]::Error.WriteLine("Rode /percus:review antes de commitar (R11).")
+        [Console]::Error.WriteLine("Rode /percus-review:review antes de commitar (R11).")
         exit 2
     }
 
     $age = (Get-Date) - $latest.LastWriteTime
     if ($age.TotalMinutes -gt 5) {
         $mins = [math]::Round($age.TotalMinutes, 1)
-        [Console]::Error.WriteLine("[percus:hook pre-commit] BLOCK: ultimo /percus:review tem $mins min (max 5).")
-        [Console]::Error.WriteLine("Rode /percus:review de novo antes de commitar (R11).")
+        [Console]::Error.WriteLine("[percus:hook pre-commit] BLOCK: ultimo /percus-review:review tem $mins min (max 5).")
+        [Console]::Error.WriteLine("Rode /percus-review:review de novo antes de commitar (R11).")
         exit 2
     }
 

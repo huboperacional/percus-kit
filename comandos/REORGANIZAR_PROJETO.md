@@ -107,7 +107,7 @@ _Atualizado em: {data}_
 Se já existe `CLAUDE.md`, `AGENTS.md` (ou `GEMINI.md` no caso espelho-3), **mescle** os triggers da Fase 2 (não sobrescreva):
 
 - **R10** — design via v0.dev + shadcn MCP (Claude artifacts vetado pra produção). Apontar pra `comandos/DESIGN_WORKFLOW.md`
-- **R11** — review cross-provider obrigatório em **dois** momentos: antes de commit (`/percus:review`) E ao concluir cada marco (`/percus:milestone-review --base <commit>`). Apontar pra `comandos/SETUP_REVIEW_ROUTING.md` se não estiver configurado
+- **R11** — review cross-provider obrigatório em **dois** momentos: antes de commit (`/percus-review:review`) E ao concluir cada marco (`/percus-review:milestone-review --base <commit>`). Apontar pra `comandos/SETUP_REVIEW_ROUTING.md` se não estiver configurado
 - **R13** — routing de modelos: Claude=arquiteto, DeepSeek=implementador, DeepSeek+Cross-Claude=revisores. Apontar pra `04_MODEL_ROUTING.md`
 
 Use `templates/CLAUDE.template.md` e `templates/AGENTS.template.md` como referência do estado canônico. Se conflito de seção, mantenha o conteúdo específico do projeto + adicione o trecho da Fase 2 abaixo.
@@ -150,7 +150,7 @@ Tasks de implementação mecânica devem ser delegadas ao DeepSeek via `scripts/
 Tela/componente novo: usar v0.dev (telas) ou shadcn MCP (componentes isolados). Detalhes em `_Novo_Projeto/comandos/DESIGN_WORKFLOW.md`. Claude artifacts vetado pra produção.
 
 ## Review cross-provider (R11)
-Obrigatório em **dois** momentos: antes de cada commit (`/percus:review`) + ao concluir cada marco (`/percus:milestone-review --base <commit>`). Setup em `_Novo_Projeto/comandos/SETUP_REVIEW_ROUTING.md`.
+Obrigatório em **dois** momentos: antes de cada commit (`/percus-review:review`) + ao concluir cada marco (`/percus-review:milestone-review --base <commit>`). Setup em `_Novo_Projeto/comandos/SETUP_REVIEW_ROUTING.md`.
 ```
 
 ---

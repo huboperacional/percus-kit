@@ -25,7 +25,7 @@ Trazer um projeto Percus para o estado canônico atual (Fase 4, 2026-05-03):
 3. **Design** via v0.dev + shadcn MCP (R10 — Claude artifacts vetado)
 4. **CLAUDE.md** + **AGENTS.md** atualizados com triggers R10/R11/R13
 5. **`.gitignore`** com `.deepseek/`
-6. **Resíduo Codex limpo** (se Fase 2 anterior aplicada): `.codex/` removido, plugin `codex@openai-codex` desinstalado, referências `/codex:review` substituídas por `/percus:review`
+6. **Resíduo Codex limpo** (se Fase 2 anterior aplicada): `.codex/` removido, plugin `codex@openai-codex` desinstalado, referências `/codex:review` substituídas por `/percus-review:review`
 
 ---
 
@@ -107,7 +107,7 @@ GEMINI.md (se existir)           | ✅ presente          | Recriar slim (Passo 4
 CLAUDE.md menciona R11 nova      | ❌ ausente           | Mesclar (Passo 4)
 .gitignore .deepseek/            | ❌ ausente           | Passo 5
 Resíduo Codex (.codex/)          | ⚠️ presente          | Limpar (Passo 1.5)
-Refs /codex:review em CLAUDE.md  | ⚠️ presente          | Substituir por /percus:review (Passo 4)
+Refs /codex:review em CLAUDE.md  | ⚠️ presente          | Substituir por /percus-review:review (Passo 4)
 
 Tempo estimado: ~10 min (+1 min se espelho-3 ativo, +2 min se migração Fase 2)
 ```
@@ -144,7 +144,7 @@ Aplicar fluxo de `comandos/SETUP_REVIEW_ROUTING.md` em modo "skip o que já exis
   ```
   Alternativo (kit local): `/plugin marketplace add D:/Claud Automations/_Novo_Projeto` + `/plugin install percus-review
   ```
-- Validar com `/percus:review` em smoke trivial (Passo 6)
+- Validar com `/percus-review:review` em smoke trivial (Passo 6)
 
 **Bifurcação CLI standalone vs Extensão VS Code (informativo):**
 
@@ -177,7 +177,7 @@ Remove-Item -Recurse -Force .codex -ErrorAction SilentlyContinue
 # /plugin uninstall codex@openai-codex
 ```
 
-Substituir referências a `/codex:review` em `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` (se espelho-3) por `/percus:review`. Mais detalhes na Passo 4.
+Substituir referências a `/codex:review` em `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` (se espelho-3) por `/percus-review:review`. Mais detalhes na Passo 4.
 
 ---
 
@@ -232,9 +232,9 @@ Tela ou componente novo: NÃO usar Claude artifacts (vetado pra produção pela 
 Workflow detalhado: `D:/Claud Automations/_Novo_Projeto/comandos/DESIGN_WORKFLOW.md`
 
 ## R11 — Review cross-provider (commit + marco)
-`/percus:review` é obrigatório em DOIS momentos:
+`/percus-review:review` é obrigatório em DOIS momentos:
 1. Antes de cada commit que muda código (router decide DeepSeek / Cross-Claude / duplo)
-2. Ao concluir cada marco de plano: `/percus:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo)
+2. Ao concluir cada marco de plano: `/percus-review:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo)
 
 Sem review nos últimos 5min antes do commit OU sem milestone-review no escopo do marco = não pode prosseguir.
 
@@ -274,7 +274,7 @@ Validar fluxo end-to-end:
 
 1. Criar `_smoke.md` na raiz com texto bobo
 2. `git add _smoke.md`
-3. Rodar `/percus:review` no chat
+3. Rodar `/percus-review:review` no chat
 4. Esperado: router decide `deepseek` (default), DeepSeek retorna findings em < 5s (provavelmente "Sem findings críticos."). Custo dashboard DeepSeek: ~$0.001-0.01
 5. Apagar `_smoke.md` e `git restore --staged _smoke.md`
 
@@ -315,7 +315,7 @@ Aplicado:
 ✅ CLAUDE.md com R10/R11/R13 mesclados (R11 nova: cross-provider sem Codex)
 ✅ GEMINI.md com R10/R11/R13 mesclados (se espelho-3; senão N/A)
 ✅ .gitignore com .deepseek/
-✅ /percus:review smoke test passou
+✅ /percus-review:review smoke test passou
 ✅ HANDOFF.md atualizado
 ✅ Resíduo Codex limpo (.codex/ removido, refs /codex:review substituídas)
 
@@ -325,8 +325,8 @@ Custo mensal estimado pós-upgrade: $2-5 (vs $200-400 com Codex anterior)
 
 Próximos passos:
 1. Ao iniciar próxima feature: aplicar G-DELEGA (CHECKLIST_FEATURE_NOVA) pra decidir se vai pro DeepSeek
-2. Antes de cada commit: `/percus:review` (router decide)
-3. Ao concluir cada marco: `/percus:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo)
+2. Antes de cada commit: `/percus-review:review` (router decide)
+3. Ao concluir cada marco: `/percus-review:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo)
 4. Tela/componente novo: ler comandos/DESIGN_WORKFLOW.md (NÃO Claude artifacts)
 ```
 

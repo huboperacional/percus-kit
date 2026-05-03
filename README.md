@@ -131,7 +131,7 @@ Setup: ver `comandos/SETUP_REVIEW_ROUTING.md`.
 - **Idioma:** documentação em português, código/scripts em inglês
 - **Branches:** `main` = última fase estável; `fase<N>-<topic>` = trabalho em andamento; merge em main no fim de cada fase com tag `vN.0.0`
 - **Specs:** versionadas em `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
-- **Exceção R11:** mudanças no kit não exigem `/percus:review` formal (kit é convenção, não código de produção). Auditoria por revisão humana + cross-Claude é suficiente. Detalhes em `01_REGRAS_INEGOCIAVEIS.md` R11 seção "Exceção estrutural".
+- **Exceção R11:** mudanças no kit não exigem `/percus-review:review` formal (kit é convenção, não código de produção). Auditoria por revisão humana + cross-Claude é suficiente. Detalhes em `01_REGRAS_INEGOCIAVEIS.md` R11 seção "Exceção estrutural".
 
 ---
 

@@ -38,9 +38,9 @@ Detectar qual fase o projeto está. Não modificar nada.
 $fase4_plugin = Get-ChildItem "$env:USERPROFILE\.claude\plugins" -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -match 'percus-review|@percus' }
 $fase4_agents_slim = (Test-Path AGENTS.md) -and `
-    (Select-String -Path AGENTS.md -Pattern 'revisor cross-provider|/percus:review' -Quiet -ErrorAction SilentlyContinue)
+    (Select-String -Path AGENTS.md -Pattern 'revisor cross-provider|/percus-review:review' -Quiet -ErrorAction SilentlyContinue)
 $fase4_claude = (Test-Path CLAUDE.md) -and `
-    (Select-String -Path CLAUDE.md -Pattern '/percus:review' -Quiet -ErrorAction SilentlyContinue)
+    (Select-String -Path CLAUDE.md -Pattern '/percus-review:review' -Quiet -ErrorAction SilentlyContinue)
 
 # === FASE 2/3 — Codex configurado? (legado a migrar) ===
 $fase2_codex_dir = Test-Path .codex
@@ -79,7 +79,7 @@ DIAGNÓSTICO — {Nome do Projeto}
 Fase 4 (estado alvo):
   Plugin @percus/review instalado     | ✅/❌
   AGENTS.md slim (cross-provider)     | ✅/❌
-  CLAUDE.md menciona /percus:review   | ✅/❌
+  CLAUDE.md menciona /percus-review:review   | ✅/❌
 
 Fase 2/3 (legado a migrar):
   .codex/ no repo                     | ⚠️/—
@@ -175,9 +175,9 @@ Por:
 ```markdown
 ## Review cross-provider (R11)
 
-`/percus:review` é obrigatório em DOIS momentos:
+`/percus-review:review` é obrigatório em DOIS momentos:
 1. Antes de cada commit (router auto: DeepSeek/Cross-Claude/duplo)
-2. Ao concluir cada marco: `/percus:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo)
+2. Ao concluir cada marco: `/percus-review:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo)
 
 Matriz de routing detalhada: `D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md` R11.
 Plugin Codex (`codex@openai-codex`) descontinuado em 2026-05-03 por custo.
@@ -203,7 +203,7 @@ Adicionar `.deepseek/` se ausente. Linha `.codex/` pode permanecer ou ser removi
 
 ```
 git add -A  # se há mudanças no AGENTS.md/CLAUDE.md
-/percus:review
+/percus-review:review
 ```
 
 Esperado: router decide DeepSeek (default), retorna findings em < 5s, custo ~$0.001-0.01.
@@ -242,14 +242,14 @@ Instalado:
 ✅ Plugin @percus/review
 ✅ AGENTS.md slim (~4.4 KB)
 ✅ CLAUDE.md com R11 nova
-✅ /percus:review smoke test passou
+✅ /percus-review:review smoke test passou
 ✅ HANDOFF.md atualizado
 
 Tempo total: ~5-8 min
 Custo do upgrade: ~$0.01
 
-Próximo commit: usar /percus:review (router auto).
-Próximo marco: /percus:milestone-review --base <commit>.
+Próximo commit: usar /percus-review:review (router auto).
+Próximo marco: /percus-review:milestone-review --base <commit>.
 ```
 
 ---
@@ -266,7 +266,7 @@ Delegar pro fluxo completo de [`UPGRADE_PROJETO_FASE2.md`](UPGRADE_PROJETO_FASE2
 4. **Passo 3** — Design workflow (R10) — só atualizar referências
 5. **Passo 4** — Mesclar R10/R11/R13 em `CLAUDE.md` + `AGENTS.md` (+ `GEMINI.md` se espelho-3)
 6. **Passo 5** — `.gitignore` com `.deepseek/`
-7. **Passo 6** — Smoke test combinado (`/percus:review` + DeepSeek dry-run)
+7. **Passo 6** — Smoke test combinado (`/percus-review:review` + DeepSeek dry-run)
 8. **Passo 7** — HANDOFF
 9. **Passo 8** — Reportar
 

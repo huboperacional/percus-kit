@@ -18,7 +18,7 @@ ultima-atualizacao: 2026-05-03
 | `superpowers:subagent-driven-development` | Plano com 3+ tasks independentes | -60% contexto principal, paralelismo |
 | `superpowers:test-driven-development` | Endpoint novo / função pura nova | Testes antes do código (R1) |
 | `superpowers:systematic-debugging` | Bug ou teste quebrado | Causa raiz, não workaround |
-| `superpowers:requesting-code-review` | Antes de commitar diff > 500 linhas | Cobertura redundante ao `/percus:review` |
+| `superpowers:requesting-code-review` | Antes de commitar diff > 500 linhas | Cobertura redundante ao `/percus-review:review` |
 | `superpowers:verification-before-completion` | Antes de marcar `[5-T]` | Evita falso positivo de "feito" |
 
 ## Tier 2 — Otimizações (não obrigatórias)
@@ -34,8 +34,8 @@ ultima-atualizacao: 2026-05-03
 
 | Skill | Disparar quando |
 |---|---|
-| `percus:feature-flow` | Toda feature ou bugfix não-trivial — orquestra R1→R13 |
-| `percus:close-milestone` | Antes de marcar ✓ no PLANO (fechar marco) |
+| `percus-review:feature-flow` | Toda feature ou bugfix não-trivial — orquestra R1→R13 |
+| `percus-review:close-milestone` | Antes de marcar ✓ no PLANO (fechar marco) |
 
 ## Antipatterns
 
