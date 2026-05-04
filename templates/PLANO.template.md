@@ -3,6 +3,23 @@
 _Atualizado em: {YYYY-MM-DD}_
 _Fonte da verdade do tracking. Atualize imediatamente após cada etapa concluída._
 
+<!-- Opcional: se rodou SCOPE_COUNCIL.md no greenfield, adicionar bloco abaixo (apague se não rodou) -->
+<!--
+## Scope-Council aplicado em {YYYY-MM-DD}
+
+Outputs em `docs/scope-council/`:
+- `scope-draft.md` — análise solo Claude principal
+- `scope-deepseek-review.md` — review cross-provider DeepSeek
+- `scope-challenger.md` — adversário Sonnet subagent
+
+Decisões adotadas vs draft inicial:
+- {feature/decisão atendida da crítica X}
+- {feature/decisão atendida da crítica Y}
+
+Decisões mantidas (críticas ignoradas):
+- {feature/decisão Z mantida apesar de crítica — motivo}
+-->
+
 ---
 
 ## Legenda

@@ -17,7 +17,7 @@ ultima-atualizacao: 2026-04-29
 
 | Situação | Leia, nesta ordem |
 |---|---|
-| **Projeto NOVO greenfield** | `01_REGRAS_INEGOCIAVEIS.md` → `02_INFRA_E_STACK_PERCUS.md` → `checklists/CHECKLIST_INICIO_SESSAO.md` |
+| **Projeto NOVO greenfield** | `01_REGRAS_INEGOCIAVEIS.md` → `02_INFRA_E_STACK_PERCUS.md` → `checklists/CHECKLIST_INICIO_SESSAO.md` → criar templates → **`comandos/SCOPE_COUNCIL.md`** (gate de scope dia 1, ~30 min, ~$0.05) → `comandos/SETUP_REVIEW_ROUTING.md` + `comandos/SETUP_DEEPSEEK.md` |
 | **Sessão NOVA em projeto existente** | `checklists/CHECKLIST_INICIO_SESSAO.md` (literalmente os 5 passos) → ler `HANDOFF.md` do projeto → ler `docs/PLANO.md` do projeto |
 | **Reorganizar/auditar projeto existente** | `comandos/REORGANIZAR_PROJETO.md` |
 | **Migrar auth de projeto legado** | `comandos/MIGRAR_AUTH.md` |

@@ -239,9 +239,22 @@ Multiplicado pelo volume diário Percus, libera margem de cota Anthropic pra o q
 
 ---
 
+## Wrappers do agente (auto-trigger v5.1.0+)
+
+Agente Claude Code dispara review automaticamente via wrappers kit-level (path estável, sem precisar resolver plugin install):
+
+| Wrapper | Quando | Behavior |
+|---|---|---|
+| `scripts/percus-review-auto.ps1` (`.sh`) | Antes de `git commit` que toca código | Resolve plugin instalado, dispatch DeepSeek (default) ou emite marker `__PERCUS_NEEDS_CROSS_CLAUDE__` se decisão exige Sonnet |
+| `scripts/percus-milestone-review-auto.ps1` (`.sh`) | Ao fechar marco/fase | Sempre dual: DeepSeek + emite marker pra Sonnet via Agent tool |
+| `scripts/deepseek-impl.ps1` (`.sh`) | Implementação mecânica delegada (R13) | Wrapper de IMPLEMENTAÇÃO DeepSeek, separado dos wrappers de REVIEW |
+
+**Distinção importante:** `deepseek-impl` = implementador (escreve código). `percus-review-auto` = revisor (lê código). São scripts diferentes com APIs diferentes do DeepSeek (chat completion vs review prompt).
+
 ## Referências cruzadas
 
-- Wrapper: `_Novo_Projeto/scripts/deepseek-impl.ps1` + `.sh`
+- Wrapper implementador: `_Novo_Projeto/scripts/deepseek-impl.ps1` + `.sh`
+- Wrappers reviewer auto-trigger: `_Novo_Projeto/scripts/percus-review-auto.{ps1,sh}` + `percus-milestone-review-auto.{ps1,sh}`
 - Regra: `01_REGRAS_INEGOCIAVEIS.md` R13
 - Revisor cross-provider: `comandos/SETUP_REVIEW_ROUTING.md` + R11
 - Design (não-DeepSeek): `comandos/DESIGN_WORKFLOW.md`

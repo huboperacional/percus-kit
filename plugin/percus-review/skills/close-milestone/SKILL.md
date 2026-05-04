@@ -17,11 +17,26 @@ Quando declarar marco fechado (fim de Fase X numerada, fim de feature em épico,
 
 ### 2. Rodar milestone-review (R11 ampliada)
 
+**Auto-trigger pelo agente (v5.1.0+) — sem paste manual:**
+
+Via Bash tool, rode:
+
+```
+pwsh -NoProfile -ExecutionPolicy Bypass -File "D:\Claud Automations\_Novo_Projeto\scripts\percus-milestone-review-auto.ps1" -Base <commit-inicio-marco>
+```
+
+(ou `.sh` em Unix). Wrapper roda DeepSeek do escopo do marco e emite marker `__PERCUS_NEEDS_CROSS_CLAUDE__` no stderr. Você (agente) lê o marker e dispatch Sonnet subagent via Agent tool com prompt R11 cross-claude-review do mesmo escopo. Salva findings do Sonnet em `.deepseek/reviews/<ts>-cross-claude-milestone.jsonl`.
+
+Apresente consolidado dos dois reviews ao usuário.
+
+**Fallback manual (se wrapper falhar ou pra invocação humana):**
+
+Usuário cola no chat:
 ```
 /percus-review:milestone-review --base <commit-inicio-marco>
 ```
 
-Roda DeepSeek + Cross-Claude duplo. Custo ~$0.05.
+Custo total ~$0.05 (DeepSeek dual).
 
 ### 3. Tratar findings
 

@@ -12,12 +12,14 @@
 - ✅ **Faz:** revisa diffs antes do commit, aponta bugs, regressões, violações de regras Percus, melhorias de clareza
 - ❌ **Não faz:** escreve código novo, refatora, propõe arquiteturas, executa migrations
 
-Quando o Claude pede `/percus-review:review`:
+Quando review é disparado (manual via `/percus-review:review` OU auto-trigger via wrapper `scripts/percus-review-auto.ps1` chamado pelo agente):
 1. Router lê `git diff` ativo + paths tocados + último commit message
 2. Decide: DeepSeek apenas / Cross-Claude apenas / duplo
 3. Reviewer(s) lê(em) este `AGENTS.md` para conhecer regras
 4. Reporta findings com nível de severidade (bug / risco / preferência)
 5. Sugere fix mas NÃO aplica
+
+**Nota sobre auto-trigger (v5.1.0+):** o agente Claude Code chama o wrapper diretamente antes de cada commit que ele executa. Comportamento do reviewer é idêntico (mesmo prompt, mesmo formato de findings) — só a invocação muda. Não precisa adaptar nada deste lado.
 
 ---
 

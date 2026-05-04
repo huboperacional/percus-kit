@@ -192,6 +192,34 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 
 Não confiar em disciplina — os hooks são gate. Escape declarável em voz alta: `PERCUS_HOOKS_DISABLED=1 git commit ...`.
 
+### Auto-trigger pelo agente (v5.1.0+)
+
+**Antes**: agente pedia ao usuário "rode `/percus-review:review` no chat" antes de cada commit. Fricção real (5-20 commits/dia × 1 paste manual).
+
+**Agora**: agente Claude Code AUTORIZADO a auto-disparar review via wrapper kit-level antes de qualquer `git commit` que ele mesmo for executar via Bash tool. Wrapper:
+
+- Pre-commit: `pwsh -File "D:/Claud Automations/_Novo_Projeto/scripts/percus-review-auto.ps1"` (ou `.sh` em Unix)
+- Marco: `pwsh -File "D:/Claud Automations/_Novo_Projeto/scripts/percus-milestone-review-auto.ps1" -Base <commit-inicio-marco>`
+
+Wrapper resolve plugin instalado, dispatch DeepSeek (caso default) ou emite marker `__PERCUS_NEEDS_CROSS_CLAUDE__` no stderr quando decisão exige Cross-Claude (pasta sensível, marco, ou commit de DeepSeek). Agente lê marker → dispatch Sonnet subagent via Agent tool → consolida findings → decide commit.
+
+**Fluxo do agente:**
+
+1. Antes de `git commit` que toca código: rodar wrapper auto-trigger
+2. Ler findings; processar críticos (corrigir antes do commit)
+3. Se marker `__PERCUS_NEEDS_CROSS_CLAUDE__` aparecer: dispatch Sonnet subagent IMEDIATAMENTE com prompt R11 cross-claude-review (revisar diff vs AGENTS.md). Salvar output em `.deepseek/reviews/<ts>-cross-claude.jsonl` para o hook validar.
+4. Apresentar consolidado ao usuário, declarar em voz alta findings ignorados
+5. `git commit` (hooks Layer 1+2 já aprovam por TTL do review)
+
+**Comandos manuais ainda válidos:**
+
+- Slash command `/percus-review:review` no chat — pra invocação humana
+- Wrapper auto — pra invocação pelo agente
+
+Hook Layer 1+2 continua sendo backstop final — se agente esquecer auto-trigger, hook bloqueia commit normalmente.
+
+**Em commits manuais (humano no terminal, fora do Claude Code):** apenas Layer 2 (git hook nativo) atua. Auto-trigger não se aplica — humano roda `/percus-review:review` no chat se quiser.
+
 **Anti-padrão proibido:** pular brainstorming porque "já sei o que fazer". TDD opcional. Code-review pulado em bulk edit. Implementar plano grande serialmente quando subagent-driven-development cabe.
 
 **Guia rápido de skills:** `comandos/USANDO_SUPERPOWERS.md`.

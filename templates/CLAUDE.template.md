@@ -119,6 +119,37 @@ Sem milestone-review do escopo do marco = marco não está concluído.
 
 **Após review aprovar o marco:** adicionar marcação `✓` nas features afetadas em `docs/PLANO.md` e `HANDOFF.md`.
 
+### Workflow de commit do agente (auto-trigger v5.1.0+)
+
+Agente Claude Code AUTO-DISPARA review antes de qualquer `git commit` que ele mesmo for executar via Bash tool. Não pede pro usuário colar slash command.
+
+**Sequência ao commitar:**
+
+1. **ANTES de `git commit`** que toca código, rodar via Bash tool:
+   ```
+   pwsh -NoProfile -ExecutionPolicy Bypass -File "D:\Claud Automations\_Novo_Projeto\scripts\percus-review-auto.ps1"
+   ```
+   (ou `.sh` em Unix; passe `-Base <ref>` se for review de escopo)
+
+2. **Ler findings DeepSeek** retornados pelo wrapper. Tratar críticos (corrigir antes do commit).
+
+3. **Se aparecer marker `__PERCUS_NEEDS_CROSS_CLAUDE__`** no stderr do wrapper:
+   - Significa que a decisão do router foi `cross-claude` ou `dual` (pasta sensível, marco, ou commit veio de DeepSeek).
+   - Dispatch Sonnet subagent IMEDIATAMENTE via Agent tool (`subagent_type: "general-purpose"`) com prompt R11 cross-claude-review (revisar `git diff` vs AGENTS.md).
+   - Salvar output do subagent em `.deepseek/reviews/<timestamp>-cross-claude.jsonl` para satisfazer o hook (`.deepseek/reviews/` é gitignored).
+
+4. **Apresentar consolidado** (DeepSeek findings + Cross-Claude findings se aplicável) ao usuário. Declarar em voz alta findings ignorados e o porquê.
+
+5. **`git commit`** — hooks Layer 1 (PreToolUse) e Layer 2 (git nativo) aprovam por TTL do review fresco.
+
+**Ao fechar marco:** mesmo padrão, mas com wrapper de marco:
+```
+pwsh -File "D:\Claud Automations\_Novo_Projeto\scripts\percus-milestone-review-auto.ps1" -Base <commit-inicio-marco>
+```
+Marco é SEMPRE dual — wrapper sempre emite marker `__PERCUS_NEEDS_CROSS_CLAUDE__`, agente sempre dispatcha Sonnet adicional.
+
+**Caso especial — usuário commitando manualmente no terminal:** Layer 2 (git hook nativo) bloqueia se não houver review fresco. Usuário roda `/percus-review:review` no chat manualmente nesse caso. Auto-trigger é só do agente, não do humano.
+
 Setup primeira vez: `D:\Claud Automations\_Novo_Projeto\comandos\SETUP_REVIEW_ROUTING.md`.
 Regras que o revisor usa: `AGENTS.md` (irmão deste arquivo, na raiz do projeto).
 

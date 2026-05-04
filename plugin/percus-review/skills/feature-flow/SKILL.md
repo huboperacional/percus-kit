@@ -34,9 +34,17 @@ Invoque `superpowers:test-driven-development`. Vitest/pytest antes do código.
 Avança SÓ com verificação. Não arredondar.
 
 ### 6. Review pre-commit (R11) — IMPORTANTE
-**INVOQUE `/percus-review:review` ATIVAMENTE antes de commitar.** Não espere o hook bloquear — o hook é safety net, não fluxo.
+**Auto-trigger via wrapper kit-level (v5.1.0+):** antes de cada `git commit` que você for executar via Bash tool, rode:
 
-Por quê: se commitar sem review, hook pre-commit bloqueia E você perde 5-10s de retrabalho. Rodar review proativamente é mais rápido E garante que findings são tratados antes do commit.
+```
+pwsh -NoProfile -ExecutionPolicy Bypass -File "D:\Claud Automations\_Novo_Projeto\scripts\percus-review-auto.ps1"
+```
+
+(ou `.sh` em Unix). Wrapper resolve plugin instalado + decide router + dispatch DeepSeek. Se output stderr tiver marker `__PERCUS_NEEDS_CROSS_CLAUDE__`, dispatch Sonnet subagent IMEDIATAMENTE via Agent tool com prompt R11 cross-claude-review e salve findings em `.deepseek/reviews/<ts>-cross-claude.jsonl`.
+
+Não pede pro usuário colar slash command — o agente faz tudo. Hook pre-commit (Layer 1+2) é safety net se você esquecer.
+
+Para invocação humana (fora do agente), `/percus-review:review` no chat ainda funciona.
 
 ### 7. Marco
 Invoque `percus-review:close-milestone` ao fechar fase/feature/épico (skill irmã).
