@@ -3,8 +3,8 @@ tipo: stack-e-infra-canonica
 prevalece-sobre: [comandos/*, decisões locais quando não justificadas]
 prevalecido-por: [01_REGRAS_INEGOCIAVEIS, CLAUDE.md do projeto]
 quando-usar: ao iniciar projeto novo OU ao tomar decisão técnica em projeto existente
-leitura: 12 min (consulta por seção, não leitura linear)
-ultima-atualizacao: 2026-04-25
+leitura: 14 min (consulta por seção, não leitura linear)
+ultima-atualizacao: 2026-05-05
 ---
 
 # 02 — Infraestrutura e Stack Padrão Percus
@@ -19,9 +19,9 @@ ultima-atualizacao: 2026-04-25
 
 1. **Isolamento total entre projetos.** Nenhuma biblioteca compartilhada entre repositórios. Conexão entre projetos só via API HTTP autenticada (nunca import direto). Cada projeto é dono do próprio código.
 2. **Zero Supabase em projetos novos.** GoTrue, PostgREST, `@supabase/supabase-js` e Supabase Cloud estão **vetados**. Projetos legados têm rota de migração (Seção 11).
-3. **FastAPI everywhere no backend.** Todo backend novo é Python 3.11+ com FastAPI. Sem exceção.
+3. **FastAPI default no backend.** Todo backend de produto novo é Python 3.11+ com FastAPI. **Exceção formal:** serviços de infraestrutura compartilhada (auth-service, queue worker, gateway) podem usar tier-1 do domínio (ex.: Go pra auth-service quando footprint mínimo for crítico) com justificativa escrita no PLANO.md. Padrão é FastAPI até prova em contrário.
 4. **Frontend escolhido por perfil de produto.** Vite+React 19 pra dashboards/apps internos; Next.js 15 só quando SEO/SSR for crítico.
-5. **Auth próprio, não delegado.** Cada projeto emite seus próprios JWT. Nunca depende de servidor de auth de terceiros.
+5. **Auth centralizado, validação local.** Auth-service Percus é a fonte única de identidade/JWT/refresh/magic-links. Cada projeto valida JWT **localmente** via lib `percus-auth` (zero RTT por request). Nunca depende de servidor de auth de terceiros (Auth0, Clerk, Supabase). Detalhes em Seção 2.
 6. **Tudo no VPS Percus.** Banco, cache, API, frontend — tudo no VPS `161.97.129.138` via Docker Swarm + Traefik.
 
 ---
@@ -74,68 +74,250 @@ projeto/
 ### 1.4. Vetado no backend
 
 - Auto-API (PostgREST e similares).
-- Express/Fastify (Node) pra backend novo.
+- Express/Fastify (Node) pra backend de **produto** novo. (Infra-tier — auth-service, gateways — pode fugir do FastAPI sob exceção formal do Princípio 3.)
 - Sequelize/Prisma (use SQLAlchemy 2.x async ou asyncpg).
 
 ---
 
-## 2. Auth — OTP WhatsApp + JWT próprio
+## 2. Auth — auth-service centralizado + lib `percus-auth` local
 
-### 2.1. Métodos
+### 2.0. Estados de adoção
+
+A arquitetura final é **um auth-service Percus único** consumido por todos os projetos via lib local. Como auth-service v1 ainda está em build, há 3 estados possíveis pra um projeto:
+
+| Estado | Quando | Arquitetura |
+|---|---|---|
+| **Final (auth-service v1+)** | Projeto greenfield iniciado após auth-service v1 publicado | Sem auth próprio. Lib `percus-auth` valida JWT local via JWKS. Login via `auth-service.percus.internal`. |
+| **Transição (sidecar interino)** | Projeto greenfield iniciado antes de auth-service v1 | Sidecar FastAPI próprio (forma B na Seção 2.5) com OTP+JWT HS256, schema `otp.codes` compatível. Migra pra `percus-auth` quando v1 sair, sem refazer fluxo. |
+| **Legado** | Projetos pré-Fase 5 com Supabase/GoTrue/NextAuth/senha pura | Seguem `comandos/MIGRAR_AUTH.md` (V1-V4). Migram diretamente pro estado Final quando auth-service v1 sair, ou pra Transição como ponte. |
+
+**Cutover do estado Transição → Final** é dual-verifier rolling 7 dias (auth-service emite EdDSA, projeto valida ambos algoritmos durante janela do TTL do cookie antigo). Detalhes em runbook do auth-service.
+
+### 2.1. Métodos suportados
 
 | Método | Status | Quando usar |
 |---|---|---|
-| **OTP via WhatsApp** | **Primário** | Default em todo projeto; 6 dígitos, TTL 10 min |
-| **OTP via email** | Opcional | Fallback obrigatório quando produto exige SLA alto |
-| **Senha** | Opcional | Só se produto pedir explicitamente |
-| **Magic link** | Caso especial | Onboarding/convite, single-use |
-| OAuth (Google/etc.) | Caso especial | Integrações com Google APIs no perfil |
+| **OTP via WhatsApp** | **Primário** | Default em todo projeto; 6 dígitos, TTL 5-10 min |
+| **OTP via email** | Fallback obrigatório | Auto-fallback após 3 falhas WhatsApp consecutivas |
+| **Magic link** | Primitiva centralizada | First-login, convite, reset de phone/email — via `/auth/magic/*` do auth-service (R17) |
+| **TOTP step-up** | Obrigatório pra role admin | Enrollment no primeiro login da role admin; valida em ações privilegiadas |
+| **Senha** | Vetado em projetos novos | Dívida de phishing/credential-stuffing sem ganho |
+| OAuth (Google/etc.) | Caso especial | Integrações com Google APIs (Drive, Calendar) no perfil — não pra login de produto |
 
-### 2.2. Detalhes obrigatórios
+### 2.2. Tokens — JWT EdDSA + refresh opaco em Redis
 
-- **JWT próprio** assinado pelo backend (HS256 default; RS256 se múltiplos consumidores). Expiração default **7 dias**. Claims: `sub`, `tenant_id` (se multi-tenant), `perfil`, `iat`, `exp`.
-- **JWT_SECRET dedicado e isolado.** Variável `JWT_SECRET` no `.env` é exclusiva da auth. **Nunca reaproveitar** secrets de outros domínios (ex: `NEXTAUTH_SECRET` legacy, secrets de tokens públicos, secrets de webhook). Razões: (a) rotação independente sem cascata; (b) blast radius menor se vazar; (c) separação semântica clara. Gerar com `python -c "import secrets; print(secrets.token_urlsafe(64))"`.
-- **Cookie de sessão nomeado por projeto:** `{slug_projeto}_session` (ex: `paid_media_session`, `micro_investors_session`). Evita colisão entre subdomínios irmãos do mesmo apex.
-- **OTP guardado em Redis** com TTL de 10 min, máx **5 tentativas** por código antes de invalidar, **idempotência de 60s** contra duplo-clique.
-- **11 templates anti-bot rotativos** pra mensagem de OTP (texto variado, com/sem emoji, código em posições diferentes). Evita Meta marcar padrão como bot.
-- **Anti-bot behavior** no envio Evolution: presence=composing → 2-3s wait → presence=paused → 0.5-1.5s wait → sendText.
-- **Rate limiting** no endpoint de request: 3 OTPs por número/hora, 10 por IP/hora.
-- **Health check do Evolution**: ping a cada 60s. Se down, frontend esconde botão "WhatsApp" automaticamente.
-- **Token JWT no client:** cookie `httpOnly` (preferido) ou em memória + refresh. **Nunca localStorage pra token.**
+**Estado Final (auth-service v1+):**
+- **Algoritmo:** JWT **EdDSA (Ed25519)** — chave pública 32 bytes, mais rápido que RSA, imune a side-channel attacks.
+- **Access token:** TTL **15 minutos**, validação local via JWKS público (`/.well-known/jwks.json`, cache 1h em cada projeto).
+- **Refresh token:** **opaco** (UUID/random 256 bits), salvo em Redis com TTL **30 dias**, **rotation a cada uso + family invalidation** (RFC 6749 §10.4 / OAuth 2.1).
+- **Claims do access token:**
+  ```json
+  {
+    "sub": "identity-uuid",
+    "aud": "produto-slug",
+    "org": "organization-slug",
+    "roles": ["admin","editor"],
+    "iat": ..., "exp": ...
+  }
+  ```
+- **Rotação de chave Ed25519:** publica nova `kid` no JWKS (overlap), aguarda TTL JWKS dos consumidores (1h), começa a assinar com nova, aguarda TTL access (15min), remove kid antigo. Zero downtime.
 
-### 2.3. Referência canônica (read-only)
+**Estado Transição (sidecar interino):**
+- HS256 com `JWT_SECRET` dedicado **por projeto** (nunca reaproveitar — bug histórico). Expiração 7 dias. Refresh ainda opaco em Redis se possível.
+- Claims compatíveis com formato Final pra facilitar cutover.
 
-`D:\Claud Automations\Claude Financas NEW\familia-api\app\modules\auth\service.py`
+**Vetado em qualquer estado:**
+- Refresh token JWT stateless (sem revogação).
+- HS256 com chave compartilhada cross-projetos (blast radius global).
+- `localStorage` pra access ou refresh token.
+- Cookie `SameSite=None` cross-site (R16).
 
-Esse arquivo é a implementação de referência. Ao iniciar projeto novo:
-1. **Leia** (não importe).
-2. **Adapte** ao schema do projeto (tabelas de usuário podem ter nome/colunas diferentes).
-3. **Copie** as primitivas estáveis: 11 templates de OTP, fluxo de presence/typing, idempotência de 60s, rate limit, anti-bot.
-4. Se descobrir bug ou melhoria, conserta no projeto atual e **opcionalmente** propaga via PR pro Financas NEW.
+### 2.3. Modelo de identidade — Identity → Organization → Product (3 camadas)
 
-### 2.4. Padrão de deploy do módulo auth
+Multi-tenancy desde o dia 1, mesmo pra estúdio fechado. Tabelas no DB do auth-service (estado Final):
 
-**A) Backend unificado (default em greenfield):** auth vive em `services/api/app/modules/auth/`. Mesmo container, mesma porta, mesma imagem.
+```sql
+-- Pessoa física, email único cross-projetos
+CREATE TABLE identities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT UNIQUE,
+    phone TEXT UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_login TIMESTAMPTZ,
+    active BOOLEAN DEFAULT TRUE
+);
 
-**B) Sidecar dedicado (default em legado migrando):** quando backend principal não é FastAPI (ex: Next.js API routes, Express), criar container separado `services/auth/` em FastAPI exclusivo pra auth. Roteia via Traefik por path prefix:
+-- Cliente: estúdio interno, empresa B2B externa, ou indivíduo B2C
+CREATE TABLE organizations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,  -- "internal" | "b2b_client" | "b2c_individual"
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    metadata JSONB DEFAULT '{}'
+);
+
+-- Catálogo de produtos Percus (familia-api, plexco, paid-media, ...)
+CREATE TABLE products (
+    id UUID PRIMARY KEY,
+    code TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    active BOOLEAN DEFAULT TRUE
+);
+
+-- Quais produtos cada org tem ativos
+CREATE TABLE subscriptions (
+    organization_id UUID REFERENCES organizations(id),
+    product_id UUID REFERENCES products(id),
+    status TEXT NOT NULL,  -- "active"|"trial"|"suspended"|"cancelled"
+    started_at TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ,
+    metadata JSONB DEFAULT '{}',
+    PRIMARY KEY (organization_id, product_id)
+);
+
+-- Quem pertence a qual org com qual papel
+CREATE TABLE memberships (
+    identity_id UUID REFERENCES identities(id),
+    organization_id UUID REFERENCES organizations(id),
+    roles TEXT[] NOT NULL DEFAULT '{}',
+    invited_at TIMESTAMPTZ DEFAULT NOW(),
+    accepted_at TIMESTAMPTZ,
+    PRIMARY KEY (identity_id, organization_id)
+);
+```
+
+**O que NÃO mora no auth-service** (R7, R18):
+- **Affiliations** (parent_id, tier1/tier2, comissão) — domínio comercial do Painel, não primitiva de auth.
+- **Tracking attribution** (`?ref=`, last-click, UTM, cookies de marketing) — SDK `percus-tracking` separado.
+- **Stripe webhooks / billing** — Painel resolve localmente sem chamar auth-service.
+
+### 2.4. WhatsApp adapter — Evolution (default) + Cloud API oficial (per-tenant)
+
+**Estratégia híbrida:** todo projeto novo nasce em Evolution (custo zero, infra existente). Migra pra Cloud API oficial Meta quando algum critério dispara — sem refactor, só UPDATE em row de tenant config.
+
+**Critérios pra migrar projeto X pra Cloud API (basta 1):**
+1. Volume sustentando >500 OTPs/dia OU >10k/mês (ban-risk Evolution vira material)
+2. Receita do projeto > R$ 5k/mês (custo Cloud API insignificante vs eliminar risco)
+3. Compliance B2B (audit trail Meta-validado pra healthcare/fintech/jurídico)
+4. Health score do número Evolution <85% rolling 7d (flag iminente)
+5. Pedido explícito do cliente
+
+**Implementação — adapter pattern:**
+
+```python
+class WhatsAppSender(Protocol):
+    def send(self, destino: str, codigo: str, **kwargs) -> SendResult: ...
+    def health_check(self) -> HealthScore: ...
+
+class EvolutionSender(WhatsAppSender): ...   # default
+class CloudAPISender(WhatsAppSender): ...    # ativado per-tenant
+
+# tabela tenants
+# tenant_id | whatsapp_provider | whatsapp_config
+# projA     | evolution         | {"instance": "...", "number": "+55..."}
+# projB     | cloud_api         | {"phone_number_id": "...", "token_secret": "..."}
+```
+
+Auth-service ao mandar OTP olha `tenants.whatsapp_provider` do tenant alvo e dispatcha pro sender correto. Trocar provider de um tenant é UPDATE numa row, sem deploy.
+
+### 2.5. Anti-bot WhatsApp (defesa em profundidade, ambos backends)
+
+Necessário em ambos:
+- **Evolution** (WhatsApp Web reverse-engineered): flag = ban permanente do número. Anti-bot é o que separa "número operacional 12 meses" de "número morto em 2 semanas".
+- **Cloud API**: ban total improvável, mas throttle dinâmico do Meta degrada delivery se padrão for mecânico.
+
+**9 componentes obrigatórios** (no auth-service ou no sidecar interino):
+
+| # | Componente | Detalhe |
+|---|---|---|
+| 1 | Sequência humana | Evolution: presence=available → composing → delay 1.2-3s → sendText → paused. Cloud API: `typing_indicator: typing_on → delay → send → typing_off`. |
+| 2 | Templates rotativos (3+ variantes) | Wording variado: "Seu código de acesso", "Seu código de verificação", "Código de login Hub". Cloud API exige approved templates. |
+| 3 | Delay anti-burst | Worker single-thread por número, delay 800ms-1.5s aleatório entre envios sucessivos. |
+| 4 | Number warm-up gradual | **CRÍTICO no Evolution.** Curve: 5/d D1, 20/d D2, 50/d D3, 200/d D7, full após D14. Evolution sem warm-up = ban em <14d. |
+| 5 | Pool multi-número (2-3 nums) | Round-robin balanceado por health score. Tira número degradado automaticamente. |
+| 6 | Time-of-day awareness | Throttle agressivo 1h-6h BR (-50% rate). Burst noturno = signal de fraude. |
+| 7 | Health score por número | Rolling 24h delivered/sent. <90%: peso reduzido. <70%: quarantine 1h + alerta. |
+| 8 | Auto-fallback canal | 3 falhas consecutivas WhatsApp → próxima tentativa via email automaticamente. |
+| 9 | Anti-flood per-destino | Max 1 OTP **ativo** por destino simultâneo (Redis `SET NX EX`). |
+
+**O que NÃO replicar do canon antigo:** "11 templates rotativos com sinônimos exóticos" era exagero. 3 templates approved + variação de horário/typing/delay supera isso porque Meta detecta por hash normalizado, não por string variation.
+
+### 2.6. Rate limit canônico (R15 aplicado a auth)
+
+- **Por destino canonicalizado:** 5 OTPs/h por email (lowercase + strip plus-tag) ou telefone (E.164).
+- **Por IP /64 IPv6** (não /128): 10 OTPs/h.
+- **Por código:** 5 tentativas antes de invalidar.
+- **OTP ativo por destino:** 1 simultâneo (NX no Redis).
+- **Implementação:** Redis `INCR + EXPIRE`, prefixo `auth:rl:{tipo}:{chave}`.
+
+### 2.7. Cookie & SSO multi-domínio (R16 aplicado)
+
+- **Cookie:** `httpOnly + Secure + SameSite=lax`, domínio compartilhado do apex (ex.: `.ads4pros.com` cobre `parceiros`, `gestao`, `vendas`).
+- **Cross-domain (outro produto em outro apex):** redirect-fragment SSO via `auth.ads4pros.com/sso?return=...` → response inclui `#at=<jwt>` que JS lê e descarta.
+- **Vetado:** `SameSite=None` cross-site (frágil em ITP/Brave 2026), token via query string (`?at=`), cookie 3rd-party.
+
+### 2.8. Magic links — primitiva centralizada (R17)
+
+API canônica do auth-service:
+```
+POST /auth/magic/issue { identity_id?|email|phone, purpose, redirect_uri, ttl_seconds }
+  → { code, url: "https://auth.../w/{code}" }
+
+GET /w/{code}
+  → valida (single-use, TTL), emite JWT, 302 redirect_uri com #at=JWT
+
+POST /auth/magic/consume { code }
+  → variante programática, retorna access+refresh
+```
+
+Projetos consomem (não reimplementam). Surface crítico de bugs (replay, TTL bypass, single-use race) tem **uma** implementação.
+
+### 2.9. Observabilidade (R14 aplicado a auth)
+
+Auth-service emite obrigatoriamente:
+- Trace OTel: `request → rate_limit_check → otp_generate → sender_dispatch → delivery_callback`
+- Métricas: `whatsapp.delivery_rate` (por número, rolling 1h e 24h), `whatsapp.send_latency` p50/p95/p99, `whatsapp.number_health_score`, `whatsapp.fallback_to_email_count`, `auth.otp_failure_rate` (alerta se >X% = ataque).
+- Audit trail: `auth.otp_audit_log` com hash chain (`prev_hash` cada row), arquivado pra MinIO em NDJSON+gzip após 90 dias.
+- Sem PII em plain text — `destino` no log é SHA-256.
+
+### 2.10. Padrão de deploy
+
+**Estado Final (auth-service v1+):** projeto consome `auth-service.percus.internal` via Traefik interno. Não roda nada de auth localmente. Lib `percus-auth` no requirements.txt / package.json.
+
+**Estado Transição (sidecar interino):**
+
+**A) Backend unificado:** auth vive em `services/api/app/modules/auth/`. Mesmo container, mesma porta, mesma imagem.
+
+**B) Sidecar dedicado:** quando backend principal não é FastAPI (Next.js API routes, Express), criar container separado `services/auth/` em FastAPI exclusivo. Traefik por path prefix:
 
 ```yaml
 deploy:
   labels:
     - traefik.enable=true
     - traefik.http.routers.{slug}-auth.rule=Host(`{dominio}`) && PathPrefix(`/api/auth/`)
-    - traefik.http.routers.{slug}-auth.priority=100   # acima do web pra capturar /api/auth antes
+    - traefik.http.routers.{slug}-auth.priority=100
     - traefik.http.routers.{slug}-auth.tls.certresolver=letsencryptresolver
     - traefik.http.services.{slug}-auth.loadbalancer.server.port=8000
 ```
 
-Mesmo cookie domain entre web e auth permite cookie httpOnly compartilhado. Sidecar não precisa de CORS (mesma origem). Banco e Redis compartilhados — único `DATABASE_URL` + `REDIS_URL`, prefixo Redis `{slug}:auth:*`.
+Cookie httpOnly compartilhado entre web e auth no mesmo apex. Banco e Redis compartilhados — único `DATABASE_URL` + `REDIS_URL`, prefixo Redis `{slug}:auth:*`.
 
-**Quando NÃO usar sidecar:** se o backend principal já é FastAPI, embute auth como módulo (forma A).
+### 2.11. Referência canônica (read-only)
 
-### 2.5. Migração de auth legado
+`D:\Claud Automations\Claude Financas NEW\familia-api\app\modules\auth\service.py` — implementação OTP+JWT em produção.
 
-Se o projeto tem auth diferente (Supabase/GoTrue/NextAuth/senha pura), **não improvise** — siga `comandos/MIGRAR_AUTH.md` que tem 4 variantes (V1-V4) cobrindo cada cenário.
+`D:\Claud Automations\Painel Gestao e Afiliados\execution\api\authOtp\` — OTP V2 com 11 templates rotativos, rate-limit DB-based, presence simulation. Será absorvido como base do auth-service v1 (preservando schema `otp.codes`).
+
+Ao iniciar projeto novo no estado Transição:
+1. **Leia** essas referências (não importe).
+2. **Adapte** ao schema do projeto.
+3. **Copie** as primitivas estáveis: rate limit, anti-bot, idempotência, fluxo OTP.
+4. Bug ou melhoria descoberta: conserta no projeto atual e propaga via PR pras referências.
+
+### 2.12. Migração de auth legado
+
+Se o projeto tem auth diferente (Supabase/GoTrue/NextAuth/senha pura), **não improvise** — siga `comandos/MIGRAR_AUTH.md` que tem 4 variantes (V1-V4) cobrindo cada cenário. Quando auth-service v1 sair, esse documento ganha variante V5 (legado → Final direto).
 
 ---
 
@@ -508,6 +690,12 @@ await fetch(PU + '/api/endpoints/1/docker/services/' + svc.ID + '/update?version
 | Sequelize/Prisma | SQLAlchemy 2.x async ou asyncpg |
 | `localStorage` pra JWT | Cookie httpOnly ou memória + refresh |
 | CSS-in-JS runtime | Tailwind |
+| Refresh token JWT stateless | Refresh opaco em Redis com rotation + family invalidation |
+| HS256 com chave compartilhada cross-projetos | EdDSA + JWKS público (auth-service) ou HS256 com `JWT_SECRET` dedicado por projeto (Transição) |
+| `SameSite=None` cookies cross-site | Subdomain-shared cookie + redirect-fragment SSO (R16) |
+| Magic-link próprio em cada projeto | `/auth/magic/*` do auth-service (R17) |
+| Tracking attribution acoplado à lib de auth | SDK `percus-tracking` separado (R18) |
+| Serviço tier-1 sem OTel + audit hash chain | Observabilidade obrigatória (R14) |
 
 **Por que vetado:** evitar lock-in, garantir coerência operacional entre projetos, eliminar dependências de servidores de terceiros que duplicam responsabilidade do nosso stack.
 
@@ -557,6 +745,7 @@ await fetch(PU + '/api/endpoints/1/docker/services/' + svc.ID + '/update?version
 - Mudanças aqui afetam **todos os projetos futuros**. Discutir com o time antes de mexer.
 - Cada decisão nova (ou reversão) precisa de **data + justificativa** no commit.
 - Histórico:
+  - **2026-05-05** — Reescrita da Seção 2 (Auth) pra refletir auth-service Percus centralizado: 3 estados de adoção (Final/Transição/Legado), JWT EdDSA + JWKS, refresh opaco com family invalidation, modelo Identity → Org → Product, adapter WhatsApp Evolution+Cloud API per-tenant, anti-bot 9 componentes, magic-link como primitiva centralizada (R17), tracking separado (R18), SSO multi-domínio (R16), observabilidade obrigatória (R14), rate limit canon (R15). Princípio 3 ganha exceção formal pra infra-tier (auth-service pode fugir do FastAPI). Princípio 5 atualizado pra "auth centralizado, validação local".
   - **2026-04-25** — Fusão de `INICIO_2_STACK_PADRAO_PERCUS.md` + `INICIO_3_RUNBOOK_VPS.md` em arquivo único. Eliminada redundância. Estrutura agora é decisão + como executar + vetado por seção.
   - **2026-04-25** — Veta GoTrue/PostgREST. Pin de FastAPI no backend e Vite/Next no frontend.
   - **2026-04-24** — Promovidos pra padrão nativo: (a) `JWT_SECRET` dedicado; (b) cookie de sessão nomeado `{slug_projeto}_session`; (c) padrão sidecar FastAPI com Traefik PathPrefix.

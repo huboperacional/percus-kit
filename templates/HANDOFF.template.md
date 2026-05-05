@@ -54,7 +54,8 @@ _Sessão: {breve título da sessão atual}_
 | `token.json` | ✅ presente / ❌ faltando | Rodar `execution/generate_oauth_token.py` |
 | `OPENAI_API_KEY` | ✅ no `.env` / ❌ | platform.openai.com |
 | `EVOLUTION_API_KEY` | ✅ no `.env` / ❌ | Painel Evolution na VPS |
-| `JWT_SECRET` | ✅ no `.env` / ❌ | Gerar: `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
+| `JWT_SECRET` (estado Transição — sidecar HS256) | ✅ no `.env` / ❌ / N/A se Final | Gerar: `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
+| `AUTH_SERVICE_JWKS_URL` (estado Final — consumir auth-service) | ✅ no `.env` / ❌ / N/A se Transição | URL JWKS pública do auth-service Percus (ex.: `https://auth.percus.internal/.well-known/jwks.json`) |
 
 ---
 

@@ -33,7 +33,7 @@ Quando review é disparado (manual via `/percus-review:review` OU auto-trigger v
 - **Backend:** FastAPI 0.115+ (Python 3.11+)
 - **Banco:** PostgreSQL 17 — database `{slug_projeto}_v1`
 - **Cache/OTP:** Redis 7.4 — namespace `{slug_projeto}:*`
-- **Auth:** OTP via WhatsApp (Evolution) + JWT próprio (cookie httpOnly `{slug_projeto}_session`)
+- **Auth:** consumir auth-service Percus (estado Final, lib `percus-auth` validando JWT EdDSA local) **OU** OTP+JWT em sidecar FastAPI (estado Transição até auth-service v1) — ver `02_INFRA_E_STACK_PERCUS.md` Seção 2
 - **Deploy:** Docker Swarm via Portainer no VPS `161.97.129.138`
 
 ---
@@ -48,7 +48,8 @@ Versão completa: `D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md`
 | R2 — tracking `[0]→[5-T]` | Endpoint adicionado sem update no `docs/PLANO.md`, ou pulou etapas |
 | R3 — zero mock escondido | `toast.success("Salvo!")` sem `await` em chamada de API real; falta de banner MODO DEMO |
 | R6 — banco novo por projeto | Hardcode de `DATABASE_URL` apontando pra DB de outro projeto; chave Redis sem prefixo |
-| R7 — auth Percus | Import de `@supabase/*`, uso de `NextAuth`, `JWT_SECRET` reaproveitado de outro domínio |
+| R7 — auth Percus | Import de `@supabase/*`, uso de `NextAuth`, refresh JWT stateless, HS256 cross-projetos, magic-link próprio fora de `/auth/magic/*`, admin com username+pwd sem TOTP |
+| R14-R18 — auth/infra | Serviço tier-1 sem OTel (R14), rate limit sem canonicalização E.164/IPv6 /64 (R15), `SameSite=None` cross-site (R16), magic-link reimplementado (R17), tracking acoplado à auth (R18) |
 | R10 — gate de design | Componente novo de tela inteira sem referência a draft v0/shadcn aprovado |
 | R13 — output DeepSeek | Diff vindo de `.deepseek/runs/` que toca pasta sensível, mock escondido, ou auth não-Percus |
 

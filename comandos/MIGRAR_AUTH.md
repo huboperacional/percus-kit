@@ -3,12 +3,16 @@ tipo: comando-pronto
 quando-usar: projeto Percus com auth legado (Supabase/GoTrue/NextAuth/senha pura/OAuth-only) precisa migrar pro padrão OTP+JWT
 escopo: SÓ auth — não mexe em outros módulos
 leitura: 12 min
-ultima-atualizacao: 2026-04-24
+ultima-atualizacao: 2026-05-05
 ---
 
 # Migrar Auth de um projeto existente para o Padrão Percus
 
-> **Quando usar este documento:** você tem um projeto Percus já em operação (qualquer estágio) que ainda usa um sistema de auth legado — Supabase/GoTrue, NextAuth, magic-link próprio, senha pura, OAuth-only, ou nenhum auth — e quer alinhar ao **padrão canônico Percus**: OTP via WhatsApp + JWT próprio em FastAPI (definido em `02_INFRA_E_STACK_PERCUS.md`, Seção 2).
+> ⚠️ **Estado deste documento (2026-05-05):** as variantes V1-V4 abaixo descrevem migração pro **estado Transição** (sidecar FastAPI próprio com OTP+JWT HS256, anti-bot Evolution, schema `otp.codes`). Quando o **auth-service Percus v1** publicar (cronograma de 8 semanas em `D:/Claud Automations/.claude-home/plans/analise-para-validar-generic-garden.md`), este documento ganha **V5** (legado → estado Final direto, consumindo auth-service via lib `percus-auth`). Até lá, V1-V4 valem como ponte.
+>
+> Estado Final consome auth-service centralizado (JWT EdDSA + JWKS local + refresh com family invalidation). Sidecar V1-V4 migra pro Final via dual-verifier rolling 7d.
+>
+> **Quando usar este documento:** você tem um projeto Percus já em operação (qualquer estágio) que ainda usa um sistema de auth legado — Supabase/GoTrue, NextAuth, magic-link próprio, senha pura, OAuth-only, ou nenhum auth — e quer alinhar ao **estado Transição** do canon Percus: OTP via WhatsApp + JWT HS256 em sidecar FastAPI (definido em `02_INFRA_E_STACK_PERCUS.md`, Seção 2.0 e 2.10).
 >
 > **Escopo deste documento:** **só auth.** Não toca outros módulos do backend, não reescreve frontend além da tela de login, não muda banco de dados além das tabelas de auth/OTP. Se você precisa migrar mais coisa (ex: substituir PostgREST por endpoints FastAPI, trocar `@supabase/supabase-js` por fetch tipado), use docs separados quando existirem ou faça em outra rodada.
 >

@@ -13,7 +13,7 @@
 - **Backend:** FastAPI 0.115+ (Python 3.11+)
 - **Banco:** PostgreSQL 17 — database `{slug_projeto}_v1`
 - **Cache/OTP:** Redis 7.4 — namespace `{slug_projeto}:*`
-- **Auth:** OTP via WhatsApp (Evolution) + JWT próprio (cookie httpOnly `{slug_projeto}_session`)
+- **Auth:** auth-service Percus centralizado (lib `percus-auth` valida JWT EdDSA local) **ou** sidecar FastAPI próprio com OTP+JWT HS256 (estado Transição até auth-service v1). Ver `02_INFRA_E_STACK_PERCUS.md` Seção 2 pros 3 estados de adoção.
 - **Deploy:** Docker Swarm via Portainer no VPS `161.97.129.138`
 - **Domínio:** `{subdominio}.huboperacional.com.br` (ou domínio próprio)
 

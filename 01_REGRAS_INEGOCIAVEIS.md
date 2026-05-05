@@ -3,8 +3,8 @@ tipo: regras-universais
 prevalece-sobre: [02_INFRA_E_STACK_PERCUS, comandos/*, templates/*]
 prevalecido-por: [CLAUDE.md do projeto atual]
 quando-usar: SEMPRE que executar trabalho em projeto Percus
-leitura: 8 min
-ultima-atualizacao: 2026-04-25
+leitura: 10 min
+ultima-atualizacao: 2026-05-05
 ---
 
 # 01 — Regras Inegociáveis
@@ -142,13 +142,31 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 
 ## R7. Auth — padrão Percus único
 
-**Regra:** Todo projeto novo usa **OTP via WhatsApp + JWT próprio em FastAPI**. Detalhes em `02_INFRA_E_STACK_PERCUS.md` Seção 2.
+**Regra:** Todo projeto novo consome o **auth-service Percus centralizado** (`Identity → Organization → Product`, OTP WhatsApp/Email + JWT EdDSA + JWKS público + refresh opaco em Redis com family invalidation). Detalhes em `02_INFRA_E_STACK_PERCUS.md` Seção 2.
 
-**Vetado em projetos novos:** GoTrue, PostgREST, `@supabase/supabase-js`, NextAuth, magic-link puro sem WhatsApp, senha pura sem 2FA.
+**Modo de adoção (estados possíveis):**
 
-**Projetos legados:** seguem `comandos/MIGRAR_AUTH.md`. Não improvise migração ad-hoc.
+| Estado do projeto | Caminho |
+|---|---|
+| Greenfield iniciado **após** auth-service v1 publicado | Consome auth-service via lib `percus-auth` (validação JWT 100% local via JWKS cache). Sem auth próprio. |
+| Greenfield iniciado **antes** de auth-service v1 (transição) | Sidecar FastAPI próprio com OTP+JWT HS256 (forma B da Seção 2.4). Migra pra auth-service quando v1 sair. |
+| Legado em produção | Segue `comandos/MIGRAR_AUTH.md` (V1-V4). Não improvise. |
 
-**JWT_SECRET dedicado:** nunca reaproveite secret de outro domínio (NEXTAUTH, public-token, webhook). Cada um tem o seu.
+**Princípios não-negociáveis (independentes do estado):**
+
+- **Validação JWT é local em cada projeto** — nunca chamar serviço externo a cada request. Lib `percus-auth` (ou equivalente do estado atual) valida assinatura via JWKS cacheado.
+- **JWT_SECRET (HS256) ou par de chaves Ed25519 (EdDSA) dedicado por domínio.** Nunca reaproveitar secret de outro domínio (NEXTAUTH, public-token, webhook). Cada um tem o seu. Quando auth-service v1 ativo, chave privada vive só no auth-service; consumidores têm só pública (via JWKS).
+- **Refresh token, quando emitido, é opaco em Redis com rotation a cada uso + family invalidation** (RFC 6749 §10.4). Refresh JWT stateless é vetado — sem revogação imediata, blast radius alto.
+- **Cookie httpOnly + Secure + SameSite=lax** sempre. Domínio compartilhado entre subdomínios do apex. Cross-domain via redirect-fragment (R16). `localStorage` pra token é vetado.
+- **OTP guardado em Redis** (TTL 5-10 min, max 5 tentativas, 1 OTP ativo por destino). Anti-flood paralelo via `SET ... EX ... NX`.
+- **WhatsApp via adapter pattern**: Evolution API (default, custo zero, infra existente) + Cloud API oficial (quando projeto/tenant escalar — critérios de migração na Seção 2 do INFRA). Trocar provider é UPDATE em row de tenant config, sem deploy.
+- **Anti-bot WhatsApp em ambos os backends** — sequência humana (presence/typing/delay), templates rotativos, number warm-up gradual, pool multi-número com health score, time-of-day awareness, auto-fallback canal. Detalhes em INFRA Seção 2.
+
+**Vetado em projetos novos:** GoTrue, PostgREST, `@supabase/supabase-js`, NextAuth, magic-link puro fora do auth-service (R17), senha pura sem 2FA, refresh JWT stateless, JWT HS256 com chave compartilhada cross-projetos.
+
+**Magic links** (first-login, convite, reset) — primitiva centralizada do auth-service via `/auth/magic/*`. Projetos consomem, não reimplementam (R17).
+
+**Admin / role privilegiada:** OTP + TOTP step-up obrigatório. Username+password é dívida — phishing/credential-stuffing sem ganho. TOTP enrollment no primeiro login da role admin.
 
 ---
 
@@ -328,7 +346,110 @@ Mudanças no kit ainda devem: (a) ser feitas via plano explícito, (b) ser revis
 
 **Meta-regra:** Se uma regra não tem como você verificar objetivamente que cumpriu, ela é decoração. Se você se pegar pensando "acho que cumpri", você não cumpriu — vá verificar.
 
-**Para R1-R11 e R13**, a coluna "gate de verificação" ou "como verificar" é o ponto crítico. Quando ausente, a regra não está apta a ser auditada — nesse caso, peça ao usuário para esclarecer.
+**Para R1-R11 e R13-R18**, a coluna "gate de verificação" ou "como verificar" é o ponto crítico. Quando ausente, a regra não está apta a ser auditada — nesse caso, peça ao usuário para esclarecer.
+
+---
+
+## R14. Observabilidade obrigatória em serviços tier-1
+
+**Regra:** Todo serviço tier-1 (auth, gateway de pagamento, webhook handler, fila crítica, qualquer endpoint que outro projeto consome) **deve** emitir:
+
+1. **Traces OpenTelemetry** em pontos críticos do fluxo (endpoint → DB → integração externa → resposta). Stack default: OTel SDK → SigNoz self-host (ClickHouse-backed, ~150MB RAM, mais leve que Grafana stack).
+2. **Logs estruturados em JSON** (structlog em Python, slog em Go) com `request_id`, `tenant_id`, `module`, `actor`, sem PII em plain text.
+3. **Métricas de negócio** específicas do serviço (ex.: auth → delivery rate por canal, taxa de falha OTP; webhook → time-to-process, taxa de retry).
+4. **Audit trail imutável** com hash chain (cada row tem `prev_hash` do anterior — barato, validável end-to-end, sem precisar SIEM).
+5. **Alertas proativos** em métricas que sinalizam ataque ou degradação (ex.: taxa de falha OTP >X% = ataque em curso; delivery rate <90% = canal degradado).
+
+**Gate de verificação:** abrir SigNoz/Grafana e ver trace de uma transação real do serviço, fim-a-fim. Se trace pula etapas ou não existe, R14 não foi cumprida.
+
+**Anti-padrão:** "depois eu adiciono observability" — auth e pagamento sem trace em produção é bug latente. Adicionar OTel quando o sistema está em produção custa 10× mais que adicionar no scaffold.
+
+**Tier-2 (CRUD interno, dashboard, ferramenta operacional):** structlog + métricas básicas suficiente. OTel opcional.
+
+---
+
+## R15. Rate limit canônico — IPv6 /64 + canonicalização de destino
+
+**Regra:** Todo endpoint público que aceita identificador (email, telefone) ou IP deve:
+
+1. **Canonicalizar** antes de usar como chave de rate limit:
+   - Email: `lowercase` + `strip plus-tag` (`user+1@gmail.com` → `user@gmail.com`).
+   - Telefone: **E.164** (RFC 3966), normalizado (`+55 11 99999-9999` → `+5511999999999`).
+   - Hash SHA-256 do canonicalizado quando logado em audit.
+2. **Rate limit por IP usar /64 em IPv6** (não /128). Cliente residencial tem 2^64 endereços por /128 — limite por /128 é zero proteção.
+3. **Dual-key rate limit:** por IP **+** por destino (não OR; ambos os limites valem).
+4. **Implementação:** Redis `INCR + EXPIRE`, prefixo `{slug}:rl:{tipo}:{chave}`.
+
+**Defaults razoáveis (auth-service):** 10/h por IP/64, 5/h por destino canonicalizado, 5 tentativas por OTP.
+
+**Gate de verificação:** smoke test com `user+1@`, `user+2@`, `user+3@` do mesmo email base — devem todos contar como mesmo destino. Smoke com 11 requests do mesmo /64 IPv6 — 11º deve bloquear.
+
+**Anti-padrão:** rate limit "por email plain" sem normalizar. Plus-addressing burla trivialmente. Rate limit por IPv6 /128 idem.
+
+---
+
+## R16. SSO multi-domínio — subdomínio compartilhado + redirect-fragment
+
+**Regra:** Auth do estúdio Percus opera em **dois modos** de SSO conforme o domínio do consumidor:
+
+| Cenário | Padrão | Como funciona |
+|---|---|---|
+| Subdomínio compartilhado (mesmo apex) — ex.: `parceiros.ads4pros.com`, `gestao.ads4pros.com`, `vendas.ads4pros.com` | **Cookie compartilhado** | Cookie httpOnly em `.ads4pros.com` (apex). Login em qualquer subdomínio aparece logado em todos. |
+| Domínio diferente (ex.: outro produto Percus em domínio próprio) | **Redirect-fragment SSO** | Frontend redireciona pra `auth.ads4pros.com/sso?return=...` → após login, redirect de volta com `#at=<jwt>` no fragment → JS lê fragment, salva, descarta. |
+
+**Vetado:**
+- `SameSite=None` cookies cross-site (frágeis em ITP/Brave/Chrome 2026+).
+- Cookies de terceiro (third-party) — bloqueados por padrão na maioria dos browsers.
+- Token via query string (`?at=`) — cai em logs de servidor/proxy.
+
+**Gate de verificação:** abrir 2 subdomínios em abas, logar em uma → segunda recarregada já vê sessão sem novo login. Em domínio cross-apex, verificar redirect-fragment funciona sem cookie 3rd-party ativo.
+
+**Implementação:** lib `percus-auth` expõe helpers (`PercusAuth.handleFragment()` no frontend) — projetos não reimplementam.
+
+---
+
+## R17. Magic links — primitiva centralizada no auth-service
+
+**Regra:** Magic links (first-login, convite, reset de phone/email, login passwordless) são **primitivas do auth-service**, não reimplementadas em cada projeto.
+
+**API canônica (quando auth-service v1 disponível):**
+- `POST /auth/magic/issue { identity_id?|email|phone, purpose, redirect_uri, ttl_seconds }` → emite código + URL `/w/{code}`
+- `GET /w/{code}` → valida (single-use, TTL), emite JWT, redireciona pro `redirect_uri` com `#at=JWT`
+- `POST /auth/magic/consume { code }` → variante programática (retorna tokens em vez de redirect)
+
+**Propriedades obrigatórias:**
+1. **Single-use** — código consumido fica invalidado mesmo se URL for reutilizada.
+2. **TTL configurável** (default 48h pra first-login, 1h pra reset).
+3. **Bind a propósito** — `purpose` no payload impede reuso cross-fluxo (link de reset não vale como first-login).
+4. **Rate limit** por `identity_id|destino` pra evitar flood de emissão.
+5. **Observabilidade** (R14) — log de issue/consume/expiry.
+
+**Vetado em projetos:** geração própria de magic-link, schema próprio de welcome_codes, validação local sem chamar `/auth/magic/consume`. Surface crítico de bugs (replay, TTL bypass, single-use race) **não pode** ter N implementações divergentes.
+
+**Transição:** projetos pré-auth-service v1 podem manter implementação atual (ex.: `auth.welcome_codes` do Painel) — migram via runbook quando auth-service publicar.
+
+**Gate de verificação:** smoke E2E — emitir, consumir uma vez (sucesso), tentar consumir 2ª vez (falha). Smoke de TTL — emitir, esperar TTL+1s, tentar consumir (falha).
+
+---
+
+## R18. Tracking attribution é separado de auth
+
+**Regra:** Cookies/SDK de **tracking de marketing** (`?ref=`, last-click attribution, UTM, pixels de afiliado) **não dependem de** e **não compartilham código com** o sistema de auth.
+
+| Responsabilidade | SDK / Domínio | Vive onde |
+|---|---|---|
+| Identidade, login, sessão, JWT | `percus-auth` | auth-service + lib em cada projeto |
+| Atribuição comercial, cookies de marketing, pixels | `percus-tracking` (peer separado) | Painel + SDK independente |
+
+**Por que separar:**
+- Tracking evolui em ritmo de marketing (mudanças semanais possíveis).
+- Auth evolui em ritmo de segurança (mudanças trimestrais auditadas).
+- Bump de tracking não pode forçar re-deploy de auth em N projetos.
+- Cookie de marketing (`a4p_ref`, 90d, anônimo) ≠ cookie de identidade (httpOnly, JWT).
+
+**Gate de verificação:** projeto que injeta tracking SDK funciona sem `percus-auth` carregado. Reciprocamente, lib `percus-auth` não tem dependência de cookie de marketing.
+
+**Anti-padrão:** "vou adicionar `?ref=` na lib de auth porque já tá lá" — acopla domínios independentes, vira bola de neve.
 
 ---
 
@@ -393,3 +514,11 @@ O router de review (R11) detecta esse trailer e roteia revisão pra Cross-Claude
 16. ❌ Aplicar saída DeepSeek sem trailer `Co-implemented-by: deepseek-v4` no commit (R13 + R11) — router não detecta auto-revisão
 17. ❌ Implementar plano com 3+ tasks independentes serialmente em vez de via `superpowers:subagent-driven-development` (R9) — desperdiça contexto principal e tempo
 18. ❌ Editar PLANO.md adicionando ✓ sem invocar `percus-review:close-milestone` antes (R11 ampliada)
+19. ❌ Refresh JWT stateless (sem family invalidation) — token roubado vale TTL inteiro sem revogação (R7)
+20. ❌ Reimplementar magic-link no projeto em vez de consumir `/auth/magic/*` do auth-service (R17)
+21. ❌ Acoplar tracking SDK (`?ref=`, cookies de marketing) à lib de auth (R18)
+22. ❌ Rate limit por email/IP sem canonicalização (`user+1@`, IPv6 /128) (R15)
+23. ❌ Cookie SSO `SameSite=None` cross-domain quando subdomain-shared ou redirect-fragment resolveriam (R16)
+24. ❌ Serviço tier-1 (auth, pagamento, webhook) em produção sem traces OTel + audit hash chain (R14)
+25. ❌ Admin com username+pwd sem TOTP step-up (R7)
+26. ❌ Auth próprio em projeto novo após auth-service v1 publicado (R7) — duplicação proibida
