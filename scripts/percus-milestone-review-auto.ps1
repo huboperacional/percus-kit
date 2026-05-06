@@ -27,6 +27,10 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+# === Resolve PowerShell host (pwsh preferred, fallback to powershell.exe) ===
+# See percus-review-auto.ps1 for rationale.
+$PsExe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
+
 # === Resolve plugin ===
 $claudeHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { "$env:USERPROFILE\.claude" }
 $pluginsDir = Join-Path $claudeHome "plugins\cache\percus-tools\percus-review"
@@ -52,7 +56,7 @@ $deepseekScript = Join-Path $current.FullName "scripts\deepseek-review.ps1"
 
 # === Marco e SEMPRE dual: DeepSeek + Sonnet (agente faz Sonnet via Agent tool) ===
 [Console]::Error.WriteLine("[percus-milestone-auto] base=$Base, escopo do marco")
-& pwsh -NoProfile -ExecutionPolicy Bypass -File $deepseekScript -Base $Base
+& $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript -Base $Base
 if ($LASTEXITCODE -ne 0) {
     [Console]::Error.WriteLine("[percus-milestone-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE)")
     exit 3
