@@ -458,6 +458,34 @@ Mudanças no kit ainda devem: (a) ser feitas via plano explícito, (b) ser revis
 
 ---
 
+## R19. Identidade canônica via auth-service — único dono, todos referenciam
+
+**Regra:** Identidade de login é primitiva centralizada no `auth-service`. Outros projetos consomem via `identity_id`. Esta regra é a aplicação prática do contrato cross-projeto descrito em `D:\Claud Automations\OWNERSHIP.md` — leia aquele documento antes de mexer em qualquer tabela de user/profile/affiliate.
+
+1. **Criar identidade de login = SÓ via auth-service** (`POST /internal/identities`). Nenhum projeto pode criar tabela própria de credencial (bcrypt + password, OTP local, refresh próprio, magic-link próprio).
+2. **Referenciar identidade = via `identity_id UUID`** (FK lógica pra `auth.identities.id`). FK lógica porque os DBs são fisicamente separados; integridade é mantida pela aplicação.
+3. **Em tabelas multi-tenant** (`users`, `profiles`, `affiliates`): **NUNCA** use `UNIQUE` global em `email` ou `phone`. Sempre `UNIQUE(organization_id, email)` (e idem pra `phone`) **OU** drop unique confiando em `identity_id` como chave de identidade real. UNIQUE global quebra multi-org no primeiro usuário que existe em 2 orgs (bug real — Plexco Tasks sessão 33, convite `moacir@ads4pros.com`).
+4. **Tracking de origem da identidade** mora em `auth.identities.origin` (TEXT). Formato canônico: `"<sistema>:<id-local>"` — exemplos: `"painel:affiliate-abc"`, `"plexco-tasks:invitation-7c8e1d"`, `"signup:lp-gate"`. Setado no momento de criação, não atualizado depois.
+5. **Exceção transitória:** `Painel Gestão` pode manter bcrypt local pra admin SaaS (sunset planejado pra Etapa 4 do Strangler Fig — ver `OWNERSHIP.md`). **Outros projetos não têm essa exceção** — sem bcrypt local, sem schema de credencial próprio.
+
+**Gate de verificação:**
+
+- `grep -r "UNIQUE.*email" backend/` no seu projeto não retorna unique global em coluna que pode repetir cross-org.
+- Tabela de user/profile do projeto tem coluna `identity_id UUID`.
+- Fluxo de convite faz lookup no auth-service antes de inserir local (evita duplicação de identity quando a pessoa já existe em outro produto).
+
+**Anti-padrão proibido:**
+
+- Criar `users.password_hash` em projeto novo.
+- Reimplementar OTP local/magic-link próprio (já vetado em R7 e R17, R19 reforça).
+- Migration que adiciona `UNIQUE(email)` global "porque é mais simples" — barra multi-org desde dia 1.
+- Decidir "vou só guardar `email` na minha tabela e ignorar `identity_id`" — perde o link cross-produto, perde SSO, vira drift garantido.
+
+**Referência primária:** `D:\Claud Automations\OWNERSHIP.md` (quadro de ownership + árvore de decisão "criar ou referenciar?").
+**Receita prática:** `D:\Claud Automations\_Novo_Projeto\checklists\CHECKLIST_AUTH_NOVO_PROJETO.md`.
+
+---
+
 ## R13. Roteamento de modelos — DeepSeek implementa, Claude arquiteta, Codex revisa
 
 **Regra:** Tarefas de implementação **mecânica** devem ser delegadas ao DeepSeek V4 via wrapper `D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.{ps1,sh}`, seguindo o playbook em `D:/Claud Automations/_Novo_Projeto/04_MODEL_ROUTING.md` seção "Como delegar". Saída do DeepSeek é tratada como **rascunho** — sempre revisada por Claude (validação contra R1–R12) e por Codex (R11) antes de virar commit. **Decisões arquiteturais permanecem com Claude.**
