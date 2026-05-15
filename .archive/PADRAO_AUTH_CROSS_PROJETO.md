@@ -1,13 +1,18 @@
 ---
-tipo: spec executivo (1 página)
-audiência: tech leads de cada projeto do estúdio Percus
-quando-usar: ao escolher como autenticar usuários num projeto Percus (novo ou existente)
-leitura: 3 min
-referência-profunda: D:\Claud Automations\OWNERSHIP.md + checklists/CHECKLIST_AUTH_NOVO_PROJETO.md
-status: vigente desde 2026-05-14 (sessão 33 do Plexco Tasks)
+tipo: spec executivo (1 página) — **ARQUIVADO**
+audiência: histórico
+status: ARQUIVADO em 2026-05-15 — substituído por `PADRAO_AUTH_SERVICE_INTEGRATION_V2.md`
+sucessor: `../PADRAO_AUTH_SERVICE_INTEGRATION_V2.md`
+guia-de-migração: `../docs/contracts/MIGRATION_V1_TO_V2.md`
 ---
 
-# PADRÃO DE AUTH CROSS-PROJETO — ESTÚDIO PERCUS
+> ⚠️ **DOCUMENTO ARQUIVADO** — Este é o V1 do PADRÃO de auth cross-projeto, vigente entre 2026-05-14 e 2026-05-15.
+> Foi substituído por `PADRAO_AUTH_SERVICE_INTEGRATION_V2.md` em 2026-05-15 após conselho cross-perspectiva (Security + API + SRE/Ops) identificar 29 furos a fechar.
+> Conteúdo preservado apenas para referência histórica. **Não usar como guia operacional.**
+
+---
+
+# PADRÃO DE AUTH CROSS-PROJETO — ESTÚDIO PERCUS (V1 — arquivado)
 
 **Resumo em 1 frase:** Todo projeto Percus que tem login usa o **auth-service** (OAuth Percus) como provedor único de identidade; pessoa comercial (afiliado/colaborador) vive só no **Painel Gestão e Afiliados**; cada produto guarda apenas profile/role local linkados via `identity_id`.
 
