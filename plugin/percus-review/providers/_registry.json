@@ -1,0 +1,54 @@
+{
+  "providers": [
+    {
+      "id": "deepseek",
+      "name": "DeepSeek (deepseek-chat)",
+      "type": "http",
+      "endpoint": "https://api.deepseek.com/v1/chat/completions",
+      "model": "deepseek-chat",
+      "env_key": "DEEPSEEK_API_KEY",
+      "auth_header": "Authorization: Bearer ${KEY}",
+      "wrapper_ps1": "providers/deepseek.ps1",
+      "wrapper_sh": "providers/deepseek.sh",
+      "cost_per_1m_in": 0.27,
+      "cost_per_1m_out": 1.10,
+      "weight": 1,
+      "specialty": "review cross-provider, codigo geral"
+    },
+    {
+      "id": "groq-llama",
+      "name": "Llama 3.3 70B (Groq)",
+      "type": "http",
+      "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+      "model": "llama-3.3-70b-versatile",
+      "env_key": "GROQ_API_KEY",
+      "auth_header": "Authorization: Bearer ${KEY}",
+      "wrapper_ps1": "providers/groq-llama.ps1",
+      "wrapper_sh": "providers/groq-llama.sh",
+      "cost_per_1m_in": 0.59,
+      "cost_per_1m_out": 0.79,
+      "free_tier": "30 req/min",
+      "weight": 1,
+      "specialty": "resposta rapida, consultor inline"
+    },
+    {
+      "id": "cross-claude",
+      "name": "Cross-Claude (Sonnet subagent)",
+      "type": "agent-marker",
+      "marker": "__PERCUS_NEEDS_CROSS_CLAUDE__",
+      "wrapper_ps1": null,
+      "wrapper_sh": null,
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "weight": 1,
+      "specialty": "analise de design, raciocinio profundo"
+    }
+  ],
+  "default_set": {
+    "consult": ["deepseek", "groq-llama"],
+    "consult_full": ["deepseek", "groq-llama", "cross-claude"],
+    "pre_mortem": ["deepseek", "groq-llama", "cross-claude"],
+    "review_routine": ["deepseek", "groq-llama"],
+    "review_sensitive": ["deepseek", "groq-llama", "cross-claude"]
+  }
+}

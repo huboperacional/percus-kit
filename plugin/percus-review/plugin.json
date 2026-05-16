@@ -1,7 +1,7 @@
 {
   "name": "percus-review",
-  "version": "6.0.0",
-  "description": "Review cross-provider Percus + skills/hooks Fase 6. Pre-commit defesa em profundidade (5 hooks regex/AST): pre-commit-check (R11 review fresco), mock-scan (R3 placeholders), auth-import (R7 Supabase/GoTrue/NextAuth vetado), migration-check (R6 schema sem migration), types-check (R5 mypy strict + tsc). Skills: feature-flow (R1 CRUD gate), close-milestone, catalog-publish, pages-scan, cookie-audit (R7 subset httpOnly/Secure/SameSite). Hook on-stop auto-dispara catalog-publish quando catalog-info.yaml muda. Git hook nativo via /percus-review:install-git-hooks (Layer 2). Auto-trigger review pelo agente via wrappers kit-level.",
+  "version": "6.1.0",
+  "description": "Review cross-provider + conselho 3-membros Percus Fase 6. v6.1.0 adiciona Eixo C: conselho (DeepSeek + Llama via Groq + Cross-Claude subagent), providers/ registry, scripts/council-orchestrator (paralelo), commands /council:consult e /council:pre-mortem, hook pre-plan-exit (bloqueia ExitPlanMode em plano >500 linhas sem pre-mortem recente). Mantem v6.0.0: 5 hooks pre-commit (pre-commit-check, mock-scan R3, auth-import R7, migration-check R6, types-check R5), 5 skills (feature-flow R1 gate, close-milestone, catalog-publish, pages-scan, cookie-audit R7 subset), on-stop auto-dispara catalog-publish. Git hook nativo via /percus-review:install-git-hooks (Layer 2).",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",

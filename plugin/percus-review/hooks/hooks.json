@@ -2,6 +2,16 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/pre-plan-exit.cmd\"",
+            "async": false
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
