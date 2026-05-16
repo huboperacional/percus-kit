@@ -14,6 +14,42 @@ ultima-atualizacao: 2026-05-06
 
 ---
 
+## Status de enforcement (Fase 6+)
+
+A partir da Fase 6, cada regra tem **um dos três tipos de reforço**:
+
+- 🤖 **Hook automático** (regex/AST/grep, zero custo de LLM, latência <1s) — bloqueia commit/stop sem perguntar.
+- 🔧 **Skill invocável** (LLM-assisted) — Claude ou operador aciona via comando.
+- 📖 **Só doc** — princípio/padrão sem enforcement mecânico, gate é humano.
+
+Tabela rápida — quem usa o quê:
+
+| Regra | Tipo Fase 6 | Onde mora o enforcement |
+|---|---|---|
+| R1 (CRUD `[0]→[5-T]`) | 📖 + 🔧 | skill `percus-review:feature-flow` |
+| R2 (tracking 15 campos) | 🔧 | skill `percus-review:tracking-audit` (NOVO Fase 6) |
+| R3 (zero mock) | 🤖 | hook `mock-scan-pre-commit` (NOVO Fase 6) |
+| R4 (credenciais — pare) | 📖 | humano |
+| R5 (tipos explícitos) | 🤖 | hook `types-check-pre-commit` (NOVO Fase 6) |
+| R6 (migrations Alembic) | 🤖 | hook `migration-check-pre-commit` (NOVO Fase 6) |
+| R7 (auth-service Percus) | 🤖 + 📖 | hook `auth-import-pre-commit` (NOVO Fase 6) + texto |
+| R8 (HANDOFF atualizado) | 🤖 | hook `on-stop-check` (extendido Fase 6: também invoca catalog-publish) |
+| R9 (superpowers) | 📖 + 🤖 (existente) | hooks Layer 1+2 já existem |
+| R10 (design v0.dev/shadcn) | 📖 | humano + `comandos/DESIGN_WORKFLOW.md` |
+| R11 (review cross-provider) | 🤖 | hook `pre-commit-check` (extendido Fase 6: 3 membros DeepSeek+Cross-Claude+Llama) |
+| R12 (meta-regra de gate) | 📖 | estrutural |
+| R13 (delegate to DeepSeek) | 🔧 | skill `delegate-impl` (NOVO Fase 6) |
+| R14 (observabilidade tier-1) | 📖 + 🔧 (opt-in) | texto + skill `security-audit` |
+| R15 (rate limit IPv6/64) | 📖 | texto + smoke test descrito |
+| R16 (SSO multi-domínio) | 📖 | lib `percus-auth` |
+| R17 (magic links centralizado) | 📖 | auth-service `/auth/magic/*` |
+| R18 (tracking ≠ auth) | 📖 | princípio de separação |
+| R19 (identidade canônica) | 📖 | `OWNERSHIP.md` |
+
+Auditoria completa em `_AUDIT_2026-05-15.md`. Conselho expandido em `06_CONSELHO_PERCUS.md`.
+
+---
+
 ## Convenção de paths neste arquivo
 
 Paths citados nas regras seguem duas formas:

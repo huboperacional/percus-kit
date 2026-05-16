@@ -2,7 +2,7 @@
 
 > Conjunto canônico de regras, templates, comandos e tooling para projetos de software Percus (FastAPI + React + PostgreSQL + JWT cookie httpOnly).
 
-**Estado atual:** Fase 4 estável (review cross-provider sem Codex/OpenAI) · Fase 5 em desenvolvimento (branch `fase5-superpowers-adoption`).
+**Estado atual:** Fase 6 em construção (feature tracking cross-projeto + conselho 3-membros + ambiente local sanitizado) · Fase 5 ativa (skills + hooks superpowers) · Fase 4 estável (review cross-provider sem Codex/OpenAI).
 
 ---
 
@@ -108,8 +108,17 @@ _Novo_Projeto/
 | Fase 1 | 2026-04 | DEPRECATED | Codex como revisor |
 | Fase 2 | 2026-05-02 | Histórico | DeepSeek implementador + Codex revisor |
 | Fase 3 | 2026-05-02 | Histórico | Harmonização do kit + tooling |
-| **Fase 4** | **2026-05-03** | **ESTÁVEL (main)** | **Plugin `@percus/review` (DeepSeek + Cross-Claude), Codex eliminado** |
-| Fase 5 | 2026-05-03 | EM ANDAMENTO (branch `fase5-superpowers-adoption`) | Skills + hooks para forçar adoção de superpowers |
+| Fase 4 | 2026-05-03 | ESTÁVEL (main) | Plugin `@percus/review` (DeepSeek + Cross-Claude), Codex eliminado |
+| Fase 5 | 2026-05-03 | Estável (branch `fase5-superpowers-adoption`) | Skills + hooks para forçar adoção de superpowers |
+| **Fase 6** | **2026-05-15** | **EM CONSTRUÇÃO** | **Feature tracking cross-projeto + conselho 3-membros (DeepSeek + Cross-Claude + Llama via Groq) + ambiente local sanitizado** |
+
+**Docs Fase 6 (Sprint 1 do Eixo B concluído):**
+- `_AUDIT_2026-05-15.md` — auditoria R1-R19 com decisão por regra (hook/skill/doc).
+- `05_FEATURE_TRACKING.md` — convenção catalog-info.yaml + ADRs cross-projeto.
+- `06_CONSELHO_PERCUS.md` — arquitetura do conselho 3-membros + 4 modos.
+- `AMBIENTE_LOCAL_OPERADOR.md` — env vars padrão pra caches em `D:\caches\`.
+- `comandos/SETUP_CATALOG.md` — adotar feature catalog num projeto existente.
+- `comandos/UPGRADE_PARA_FASE6.md` — upgrade Fase 4/5 → Fase 6.
 
 ---
 
