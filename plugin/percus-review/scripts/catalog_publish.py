@@ -8,7 +8,7 @@ Uso:
     python catalog_publish.py <path-to-yaml>       # path explicito
 
 Env vars consumidas (do .env do projeto):
-    PAINEL_API_URL          default: https://gestao.ads4pros.com
+    PAINEL_API_URL          default: https://api.ads4pros.com
     CATALOG_INGEST_KEY      obrigatorio (senao fallback pra METRICS_INGEST_KEY)
     METRICS_INGEST_KEY      fallback
 
@@ -71,7 +71,7 @@ def main() -> int:
 
     # Resolve credenciais (env do processo OU .env local)
     dotenv = _loadDotenv(Path(".env"))
-    apiUrl = os.getenv("PAINEL_API_URL") or dotenv.get("PAINEL_API_URL") or "https://gestao.ads4pros.com"
+    apiUrl = os.getenv("PAINEL_API_URL") or dotenv.get("PAINEL_API_URL") or "https://api.ads4pros.com"
     key = (
         os.getenv("CATALOG_INGEST_KEY")
         or dotenv.get("CATALOG_INGEST_KEY")

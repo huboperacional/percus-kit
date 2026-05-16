@@ -20,7 +20,7 @@ Uso:
     python scan_pages.py --dry-run        # so imprime, nao posta
 
 Env vars (.env do projeto):
-    PAINEL_API_URL          default: https://gestao.ads4pros.com
+    PAINEL_API_URL          default: https://api.ads4pros.com
     CATALOG_INGEST_KEY      ou METRICS_INGEST_KEY fallback
 """
 from __future__ import annotations
@@ -197,7 +197,7 @@ def main() -> int:
 
     # Push pro Painel
     dotenv = _loadDotenv(Path(".env"))
-    apiUrl = os.getenv("PAINEL_API_URL") or dotenv.get("PAINEL_API_URL") or "https://gestao.ads4pros.com"
+    apiUrl = os.getenv("PAINEL_API_URL") or dotenv.get("PAINEL_API_URL") or "https://api.ads4pros.com"
     key = (
         os.getenv("CATALOG_INGEST_KEY") or dotenv.get("CATALOG_INGEST_KEY")
         or os.getenv("METRICS_INGEST_KEY") or dotenv.get("METRICS_INGEST_KEY")
@@ -220,7 +220,9 @@ def main() -> int:
 
     if resp.status_code in (200, 201):
         body = resp.json()
-        print(f"[pages-scan] OK upserted={body.get('pages_upserted')} | Painel: {apiUrl}/gestao/projeto-detalhe.html?slug={slug}")
+        # UI estatica fica em gestao.ads4pros.com (root, sem prefixo /gestao/), API em api.ads4pros.com
+        uiUrl = os.getenv("PAINEL_UI_URL") or dotenv.get("PAINEL_UI_URL") or "https://gestao.ads4pros.com"
+        print(f"[pages-scan] OK upserted={body.get('pages_upserted')} | Painel: {uiUrl}/projeto-detalhe.html?slug={slug}")
         return 0
 
     print(f"[pages-scan] ERROR HTTP {resp.status_code}: {resp.text[:200]}", file=sys.stderr)

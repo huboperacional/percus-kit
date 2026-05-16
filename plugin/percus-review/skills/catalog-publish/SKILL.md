@@ -5,12 +5,12 @@ description: Use after editing catalog-info.yaml or on session stop. Pushes the 
 
 # Percus — Catalog Publish
 
-Empurra o `catalog-info.yaml` (raiz do repo) pro Painel de Gestao, atualizando a matriz feature × projeto consultada em `https://gestao.ads4pros.com/gestao/features.html`.
+Empurra o `catalog-info.yaml` (raiz do repo) pro Painel de Gestao, atualizando a matriz feature × projeto consultada em `https://gestao.ads4pros.com/features.html`.
 
 ## Pre-requisitos
 
 - `catalog-info.yaml` existe na raiz do projeto.
-- `.env` tem `PAINEL_API_URL` (default `https://gestao.ads4pros.com`) e `CATALOG_INGEST_KEY`.
+- `.env` tem `PAINEL_API_URL` (default `https://api.ads4pros.com`) e `CATALOG_INGEST_KEY`.
 - PyYAML + httpx disponiveis no Python do projeto (`pip install pyyaml httpx`).
 
 ## Fluxo
@@ -53,7 +53,7 @@ Resposta esperada: 201 `{"project_id": "...", "features_upserted": N}`.
 [catalog-publish] OK
   Projeto: <slug>
   Features upserted: N
-  Painel: https://gestao.ads4pros.com/gestao/features.html
+  Painel: https://gestao.ads4pros.com/features.html
 ```
 
 Se 404 (project not found in Painel) ou 401 (key invalida), pedir ao operador pra rodar `comandos/SETUP_CATALOG.md` primeiro.

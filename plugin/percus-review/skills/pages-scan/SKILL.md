@@ -54,7 +54,7 @@ Output: imprime lista + posta no Painel.
 [pages-scan] OK
   Projeto: <slug>
   Paginas detectadas: N (api: A, web: W, static: S)
-  Painel: https://gestao.ads4pros.com/gestao/projeto-detalhe.html?slug=<slug>
+  Painel: https://gestao.ads4pros.com/projeto-detalhe.html?slug=<slug>
 ```
 
 ## Auto-trigger
@@ -72,6 +72,6 @@ Skip: `$env:PERCUS_SKIP_PAGES_SCAN=1`.
 ## Referencias
 
 - Tabela `project_pages` no Painel: `execution/database/migration_features.sql`
-- Endpoint: `POST https://gestao.ads4pros.com/admin/pages/ingest`
-- Drill-down UI: `gestao/projeto-detalhe.html` aba Paginas
+- Endpoint: `POST https://api.ads4pros.com/admin/pages/ingest` (API), UI em `https://gestao.ads4pros.com/projeto-detalhe.html` (estatico)
+- Drill-down UI: `projeto-detalhe.html` aba Paginas
 - Convencao: `D:/Claud Automations/_Novo_Projeto/05_FEATURE_TRACKING.md`
