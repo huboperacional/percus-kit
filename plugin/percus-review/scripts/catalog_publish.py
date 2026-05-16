@@ -83,8 +83,15 @@ def main() -> int:
         return 3
 
     endpoint = f"{apiUrl.rstrip('/')}/admin/catalog/ingest"
+    # PyYAML retorna date/datetime; serializa via default=str pra atravessar JSON.
+    body = json.dumps(parsed, default=str)
     try:
-        resp = httpx.post(endpoint, json=parsed, headers={"X-Internal-Auth": key}, timeout=20.0)
+        resp = httpx.post(
+            endpoint,
+            content=body,
+            headers={"X-Internal-Auth": key, "Content-Type": "application/json"},
+            timeout=20.0,
+        )
     except httpx.HTTPError as exc:
         print(f"[catalog-publish] ERROR network: {exc}", file=sys.stderr)
         return 2
