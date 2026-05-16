@@ -54,9 +54,30 @@ Invoque `percus-review:close-milestone` ao fechar fase/feature/épico (skill irm
 - ✓ = milestone-review aprovado
 - 🎨 = draft de design aprovado (R10)
 
-## Gates inline (não esquece)
+## Gate R1 — ciclo CRUD obrigatorio antes de [5-T]
 
-- **R1:** [5-T] só após ciclo CRUD completo (Criar→F5→Editar→F5→Deletar→F5)
+Ao tentar marcar uma feature como `[5-T]` (testado), **exija confirmacao explicita do operador das 3 acoes CRUD com F5**:
+
+| # | Acao | F5 (refresh apos) | Verifica |
+|---|---|---|---|
+| 1 | Criar registro | ✓ | persistido no DB + UI |
+| 2 | Editar registro | ✓ | mudanca refletida apos refresh |
+| 3 | Deletar registro | ✓ | removido apos refresh |
+
+Voce (agente) **NAO pode marcar `[5-T]` sozinho**. Antes de marcar, pergunte ao operador:
+
+```
+[R1 gate] Antes de marcar [5-T] na feature <X>, confirme as 3 acoes CRUD com F5:
+  - [ ] Criei + F5 mostra persistido
+  - [ ] Editei + F5 mostra mudanca
+  - [ ] Deletei + F5 mostra removido
+Posso marcar [5-T]? (sim/nao)
+```
+
+Se operador responde "sim sem ter testado", marque `[4-C]` em vez de `[5-T]` (codigo concluido + nao testado E2E) e registre no HANDOFF que testes E2E ficaram pendentes. **Nunca arredonde [4-C] -> [5-T] sem CRUD real.**
+
+## Outros gates inline (não esquece)
+
 - **R3:** mock = banner MODO DEMO + toast "salvo localmente"
 - **R7:** auth Percus, nunca Supabase/NextAuth/localStorage pra JWT
 - **R10:** tela nova = v0.dev/shadcn, nunca Claude artifacts em produção

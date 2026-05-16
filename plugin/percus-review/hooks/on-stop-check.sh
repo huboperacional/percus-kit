@@ -32,6 +32,30 @@ while IFS= read -r line; do
   fi
 done < "$TRANSCRIPT"
 
+# ── Catalog auto-publish (v6.0.0+) ──────────────────────────────────────
+# Se transcript editou catalog-info.yaml, dispara catalog_publish.py em background.
+if [ -z "${PERCUS_SKIP_CATALOG_PUBLISH:-}" ]; then
+  CATALOG_EDITED=0
+  while IFS= read -r line; do
+    if echo "$line" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"(Edit|Write)"' && \
+       echo "$line" | grep -qE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*catalog-info\.yaml"'; then
+      CATALOG_EDITED=1
+      break
+    fi
+  done < "$TRANSCRIPT"
+
+  if [ $CATALOG_EDITED -eq 1 ] && [ -f "catalog-info.yaml" ]; then
+    PUBLISH_SCRIPT="/d/Claud Automations/_Novo_Projeto/plugin/percus-review/scripts/catalog_publish.py"
+    # Suporta tambem path Linux/macOS
+    [ ! -f "$PUBLISH_SCRIPT" ] && PUBLISH_SCRIPT="$HOME/.claude-plugins/percus-tools/percus-review/scripts/catalog_publish.py"
+    if [ -f "$PUBLISH_SCRIPT" ]; then
+      mkdir -p .deepseek
+      nohup python3 "$PUBLISH_SCRIPT" > .deepseek/catalog-publish.log 2> .deepseek/catalog-publish.log.err &
+      echo "[percus:hook on-stop] catalog-publish disparado em background (log: .deepseek/catalog-publish.log)" >&2
+    fi
+  fi
+fi
+
 [ $CODE_EDITS -eq 0 ] && exit 0
 [ $HANDOFF_EDITED -eq 1 ] && exit 0
 

@@ -38,6 +38,36 @@ try {
         }
     }
 
+    # ── Catalog auto-publish (v6.0.0+) ──────────────────────────────────────
+    # Se transcript editou catalog-info.yaml, dispara catalog_publish.py em background.
+    # Falha graceful: erros nao bloqueiam o stop.
+    if (-not $env:PERCUS_SKIP_CATALOG_PUBLISH) {
+        $catalogEdited = $false
+        foreach ($line in $lines) {
+            if ($line -match '"name"\s*:\s*"(Edit|Write)"' -and $line -match '"file_path"\s*:\s*"[^"]*catalog-info\.yaml"') {
+                $catalogEdited = $true
+                break
+            }
+        }
+        if ($catalogEdited) {
+            $cwd = (Get-Location).Path
+            if (Test-Path (Join-Path $cwd "catalog-info.yaml")) {
+                $publishScript = "D:\Claud Automations\_Novo_Projeto\plugin\percus-review\scripts\catalog_publish.py"
+                if (Test-Path $publishScript) {
+                    try {
+                        $logFile = Join-Path $cwd ".deepseek\catalog-publish.log"
+                        $logDir = Split-Path $logFile -Parent
+                        if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+                        Start-Process -FilePath "python" -ArgumentList "`"$publishScript`"" -WorkingDirectory $cwd -NoNewWindow -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.err" -PassThru | Out-Null
+                        Write-Host "[percus:hook on-stop] catalog-publish disparado em background (log: .deepseek/catalog-publish.log)" -ForegroundColor DarkGray
+                    } catch {
+                        # Falha graceful — nao bloqueia
+                    }
+                }
+            }
+        }
+    }
+
     if ($codeEdits -eq 0) { exit 0 }
     if ($handoffEdited) { exit 0 }
 

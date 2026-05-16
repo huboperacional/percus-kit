@@ -1,7 +1,7 @@
 {
   "name": "percus-review",
-  "version": "5.1.0",
-  "description": "Review cross-provider Percus (DeepSeek + Cross-Claude) + skills/hooks de adoção (Fase 5). Pre-commit defesa em profundidade: PreToolUse:Bash + git hook nativo via /percus-review:install-git-hooks. Skills atualizadas com auto-trigger pelo agente via wrappers kit-level (scripts/percus-review-auto.{ps1,sh}, percus-milestone-review-auto.{ps1,sh}) — agente dispara review sem precisar de paste manual de slash command.",
+  "version": "6.0.0",
+  "description": "Review cross-provider Percus + skills/hooks Fase 6. Pre-commit defesa em profundidade (5 hooks regex/AST): pre-commit-check (R11 review fresco), mock-scan (R3 placeholders), auth-import (R7 Supabase/GoTrue/NextAuth vetado), migration-check (R6 schema sem migration), types-check (R5 mypy strict + tsc). Skills: feature-flow (R1 CRUD gate), close-milestone, catalog-publish, pages-scan, cookie-audit (R7 subset httpOnly/Secure/SameSite). Hook on-stop auto-dispara catalog-publish quando catalog-info.yaml muda. Git hook nativo via /percus-review:install-git-hooks (Layer 2). Auto-trigger review pelo agente via wrappers kit-level.",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",
