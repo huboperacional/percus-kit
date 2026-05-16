@@ -31,6 +31,14 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+# === Resolve PowerShell host (pwsh preferred, fallback to powershell.exe) ===
+# pwsh = PowerShell Core 7+, available cross-platform.
+# powershell.exe = Windows PowerShell 5.1, ships with Windows.
+# Many Percus dev machines have only powershell.exe (no Core install).
+# Without this fallback, wrapper crashes "pwsh: command not found" and forces
+# users to declare PERCUS_HOOKS_DISABLED=1 to commit.
+$PsExe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
+
 # === Resolve plugin install path ===
 $claudeHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { "$env:USERPROFILE\.claude" }
 $pluginsDir = Join-Path $claudeHome "plugins\cache\percus-tools\percus-review"
@@ -65,7 +73,7 @@ if (-not (Test-Path $routerScript)) {
 $routerArgs = @("-Json")
 if ($Base) { $routerArgs += @("-Base", $Base) }
 
-$decisionJson = & pwsh -NoProfile -ExecutionPolicy Bypass -File $routerScript @routerArgs 2>$null
+$decisionJson = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $routerScript @routerArgs 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $decisionJson) {
     [Console]::Error.WriteLine("[percus-review-auto] ERRO: router falhou (exit $LASTEXITCODE)")
     exit 2
@@ -87,7 +95,7 @@ switch ($decision.decision) {
     "deepseek" {
         $deepseekArgs = @()
         if ($Base) { $deepseekArgs += @("-Base", $Base) }
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs
+        & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs
         if ($LASTEXITCODE -ne 0) {
             [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE)")
             exit 3
@@ -99,7 +107,7 @@ switch ($decision.decision) {
         # Roda DeepSeek (cobre layer cheap), agente faz Sonnet via Agent tool
         $deepseekArgs = @()
         if ($Base) { $deepseekArgs += @("-Base", $Base) }
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs
+        & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs
         if ($LASTEXITCODE -ne 0) {
             [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE)")
             exit 3

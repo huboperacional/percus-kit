@@ -4,13 +4,49 @@ prevalece-sobre: [02_INFRA_E_STACK_PERCUS, comandos/*, templates/*]
 prevalecido-por: [CLAUDE.md do projeto atual]
 quando-usar: SEMPRE que executar trabalho em projeto Percus
 leitura: 10 min
-ultima-atualizacao: 2026-05-05
+ultima-atualizacao: 2026-05-06
 ---
 
 # 01 — Regras Inegociáveis
 
 > Cada regra abaixo tem **gate verificável**. Se você não consegue verificar, a regra não foi cumprida — não invente que cumpriu.
 > Ordem das seções por frequência de uso, não por importância.
+
+---
+
+## Status de enforcement (Fase 6+)
+
+A partir da Fase 6, cada regra tem **um dos três tipos de reforço**:
+
+- 🤖 **Hook automático** (regex/AST/grep, zero custo de LLM, latência <1s) — bloqueia commit/stop sem perguntar.
+- 🔧 **Skill invocável** (LLM-assisted) — Claude ou operador aciona via comando.
+- 📖 **Só doc** — princípio/padrão sem enforcement mecânico, gate é humano.
+
+Tabela rápida — quem usa o quê:
+
+| Regra | Tipo Fase 6 | Onde mora o enforcement |
+|---|---|---|
+| R1 (CRUD `[0]→[5-T]`) | 📖 + 🔧 | skill `percus-review:feature-flow` |
+| R2 (tracking 15 campos) | 🔧 | skill `percus-review:tracking-audit` (NOVO Fase 6) |
+| R3 (zero mock) | 🤖 | hook `mock-scan-pre-commit` (NOVO Fase 6) |
+| R4 (credenciais — pare) | 📖 | humano |
+| R5 (tipos explícitos) | 🤖 | hook `types-check-pre-commit` (NOVO Fase 6) |
+| R6 (migrations Alembic) | 🤖 | hook `migration-check-pre-commit` (NOVO Fase 6) |
+| R7 (auth-service Percus) | 🤖 + 📖 | hook `auth-import-pre-commit` (NOVO Fase 6) + texto |
+| R8 (HANDOFF atualizado) | 🤖 | hook `on-stop-check` (extendido Fase 6: também invoca catalog-publish) |
+| R9 (superpowers) | 📖 + 🤖 (existente) | hooks Layer 1+2 já existem |
+| R10 (design v0.dev/shadcn) | 📖 | humano + `comandos/DESIGN_WORKFLOW.md` |
+| R11 (review cross-provider) | 🤖 | hook `pre-commit-check` (extendido Fase 6: 3 membros DeepSeek+Cross-Claude+Llama) |
+| R12 (meta-regra de gate) | 📖 | estrutural |
+| R13 (delegate to DeepSeek) | 🔧 | skill `delegate-impl` (NOVO Fase 6) |
+| R14 (observabilidade tier-1) | 📖 + 🔧 (opt-in) | texto + skill `security-audit` |
+| R15 (rate limit IPv6/64) | 📖 | texto + smoke test descrito |
+| R16 (SSO multi-domínio) | 📖 | lib `percus-auth` |
+| R17 (magic links centralizado) | 📖 | auth-service `/auth/magic/*` |
+| R18 (tracking ≠ auth) | 📖 | princípio de separação |
+| R19 (identidade canônica) | 📖 | `OWNERSHIP.md` |
+
+Auditoria completa em `_AUDIT_2026-05-15.md`. Conselho expandido em `06_CONSELHO_PERCUS.md`.
 
 ---
 
@@ -161,12 +197,15 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 - **OTP guardado em Redis** (TTL 5-10 min, max 5 tentativas, 1 OTP ativo por destino). Anti-flood paralelo via `SET ... EX ... NX`.
 - **WhatsApp via adapter pattern**: Evolution API (default, custo zero, infra existente) + Cloud API oficial (quando projeto/tenant escalar — critérios de migração na Seção 2 do INFRA). Trocar provider é UPDATE em row de tenant config, sem deploy.
 - **Anti-bot WhatsApp em ambos os backends** — sequência humana (presence/typing/delay), templates rotativos, number warm-up gradual, pool multi-número com health score, time-of-day awareness, auto-fallback canal. Detalhes em INFRA Seção 2.
+- **Auth gate `sub == subject` em endpoints sensitive** — endpoints que afetam recurso identificado por payload (ex.: `/admin/totp/enroll {subject: "user@x"}`) **exigem** Bearer com claim `sub` igual ao `subject` do payload. Bearer válido de outro usuário com claim diferente = 403. Bearer ausente = 401. Aplicado em produção no auth-service desde 2026-05-06. (Aprendizado Fase 2.)
+- **Lazy upsert de identity em `/me`** — primeira call autenticada com Bearer válido cria `auth.identities` row automaticamente. Não precisa endpoint explícito de signup/onboarding. Identity é side-effect do primeiro Bearer. Validado em produção no auth-service. (Aprendizado Fase 3.)
+- **Lib cliente `percus-auth` é self-hosted** via `/dist/` mount do próprio auth-service (`https://auth.huboperacional.com.br/dist/percus_auth-<ver>-py3-none-any.whl` e `.tgz`). Consumidor instala com `pip install <url>` ou `npm install <url>`. PyPI/npm privado pago **não é necessário**. Detalhes na Seção 2 do INFRA. (Aprendizado Fase 3.)
 
 **Vetado em projetos novos:** GoTrue, PostgREST, `@supabase/supabase-js`, NextAuth, magic-link puro fora do auth-service (R17), senha pura sem 2FA, refresh JWT stateless, JWT HS256 com chave compartilhada cross-projetos.
 
 **Magic links** (first-login, convite, reset) — primitiva centralizada do auth-service via `/auth/magic/*`. Projetos consomem, não reimplementam (R17).
 
-**Admin / role privilegiada:** OTP + TOTP step-up obrigatório. Username+password é dívida — phishing/credential-stuffing sem ganho. TOTP enrollment no primeiro login da role admin.
+**Admin / role privilegiada:** OTP + TOTP step-up obrigatório. Username+password é dívida — phishing/credential-stuffing sem ganho. TOTP enrollment no primeiro login da role admin. **Encrypt at rest** do `secret_b32` é obrigatório em produção (Docker Secret ou KMS — aprendizado Fase 4 do auth-service).
 
 ---
 
@@ -359,6 +398,7 @@ Mudanças no kit ainda devem: (a) ser feitas via plano explícito, (b) ser revis
 3. **Métricas de negócio** específicas do serviço (ex.: auth → delivery rate por canal, taxa de falha OTP; webhook → time-to-process, taxa de retry).
 4. **Audit trail imutável** com hash chain (cada row tem `prev_hash` do anterior — barato, validável end-to-end, sem precisar SIEM).
 5. **Alertas proativos** em métricas que sinalizam ataque ou degradação (ex.: taxa de falha OTP >X% = ataque em curso; delivery rate <90% = canal degradado).
+6. **Webhook callbacks como insumo de audit/health-score** — endpoints `POST /webhooks/<provider>` (Evolution `messages.update`, Stripe webhooks, etc.) são insumo válido pra audit log e health-score, **mesmo antes** de OTel/SigNoz wirados. Pattern: **stub-first** — endpoint loga eventos via structlog em produção primeiro (já recebe payload real), business logic / regras de health-score vêm em fase posterior. Validado em prod no auth-service desde 2026-05-06. (Aprendizado Fase 3.)
 
 **Gate de verificação:** abrir SigNoz/Grafana e ver trace de uma transação real do serviço, fim-a-fim. Se trace pula etapas ou não existe, R14 não foi cumprida.
 
@@ -379,6 +419,7 @@ Mudanças no kit ainda devem: (a) ser feitas via plano explícito, (b) ser revis
 2. **Rate limit por IP usar /64 em IPv6** (não /128). Cliente residencial tem 2^64 endereços por /128 — limite por /128 é zero proteção.
 3. **Dual-key rate limit:** por IP **+** por destino (não OR; ambos os limites valem).
 4. **Implementação:** Redis `INCR + EXPIRE`, prefixo `{slug}:rl:{tipo}:{chave}`.
+5. **OTP storage no DB:** quando OTP for persistido em Postgres (e não só Redis), código deve ir como **bcrypt hash (rounds=10)** — nunca em plain text. Validação roda dentro de transação com **`SELECT ... FOR UPDATE`** na row do OTP pra evitar race condition no incremento de tentativas. Validado em prod no auth-service. (Aprendizado Fase 1.)
 
 **Defaults razoáveis (auth-service):** 10/h por IP/64, 5/h por destino canonicalizado, 5 tentativas por OTP.
 
@@ -450,6 +491,34 @@ Mudanças no kit ainda devem: (a) ser feitas via plano explícito, (b) ser revis
 **Gate de verificação:** projeto que injeta tracking SDK funciona sem `percus-auth` carregado. Reciprocamente, lib `percus-auth` não tem dependência de cookie de marketing.
 
 **Anti-padrão:** "vou adicionar `?ref=` na lib de auth porque já tá lá" — acopla domínios independentes, vira bola de neve.
+
+---
+
+## R19. Identidade canônica via auth-service — único dono, todos referenciam
+
+**Regra:** Identidade de login é primitiva centralizada no `auth-service`. Outros projetos consomem via `identity_id`. Esta regra é a aplicação prática do contrato cross-projeto descrito em `D:\Claud Automations\OWNERSHIP.md` — leia aquele documento antes de mexer em qualquer tabela de user/profile/affiliate.
+
+1. **Criar identidade de login = SÓ via auth-service** (`POST /internal/identities`). Nenhum projeto pode criar tabela própria de credencial (bcrypt + password, OTP local, refresh próprio, magic-link próprio).
+2. **Referenciar identidade = via `identity_id UUID`** (FK lógica pra `auth.identities.id`). FK lógica porque os DBs são fisicamente separados; integridade é mantida pela aplicação.
+3. **Em tabelas multi-tenant** (`users`, `profiles`, `affiliates`): **NUNCA** use `UNIQUE` global em `email` ou `phone`. Sempre `UNIQUE(organization_id, email)` (e idem pra `phone`) **OU** drop unique confiando em `identity_id` como chave de identidade real. UNIQUE global quebra multi-org no primeiro usuário que existe em 2 orgs (bug real — Plexco Tasks sessão 33, convite `moacir@ads4pros.com`).
+4. **Tracking de origem da identidade** mora em `auth.identities.origin` (TEXT). Formato canônico: `"<sistema>:<id-local>"` — exemplos: `"painel:affiliate-abc"`, `"plexco-tasks:invitation-7c8e1d"`, `"signup:lp-gate"`. Setado no momento de criação, não atualizado depois.
+5. **Exceção transitória:** `Painel Gestão` pode manter bcrypt local pra admin SaaS (sunset planejado pra Etapa 4 do Strangler Fig — ver `OWNERSHIP.md`). **Outros projetos não têm essa exceção** — sem bcrypt local, sem schema de credencial próprio.
+
+**Gate de verificação:**
+
+- `grep -r "UNIQUE.*email" backend/` no seu projeto não retorna unique global em coluna que pode repetir cross-org.
+- Tabela de user/profile do projeto tem coluna `identity_id UUID`.
+- Fluxo de convite faz lookup no auth-service antes de inserir local (evita duplicação de identity quando a pessoa já existe em outro produto).
+
+**Anti-padrão proibido:**
+
+- Criar `users.password_hash` em projeto novo.
+- Reimplementar OTP local/magic-link próprio (já vetado em R7 e R17, R19 reforça).
+- Migration que adiciona `UNIQUE(email)` global "porque é mais simples" — barra multi-org desde dia 1.
+- Decidir "vou só guardar `email` na minha tabela e ignorar `identity_id`" — perde o link cross-produto, perde SSO, vira drift garantido.
+
+**Referência primária:** `D:\Claud Automations\OWNERSHIP.md` (quadro de ownership + árvore de decisão "criar ou referenciar?").
+**Receita prática:** `D:\Claud Automations\_Novo_Projeto\checklists\CHECKLIST_AUTH_NOVO_PROJETO.md`.
 
 ---
 

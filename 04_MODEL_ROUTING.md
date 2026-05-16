@@ -13,7 +13,7 @@ ultima-atualizacao: 2026-05-02
 
 ---
 
-## Os três papéis
+## Os três papéis (Fase 4/5 base)
 
 | Papel | Modelo | Provedor | Quando |
 |---|---|---|---|
@@ -22,6 +22,53 @@ ultima-atualizacao: 2026-05-02
 | **Revisor cross-provider** | DeepSeek (`deepseek-chat`) + Cross-Claude (Sonnet subagent) | DeepSeek Inc + Anthropic | Pre-commit (R11) e marco (R11 ampliada) — router decide qual aciona |
 
 Os papéis não se sobrepõem: cada modelo faz uma coisa, e a saída de cada um é validada por outro.
+
+---
+
+## Roteamento por complexidade (Fase 6+) — usa Haiku/Sonnet/Opus + conselho 3-membros
+
+A partir da Fase 6, o roteamento ganha **camada explícita de Haiku 4.5** pra tarefas mecânicas, evitando puxar Sonnet/Opus pra trabalho de baixa complexidade. Conselho expande pra 3 membros (adiciona Llama via Groq).
+
+### Matriz de tarefa → modelo
+
+| Tarefa | Modelo | Custo (1M in/out) | Por quê |
+|---|---|---|---|
+| HANDOFF.md gerar/atualizar | **Haiku 4.5** | $0.80 / $4.00 | Padrão estável, não exige raciocínio profundo |
+| Lint/format/rename refactor | **Haiku 4.5** | idem | Mecânico |
+| Sumarização de logs/diff | **Haiku 4.5** | idem | Estrutural |
+| Review pre-commit típico | **DeepSeek + Llama (paralelo)** | $0.27/$1.10 + $0.59/$0.79 | Cross-provider rápido, Llama via Groq é grátis até 30 rpm |
+| Review pre-commit em pasta sensível | **DeepSeek + Cross-Claude + Llama** | composto | Defesa em profundidade — 3 provedores diferentes |
+| Decisão de design (Plan mode) | **Sonnet 4.6** | $3 / $15 | Raciocínio profundo, contexto longo |
+| Brainstorming arquitetural | **Opus 4.7 + conselho 3-mem** | $15/$75 + conselho | Raro, alta criticidade |
+| Drift-detect cross-projeto | **Llama (first)** + DeepSeek fallback | grátis 30 rpm | Resposta rápida, suficiente |
+| Pre-mortem de plano | **Conselho 3-mem** (paralelo) | composto | Plural por design |
+| Pré-pergunta consulting | **Conselho 3-mem** (paralelo) | composto | Reduz interrupção do operador |
+
+### Conselho 3-membros (Fase 6)
+
+| Membro | Provider | Modelo | Custo aprox |
+|---|---|---|---|
+| DeepSeek | DeepSeek API | `deepseek-chat` | $0.27/$1.10 |
+| Cross-Claude | Anthropic (subagent) | `claude-sonnet-4-6` | incluso na assinatura Claude Code |
+| Llama 3.3 70B | Groq API | `llama-3.3-70b-versatile` | Free 30 req/min, depois $0.59/$0.79 |
+
+Total estimado: ~$5/mês com volume Percus atual.
+
+**Setup do membro Llama:** obter `GROQ_API_KEY` em https://console.groq.com (gratuito) → adicionar no `.env` do projeto. Sem ela, conselho degrada pra 2 membros (Fase 5).
+
+### Wrapper unificado (Fase 6+)
+
+```powershell
+# Roteamento explícito por tipo de tarefa
+powershell -File "D:/Claud Automations/.claude-home/plugins/cache/percus-tools/percus-review/6.0.0/scripts/model-router.ps1" `
+  -Task <kind>
+```
+
+Skills/comandos chamam o router em vez de hardcoded. Tipos válidos:
+
+`handoff` (Haiku) · `lint` (Haiku) · `summarize` (Haiku) · `review-rotineiro` (DeepSeek+Llama) · `review-sensivel` (3-mem) · `design-decision` (Sonnet) · `brainstorm` (Opus+conselho) · `drift` (Llama+DeepSeek) · `pre-mortem` (3-mem) · `consult` (3-mem).
+
+Detalhes do conselho expandido + 4 modos operacionais: `06_CONSELHO_PERCUS.md`.
 
 ---
 

@@ -3,8 +3,8 @@ tipo: stack-e-infra-canonica
 prevalece-sobre: [comandos/*, decisões locais quando não justificadas]
 prevalecido-por: [01_REGRAS_INEGOCIAVEIS, CLAUDE.md do projeto]
 quando-usar: ao iniciar projeto novo OU ao tomar decisão técnica em projeto existente
-leitura: 14 min (consulta por seção, não leitura linear)
-ultima-atualizacao: 2026-05-05
+leitura: 16 min (consulta por seção, não leitura linear)
+ultima-atualizacao: 2026-05-06
 ---
 
 # 02 — Infraestrutura e Stack Padrão Percus
@@ -192,34 +192,55 @@ CREATE TABLE memberships (
 - **Tracking attribution** (`?ref=`, last-click, UTM, cookies de marketing) — SDK `percus-tracking` separado.
 - **Stripe webhooks / billing** — Painel resolve localmente sem chamar auth-service.
 
-### 2.4. WhatsApp adapter — Evolution (default) + Cloud API oficial (per-tenant)
+### 2.4. WhatsApp adapter — Evolution (default) + Cloud API oficial (per-audience)
 
-**Estratégia híbrida:** todo projeto novo nasce em Evolution (custo zero, infra existente). Migra pra Cloud API oficial Meta quando algum critério dispara — sem refactor, só UPDATE em row de tenant config.
+**Estratégia híbrida:** todo projeto novo nasce em Evolution (custo zero, infra existente). Migra pra Cloud API oficial Meta quando algum critério dispara — sem refactor, só UPDATE em row de `auth.audiences`.
 
-**Critérios pra migrar projeto X pra Cloud API (basta 1):**
+**Critérios pra migrar audience X pra Cloud API (basta 1):**
 1. Volume sustentando >500 OTPs/dia OU >10k/mês (ban-risk Evolution vira material)
 2. Receita do projeto > R$ 5k/mês (custo Cloud API insignificante vs eliminar risco)
 3. Compliance B2B (audit trail Meta-validado pra healthcare/fintech/jurídico)
 4. Health score do número Evolution <85% rolling 7d (flag iminente)
 5. Pedido explícito do cliente
 
+**Modelo de dados — `auth.audiences` (estado Final auth-service):**
+
+```sql
+-- Cada audience = 1 produto/projeto Percus (painel, familia, paid-media, plexco-coach, ...)
+-- Audience é unidade de configuração: token aud claim, override de Evolution instance,
+-- override de templates, override de delivery rules.
+CREATE TABLE auth.audiences (
+    slug TEXT PRIMARY KEY,                                -- "familia", "painel", ...
+    name TEXT NOT NULL,
+    whatsapp_provider TEXT NOT NULL DEFAULT 'evolution',  -- "evolution" | "cloud_api"
+    whatsapp_config JSONB NOT NULL DEFAULT '{}',          -- evo: {instance, number}
+                                                          -- cloud: {phone_number_id, token_secret_ref}
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+-- Admin CRUD em /admin/audiences exige step-up mfa:totp.
+```
+
 **Implementação — adapter pattern:**
 
 ```python
 class WhatsAppSender(Protocol):
-    def send(self, destino: str, codigo: str, **kwargs) -> SendResult: ...
+    def send(self, destino: str, codigo: str, audience: Audience) -> SendResult: ...
     def health_check(self) -> HealthScore: ...
 
 class EvolutionSender(WhatsAppSender): ...   # default
-class CloudAPISender(WhatsAppSender): ...    # ativado per-tenant
+class CloudAPISender(WhatsAppSender): ...    # ativado per-audience
 
-# tabela tenants
-# tenant_id | whatsapp_provider | whatsapp_config
-# projA     | evolution         | {"instance": "...", "number": "+55..."}
-# projB     | cloud_api         | {"phone_number_id": "...", "token_secret": "..."}
+# Resolver pega config da row da audience
+audience = await audiences_repo.get(aud_claim_or_request_param)
+sender = SenderRegistry.get(audience.whatsapp_provider)
+sender.send(destino, codigo, audience=audience)
 ```
 
-Auth-service ao mandar OTP olha `tenants.whatsapp_provider` do tenant alvo e dispatcha pro sender correto. Trocar provider de um tenant é UPDATE numa row, sem deploy.
+Auth-service ao mandar OTP olha `auth.audiences.whatsapp_provider` da audience alvo e dispatcha pro sender correto. Trocar provider de uma audience é UPDATE numa row, sem deploy.
+
+**Por que audience-based (não tenant-based):** descoberta operacional durante Fase 3 do auth-service (2026-05-06). Audiences batem 1:1 com produtos Percus (painel, familia, paid-media, plexco-coach, plexco-tasks) — modelo mais alinhado com a realidade do estúdio do que "tenant" genérico. Audience também serve como `aud` claim do JWT.
 
 ### 2.5. Anti-bot WhatsApp (defesa em profundidade, ambos backends)
 
@@ -318,6 +339,151 @@ Ao iniciar projeto novo no estado Transição:
 ### 2.12. Migração de auth legado
 
 Se o projeto tem auth diferente (Supabase/GoTrue/NextAuth/senha pura), **não improvise** — siga `comandos/MIGRAR_AUTH.md` que tem 4 variantes (V1-V4) cobrindo cada cenário. Quando auth-service v1 sair, esse documento ganha variante V5 (legado → Final direto).
+
+### 2.13. Distribuição de libs cliente — `/dist/` mount self-hosted
+
+**Decisão:** lib `percus-auth` (Python + Node) é **self-hosted** pelo próprio auth-service via StaticFiles mount. Não usa PyPI privado, npm privado, ou registry pago.
+
+**Como funciona:**
+
+```python
+# services/api/app/main.py
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
+_dist_dir = Path("/app/dist")
+if _dist_dir.is_dir():
+    app.mount("/dist", StaticFiles(directory=str(_dist_dir)), name="dist")
+```
+
+```dockerfile
+# Dockerfile populando /app/dist em build time
+COPY --chown=auth:auth dist/ ./dist/
+```
+
+`dist/` contém:
+- `percus_auth-<ver>-py3-none-any.whl` (wheel Python)
+- `percus-auth-<ver>.tgz` (tarball npm)
+
+**Consumidor instala direto da URL pública:**
+```bash
+pip install https://auth.huboperacional.com.br/dist/percus_auth-0.1.0-py3-none-any.whl
+
+npm install https://auth.huboperacional.com.br/dist/percus-auth-0.1.0.tgz
+```
+
+**Por que esse pattern:**
+- Zero dependência de PyPI privado pago (~$50-100/mês evitados)
+- Zero coordenação com npm tokens / scopes privados
+- Lib é versionada junto com a API que ela consome — release coordenado
+- TLS Let's Encrypt do auth-service cobre integridade do download
+- `pip install <url>` e `npm install <url>` são features nativas, sem custom resolver
+
+**Aplicabilidade:** todo serviço Percus tier-1 que publica lib cliente própria pode usar mesmo pattern (`/dist/` mount + URL pública via Traefik). Validado em produção no auth-service desde 2026-05-06.
+
+### 2.14. Webhooks de provider — stub-first
+
+**Pattern:** quando integramos provider externo que oferece webhooks (Evolution `messages.update`, Stripe `payment_intent.*`, GitHub `push`, etc.), criar **endpoint stub primeiro** mesmo antes da business logic existir.
+
+**Estrutura mínima:**
+
+```python
+# services/api/app/modules/webhooks/<provider>.py
+from fastapi import APIRouter, Request
+import structlog
+
+router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+log = structlog.get_logger()
+
+@router.post("/<provider>")
+async def webhook_<provider>(request: Request) -> dict:
+    payload = await request.json()
+    log.info("webhook.<provider>.received",
+             event=payload.get("event"),
+             instance=payload.get("instance"),
+             # NUNCA logar payload completo se contém PII — usar SHA-256 do destino
+             payload_keys=list(payload.keys()))
+    # TODO Fase X: business logic aqui (atualizar health-score, audit log, etc.)
+    return {"status": "received"}
+```
+
+**Por quê stub-first:**
+1. **Provider precisa de URL pra registrar** — sem endpoint, integração trava
+2. **Payload real chega** assim que registrado — você descobre formato real, não documentação desatualizada
+3. **Audit log começa a coletar dados** desde dia 1, mesmo sem regras consumindo
+4. **Business logic é separada da disponibilidade do endpoint** — você pode adicionar consumer (worker, hash chain, alerta) sem mudar URL
+
+**Regras:**
+- Endpoint **sempre 200** se payload é JSON válido (provider re-tenta agressivo em 4xx/5xx)
+- Validação de assinatura (Stripe `Stripe-Signature`, etc.) **obrigatória** quando provider oferece
+- Sem PII em log — destino vira SHA-256
+- TODO marker explícito apontando pra fase em que business logic entra
+
+Validado em prod no auth-service via `POST /webhooks/evolution` desde 2026-05-06 (recebendo `messages.update` em produção sem business logic — base pra anti-bot health-score da Fase 4).
+
+### 2.15. CORS allowlist env-driven
+
+**Pattern:** lista de origins CORS lida de env var `<SLUG>_CORS_ALLOWED_ORIGINS` (ou `CORS_ALLOWED_ORIGINS` quando único serviço). Atualizar lista = restart do container, não rebuild.
+
+```python
+# services/api/app/core/config.py
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    cors_allowed_origins: list[str] = []
+    cors_allow_credentials: bool = True
+
+    class Config:
+        env_file = ".env"
+        # Pydantic parse list[str] de env: separado por vírgula
+```
+
+```bash
+# .env
+CORS_ALLOWED_ORIGINS=https://familiamilionaria.app,https://www.familiamilionaria.app,http://localhost:3000,http://localhost:5173
+```
+
+```python
+# services/api/app/main.py
+from app.core.config import get_settings
+_settings = get_settings()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_settings.cors_allowed_origins,
+    allow_credentials=_settings.cors_allow_credentials,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+    max_age=3600,
+)
+```
+
+**Vetado:** lista hardcoded em código, `allow_origins=["*"]` em produção, `allow_origins=["*"]` com `allow_credentials=True` (browser bloqueia, pattern errado).
+
+**Gate:** smoke E2E com origin permitido + origin não permitido — segundo deve receber CORS error.
+
+### 2.16. Outbound HTTP resilience — pre-bake utilities (Fase 3.5)
+
+**Decisão:** todo serviço tier-1 que faz outbound HTTP a provider externo (Evolution, Stripe, SMTP, JWKS de outros services, etc.) deve ter **utilities de resiliência pré-instaladas** mesmo antes de wirar no caller.
+
+**Utilities canônicas:**
+
+| Componente | Função | Localização sugerida |
+|---|---|---|
+| `CircuitBreaker` | Open/half-open/closed por endpoint, threshold de falhas, cooldown configurable | `app/core/circuit_breaker.py` |
+| `LogAggregator` | Agrupa N falhas similares em 1 log line, evita log spam durante outage | `app/core/log_aggregator.py` |
+| Worker knobs em `config.py` | Defaults conservadores: `worker_max_retries`, `worker_backoff_base_ms`, `worker_jitter_ms`, `worker_circuit_breaker_threshold`, `incident_alert_webhook_url`, etc. | `app/core/config.py` |
+| `<service>-resilience.md` | Doc de decisão arquitetural ANTES de código (stale-while-revalidate? cold-start behavior? kid force-refetch? quando NÃO adicionar breaker custom?) | `services/api/docs/runbooks/` |
+
+**Por que pre-bake:**
+1. Utilities ficam dormindo (testadas, em git) até worker real precisar
+2. Decisão arquitetural escrita ANTES evita re-discutir sob pressão durante incidente
+3. Cross-project: padrões de resilience são copiáveis entre serviços tier-1
+4. Drill staging fica trivial — `shutdown auth-service 5min, mede p99 com stale-while-revalidate, decide com dados se lib JWKS precisa breaker custom`
+
+**Validado:** auth-service Fase 3.5 (2026-05-06) — `CircuitBreaker` (8 testes verde) + `LogAggregator` (9 testes verde) + 9 worker knobs + doc `jwks-resilience.md` com 7 decisões. Wire real em Fase 4 anti-bot.
+
+**Cross-ref:** pattern original em `D:/Claud Automations/Plexco Tasks/docs/cross-project-patterns/outbound-http-resilience.md` v1.0.
 
 ---
 
@@ -711,6 +877,11 @@ await fetch(PU + '/api/endpoints/1/docker/services/' + svc.ID + '/update?version
 | Let's Encrypt rate-limit | Muitos certs num curto espaço | Esperar janela ou usar staging endpoint do Traefik durante debug |
 | Container não acessível pelo Traefik | Falta rede `network_swarm_public` | Adicionar a rede no `networks:` do compose |
 | `/api/auth/*` cai no 404 do web | Sidecar Traefik sem `priority=100` | Adicionar `traefik.http.routers.{slug}-auth.priority=100` nos labels |
+| `pip install -e . --no-index` falha em Dockerfile multi-stage | Wheels do builder não trazem `setuptools`/`wheel` no `--find-links` cache | Adicionar `--no-build-isolation` e instalar `setuptools wheel` antes:<br>`RUN pip install --upgrade pip setuptools wheel && pip install --no-index --find-links /wheels --no-build-isolation -e .`<br>(Aprendizado auth-service deploy 2026-05-06.) |
+| `_REPO_ROOT = parents[N]` quebra em container | Estrutura de pastas em container é mais rasa que dev local; `parents[4]` aponta pra fora do filesystem | Usar `try/except` com fallback `Path.cwd()`:<br>`try: _REPO_ROOT = Path(__file__).parents[4]; assert _REPO_ROOT.exists()`<br>`except (IndexError, AssertionError): _REPO_ROOT = Path.cwd()`<br>(Aprendizado auth-service Fase 1.) |
+| Senha Redis no `.env` ≠ Docker Secret de prod | Env desincronizado entre dev local e Swarm | Manter senha como **única source of truth no Docker Secret** (`postgres_password`, `redis_password`, etc.); `.env` local lê do mesmo valor pra dev. Validar com smoke `redis-cli AUTH <secret>` em ambos antes de subir. (Aprendizado auth-service deploy 2026-05-06.) |
+| `AuthlibDeprecationWarning` apontando pra `joserfc` | `authlib.jose` deprecated em favor de `joserfc` (compat até authlib 2.0.0) | TODO de manutenção: migrar `core/security.py` pra `joserfc` antes de pinning `authlib >=2.0`. Não bloqueia produção hoje. (Aprendizado auth-service Fase 1.) |
+| Wrapper `percus-review-auto.ps1` falha "pwsh: command not found" | Script chama `pwsh` (PowerShell Core 7+) hardcoded; máquina tem só `powershell.exe` (Windows PS 5.1) | Wrapper detecta `pwsh` no PATH; se ausente, fallback automático pra `powershell.exe`. Corrigido nesta PR (canon-update). |
 
 ---
 
@@ -745,6 +916,7 @@ await fetch(PU + '/api/endpoints/1/docker/services/' + svc.ID + '/update?version
 - Mudanças aqui afetam **todos os projetos futuros**. Discutir com o time antes de mexer.
 - Cada decisão nova (ou reversão) precisa de **data + justificativa** no commit.
 - Histórico:
+  - **2026-05-06** — Aprendizados Fase 1-3 do auth-service em produção (`https://auth.huboperacional.com.br`, 124/124 testes verde + smoke E2E real). Atualizações: (a) Seção 2.4 reescrita — `tenants.whatsapp_provider` virou `auth.audiences` per-audience override (modelo alinhado com produtos Percus); (b) novas subseções 2.13 (`/dist/` mount self-hosted pra libs cliente), 2.14 (webhooks stub-first), 2.15 (CORS env-driven), 2.16 (outbound HTTP resilience pre-bake — Fase 3.5 pattern); (c) 5 gotchas operacionais novos na Seção 14 (Dockerfile `--no-build-isolation`, `_REPO_ROOT` fallback, senha Redis env-sync, `AuthlibDeprecationWarning`, wrapper `pwsh` fallback). R7 ganha 3 cláusulas (auth gate `sub == subject`, lazy upsert identity em `/me`, lib self-hosted via `/dist/`). R14 ganha bullet 6 (webhooks como insumo de audit). R15 ganha bullet 5 (bcrypt(10) + `FOR UPDATE` lock). Wrapper `scripts/percus-review-auto.ps1` corrigido com fallback `pwsh → powershell.exe`. Template `MIGRATION_KIT_AUTH.template.md` criado. Issue tracker: `huboperacional/percus-kit#1`.
   - **2026-05-05** — Reescrita da Seção 2 (Auth) pra refletir auth-service Percus centralizado: 3 estados de adoção (Final/Transição/Legado), JWT EdDSA + JWKS, refresh opaco com family invalidation, modelo Identity → Org → Product, adapter WhatsApp Evolution+Cloud API per-tenant, anti-bot 9 componentes, magic-link como primitiva centralizada (R17), tracking separado (R18), SSO multi-domínio (R16), observabilidade obrigatória (R14), rate limit canon (R15). Princípio 3 ganha exceção formal pra infra-tier (auth-service pode fugir do FastAPI). Princípio 5 atualizado pra "auth centralizado, validação local".
   - **2026-04-25** — Fusão de `INICIO_2_STACK_PADRAO_PERCUS.md` + `INICIO_3_RUNBOOK_VPS.md` em arquivo único. Eliminada redundância. Estrutura agora é decisão + como executar + vetado por seção.
   - **2026-04-25** — Veta GoTrue/PostgREST. Pin de FastAPI no backend e Vite/Next no frontend.
