@@ -44,6 +44,8 @@ IS_SENSITIVE=0
 if [[ -n "$FILES" ]]; then
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
+        # Pattern bash: (^|/) ja funciona pra root-level paths (regex POSIX ERE).
+        # PS5.1 .ps1 espelho tem pattern equivalente (^|[/\\]).
         if [[ "$f" =~ (^|/)auth/ ]] \
             || [[ "$f" =~ (^|/)payment[^/]*/ ]] \
             || [[ "$f" =~ (^|/)migrations/ ]] \

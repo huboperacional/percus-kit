@@ -52,10 +52,10 @@ $files = $files | Where-Object { $_ -and $_.Trim() -ne "" }
 
 # === SENSITIVE PATHS ===
 $sensitivePatterns = @(
-    '^.*[/\\]auth[/\\]',
-    '^.*[/\\]payment.*[/\\]',
-    '^.*[/\\]migrations[/\\]',
-    '^.*[/\\]credentials[/\\]',
+    '(^|[/\\])auth[/\\]',
+    '(^|[/\\])payment[^/\\]*[/\\]',
+    '(^|[/\\])migrations[/\\]',
+    '(^|[/\\])credentials[/\\]',
     '^\.env'
 )
 $isSensitive = $false
