@@ -5,7 +5,10 @@
 
 .DESCRIPTION
   Inspeciona arquivos tocados (cached + working tree, ou <base>..HEAD) e o
-  trailer do último commit. Decide:
+  trailer do último commit. Decide (ordem de precedência):
+    - "council"      se tocar pasta sensível E (commit veio DeepSeek OU >10 arquivos tocados).
+                     Aciona conselho 3-membros via council-orchestrator (DS + Llama + CC).
+                     Fase 6 v6.1.0+.
     - "dual"         se tocar pasta sensível (auth/, payment*/, migrations/, credentials/, .env)
     - "cross-claude" se último commit tem trailer "Co-implemented-by: deepseek"
     - "deepseek"     caso contrário (default cross-provider)
@@ -71,7 +74,12 @@ if ($lastCommitMsg) {
 }
 
 # === DECIDE ===
-$decision = if ($isSensitive) {
+# Council (3 providers) quando: pasta sensivel + (commit do DeepSeek OU mudanca grande)
+# Sinaliza "merece 3 perspectivas paralelas".
+$councilTrigger = $isSensitive -and ($fromDeepseek -or $files.Count -gt 10)
+$decision = if ($councilTrigger) {
+    "council"
+} elseif ($isSensitive) {
     "dual"
 } elseif ($fromDeepseek) {
     "cross-claude"
@@ -81,12 +89,13 @@ $decision = if ($isSensitive) {
 
 if ($Json) {
     @{
-        decision      = $decision
-        sensitive     = $isSensitive
-        from_deepseek = [bool]$fromDeepseek
-        files_count   = $files.Count
+        decision        = $decision
+        sensitive       = $isSensitive
+        from_deepseek   = [bool]$fromDeepseek
+        files_count     = $files.Count
+        council_trigger = [bool]$councilTrigger
     } | ConvertTo-Json -Compress
 } else {
-    Write-Host "[router] decisão: $decision (sensitive=$isSensitive, from_deepseek=$fromDeepseek, $($files.Count) arquivo(s))" -ForegroundColor Cyan
+    Write-Host "[router] decisão: $decision (sensitive=$isSensitive, from_deepseek=$fromDeepseek, council=$councilTrigger, $($files.Count) arquivo(s))" -ForegroundColor Cyan
     Write-Output $decision
 }

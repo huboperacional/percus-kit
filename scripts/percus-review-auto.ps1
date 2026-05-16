@@ -137,6 +137,48 @@ switch ($decision.decision) {
         $reviewWritten = $true
     }
 
+    "council" {
+        # Fase 6 v6.1.0+: roda DeepSeek (cobre .deepseek/reviews/ pro hook) + dispatch
+        # orchestrator com Llama (Cross-Claude via marker pro agente).
+        # 3 perspectivas em paralelo pra mudanca grande+sensivel ou pra revisar mudanca DS.
+        $deepseekArgs = @()
+        if ($Base) { $deepseekArgs += @("-Base", $Base) }
+        & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs
+        if ($LASTEXITCODE -ne 0) {
+            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE)")
+            exit 3
+        }
+        $reviewWritten = $true
+
+        # Tambem invoca Llama via orchestrator pra adicionar 3a perspectiva ao log council-log/
+        $orchScript = Join-Path $current.FullName "scripts\council-orchestrator.ps1"
+        if (Test-Path $orchScript) {
+            # Construir prompt minimo de review pra orchestrator (Llama-only,
+            # ja que DS rodou via deepseek-review e CC vai via marker abaixo).
+            $diff = if ($Base) {
+                (& git diff "$Base...HEAD" 2>$null) -join "`n"
+            } else {
+                $cached = (& git diff --cached 2>$null) -join "`n"
+                $unstaged = (& git diff 2>$null) -join "`n"
+                "$cached`n$unstaged".Trim()
+            }
+            if ($diff) {
+                $tmpPrompt = [System.IO.Path]::GetTempFileName()
+                "Revise o git diff abaixo no padrao Percus R1-R19. Aponte bugs, regressoes, mocks, violacoes de auth, imports vetados. Se nada relevante: 'Sem findings criticos'.`n`n---DIFF---`n$diff" | Out-File -FilePath $tmpPrompt -Encoding utf8 -NoNewline
+                try {
+                    & $PsExe -NoProfile -ExecutionPolicy Bypass -File $orchScript -PromptFile $tmpPrompt -Mode review -Providers "groq-llama" 2>$null | Out-Null
+                    [Console]::Error.WriteLine("[percus-review-auto] orchestrator Llama executado (log em .deepseek/council-log/)")
+                } catch {
+                    [Console]::Error.WriteLine("[percus-review-auto] WARN: orchestrator Llama falhou: $_ (DeepSeek ja cobriu hook)")
+                } finally {
+                    Remove-Item $tmpPrompt -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+
+        [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: decision=council (sensitive + grande/from-DS). DEVE dispatchar Sonnet subagent via Agent tool agora pra completar conselho 3-membros.")
+    }
+
     default {
         [Console]::Error.WriteLine("[percus-review-auto] ERRO: decisao desconhecida do router: $($decision.decision)")
         exit 2

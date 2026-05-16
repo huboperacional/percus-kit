@@ -63,7 +63,15 @@ if echo "$LAST_MSG" | grep -iqE '^Co-implemented-by:[[:space:]]*deepseek'; then
 fi
 
 # === DECIDE ===
-if [[ "$IS_SENSITIVE" -eq 1 ]]; then
+# Fase 6 v6.1.0+: "council" quando sensitive E (commit do DS OU >10 arquivos).
+COUNCIL_TRIGGER=0
+if [[ "$IS_SENSITIVE" -eq 1 ]] && { [[ "$FROM_DEEPSEEK" -eq 1 ]] || [[ "$FILES_COUNT" -gt 10 ]]; }; then
+    COUNCIL_TRIGGER=1
+fi
+
+if [[ "$COUNCIL_TRIGGER" -eq 1 ]]; then
+    DECISION="council"
+elif [[ "$IS_SENSITIVE" -eq 1 ]]; then
     DECISION="dual"
 elif [[ "$FROM_DEEPSEEK" -eq 1 ]]; then
     DECISION="cross-claude"
@@ -79,12 +87,14 @@ if [[ "$JSON" -eq 1 ]]; then
             --argjson sensitive "$IS_SENSITIVE" \
             --argjson from_deepseek "$FROM_DEEPSEEK" \
             --argjson files_count "$FILES_COUNT" \
-            '{ decision: $decision, sensitive: ($sensitive==1), from_deepseek: ($from_deepseek==1), files_count: $files_count }'
+            --argjson council_trigger "$COUNCIL_TRIGGER" \
+            '{ decision: $decision, sensitive: ($sensitive==1), from_deepseek: ($from_deepseek==1), files_count: $files_count, council_trigger: ($council_trigger==1) }'
     else
         SENS_BOOL=$([[ "$IS_SENSITIVE" -eq 1 ]] && echo true || echo false)
         FROM_BOOL=$([[ "$FROM_DEEPSEEK" -eq 1 ]] && echo true || echo false)
-        printf '{"decision":"%s","sensitive":%s,"from_deepseek":%s,"files_count":%s}\n' \
-            "$DECISION" "$SENS_BOOL" "$FROM_BOOL" "$FILES_COUNT"
+        COUNCIL_BOOL=$([[ "$COUNCIL_TRIGGER" -eq 1 ]] && echo true || echo false)
+        printf '{"decision":"%s","sensitive":%s,"from_deepseek":%s,"files_count":%s,"council_trigger":%s}\n' \
+            "$DECISION" "$SENS_BOOL" "$FROM_BOOL" "$FILES_COUNT" "$COUNCIL_BOOL"
     fi
 else
     SENS_BOOL=$([[ "$IS_SENSITIVE" -eq 1 ]] && echo true || echo false)
