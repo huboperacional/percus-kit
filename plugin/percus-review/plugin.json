@@ -1,7 +1,7 @@
 {
   "name": "percus-review",
-  "version": "6.1.1",
-  "description": "Review cross-provider + conselho 3-membros Percus Fase 6. v6.1.0 adiciona Eixo C: conselho (DeepSeek + Llama via Groq + Cross-Claude subagent), providers/ registry, scripts/council-orchestrator (paralelo), commands /council:consult e /council:pre-mortem, hook pre-plan-exit (bloqueia ExitPlanMode em plano >500 linhas sem pre-mortem recente). Mantem v6.0.0: 5 hooks pre-commit (pre-commit-check, mock-scan R3, auth-import R7, migration-check R6, types-check R5), 5 skills (feature-flow R1 gate, close-milestone, catalog-publish, pages-scan, cookie-audit R7 subset), on-stop auto-dispara catalog-publish. Git hook nativo via /percus-review:install-git-hooks (Layer 2).",
+  "version": "6.2.0",
+  "description": "Percus kit Fase 6 v6.2.0. Eixo B Sprint 3: 3 skills novas (tracking-audit R2 hibrido grep+E2E threshold, delegate-impl R13 heuristica combinada + dry-run, security-audit R14-R19 YAML declarativo + runner Python). Eixo C v6.1.x mantido: conselho 3-membros (DeepSeek + Llama via Groq + Cross-Claude subagent), council-orchestrator paralelo, /council:consult/pre-mortem/brainstorm/drift-detect, hook pre-plan-exit. Eixo B v6.0.0 mantido: 5 hooks pre-commit (pre-commit-check R11 com decision council, mock-scan R3, auth-import R7, migration-check R6, types-check R5), 5 skills (feature-flow R1 gate, close-milestone, catalog-publish, pages-scan, cookie-audit R7 subset), on-stop auto-dispara catalog-publish. Git hook nativo via /percus-review:install-git-hooks (Layer 2).",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",

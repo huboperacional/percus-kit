@@ -1,0 +1,134 @@
+# Checklist canon Percus R14-R19 — security audit (Eixo B Sprint 3 v6.2.0)
+# Schema version: 1
+# Schema: cada item = {id, eixo, desc, check{type,pattern,paths}, fail_msg, severity, fix_hint}
+# Runner: scripts/security_audit.py (valida schema via jsonschema)
+
+# ── R14: Observabilidade tier-1 (OTel + audit hash chain) ─────────────────────
+- id: R14-otel-import
+  eixo: R14
+  desc: "Servico expoe traces via OpenTelemetry"
+  check:
+    type: grep
+    pattern: 'from opentelemetry|import opentelemetry|opentelemetry-api'
+    paths: ["**/api/**/*.py", "**/services/**/*.py", "requirements.txt", "pyproject.toml"]
+  fail_msg: "Sem OTel detectado. R14 exige tracing tier-1 (request_id propagado entre servicos)."
+  fix_hint: "Adicione opentelemetry-api/sdk no requirements + instrumente FastAPI/Express."
+  severity: medium
+
+- id: R14-audit-log
+  eixo: R14
+  desc: "Audit log com hash chain em endpoints sensiveis"
+  check:
+    type: grep
+    pattern: 'audit_log|audit_entry|hash_chain|previous_hash'
+    paths: ["**/auth/**/*.py", "**/payment*/**/*.py", "**/admin*/**/*.py"]
+  fail_msg: "Endpoints sensiveis sem audit log hash-chained. R14 exige rastreabilidade forensic."
+  fix_hint: "Use lib audit-chain-py ou implemente: cada entry tem prev_hash + content_hash."
+  severity: high
+
+# ── R15: Rate limit canonico (IPv6 /64 + email normalize) ─────────────────────
+- id: R15-rate-limit-ipv6
+  eixo: R15
+  desc: "Rate limit considera /64 IPv6, nao IP exato"
+  check:
+    type: grep
+    pattern: 'ipv6.*\/64|inet_pton.*AF_INET6|ip_network.*64|ipaddress.IPv6Network'
+    paths: ["**/middleware/rate*.py", "**/middleware/limit*.py", "**/auth/**/*.py", "**/auth/**/*.ts"]
+  fail_msg: "Rate limit por IP exato vaza em IPv6 rotativo (atacante muda IP no /128, contador resetado)."
+  fix_hint: "Agregue por /64 prefix: ipaddress.IPv6Network(f'{ip}/64', strict=False)."
+  severity: high
+
+- id: R15-email-normalize
+  eixo: R15
+  desc: "Rate limit por email normaliza dots+plus (gmail-style)"
+  check:
+    type: grep
+    pattern: 'normalize_email|email\.lower\(\).*split.*\+|gmail.*dots|local.*replace.*\.'
+    paths: ["**/auth/**/*.py", "**/middleware/rate*.py", "**/middleware/limit*.py"]
+  fail_msg: "Rate limit por email cru permite bypass: user+1@x, u.s.e.r@x viram contadores diferentes."
+  fix_hint: "Normalize: lowercase + strip plus-tag + colapse dots em gmail.com antes do count."
+  severity: high
+
+# ── R16: SSO multi-domain (subdomain + redirect-fragment) ─────────────────────
+- id: R16-cookie-domain
+  eixo: R16
+  desc: "Cookie SSO usa domain pai com ponto prefixo"
+  check:
+    type: grep
+    pattern: 'domain=[\"\x27]\\.[a-z]'
+    paths: ["**/auth/**/*.py", "**/auth/**/*.ts", "**/middleware/*.py"]
+  fail_msg: "Cookie SSO sem ponto prefixo (domain='huboperacional.com.br' vs '.huboperacional.com.br'). Nao compartilha entre subdominios."
+  fix_hint: "Set cookie com domain='.huboperacional.com.br' (ponto inicial obrigatorio)."
+  severity: high
+
+- id: R16-redirect-fragment
+  eixo: R16
+  desc: "Redirect pos-login usa URL fragment, nao query string"
+  check:
+    type: grep
+    pattern: 'redirect_uri.*#|window\.location\.hash|fragment.*token|#access_token'
+    paths: ["**/auth/**/*.ts", "**/auth/**/*.tsx", "**/auth/**/*.py"]
+  fail_msg: "Token em query string vaza pra logs+referrer. Use URL fragment (#access_token=...)."
+  fix_hint: "Pos login redirect pra /callback#access_token=X — fragment nao vai pro server."
+  severity: medium
+
+# ── R17: Magic links — primitiva centralizada ────────────────────────────────
+- id: R17-magic-link-endpoint
+  eixo: R17
+  desc: "Magic link request/verify usa endpoint canonico do auth-service"
+  check:
+    type: grep
+    pattern: 'auth\.huboperacional\.com\.br|/auth/magic|magic_link.*request'
+    paths: ["**/auth/**/*.py", "**/auth/**/*.ts", "**/services/**/*.py"]
+  fail_msg: "Magic link possivelmente reimplementado localmente. Use auth-service central."
+  fix_hint: "Substitua por POST https://auth.huboperacional.com.br/auth/magic/request + /auth/magic/verify."
+  severity: high
+
+- id: R17-no-local-token
+  eixo: R17
+  desc: "Nenhum token gerado localmente para magic link"
+  check:
+    type: grep
+    pattern: 'secrets\.token_urlsafe|uuid4.*magic|generate.*magic.*token|create.*magic'
+    paths: ["**/auth/**/*.py", "**/services/**/*.py"]
+    expect: absent
+  fail_msg: "Geracao local de magic token detectada (vetado R17). Use endpoint central."
+  fix_hint: "Remova geracao local + chame auth-service /auth/magic/request que retorna o link pronto."
+  severity: high
+
+# ── R18: Tracking separado de auth ────────────────────────────────────────────
+- id: R18-no-fbclid-in-auth
+  eixo: R18
+  desc: "Pasta auth/ nao toca campos de paid media tracking"
+  check:
+    type: grep
+    pattern: 'fbclid|gclid|gbraid|wbraid|msclkid|ttclid|utm_source|utm_campaign'
+    paths: ["**/auth/**/*.py", "**/auth/**/*.ts", "**/auth_service/**/*.py"]
+    expect: absent
+  fail_msg: "Auth misturado com tracking. R18 exige separacao: auth so sabe identidade, tracking so sabe atribuicao."
+  fix_hint: "Mova captura de UTM/clickIDs pra middleware de tracking separado. Auth recebe so user_id."
+  severity: medium
+
+# ── R19: Identidade canonica via auth-service ────────────────────────────────
+- id: R19-jwt-source
+  eixo: R19
+  desc: "JWT validado contra JWKS do auth-service (nao validacao local)"
+  check:
+    type: grep
+    pattern: 'jwks_uri|jwks\.json|JWKSClient|auth\.huboperacional|/auth/keys|/\.well-known'
+    paths: ["**/auth/**/*.py", "**/middleware/**/*.py", "**/api/**/*.py"]
+  fail_msg: "JWT possivelmente validado com chave local fixa. R19 exige JWKS do auth-service (rotation segura)."
+  fix_hint: "Use jwt.PyJWKClient('https://auth.huboperacional.com.br/.well-known/jwks.json') pra fetch + cache."
+  severity: high
+
+- id: R19-no-localStorage-jwt
+  eixo: R19
+  desc: "Frontend nao salva JWT em localStorage ou sessionStorage"
+  check:
+    type: grep
+    pattern: 'localStorage\.setItem.*token|sessionStorage\.setItem.*token|localStorage\.setItem.*jwt'
+    paths: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+    expect: absent
+  fail_msg: "JWT em localStorage/sessionStorage e' XSS-vulneravel (R19 + cookie-audit). Use httpOnly cookie."
+  fix_hint: "Backend set-cookie httpOnly+Secure+SameSite=lax. Frontend NUNCA toca o token (cookie auto-incluido em fetch)."
+  severity: critical
