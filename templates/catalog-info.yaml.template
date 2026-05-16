@@ -1,0 +1,50 @@
+# catalog-info.yaml — Percus feature catalog (Fase 6+)
+# Mora na raiz do repo. Consumido pelo crawler do Painel via:
+#   1. Skill catalog-publish (push, automatico no on-stop quando arquivo muda)
+#   2. catalogCrawler.py (pull, 1h, fallback)
+#
+# Schema: Backstage-lite Percus. Convencao completa em:
+#   D:\Claud Automations\_Novo_Projeto\05_FEATURE_TRACKING.md
+#
+# Substitua <placeholders> e ajuste features[] conforme estado real do projeto.
+
+apiVersion: percus.io/v1
+kind: Component
+metadata:
+  name: <slug-do-projeto>            # Ex: painel-gestao, plexco-coach, familia-milionaria
+  description: <descricao curta em 1 linha>
+spec:
+  type: service                       # service | library | site | data
+  lifecycle: production               # experimental | production | deprecated
+  owner: team-percus
+  system: <agrupador>                 # Ex: vendas, auth, conteudo, tracking
+  features:
+    # Liste APENAS features globais ja aplicadas neste projeto.
+    # Slug deve ser canonico (kebab-case, sem prefixo de projeto).
+    # Lista canonica em 05_FEATURE_TRACKING.md "Slugs canonicos".
+
+    - slug: oauth-v3
+      version: 3.0.0
+      status: adopted                 # adopted | trial | pending | deprecated
+      applied_at: 2026-05-10
+      notes: "via lib percus-auth"
+
+    - slug: tracking-15-campos
+      version: 1.0.0
+      status: trial
+      applied_at: 2026-05-12
+
+    # Outros exemplos comuns:
+    # - slug: lead-form-v2
+    #   version: 2.0.0
+    #   status: adopted
+    # - slug: identity-canonica-auth-service
+    #   version: 1.0.0
+    #   status: adopted
+
+  dependsOn:
+    - component:auth-service
+    - resource:postgres-vps
+    - resource:redis-vps
+    # - component:painel-gestao        # se consome API do Painel
+    # - resource:evolution-api         # se manda WhatsApp
