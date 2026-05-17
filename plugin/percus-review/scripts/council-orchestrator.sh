@@ -9,6 +9,7 @@ SYSTEM_PROMPT=""
 PROVIDERS="deepseek,groq-llama"
 CROSS_CLAUDE_FILE=""
 MODE="consult"
+MAX_INPUT_TOKENS=8000
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -17,9 +18,36 @@ while [[ $# -gt 0 ]]; do
         --providers) PROVIDERS="$2"; shift 2;;
         --cross-claude-file) CROSS_CLAUDE_FILE="$2"; shift 2;;
         --mode) MODE="$2"; shift 2;;
+        --max-input-tokens) MAX_INPUT_TOKENS="$2"; shift 2;;
         *) shift;;
     esac
 done
+
+estimate_tokens() {
+  local text="$1"
+  echo $(( (${#text} + 3) / 3 ))
+}
+
+# Sets globals: TRUNCATED (true/false), ORIG_TOK (int), TRUNC_TEXT (string)
+truncate_prompt() {
+  local text="$1"; local max="$2"
+  local tok; tok=$(estimate_tokens "$text")
+  if [ "$tok" -le "$max" ]; then
+    TRUNCATED=false; ORIG_TOK=$tok; TRUNC_TEXT="$text"
+    return
+  fi
+  local head="${text:0:3500}"
+  local tail_len=$(( (max - 1000) * 3 ))
+  [ "$tail_len" -lt 1000 ] && tail_len=1000
+  local tail="${text: -$tail_len}"
+  local cut=$(( tok - max ))
+  TRUNC_TEXT="${head}
+
+[...TRUNCATED ~${cut} tokens...]
+
+${tail}"
+  TRUNCATED=true; ORIG_TOK=$tok
+}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -56,6 +84,22 @@ for p in "${WANTED[@]}"; do
         ASYNC_PROVIDERS+=("$p")
     fi
 done
+
+# F.5 smart truncation conservador
+COMBINED_CHECK="${SYSTEM_PROMPT}
+${USER_PROMPT}"
+truncate_prompt "$COMBINED_CHECK" "$MAX_INPUT_TOKENS"
+if [ "$TRUNCATED" = "true" ]; then
+    echo "[council-orchestrator] AVISO: prompt truncado de ${ORIG_TOK} -> ~${MAX_INPUT_TOKENS} tokens." >&2
+    # Aplicar truncation apenas ao userPrompt; SystemPrompt fica intacto (e curto)
+    SYS_TOK=$(estimate_tokens "$SYSTEM_PROMPT")
+    USER_MAX=$(( MAX_INPUT_TOKENS - SYS_TOK ))
+    truncate_prompt "$USER_PROMPT" "$USER_MAX"
+    USER_PROMPT="$TRUNC_TEXT"
+fi
+# Capture final truncation metadata for output
+FINAL_TRUNCATED="$TRUNCATED"
+FINAL_ORIG_TOK="$ORIG_TOK"
 
 # Write prompt to temp file
 TMP_PROMPT=$(mktemp)
@@ -142,7 +186,9 @@ RESULT=$(jq -n \
     --argjson responses "$RESPONSES_JSON" \
     --argjson total_lat "$TOTAL_LATENCY" \
     --argjson cross_pending "$CROSS_PENDING" \
-    '{mode:$mode, timestamp:$ts, prompt:$prompt, system_prompt:$sys, providers_called:$wanted, responses:$responses, total_latency_ms:$total_lat, cross_claude_pending:$cross_pending}')
+    --argjson truncated "${FINAL_TRUNCATED:-false}" \
+    --argjson orig_tok "${FINAL_ORIG_TOK:-0}" \
+    '{mode:$mode, timestamp:$ts, prompt:$prompt, system_prompt:$sys, providers_called:$wanted, responses:$responses, total_latency_ms:$total_lat, cross_claude_pending:$cross_pending, truncated:$truncated, original_token_count:$orig_tok}')
 
 echo "$RESULT" > "$LOG_FILE"
 echo "$RESULT"
