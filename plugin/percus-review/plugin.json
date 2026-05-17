@@ -1,7 +1,7 @@
 {
   "name": "percus-review",
-  "version": "6.2.0",
-  "description": "Percus kit Fase 6 v6.2.0. Eixo B Sprint 3: 3 skills novas (tracking-audit R2 hibrido grep+E2E threshold, delegate-impl R13 heuristica combinada + dry-run, security-audit R14-R19 YAML declarativo + runner Python). Eixo C v6.1.x mantido: conselho 3-membros (DeepSeek + Llama via Groq + Cross-Claude subagent), council-orchestrator paralelo, /council:consult/pre-mortem/brainstorm/drift-detect, hook pre-plan-exit. Eixo B v6.0.0 mantido: 5 hooks pre-commit (pre-commit-check R11 com decision council, mock-scan R3, auth-import R7, migration-check R6, types-check R5), 5 skills (feature-flow R1 gate, close-milestone, catalog-publish, pages-scan, cookie-audit R7 subset), on-stop auto-dispara catalog-publish. Git hook nativo via /percus-review:install-git-hooks (Layer 2).",
+  "version": "6.3.0",
+  "description": "Percus kit Fase 6 v6.3.0 — Eixo F (otimizacao tokens) entregue. F.5 truncation conservadora 8k no orchestrator + .sh; F.2 model router automatico Cross-Claude (consult=Haiku 4.5, review=Sonnet 4.6, pre-mortem=Opus 4.7) com overrides -CrossClaudeModel/-DeepSeekModel/-GroqModel; F.1 prompt cache Anthropic via wrapper direto providers/cross-claude.ps1+.sh (cache_control:ephemeral no system block) com fallback marker se ANTHROPIC_API_KEY ausente; F.4 paralelismo conselho confirmado; F.3 hooks regex-only auditados (8 hooks zero-LLM); F.7 skill descriptions revisadas (2 melhoradas). Eixo B Sprint 3 mantido: tracking-audit, delegate-impl, security-audit. Eixo C mantido: conselho 3-membros + /council:* + pre-plan-exit. Eixo B Sprint 2 mantido: 5 hooks pre-commit + 5 skills + on-stop + git hook nativo Layer 2.",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",

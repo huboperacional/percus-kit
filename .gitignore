@@ -17,6 +17,7 @@
 _smoke*
 _healthcheck-*.md
 _healthcheck-*.py
+baseline-*.md
 
 # Backups e temporários
 *.bak
