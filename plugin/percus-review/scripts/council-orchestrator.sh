@@ -89,13 +89,33 @@ fi
 
 IFS=',' read -ra WANTED <<< "$PROVIDERS"
 
-# Separate cross-claude
+# Load .env (best-effort, antes de checar ANTHROPIC_API_KEY pra direct cross-claude)
+if [[ -z "$ANTHROPIC_API_KEY" && -f ".env" ]]; then
+    set -a; source .env 2>/dev/null || true; set +a
+fi
+
+# Detect if direct wrapper can be used for cross-claude (avoids marker, enables cache_control)
+CROSS_CLAUDE_WRAPPER="$PROVIDERS_DIR/cross-claude.sh"
+USE_DIRECT_CLAUDE=0
+for p in "${WANTED[@]}"; do
+    p=$(echo "$p" | xargs)
+    if [[ "$p" == "cross-claude" && -f "$CROSS_CLAUDE_WRAPPER" && -n "$ANTHROPIC_API_KEY" && -z "$CROSS_CLAUDE_FILE" ]]; then
+        USE_DIRECT_CLAUDE=1
+    fi
+done
+
+# Separate cross-claude (handled differently unless direct wrapper available)
 ASYNC_PROVIDERS=()
 WANTS_CROSS_CLAUDE=0
 for p in "${WANTED[@]}"; do
     p=$(echo "$p" | xargs)
     if [[ "$p" == "cross-claude" ]]; then
-        WANTS_CROSS_CLAUDE=1
+        if [[ $USE_DIRECT_CLAUDE -eq 1 ]]; then
+            ASYNC_PROVIDERS+=("$p")  # inclui cross-claude no dispatch normal
+            WANTS_CROSS_CLAUDE=0    # NAO emitir marker
+        else
+            WANTS_CROSS_CLAUDE=1
+        fi
     else
         ASYNC_PROVIDERS+=("$p")
     fi
@@ -134,8 +154,9 @@ for p in "${ASYNC_PROVIDERS[@]}"; do
     OUTPUT_FILES[$p]="$OUT"
     MODEL_ARG=""
     case "$p" in
-        deepseek)   MODEL_ARG="$DEEPSEEK_MODEL";;
-        groq-llama) MODEL_ARG="$GROQ_MODEL";;
+        deepseek)     MODEL_ARG="$DEEPSEEK_MODEL";;
+        groq-llama)   MODEL_ARG="$GROQ_MODEL";;
+        cross-claude) MODEL_ARG="$CROSS_CLAUDE_MODEL";;
     esac
     (
         if [[ -n "$MODEL_ARG" ]]; then

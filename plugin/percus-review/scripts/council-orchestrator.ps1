@@ -50,6 +50,19 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Load .env (best-effort, antes de checar ANTHROPIC_API_KEY pra direct cross-claude)
+$_envPath = Join-Path (Get-Location) '.env'
+if (Test-Path $_envPath) {
+    Get-Content $_envPath | ForEach-Object {
+        if ($_ -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$' -and $_ -notmatch '^\s*#') {
+            $name = $matches[1]; $val = $matches[2] -replace '^["'']|["'']$', ''
+            if (-not (Get-Item -Path "env:$name" -ErrorAction SilentlyContinue)) {
+                Set-Item -Path "env:$name" -Value $val
+            }
+        }
+    }
+}
+
 function Estimate-Tokens([string]$text) {
     if (-not $text) { return 0 }
     # Heuristica conservadora: 1 token ~ 3.5 chars (overestima leve, evita undertruncate)
@@ -111,9 +124,18 @@ if (-not $CrossClaudeModel) {
 # Parse providers list
 $wanted = $Providers.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
 
-# Separate cross-claude (handled differently)
-$asyncProviders = $wanted | Where-Object { $_ -ne "cross-claude" }
-$wantsCrossClaude = $wanted -contains "cross-claude"
+# Detect if direct wrapper can be used for cross-claude (avoids marker, enables cache_control)
+$crossClaudeWrapper = Join-Path $providersDir "cross-claude.ps1"
+$useDirectClaude = ($wanted -contains "cross-claude") -and (Test-Path $crossClaudeWrapper) -and $env:ANTHROPIC_API_KEY -and (-not $CrossClaudeFile)
+
+# Separate cross-claude (handled differently unless direct wrapper available)
+if ($useDirectClaude) {
+    $asyncProviders = $wanted | Where-Object { $_ }  # inclui cross-claude no dispatch normal
+    $wantsCrossClaude = $false  # ja vai pelo dispatch normal — NAO emitir marker
+} else {
+    $asyncProviders = $wanted | Where-Object { $_ -ne "cross-claude" }
+    $wantsCrossClaude = $wanted -contains "cross-claude"
+}
 
 # F.5 smart truncation conservador
 $combinedForCheck = "$SystemPrompt`n$userPrompt"
@@ -140,13 +162,15 @@ foreach ($p in $asyncProviders) {
     }
     # PS jobs nao herdam env vars do parent; capturar e re-set dentro do job.
     $envSnapshot = @{
-        DEEPSEEK_API_KEY = $env:DEEPSEEK_API_KEY
-        GROQ_API_KEY     = $env:GROQ_API_KEY
+        DEEPSEEK_API_KEY  = $env:DEEPSEEK_API_KEY
+        GROQ_API_KEY      = $env:GROQ_API_KEY
+        ANTHROPIC_API_KEY = $env:ANTHROPIC_API_KEY
     }
     $modelForProvider = switch ($p) {
-        "deepseek"   { $DeepSeekModel }
-        "groq-llama" { $GroqModel }
-        default      { "" }
+        "deepseek"     { $DeepSeekModel }
+        "groq-llama"   { $GroqModel }
+        "cross-claude" { $CrossClaudeModel }
+        default        { "" }
     }
     $jobs[$p] = Start-Job -ScriptBlock {
         param($Wrapper, $PromptF, $SysPrompt, $EnvVars, $ModelArg)
