@@ -34,6 +34,10 @@ Thumbs.db
 .idea/
 *.iml
 
+# Claude Code session-local config (não versionar — pode conter paths absolutos
+# ou settings específicos da máquina)
+.claude/
+
 # Python (caso projetos auxiliares apareçam aqui)
 __pycache__/
 *.pyc
