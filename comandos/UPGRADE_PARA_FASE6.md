@@ -33,17 +33,30 @@ Comece pelo Passo 0 (diagnóstico) e mostre o resultado antes de executar Passos
 ### Passo 0 — Diagnóstico
 
 1. Determinar fase atual do projeto:
+   - **Ler `.percus-version` na raiz** (se existir) — declara versão do canon adotada. Se ausente, projeto está pré-Fase-6.
    - Procurar plugin instalado: `percus-review` versão.
    - Verificar presença de `AGENTS.md`, `CLAUDE.md`, hooks Layer 2 (`.git/hooks/pre-commit`).
-   - Verificar `.env` tem `DEEPSEEK_API_KEY`, `GROQ_API_KEY` (Fase 6 nova).
+   - Verificar API keys (Fase 6 v6.3.0 — User-scope é a fonte preferida; `.env` local é override opcional):
+     ```powershell
+     @('DEEPSEEK_API_KEY','GROQ_API_KEY','ANTHROPIC_API_KEY','PAINEL_API_URL','CATALOG_INGEST_KEY') | ForEach-Object {
+         $userScope = [Environment]::GetEnvironmentVariable($_, 'User')
+         $envFile   = if (Test-Path .env) { (Select-String -Path .env -Pattern "^$_=" -Quiet) } else { $false }
+         "$_ : User=$([bool]$userScope) .env=$envFile"
+     }
+     ```
+     Se alguma key falta em ambos lugares, ANTES de pedir pro user criar `.env`: instruir setup User-scope conforme `AMBIENTE_LOCAL_OPERADOR.md` seção "API keys do kit Percus" (resolve de uma vez pra TODOS projetos da máquina). Só sugira `.env` local se o user precisar de chave dedicada pra este projeto especificamente.
    - Verificar se já tem `catalog-info.yaml` (Fase 6).
-2. Listar o que falta pra Fase 6:
-   - Plugin precisa bump? (Fase 5 → 6)
-   - `GROQ_API_KEY` ausente?
+2. Comparar `.percus-version` do projeto com `CANON_VERSION.md` (canônica):
+   - Se igual → projeto já está atualizado. Reporte e pare.
+   - Se ausente OU menor → upgrade necessário; liste deltas.
+3. Listar o que falta pra Fase 6 atual:
+   - Plugin precisa bump? (Fase 5 → 6, ou v6.x older → v6.3.0+)
+   - `GROQ_API_KEY` ou `ANTHROPIC_API_KEY` ausente?
    - Sem `catalog-info.yaml`?
    - Sem `docs/adrs/`?
+   - Sem `.percus-version`?
    - Env vars locais não setadas (`PIP_CACHE_DIR`, etc.)?
-3. Reportar ao operador com plano de execução. Não avançar sem confirmação.
+4. Reportar ao operador com plano de execução. Não avançar sem confirmação.
 
 ### Passo 1 — Ambiente local do operador (Eixo E)
 
@@ -124,15 +137,30 @@ Detalhes em:
 2. Tentar commitar arquivo com `TODO:` em pasta sensível — hook mock-scan deve bloquear.
 3. Abrir `https://gestao.ads4pros.com/gestao/features.html` — projeto deve aparecer com features declaradas.
 
-### Passo 7 — Commit do upgrade
+### Passo 7 — Declarar versão do canon adotada
+
+Crie/atualize `.percus-version` na raiz do projeto com a versão exata do canon (mesma do `plugin.json` do plugin instalado):
+
+```powershell
+# Descobrir versão atual do canon (canônica em huboperacional/percus-kit)
+$canonVersion = (Get-Content "D:\Claud Automations\_Novo_Projeto\plugin\percus-review\plugin.json" -Raw | ConvertFrom-Json).version
+# Gravar no projeto-alvo
+Set-Content -Path ".percus-version" -Value $canonVersion -Encoding utf8 -NoNewline
+Get-Content .percus-version  # confirma: deve mostrar "6.3.0" ou superior
+```
+
+Isso documenta no git **exatamente** quando o projeto migrou, e ferramentas futuras (analyze-council-spend, catalog dashboard) podem agregar por versão.
+
+### Passo 8 — Commit do upgrade
 
 ```bash
-git add catalog-info.yaml docs/adrs/ CLAUDE.md .env.example
-git commit -m "feat(percus): upgrade para Fase 6 do canon Percus
+git add catalog-info.yaml docs/adrs/ CLAUDE.md .env.example .percus-version
+git commit -m "feat(percus): upgrade para Fase 6 do canon Percus (v6.3.0)
 
 - Feature catalog adopted (ADR-0001)
 - Conselho 3-membros configurado (DeepSeek + Cross-Claude + Llama)
 - AGENTS.md / CLAUDE.md atualizados pra Fase 6
+- .percus-version declara 6.3.0
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```

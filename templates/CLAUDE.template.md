@@ -3,6 +3,20 @@
 > Substitua {placeholders} ao copiar para um projeto novo.
 > Apague esta linha de instrução depois.
 
+## Versão do canon Percus adotada
+
+**Versão:** ver `.percus-version` na raiz deste projeto.
+
+Esse arquivo (uma linha com semver, ex: `6.3.0`) declara qual versão do canon Percus este projeto adotou no último upgrade. Agente Claude — pra saber quais regras valem (R1–R19 da v6.x; R14–R18 não existem em v4.x; auto-trigger review é v5.1.0+; conselho 3-membros é v6.1.0+; model router automático é v6.3.0+).
+
+**Protocolo no primeiro turno de cada sessão** (não negociável):
+1. Rodar `Get-Content .percus-version` (ou `cat .percus-version` em bash) — capturar versão do projeto.
+2. Rodar `Get-Content "D:\Claud Automations\_Novo_Projeto\CANON_VERSION.md" -TotalCount 5` — capturar versão canônica atual.
+3. Declarar em voz alta no primeiro turno: "Projeto na versão X.Y.Z, canônica atual A.B.C — alinhado/divergente."
+4. Se divergente, sugerir ao usuário rodar `comandos/UPGRADE_PARA_FASE6.md` (ou mais recente) antes de qualquer trabalho não-trivial.
+
+Sem essa declaração no primeiro turno, agente pode aplicar regras erradas (ex: tentar usar `/council:pre-mortem` num projeto v5.0.x onde nem existe).
+
 ## O que é este projeto
 
 {2-3 linhas descrevendo propósito, público, problema que resolve}
@@ -149,6 +163,8 @@ pwsh -File "D:\Claud Automations\_Novo_Projeto\scripts\percus-milestone-review-a
 Marco é SEMPRE dual — wrapper sempre emite marker `__PERCUS_NEEDS_CROSS_CLAUDE__`, agente sempre dispatcha Sonnet adicional.
 
 **Caso especial — usuário commitando manualmente no terminal:** Layer 2 (git hook nativo) bloqueia se não houver review fresco. Usuário roda `/percus-review:review` no chat manualmente nesse caso. Auto-trigger é só do agente, não do humano.
+
+**Skills vs slash commands do plugin** (leitura obrigatória antes de mencionar `/algo:coisa` pro user): `D:\Claud Automations\_Novo_Projeto\comandos\SKILLS_VS_COMMANDS.md`. Resumo: slash commands são digitados pelo user. Skills são auto-trigger pelo agente via `Skill` tool — **não existem** como slash command. Se você (agente) está prestes a pedir pro user "rodar `/percus-review:feature-flow`", `/percus-review:tracking-audit`, ou qualquer outro nome listado em `plugin/percus-review/skills/`, **PARE** — invoque você mesmo via `Skill` tool.
 
 Setup primeira vez: `D:\Claud Automations\_Novo_Projeto\comandos\SETUP_REVIEW_ROUTING.md`.
 Regras que o revisor usa: `AGENTS.md` (irmão deste arquivo, na raiz do projeto).

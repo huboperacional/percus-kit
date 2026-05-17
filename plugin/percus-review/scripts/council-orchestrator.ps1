@@ -63,14 +63,14 @@ if (Test-Path $_envPath) {
     }
 }
 
-function Estimate-Tokens([string]$text) {
+function Measure-Tokens([string]$text) {
     if (-not $text) { return 0 }
     # Heuristica conservadora: 1 token ~ 3.5 chars (overestima leve, evita undertruncate)
     return [int]([Math]::Ceiling($text.Length / 3.5))
 }
 
-function Truncate-Prompt([string]$text, [int]$maxTok) {
-    $tok = Estimate-Tokens $text
+function Limit-Prompt([string]$text, [int]$maxTok) {
+    $tok = Measure-Tokens $text
     if ($tok -le $maxTok) { return @{ text = $text; truncated = $false; original_tokens = $tok } }
     # Preservar 1000 tokens iniciais (~3500 chars) + resto final
     $headChars = 3500
@@ -139,11 +139,11 @@ if ($useDirectClaude) {
 
 # F.5 smart truncation conservador
 $combinedForCheck = "$SystemPrompt`n$userPrompt"
-$trunc = Truncate-Prompt $combinedForCheck $MaxInputTokens
+$trunc = Limit-Prompt $combinedForCheck $MaxInputTokens
 if ($trunc.truncated) {
     [Console]::Error.WriteLine("[council-orchestrator] AVISO: prompt truncado de $($trunc.original_tokens) -> ~$MaxInputTokens tokens.")
     # Aplicar truncation apenas ao userPrompt; SystemPrompt fica intacto (e curto)
-    $userTrunc = Truncate-Prompt $userPrompt ($MaxInputTokens - (Estimate-Tokens $SystemPrompt))
+    $userTrunc = Limit-Prompt $userPrompt ($MaxInputTokens - (Measure-Tokens $SystemPrompt))
     $userPrompt = $userTrunc.text
 }
 

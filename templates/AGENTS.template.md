@@ -21,6 +21,8 @@ Quando review é disparado (manual via `/percus-review:review` OU auto-trigger v
 
 **Nota sobre auto-trigger (v5.1.0+):** o agente Claude Code chama o wrapper diretamente antes de cada commit que ele executa. Comportamento do reviewer é idêntico (mesmo prompt, mesmo formato de findings) — só a invocação muda. Não precisa adaptar nada deste lado.
 
+**Nota sobre skills vs slash commands (v6.0+):** o plugin `percus-review` tem 2 tipos de extensão. **Slash commands** (`/percus-review:review`, `/council:pre-mortem`, etc) são digitados pelo user no chat. **Skills** (`feature-flow`, `close-milestone`, `delegate-impl`, `tracking-audit`, `security-audit`, `cookie-audit`, `pages-scan`, `catalog-publish`) são **auto-trigger pelo agente** via `Skill` tool — não existem como slash command. Se um agente pedir pro user "rodar `/percus-review:feature-flow`" ou similar, **ele errou** — ele mesmo deveria ter invocado via `Skill` tool. Referência completa: `D:/Claud Automations/_Novo_Projeto/comandos/SKILLS_VS_COMMANDS.md`.
+
 ---
 
 ## O que é este projeto

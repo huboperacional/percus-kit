@@ -2,15 +2,15 @@
 tipo: configuracao-maquina
 prevalece-sobre: nenhum (orientação operacional)
 prevalecido-por: [01_REGRAS_INEGOCIAVEIS]
-quando-usar: ao configurar máquina nova OU recuperar de "C: cheio"
-leitura: 3 min
-ultima-atualizacao: 2026-05-15
+quando-usar: ao configurar máquina nova OU recuperar de "C: cheio" OU adicionar nova API key sem precisar tocar em cada projeto
+leitura: 4 min
+ultima-atualizacao: 2026-05-17
 fase-introducao: Fase 6 (Eixo E do plano de refatoração)
 ---
 
 # Ambiente Local do Operador — convenção Percus
 
-> **Por que existe:** projetos Percus moram em `D:\Claud Automations\`. Caches de ferramentas (npm, pip, HF, Playwright, Claude Code) **NÃO** devem encher `C:\Users\<user>\AppData\`. Esta convenção define as env vars padrão.
+> **Por que existe:** projetos Percus moram em `D:\Claud Automations\`. Caches de ferramentas (npm, pip, HF, Playwright, Claude Code) **NÃO** devem encher `C:\Users\<user>\AppData\`. **API keys do kit Percus** (DeepSeek, Groq, Anthropic, Painel) ficam em env vars User-scope — assim qualquer projeto novo já enxerga sem precisar copiar pra `.env` local. Esta convenção define as env vars padrão.
 
 ---
 
@@ -48,6 +48,51 @@ npm config set cache 'D:\caches\npm-cache' --global
 ```
 
 Após setar, **reabrir o terminal** pra env vars persistentes carregarem.
+
+---
+
+## API keys do kit Percus (User-scope — define UMA vez, vale pra todos projetos)
+
+**Problema que resolve:** todo projeto novo Percus precisa de DeepSeek + Groq + Anthropic + Painel keys. Antes desta seção, cada projeto pedia `.env` local com as 4-5 keys, repetidamente. Solução: env vars User-scope. Wrappers (`deepseek.ps1`, `groq-llama.ps1`, `cross-claude.ps1`, etc) já fazem `if (-not $env:KEY) { load .env do cwd }` — se a key já estiver no env do user, eles enxergam sem precisar `.env` no projeto.
+
+**Override por projeto continua funcionando:** se um projeto precisar de chave dedicada (ex: cliente próprio com sua conta Anthropic), basta criar `.env` na raiz com `ANTHROPIC_API_KEY=sk-...` — o `.env` do cwd vence o User-scope (ordem dos wrappers: env atual → load .env se ausente).
+
+```powershell
+# DeepSeek (R11 review + R13 implementador)
+[Environment]::SetEnvironmentVariable('DEEPSEEK_API_KEY', 'sk-...', 'User')
+
+# Groq (Llama 3.3 70B, conselho 3-membros Fase 6+)
+[Environment]::SetEnvironmentVariable('GROQ_API_KEY', 'gsk_...', 'User')
+
+# Anthropic (wrapper Cross-Claude direto com cache_control — Fase 6 v6.3.0+)
+[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', 'sk-ant-...', 'User')
+
+# Painel Ads4Pros (catalog-publish e on-stop hook)
+[Environment]::SetEnvironmentVariable('PAINEL_API_URL', 'https://api.ads4pros.com', 'User')
+[Environment]::SetEnvironmentVariable('CATALOG_INGEST_KEY', '...', 'User')
+```
+
+**Após setar, REABRIR todos os terminais** (VS Code + PowerShell) pra env vars persistentes recarregarem.
+
+**Como obter cada key:**
+
+| Key | Onde obter | Plano gratuito? |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | https://platform.deepseek.com | Não — pay-as-you-go, ~$0.27/Mtoken in |
+| `GROQ_API_KEY` | https://console.groq.com | **Sim** — free tier 30 req/min |
+| `ANTHROPIC_API_KEY` | https://console.anthropic.com | Pay-as-you-go, $3-15/Mtoken in |
+| `PAINEL_API_URL` | Fixo em `https://api.ads4pros.com` (interno Percus) | — |
+| `CATALOG_INGEST_KEY` | Operador (você) — gerar/recuperar do Painel admin | — |
+
+**Verificação rápida pós-setup:**
+```powershell
+@('DEEPSEEK_API_KEY','GROQ_API_KEY','ANTHROPIC_API_KEY','PAINEL_API_URL','CATALOG_INGEST_KEY') | ForEach-Object {
+    $v = [Environment]::GetEnvironmentVariable($_, 'User')
+    [PSCustomObject]@{ Key = $_; Set = [bool]$v; Preview = if ($v) { $v.Substring(0,[Math]::Min(8,$v.Length)) + '…' } else { '' } }
+}
+```
+
+**Anti-pattern explícito:** NÃO commite `.env` com essas keys em nenhum repo. `.env` está no `.gitignore` global do kit. Se você precisa de override por projeto, use `.env` local (gitignored).
 
 ---
 
@@ -103,11 +148,17 @@ Itens que NÃO podem ser movidos só por env var. Operador faz uma vez:
 # Espaço em todas as drives
 Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 } | Select-Object Name, @{N='UsedGB';E={[math]::Round($_.Used/1GB,2)}}, @{N='FreeGB';E={[math]::Round($_.Free/1GB,2)}}
 
-# Confirmar env vars
+# Confirmar env vars caches
 [Environment]::GetEnvironmentVariable('PIP_CACHE_DIR', 'User')
 [Environment]::GetEnvironmentVariable('PLAYWRIGHT_BROWSERS_PATH', 'User')
 [Environment]::GetEnvironmentVariable('HF_HOME', 'User')
 npm config get cache
+
+# Confirmar env vars de API keys do kit Percus
+@('DEEPSEEK_API_KEY','GROQ_API_KEY','ANTHROPIC_API_KEY','PAINEL_API_URL','CATALOG_INGEST_KEY') | ForEach-Object {
+    $v = [Environment]::GetEnvironmentVariable($_, 'User')
+    "$_ : $(if ($v) { 'OK' } else { 'MISSING' })"
+}
 
 # Confirmar pasta D:\caches existe e tem conteúdo
 Get-ChildItem D:\caches -Force | Select-Object Name, @{N='SizeGB';E={[math]::Round((Get-ChildItem $_.FullName -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum/1GB,2)}}
@@ -133,6 +184,7 @@ Se algum item falhar, rodar setup desta doc antes de qualquer trabalho.
 ## Histórico
 
 - **2026-05-15**: introdução desta doc após diagnóstico de C: cheio (16 GB livres em 465 GB total). Eixo E do plano "Refatoração estratégica Percus".
+- **2026-05-17**: seção "API keys do kit Percus (User-scope)" adicionada. Resolve "todo projeto novo pede as mesmas 5 keys". Wrappers existentes já honram `$env:KEY` antes de tentar carregar `.env` — então env vars User-scope se tornam fonte primária, `.env` por projeto vira override opcional.
 
 ## Referências
 
