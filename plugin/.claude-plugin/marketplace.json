@@ -5,8 +5,8 @@
   "plugins": [
     {
       "name": "percus-review",
-      "description": "Review cross-provider Percus (DeepSeek + Cross-Claude)",
-      "version": "1.0.0",
+      "description": "Review cross-provider Percus (DeepSeek + Groq-Llama + Cross-Claude) — Fase 6 v6.3.0",
+      "version": "6.3.0",
       "source": "./percus-review"
     }
   ]
