@@ -1,13 +1,13 @@
 ---
 tipo: comando-pronto-para-colar
-fase-destino: Fase 6 (v6.4.0 atual)
+fase-destino: Fase 6 (versão canônica atual em CANON_VERSION.md)
 prevalecido-por: [01_REGRAS_INEGOCIAVEIS Fase 6+]
 quando-usar: levar um projeto Percus existente (Fase 4 ou 5, ou v6.x antiga) pra Fase 6 atual
 leitura: 3 min (uso) · execução típica 30-90 min
 ultima-atualizacao: 2026-05-17
 ---
 
-# Comando — Upgrade de Projeto pra Fase 6 (v6.4.0)
+# Comando — Upgrade de Projeto pra Fase 6 (versão canônica atual)
 
 > **Objetivo:** levar um projeto Percus existente (Fase 4 estável, Fase 5 em adopção, ou Fase 6 antiga v6.x < 6.4.0) pra versão canônica atual: feature tracking + conselho expandido + hooks/skills novas + ambiente local + `.percus-version`.
 >
@@ -37,7 +37,7 @@ Comece pelo Passo 0 (diagnóstico) e mostre o resultado antes de executar Passos
    - **Ler `.percus-version` na raiz** (se existir) — declara versão do canon adotada. Se ausente, projeto está pré-Fase-6.
    - Procurar plugin instalado: `percus-review` versão.
    - Verificar presença de `AGENTS.md`, `CLAUDE.md`, hooks Layer 2 (`.git/hooks/pre-commit`).
-   - Verificar API keys (Fase 6 v6.3.0 — User-scope é a fonte preferida; `.env` local é override opcional):
+   - Verificar API keys (User-scope é a fonte preferida desde v6.4.0; `.env` local é override opcional):
      ```powershell
      @('DEEPSEEK_API_KEY','GROQ_API_KEY','ANTHROPIC_API_KEY','PAINEL_API_URL','CATALOG_INGEST_KEY') | ForEach-Object {
          $userScope = [Environment]::GetEnvironmentVariable($_, 'User')
@@ -156,12 +156,12 @@ Isso documenta no git **exatamente** quando o projeto migrou, e ferramentas futu
 
 ```bash
 git add catalog-info.yaml docs/adrs/ CLAUDE.md .env.example .percus-version
-git commit -m "feat(percus): upgrade para Fase 6 do canon Percus (v6.3.0)
+git commit -m "feat(percus): upgrade para Fase 6 do canon Percus (vX.Y.Z)
 
 - Feature catalog adopted (ADR-0001)
 - Conselho 3-membros configurado (DeepSeek + Cross-Claude + Llama)
 - AGENTS.md / CLAUDE.md atualizados pra Fase 6
-- .percus-version declara 6.3.0
+- .percus-version declara X.Y.Z (substituir pela versão canônica do CANON_VERSION.md)
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
