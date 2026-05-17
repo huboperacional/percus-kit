@@ -35,7 +35,7 @@ def parse_log_file(path: Path) -> list[dict[str, Any]]:
     prompt_text = (data.get("prompt") or "") + "\n" + (data.get("system_prompt") or "")
     entries: list[dict[str, Any]] = []
     for resp in data.get("responses", []) or []:
-        if resp.get("status") != "ok":
+        if not resp or resp.get("status") != "ok":
             continue
         provider = resp.get("provider") or resp.get("model") or "unknown"
         usage = resp.get("usage") or {}
