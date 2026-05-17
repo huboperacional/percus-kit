@@ -54,7 +54,7 @@ ultima-atualizacao: 2026-05-17
 - `DEEPSEEK_API_KEY` no .env
 - `GROQ_API_KEY` no .env (Fase 6 — obter free em console.groq.com)
 - `ANTHROPIC_API_KEY` no .env (opcional — se ausente, Cross-Claude vai por marker+subagent em vez de wrapper direto, funcional mesmo assim)
-- Plugin percus-review **v6.1.0+** instalado (`/council:pre-mortem` foi adicionado em v6.1.0)
+- Plugin percus-review instalado na versão canônica atual (ver `${env:PERCUS_CANON_DIR}/CANON_VERSION.md`). `/council:pre-mortem` foi adicionado em v6.1.0 — qualquer v6.x+ funciona.
 - `docs/scope-council/` ainda não existe (será criado)
 
 ---

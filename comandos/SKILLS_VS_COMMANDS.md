@@ -22,7 +22,7 @@ ultima-atualizacao: 2026-05-17
 
 ---
 
-## Inventário do plugin `percus-review` v6.3.0
+## Inventário do plugin `percus-review` (versão atual em `${env:PERCUS_CANON_DIR}/CANON_VERSION.md`)
 
 ### Slash commands (user digita `/`)
 

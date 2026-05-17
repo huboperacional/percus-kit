@@ -1,6 +1,6 @@
 {
   "name": "percus-review",
-  "version": "6.5.0",
+  "version": "6.5.1",
   "description": "Percus kit Fase 6 v6.5.0 — canon portavel. PERCUS_CANON_DIR env var (User-scope) substitui hardcode D:\\Claud Automations\\_Novo_Projeto em 28 arquivos (comandos, templates, scripts, skills, hooks). SETUP_NOVA_MAQUINA.md (novo) automatiza bootstrap em qualquer maquina (clone + env vars + verificacao). Canon agora funciona de qualquer path. v6.4.0 mantida: versionamento por projeto (.percus-version), SKILLS_VS_COMMANDS, API keys User-scope, SCOPE_COUNCIL Fase 6, PS approved verbs. v6.3.0 mantida: Eixo F (truncation 8k, model router, wrapper Anthropic com cache_control). v6.1.x-v6.2.0 mantidas: conselho 3-membros, hooks pre-commit, skills, on-stop, git hook nativo Layer 2.",
   "author": { "name": "Percus" },
   "commands": "./commands",

@@ -11,7 +11,7 @@ ultima-atualizacao: 2026-05-15
 
 > **Objetivo:** adicionar `catalog-info.yaml` + `docs/adrs/` a um projeto Percus existente, declarando suas features globais. Após este setup, o Painel de Gestão começa a rastrear a evolução de features cross-projeto.
 >
-> **Pré-requisitos:** plugin `percus-review` v6.0.0+ instalado.
+> **Pré-requisitos:** plugin `percus-review` instalado na versão canônica atual (ver `${env:PERCUS_CANON_DIR}/CANON_VERSION.md`). Suporte a catalog foi adicionado em v6.0.0.
 
 ---
 

@@ -51,7 +51,7 @@ Comece pelo Passo 0 (diagnóstico) e mostre o resultado antes de executar Passos
    - Se igual → projeto já está atualizado. Reporte e pare.
    - Se ausente OU menor → upgrade necessário; liste deltas.
 3. Listar o que falta pra Fase 6 atual:
-   - Plugin precisa bump? (Fase 5 → 6, ou v6.x older → v6.3.0+)
+   - Plugin precisa bump? (Fase 5 → 6, ou v6.x older → versão canônica atual em `${env:PERCUS_CANON_DIR}/CANON_VERSION.md`)
    - `GROQ_API_KEY` ou `ANTHROPIC_API_KEY` ausente?
    - Sem `catalog-info.yaml`?
    - Sem `docs/adrs/`?
