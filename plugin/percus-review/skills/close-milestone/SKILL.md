@@ -1,6 +1,6 @@
 ---
 name: close-milestone
-description: Use when closing a milestone in Percus project — end of numbered phase, feature group in epic, or "ready for next step" transition. Runs /percus-review:milestone-review and marks ✓ in PLANO/HANDOFF.
+description: Use when explicitly declaring a numbered Percus phase or epic feature group closed (e.g. "Fase X concluida", "fechar milestone", "marcar Eixo Y"). Runs /percus-review:milestone-review checklist and marks ✓ in PLANO/HANDOFF. Do NOT trigger for routine commits or task completions — only for formal milestone closure.
 ---
 
 # Percus Close Milestone

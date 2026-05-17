@@ -1,6 +1,6 @@
 ---
 name: pages-scan
-description: Use to scan project routes/pages and push them to the Painel de Gestao. Auto-detects FastAPI (@app.get/@app.post), Next.js (app/**/page.tsx), and static HTML (static/**/*.html). Auto-invoked by pre-commit and on-stop hooks.
+description: Use when explicitly asked to extract/sync routes or pages to the Painel de Gestao (POST /admin/pages/ingest). Targets FastAPI (@app.get/@app.post), Next.js (app/**/page.tsx), and static HTML — not generic code scanning or auditing. Auto-invoked by pre-commit and on-stop hooks; manually invoke only when catalog is stale or after adding new routes.
 ---
 
 # Percus — Pages Scan
