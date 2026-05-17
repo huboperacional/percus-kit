@@ -1,20 +1,21 @@
 ---
 tipo: comando-pronto-para-colar
-fase-destino: Fase 6
+fase-destino: Fase 6 (v6.4.0 atual)
 prevalecido-por: [01_REGRAS_INEGOCIAVEIS Fase 6+]
-quando-usar: levar um projeto Percus existente (Fase 4 ou 5) pra Fase 6
+quando-usar: levar um projeto Percus existente (Fase 4 ou 5, ou v6.x antiga) pra Fase 6 atual
 leitura: 3 min (uso) · execução típica 30-90 min
-ultima-atualizacao: 2026-05-15
+ultima-atualizacao: 2026-05-17
 ---
 
-# Comando — Upgrade de Projeto pra Fase 6
+# Comando — Upgrade de Projeto pra Fase 6 (v6.4.0)
 
-> **Objetivo:** levar um projeto Percus existente (Fase 4 estável ou Fase 5 em adopção) pra Fase 6: feature tracking + conselho expandido + hooks/skills novas + ambiente local sanitizado.
+> **Objetivo:** levar um projeto Percus existente (Fase 4 estável, Fase 5 em adopção, ou Fase 6 antiga v6.x < 6.4.0) pra versão canônica atual: feature tracking + conselho expandido + hooks/skills novas + ambiente local + `.percus-version`.
 >
 > **Pré-requisitos:**
 > - Repo do projeto-alvo aberto no Claude Code.
-> - `_Novo_Projeto` na versão v6.0.0+ (verificar git tag).
-> - Plugin `percus-review` v6.0.0+ instalado globalmente.
+> - Versão canônica atual: ver `D:\Claud Automations\_Novo_Projeto\CANON_VERSION.md`.
+> - Plugin `percus-review` na versão canônica atual instalado globalmente (UI "Manage plugins" do VS Code → Update `percus-tools` → Reinstall `percus-review` → Reload Window).
+> - API keys do kit Percus em User-scope env vars (ver `AMBIENTE_LOCAL_OPERADOR.md` seção "API keys do kit Percus").
 
 ---
 
