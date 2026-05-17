@@ -83,7 +83,7 @@ Revisor não é mais um único modelo (Codex foi descontinuado em 2026-05-03 por
 | Pre-commit de saída DeepSeek (trailer `Co-implemented-by: deepseek-v4`) | Cross-Claude apenas | $0 |
 | Marco | DeepSeek + Cross-Claude duplo | ~$0.05 + $0 |
 
-Canal: plugin `@percus/review` (instalar via `/plugin install percus-review`). Setup completo em `D:/Claud Automations/_Novo_Projeto/comandos/SETUP_REVIEW_ROUTING.md`.
+Canal: plugin `@percus/review` (instalar via `/plugin install percus-review`). Setup completo em `${env:PERCUS_CANON_DIR}/comandos/SETUP_REVIEW_ROUTING.md`.
 
 **Por que sem Codex/OpenAI:** custo era ~$1.25/M input + reasoning effort não controlável + escopo de leitura amplo decidido pelo modelo. Em ritmo de uso real, projetava $200-400/mês. DeepSeek + Cross-Claude duplo cobre cross-provider (DeepSeek Inc ≠ Anthropic) com custo agregado $2-5/mês.
 
@@ -134,7 +134,7 @@ Para tasks tão pequenas que não compensam orquestrar (ex.: trocar uma string e
 
 ### Pré-requisitos
 - Estar dentro de um projeto Percus com `DEEPSEEK_API_KEY` no `.env` (wrapper auto-carrega)
-- Wrapper presente em `D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.{ps1,sh}`
+- Wrapper presente em `${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.{ps1,sh}`
 - `CLAUDE.md` e `AGENTS.md` do projeto existem (DeepSeek lê via `--rules` pra herdar regras Percus)
 
 ### Passo 1 — Validar elegibilidade
@@ -164,7 +164,7 @@ Se faltar `AGENTS.md`, o DeepSeek implementaria sem regras Percus — pare e ori
 
 Windows / PowerShell:
 ```powershell
-powershell -File "D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.ps1" `
+powershell -File "${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.ps1" `
   -Task "<plano.md>" `
   -Files "<arquivo1>","<arquivo2>" `
   -DryRun
@@ -172,7 +172,7 @@ powershell -File "D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.ps1" 
 
 Linux / Mac / WSL:
 ```bash
-bash "D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.sh" \
+bash "${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.sh" \
   --task "<plano.md>" \
   --files "<arquivo1>,<arquivo2>" \
   --dry-run
@@ -194,7 +194,7 @@ Antes de propor `--apply` ao usuário, cheque:
 ### Passo 5 — Aplicar (apenas com autorização explícita do usuário)
 
 ```powershell
-powershell -File "D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.ps1" `
+powershell -File "${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.ps1" `
   -Task "<plano.md>" `
   -Files "..." `
   -Apply

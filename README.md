@@ -30,7 +30,7 @@ Este repositório é a **fonte da verdade** das convenções Percus aplicadas em
 ### Quero atualizar um projeto em andamento para Fase 4
 Cole no chat do Claude Code do projeto-alvo:
 ```
-Aplique o upgrade Fase 4 neste projeto seguindo `D:\Claud Automations\_Novo_Projeto\comandos\UPGRADE_PARA_FASE4.md`.
+Aplique o upgrade Fase 4 neste projeto seguindo `${env:PERCUS_CANON_DIR}\comandos\UPGRADE_PARA_FASE4.md`.
 
 Comece pelo Passo 0 (diagnóstico de estado). NÃO execute Passos 1-3 ainda — só me mostre o resultado do diagnóstico e qual caminho (A/B/C) será seguido. Aguarde minha confirmação antes de prosseguir.
 ```
@@ -38,13 +38,13 @@ Comece pelo Passo 0 (diagnóstico de estado). NÃO execute Passos 1-3 ainda — 
 ### Quero iniciar projeto novo greenfield
 Cole no chat do Claude Code do projeto-alvo:
 ```
-Vou iniciar um projeto novo Percus. Leia D:\Claud Automations\_Novo_Projeto\00_LEIA_PRIMEIRO.md e siga o roteamento "Projeto NOVO greenfield".
+Vou iniciar um projeto novo Percus. Leia ${env:PERCUS_CANON_DIR}\00_LEIA_PRIMEIRO.md e siga o roteamento "Projeto NOVO greenfield".
 ```
 
 ### Quero auditar saúde da Fase 4 num projeto
 Cole:
 ```
-Faça healthcheck Fase 4 deste projeto, conforme `D:\Claud Automations\_Novo_Projeto\comandos\HEALTHCHECK_FASE2.md`.
+Faça healthcheck Fase 4 deste projeto, conforme `${env:PERCUS_CANON_DIR}\comandos\HEALTHCHECK_FASE2.md`.
 ```
 
 ---

@@ -55,7 +55,7 @@ ultima-atualizacao: 2026-05-03
 | `council:brainstorm` | Sessão `superpowers:brainstorming` (opt-in) | Conselho opina junto a cada `AskUserQuestion` do Claude |
 | `council:drift-detect` | Investigar divergência cross-projeto de feature | Lê catalog-info.yaml + ADRs + commits, lista divergências |
 
-Detalhes completos: `D:\Claud Automations\_Novo_Projeto\06_CONSELHO_PERCUS.md`.
+Detalhes completos: `${env:PERCUS_CANON_DIR}\06_CONSELHO_PERCUS.md`.
 
 ## Antipatterns
 
@@ -66,4 +66,4 @@ Detalhes completos: `D:\Claud Automations\_Novo_Projeto\06_CONSELHO_PERCUS.md`.
 ## Referências
 
 - Plugin instalado em `~/.claude/plugins/superpowers-dev/`
-- R9 do canon: `D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md`
+- R9 do canon: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md`

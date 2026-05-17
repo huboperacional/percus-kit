@@ -160,7 +160,7 @@ Cenário: você quer adicionar uma pessoa a uma org no seu produto. Email/phone 
 ## Referências
 
 - `D:\Claud Automations\OWNERSHIP.md` — quadro de ownership e árvore de decisão.
-- `D:\Claud Automations\_Novo_Projeto\01_REGRAS_INEGOCIAVEIS.md` — R7 (auth padrão), R17 (magic links), R19 (identidade canônica).
+- `${env:PERCUS_CANON_DIR}\01_REGRAS_INEGOCIAVEIS.md` — R7 (auth padrão), R17 (magic links), R19 (identidade canônica).
 - `D:\Claud Automations\Plexco Tasks\backend\app\api\deps.py` — exemplo real de validação JWT.
 - `D:\Claud Automations\Plexco Tasks\backend\app\api\v1\invitations.py` — exemplo de fluxo de convite (em transição na Etapa 2 do Strangler Fig).
 - `D:\Claud Automations\.claude-home\plans\agora-parece-queu-o-ancient-cloud.md` — plano Strangler Fig completo.

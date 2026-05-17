@@ -13,7 +13,7 @@ ultima-atualizacao: 2026-05-17
 >
 > **Pré-requisitos:**
 > - Repo do projeto-alvo aberto no Claude Code.
-> - Versão canônica atual: ver `D:\Claud Automations\_Novo_Projeto\CANON_VERSION.md`.
+> - Versão canônica atual: ver `${env:PERCUS_CANON_DIR}\CANON_VERSION.md`.
 > - Plugin `percus-review` na versão canônica atual instalado globalmente (UI "Manage plugins" do VS Code → Update `percus-tools` → Reinstall `percus-review` → Reload Window).
 > - API keys do kit Percus em User-scope env vars (ver `AMBIENTE_LOCAL_OPERADOR.md` seção "API keys do kit Percus").
 
@@ -22,7 +22,7 @@ ultima-atualizacao: 2026-05-17
 ## Cole no chat do Claude Code do projeto-alvo
 
 ```
-Aplique upgrade Fase 6 neste projeto seguindo `D:\Claud Automations\_Novo_Projeto\comandos\UPGRADE_PARA_FASE6.md`.
+Aplique upgrade Fase 6 neste projeto seguindo `${env:PERCUS_CANON_DIR}\comandos\UPGRADE_PARA_FASE6.md`.
 
 Comece pelo Passo 0 (diagnóstico) e mostre o resultado antes de executar Passos 1-5. Aguarde minha confirmação.
 ```
@@ -127,9 +127,9 @@ Este projeto adota Fase 6 do canon Percus:
 - Hooks novos: mock-scan, types-check, migration-check, auth-import.
 
 Detalhes em:
-- `D:\Claud Automations\_Novo_Projeto\05_FEATURE_TRACKING.md`
-- `D:\Claud Automations\_Novo_Projeto\06_CONSELHO_PERCUS.md`
-- `D:\Claud Automations\_Novo_Projeto\_AUDIT_2026-05-15.md`
+- `${env:PERCUS_CANON_DIR}\05_FEATURE_TRACKING.md`
+- `${env:PERCUS_CANON_DIR}\06_CONSELHO_PERCUS.md`
+- `${env:PERCUS_CANON_DIR}\_AUDIT_2026-05-15.md`
 ```
 
 ### Passo 6 — Validação
@@ -144,7 +144,7 @@ Crie/atualize `.percus-version` na raiz do projeto com a versão exata do canon 
 
 ```powershell
 # Descobrir versão atual do canon (canônica em huboperacional/percus-kit)
-$canonVersion = (Get-Content "D:\Claud Automations\_Novo_Projeto\plugin\percus-review\plugin.json" -Raw | ConvertFrom-Json).version
+$canonVersion = (Get-Content "${env:PERCUS_CANON_DIR}\plugin\percus-review\plugin.json" -Raw | ConvertFrom-Json).version
 # Gravar no projeto-alvo
 Set-Content -Path ".percus-version" -Value $canonVersion -Encoding utf8 -NoNewline
 Get-Content .percus-version  # confirma: deve mostrar "6.3.0" ou superior

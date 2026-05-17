@@ -105,14 +105,14 @@ Adicionar em `~/.claude/settings.json` (criar arquivo se não existir, mesclar c
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "powershell -File \"D:/Claud Automations/_Novo_Projeto/plugin/percus-review/tests/smoke-hook-format.ps1\"" }
+          { "type": "command", "command": "powershell -File \"${env:PERCUS_CANON_DIR}/plugin/percus-review/tests/smoke-hook-format.ps1\"" }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "powershell -File \"D:/Claud Automations/_Novo_Projeto/plugin/percus-review/tests/smoke-hook-format.ps1\"" }
+          { "type": "command", "command": "powershell -File \"${env:PERCUS_CANON_DIR}/plugin/percus-review/tests/smoke-hook-format.ps1\"" }
         ]
       }
     ]
@@ -177,7 +177,7 @@ git commit -m "test(hooks): smoke validate Claude Code hook stdin format (T0a/T0
 - [ ] **Step 2: Verificar que plugin.json existente do percus-review está válido**
 
 ```bash
-cat "D:/Claud Automations/_Novo_Projeto/plugin/percus-review/plugin.json"
+cat "${env:PERCUS_CANON_DIR}/plugin/percus-review/plugin.json"
 ```
 
 Confirmar que tem `name: "percus-review"` e estrutura mínima.
@@ -185,7 +185,7 @@ Confirmar que tem `name: "percus-review"` e estrutura mínima.
 - [ ] **Step 3: Smoke test instalação no chat Claude Code (terminal `claude`)**
 
 ```
-/plugin marketplace add D:/Claud Automations/_Novo_Projeto/plugin
+/plugin marketplace add ${env:PERCUS_CANON_DIR}/plugin
 ```
 
 Esperado: `Successfully added marketplace: percus-tools`
@@ -241,7 +241,7 @@ claude
 
 No chat:
 \`\`\`
-/plugin marketplace add D:/Claud Automations/_Novo_Projeto/plugin
+/plugin marketplace add ${env:PERCUS_CANON_DIR}/plugin
 /plugin install percus-review
 \`\`\`
 
@@ -337,16 +337,16 @@ Invoque `percus-review:close-milestone` ao fechar fase/feature/épico (skill irm
 - **R13:** trailer `Co-implemented-by: deepseek-v4` no commit se aplicar saída do wrapper
 
 ## Referência completa
-`D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md`
+`${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md`
 
 ## Skills upstream que invoco
-Ver `D:/Claud Automations/_Novo_Projeto/comandos/USANDO_SUPERPOWERS.md` (tabela Tier 1).
+Ver `${env:PERCUS_CANON_DIR}/comandos/USANDO_SUPERPOWERS.md` (tabela Tier 1).
 ```
 
 - [ ] **Step 2: Validar tamanho do arquivo**
 
 ```bash
-wc -c "D:/Claud Automations/_Novo_Projeto/plugin/percus-review/skills/feature-flow/SKILL.md"
+wc -c "${env:PERCUS_CANON_DIR}/plugin/percus-review/skills/feature-flow/SKILL.md"
 ```
 
 Esperado: 3000-4500 bytes. Se > 5000, comprimir.
@@ -426,13 +426,13 @@ Aplicar em `docs/PLANO.md` E `HANDOFF.md` (espelhos da R2).
 - ❌ Marcar ✓ retroativo em features já em [5-T] sem auditoria do escopo
 
 ## Referência
-`D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md` R11 (Review cross-provider)
+`${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` R11 (Review cross-provider)
 ```
 
 - [ ] **Step 2: Validar tamanho**
 
 ```bash
-wc -c "D:/Claud Automations/_Novo_Projeto/plugin/percus-review/skills/close-milestone/SKILL.md"
+wc -c "${env:PERCUS_CANON_DIR}/plugin/percus-review/skills/close-milestone/SKILL.md"
 ```
 
 Esperado: 1200-1800 bytes.
@@ -454,7 +454,7 @@ git commit -m "feat(skills): add close-milestone skill for R11 milestone gate"
 - [ ] **Step 1: Ler estado atual**
 
 ```bash
-cat "D:/Claud Automations/_Novo_Projeto/plugin/percus-review/plugin.json"
+cat "${env:PERCUS_CANON_DIR}/plugin/percus-review/plugin.json"
 ```
 
 - [ ] **Step 2: Adicionar campo `skills` (formato depende de Claude Code v2.x — confirmar via doc oficial ou via plugin existente como `superpowers-dev`)**
@@ -568,7 +568,7 @@ if ($failed -eq 0) {
 - [ ] **Step 2: Rodar smoke test (deve FALHAR — hook não existe ainda)**
 
 ```powershell
-powershell -File "D:/Claud Automations/_Novo_Projeto/plugin/percus-review/tests/smoke-pre-commit.ps1"
+powershell -File "${env:PERCUS_CANON_DIR}/plugin/percus-review/tests/smoke-pre-commit.ps1"
 ```
 
 Esperado: erro "hook não encontrado" ou todos os testes falhando. Confirma que estamos no estado esperado pré-implementação.
@@ -632,7 +632,7 @@ try {
 - [ ] **Step 4: Rodar smoke test (deve PASSAR agora)**
 
 ```powershell
-powershell -File "D:/Claud Automations/_Novo_Projeto/plugin/percus-review/tests/smoke-pre-commit.ps1"
+powershell -File "${env:PERCUS_CANON_DIR}/plugin/percus-review/tests/smoke-pre-commit.ps1"
 ```
 
 Esperado: 3 PASS.
@@ -766,7 +766,7 @@ else { Write-Host "`n$failed FAILED" -ForegroundColor Red; exit 1 }
 - [ ] **Step 2: Rodar smoke (deve FALHAR — hook não existe)**
 
 ```powershell
-powershell -File "D:/Claud Automations/_Novo_Projeto/plugin/percus-review/tests/smoke-on-stop.ps1"
+powershell -File "${env:PERCUS_CANON_DIR}/plugin/percus-review/tests/smoke-on-stop.ps1"
 ```
 
 Esperado: erro "hook não encontrado" ou todos casos falhando.
@@ -829,7 +829,7 @@ try {
 - [ ] **Step 4: Rodar smoke (deve PASSAR)**
 
 ```powershell
-powershell -File "D:/Claud Automations/_Novo_Projeto/plugin/percus-review/tests/smoke-on-stop.ps1"
+powershell -File "${env:PERCUS_CANON_DIR}/plugin/percus-review/tests/smoke-on-stop.ps1"
 ```
 
 Esperado: 3 PASS.
@@ -1007,7 +1007,7 @@ git commit -m "docs(canon): update R8/R9 with Fase 5 mechanic gates and skills"
 - [ ] **Step 2: Validar tamanho ~1.2 KB**
 
 ```bash
-wc -c "D:/Claud Automations/_Novo_Projeto/comandos/USANDO_SUPERPOWERS.md"
+wc -c "${env:PERCUS_CANON_DIR}/comandos/USANDO_SUPERPOWERS.md"
 ```
 
 - [ ] **Step 3: Linkar de R9 do canon**
@@ -1055,7 +1055,7 @@ git push "https://huboperacional:${TOKEN}@github.com/huboperacional/percus-kit.g
 Em cada projeto (Padrão Comportamento Humano, Plexco Tasks, etc):
 ```
 /plugin uninstall percus-review
-/plugin marketplace add D:/Claud Automations/_Novo_Projeto/plugin   # se ainda não tem
+/plugin marketplace add ${env:PERCUS_CANON_DIR}/plugin   # se ainda não tem
 /plugin install percus-review
 ```
 
@@ -1106,7 +1106,7 @@ Mínimo viável de calibração (do spec):
 - [ ] **Step 4: Merge fase5 → main**
 
 ```bash
-cd "D:/Claud Automations/_Novo_Projeto"
+cd "${env:PERCUS_CANON_DIR}"
 git checkout main
 git merge --no-ff fase5-superpowers-adoption -m "feat: Fase 5 — Superpowers adoption (skills + hooks + canon)"
 git tag v5.0.0

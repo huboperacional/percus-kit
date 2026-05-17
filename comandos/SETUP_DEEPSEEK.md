@@ -35,9 +35,9 @@ Select-String -Path .env -Pattern '^DEEPSEEK_API_KEY=' -Quiet
 # Se ausente: PARE e instrua o usuário a obter a chave em https://platform.deepseek.com/api_keys e adicionar no .env
 
 # 2. Wrapper presente no kit Percus?
-Test-Path "D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.ps1"
-Test-Path "D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.sh"
-# Se ausente: o kit Percus está incompleto. PARE e instrua a clonar/atualizar D:/Claud Automations/_Novo_Projeto/
+Test-Path "${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.ps1"
+Test-Path "${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.sh"
+# Se ausente: o kit Percus está incompleto. PARE e instrua a clonar/atualizar ${env:PERCUS_CANON_DIR}/
 
 # 3. PowerShell version (Windows)?
 $PSVersionTable.PSVersion.Major
@@ -81,7 +81,7 @@ Critério de aceitação: `python -c "from _smoke_deepseek import somar; assert 
 Rodar wrapper em dry-run (ele auto-carrega o `.env`):
 
 ```powershell
-powershell -File "D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.ps1" `
+powershell -File "${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.ps1" `
   -Task "_smoke-deepseek.md" `
   -DryRun
 ```
@@ -109,7 +109,7 @@ Adicionar (ou confirmar presença) na seção "Workflow obrigatório":
 ```markdown
 ## Routing de modelos (R13)
 
-Tasks de implementação mecânica devem ser delegadas ao DeepSeek V4 via wrapper `D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.{ps1,sh}`. Saída do DeepSeek é tratada como rascunho — sempre revisada por Claude (validação contra R1–R12) e por revisor cross-provider via `/percus-review:review` (R11) antes de virar commit. Commit message deve incluir trailer `Co-implemented-by: deepseek-v4`.
+Tasks de implementação mecânica devem ser delegadas ao DeepSeek V4 via wrapper `${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.{ps1,sh}`. Saída do DeepSeek é tratada como rascunho — sempre revisada por Claude (validação contra R1–R12) e por revisor cross-provider via `/percus-review:review` (R11) antes de virar commit. Commit message deve incluir trailer `Co-implemented-by: deepseek-v4`.
 
 **Quando delegar (TODOS os critérios):**
 - Plano explícito em markdown, com arquivos-alvo nomeados
@@ -119,7 +119,7 @@ Tasks de implementação mecânica devem ser delegadas ao DeepSeek V4 via wrappe
 
 **Quando NÃO delegar:** brainstorm, decisão arquitetural, debug de causa desconhecida, pasta sensível.
 
-Playbook completo: `D:/Claud Automations/_Novo_Projeto/04_MODEL_ROUTING.md` seção "Como delegar".
+Playbook completo: `${env:PERCUS_CANON_DIR}/04_MODEL_ROUTING.md` seção "Como delegar".
 ```
 
 E em `AGENTS.md` (Codex precisa saber pra revisar saída do DeepSeek com critério):
@@ -143,7 +143,7 @@ Mensagem final estruturada:
 SETUP DEEPSEEK CONCLUÍDO — {Nome do Projeto}
 
 ✅ DEEPSEEK_API_KEY presente em .env
-✅ Wrapper acessível em D:/Claud Automations/_Novo_Projeto/scripts/
+✅ Wrapper acessível em ${env:PERCUS_CANON_DIR}/scripts/
 ✅ .deepseek/ no .gitignore do projeto
 ✅ Smoke test em dry-run passou (X tokens, ~$Y de custo)
 ✅ CLAUDE.md atualizado com R13
@@ -182,7 +182,7 @@ Próximos passos:
 ## Pré-requisitos resumidos (lista que o agente vai verificar)
 
 - [ ] `.env` do projeto contém `DEEPSEEK_API_KEY=...` (chave válida em https://platform.deepseek.com/api_keys)
-- [ ] Wrapper presente: `D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.ps1` + `.sh`
+- [ ] Wrapper presente: `${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.ps1` + `.sh`
 - [ ] PowerShell 5.1+ (Windows) ou Bash 4+ (Linux/Mac/WSL)
 - [ ] `AGENTS.md` do projeto existe (rodar `SETUP_REVIEW_ROUTING.md` primeiro se faltar)
 - [ ] `.deepseek/` no `.gitignore`

@@ -50,7 +50,7 @@
   },
 
   "_NOTAS_DE_USO": {
-    "1_adapte_caminhos": "Os hooks acima usam echo simples. Se voce quiser carregar mensagens de arquivos, troque por: 'cat \"D:/Claud Automations/_Novo_Projeto/checklists/CHECKLIST_INICIO_SESSAO.md\"'. Cuidado com escape de aspas no JSON.",
+    "1_adapte_caminhos": "Os hooks acima usam echo simples. Se voce quiser carregar mensagens de arquivos, troque por: 'cat \"${env:PERCUS_CANON_DIR}/checklists/CHECKLIST_INICIO_SESSAO.md\"'. Cuidado com escape de aspas no JSON.",
     "2_tester_hooks": "Apos colar em .claude/settings.json, reinicie o Claude Code. Teste digitando 'ola' ou 'preciso de uma landing page' para ver os hooks dispararem.",
     "3_personalize_por_projeto": "Cada projeto pode ter regras adicionais. Ex: projeto com auth pode ter PreToolUse que lembra de validar JWT em qualquer mudanca em routers de auth.",
     "4_evite_excesso": "Hooks demais geram ruido. Mantenha so os que cobrem regras que voce esta violando recorrentemente. Comece com 3-5 e ajuste."

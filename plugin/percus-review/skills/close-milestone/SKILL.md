@@ -22,7 +22,7 @@ Quando declarar marco fechado (fim de Fase X numerada, fim de feature em épico,
 Via Bash tool, rode:
 
 ```
-pwsh -NoProfile -ExecutionPolicy Bypass -File "D:\Claud Automations\_Novo_Projeto\scripts\percus-milestone-review-auto.ps1" -Base <commit-inicio-marco>
+pwsh -NoProfile -ExecutionPolicy Bypass -File "${env:PERCUS_CANON_DIR}\scripts\percus-milestone-review-auto.ps1" -Base <commit-inicio-marco>
 ```
 
 (ou `.sh` em Unix). Wrapper roda DeepSeek do escopo do marco e emite marker `__PERCUS_NEEDS_CROSS_CLAUDE__` no stderr. Você (agente) lê o marker e dispatch Sonnet subagent via Agent tool com prompt R11 cross-claude-review do mesmo escopo. Salva findings do Sonnet em `.deepseek/reviews/<ts>-cross-claude-milestone.jsonl`.
@@ -70,4 +70,4 @@ Aplicar em `docs/PLANO.md` E `HANDOFF.md` (espelhos da R2).
 - ❌ Marcar ✓ retroativo em features já em [5-T] sem auditoria do escopo
 
 ## Referência
-`D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md` R11 (Review cross-provider)
+`${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` R11 (Review cross-provider)

@@ -40,7 +40,7 @@ Se falha, mostrar erro ao operador e parar.
 Rodar wrapper:
 
 ```bash
-python "D:/Claud Automations/_Novo_Projeto/plugin/percus-review/scripts/catalog_publish.py"
+python "${env:PERCUS_CANON_DIR}/plugin/percus-review/scripts/catalog_publish.py"
 ```
 
 (ou `.ps1` em Windows — pendente).
@@ -72,7 +72,7 @@ Skip explicito (raro): `$env:PERCUS_SKIP_CATALOG_PUBLISH=1` antes do Stop.
 
 ## Referencias
 
-- Convencao: `D:/Claud Automations/_Novo_Projeto/05_FEATURE_TRACKING.md`
-- Template: `D:/Claud Automations/_Novo_Projeto/templates/catalog-info.yaml.template`
-- Setup primeira vez: `D:/Claud Automations/_Novo_Projeto/comandos/SETUP_CATALOG.md`
+- Convencao: `${env:PERCUS_CANON_DIR}/05_FEATURE_TRACKING.md`
+- Template: `${env:PERCUS_CANON_DIR}/templates/catalog-info.yaml.template`
+- Setup primeira vez: `${env:PERCUS_CANON_DIR}/comandos/SETUP_CATALOG.md`
 - Endpoint: `POST https://gestao.ads4pros.com/admin/catalog/ingest` (header `X-Internal-Auth`)

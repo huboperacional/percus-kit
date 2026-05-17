@@ -83,7 +83,7 @@ ultima-atualizacao: 2026-05-17
 
 **Exemplo genérico:** "Pode rodar `/percus-review:review` rapidinho? Hook tá stale."
 
-**Correto:** desde Fase 5 v5.1.0+, **o próprio agente** dispara `pwsh -File "D:\Claud Automations\_Novo_Projeto\scripts\percus-review-auto.ps1"` antes de cada `git commit` que ele executa. Detalhes em `CLAUDE.template.md` seção "Workflow de commit do agente (auto-trigger v5.1.0+)".
+**Correto:** desde Fase 5 v5.1.0+, **o próprio agente** dispara `pwsh -File "${env:PERCUS_CANON_DIR}\scripts\percus-review-auto.ps1"` antes de cada `git commit` que ele executa. Detalhes em `CLAUDE.template.md` seção "Workflow de commit do agente (auto-trigger v5.1.0+)".
 
 ---
 
@@ -101,7 +101,7 @@ Se a resposta de qualquer um for "sim, eu posso fazer", **faça**. Não jogue pr
 
 ## Referências
 
-- Plugin: `D:/Claud Automations/_Novo_Projeto/plugin/percus-review/`
+- Plugin: `${env:PERCUS_CANON_DIR}/plugin/percus-review/`
 - Marketplace canônico: `plugin/.claude-plugin/marketplace.json` (lista commands) + skills auto-discovered de `skills/<nome>/SKILL.md`
 - Wrapper auto-trigger: `scripts/percus-review-auto.ps1` (cwd do projeto-alvo)
 - Conselho 3-membros: `scripts/council-orchestrator.ps1` (`-Mode consult|pre-mortem|review`)

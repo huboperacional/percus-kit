@@ -250,7 +250,7 @@ curl https://{slug_projeto}.huboperacional.com.br/me \
 
 ## Step 4 — Migração de auth legado (se aplicável)
 
-Se `{slug_projeto}` já tem auth próprio (Supabase/GoTrue/sidecar/senha), seguir `D:/Claud Automations/_Novo_Projeto/comandos/MIGRAR_AUTH.md` antes de adotar este kit.
+Se `{slug_projeto}` já tem auth próprio (Supabase/GoTrue/sidecar/senha), seguir `${env:PERCUS_CANON_DIR}/comandos/MIGRAR_AUTH.md` antes de adotar este kit.
 
 Variantes V1-V4 cobrem cenários comuns. **V5** (legado → estado Final auth-service direto) sairá quando auth-service v1 publicar oficialmente.
 
@@ -281,8 +281,8 @@ Variantes V1-V4 cobrem cenários comuns. **V5** (legado → estado Final auth-se
 ## Referências
 
 - Plano original aprovado: `D:/Claud Automations/.claude-home/plans/analise-para-validar-generic-garden.md`
-- Canon Percus: `D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md` R7 + R14-R18
-- Stack/auth: `D:/Claud Automations/_Novo_Projeto/02_INFRA_E_STACK_PERCUS.md` Seção 2
+- Canon Percus: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` R7 + R14-R18
+- Stack/auth: `${env:PERCUS_CANON_DIR}/02_INFRA_E_STACK_PERCUS.md` Seção 2
 - Lib Python: `https://auth.huboperacional.com.br/dist/percus_auth-<ver>-py3-none-any.whl`
 - Lib Node: `https://auth.huboperacional.com.br/dist/percus-auth-<ver>.tgz`
 - Runbooks operacionais (rotação de chave, SSO patterns, JWKS resilience): `services/api/docs/runbooks/` no repo `auth-service`

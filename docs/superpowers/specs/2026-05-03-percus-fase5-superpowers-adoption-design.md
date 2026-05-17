@@ -238,7 +238,7 @@ HOOK on-stop: parseia transcript
 ### Testes manuais (smoke)
 
 - **T1 — Plugin install end-to-end** (depende de fix de marketplace.json wrapper):
-  - `/plugin marketplace add D:/Claud Automations/_Novo_Projeto/plugin`
+  - `/plugin marketplace add ${env:PERCUS_CANON_DIR}/plugin`
   - `/plugin install percus-review`
   - Verificar: `/plugin` lista percus-review + 4 commands + 2 skills
 
@@ -341,8 +341,8 @@ Pra retrospectiva D7 ter dados suficientes:
 
 ## 11. References
 
-- **Canon:** `D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md` (R8, R9, R11, R13)
-- **Plugin existente:** `D:/Claud Automations/_Novo_Projeto/plugin/percus-review/`
+- **Canon:** `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` (R8, R9, R11, R13)
+- **Plugin existente:** `${env:PERCUS_CANON_DIR}/plugin/percus-review/`
 - **Memória Percus:** `project_fase4_review_routing.md`, `reference_review_matriz.md`
 - **Plugin superpowers:** `~/.claude/plugins/superpowers-dev/skills/`
 - **Decisões registradas:** transcript da sessão 2026-05-03 (brainstorming)
@@ -367,12 +367,12 @@ Itens fora do escopo da V1, registrados pra revisita:
 
 **Problema observado:** `/plugin install <path>` direto não funciona no Claude Code v2.x — comando espera `marketplace_source` que aponta pra um diretório com `.claude-plugin/marketplace.json` registrando os plugins disponíveis.
 
-**Solução:** criar wrapper em `D:/Claud Automations/_Novo_Projeto/plugin/.claude-plugin/marketplace.json` (1 nível acima do plugin `percus-review/`):
+**Solução:** criar wrapper em `${env:PERCUS_CANON_DIR}/plugin/.claude-plugin/marketplace.json` (1 nível acima do plugin `percus-review/`):
 
 ### Estrutura de pastas final
 
 ```
-D:/Claud Automations/_Novo_Projeto/plugin/
+${env:PERCUS_CANON_DIR}/plugin/
 ├── .claude-plugin/
 │   └── marketplace.json          ← wrapper criado
 └── percus-review/
@@ -403,7 +403,7 @@ D:/Claud Automations/_Novo_Projeto/plugin/
 ### Como usar (substitui doc atual de SETUP_REVIEW_ROUTING.md Passo 2)
 
 ```
-/plugin marketplace add D:/Claud Automations/_Novo_Projeto/plugin
+/plugin marketplace add ${env:PERCUS_CANON_DIR}/plugin
 /plugin install percus-review
 ```
 

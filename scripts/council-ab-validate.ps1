@@ -17,7 +17,7 @@ param(
     [Parameter(Mandatory)][string]$ConfigB,
     [string]$Out = "ab-validate-$(Get-Date -Format 'yyyyMMdd-HHmmss').md"
 )
-$orch = "D:\Claud Automations\_Novo_Projeto\plugin\percus-review\scripts\council-orchestrator.ps1"
+$orch = "${env:PERCUS_CANON_DIR}\plugin\percus-review\scripts\council-orchestrator.ps1"
 if (-not (Test-Path $orch)) { Write-Error "Orchestrator nao encontrado: $orch"; exit 1 }
 if (-not ($ConfigA | Test-Json -ErrorAction SilentlyContinue)) {
     Write-Error "-ConfigA nao e JSON valido: $ConfigA"; exit 1

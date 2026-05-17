@@ -190,6 +190,6 @@ Outputs em `docs/scope-council/`. Decisões adotadas:
 
 - Brainstorm pré-council: `superpowers:brainstorming` (skill superpowers, não Percus)
 - Plan agents paralelos: Plan mode com 3 Plan agents (cobre subset do council pra decisões menores)
-- R11 (review cross-provider obrigatório): `D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md`
+- R11 (review cross-provider obrigatório): `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md`
 - Wrapper auto-trigger: `scripts/percus-review-auto.ps1` (Windows) / `.sh` (Unix)
 - Justificativa pra não adotar `llm_council_skill` externo: análise comparativa em sessão de 2026-05-04 — concluiu que padrão "council" só vale em decisões raras e custosas, e implementação enxuta interna cobre o caso sem dependências externas

@@ -4,7 +4,7 @@ origem: Plexco Tasks (sessão 35 — 2026-05-14/15)
 audiência: tech lead do auth-service
 status: aguardando revisão e geração de DOC OFICIAL
 leitura: 4 min
-referência: D:\Claud Automations\_Novo_Projeto\PADRAO_AUTH_CROSS_PROJETO.md
+referência: ${env:PERCUS_CANON_DIR}\PADRAO_AUTH_CROSS_PROJETO.md
 ---
 
 # Revisão de integração com auth-service (origem Plexco Tasks)
@@ -138,7 +138,7 @@ Se discordar de alguma decisão que já tomamos em prod, listamos abaixo o que a
 - **Data:** 2026-05-14 → 2026-05-15 (sessão 35)
 - **Documentos relacionados:**
   - `D:\Claud Automations\OWNERSHIP.md` — quadro de ownership cross-projeto
-  - `D:\Claud Automations\_Novo_Projeto\PADRAO_AUTH_CROSS_PROJETO.md` — padrão vigente (será substituído pelo V2)
+  - `${env:PERCUS_CANON_DIR}\PADRAO_AUTH_CROSS_PROJETO.md` — padrão vigente (será substituído pelo V2)
   - `D:\Claud Automations\Plexco Tasks\docs\next-session.md` — handoff sessão 35 close (visão Plexco)
   - `D:\Claud Automations\.claude-home\plans\agora-parece-queu-o-ancient-cloud.md` — plano operacional Strangler Fig
 

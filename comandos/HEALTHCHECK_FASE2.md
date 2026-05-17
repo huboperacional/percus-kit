@@ -17,7 +17,7 @@ ultima-atualizacao: 2026-05-03
 ## Prompt para colar
 
 ```
-Faça healthcheck Fase 4 deste projeto, conforme `D:\Claud Automations\_Novo_Projeto\comandos\HEALTHCHECK_FASE2.md`.
+Faça healthcheck Fase 4 deste projeto, conforme `${env:PERCUS_CANON_DIR}\comandos\HEALTHCHECK_FASE2.md`.
 
 Execute os 3 níveis em sequência e me devolva relatório estruturado no fim. Não toque em código de negócio. Não tente "consertar" o que estiver errado — só reporta.
 
@@ -33,7 +33,7 @@ Verifique e reporte status (✅ OK / ❌ FALTA) pra cada item:
 **DeepSeek:**
 - `.env` contém `DEEPSEEK_API_KEY=...`?
 - `.gitignore` contém linha `.deepseek/`?
-- Wrapper acessível em `D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.ps1`?
+- Wrapper acessível em `${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.ps1`?
 
 **CLAUDE.md (regras):**
 - Menciona R10 (design v0/shadcn, NÃO Claude artifacts)?
@@ -81,7 +81,7 @@ Se SIM:
    ```
 2. Invoque dry-run:
    ```
-   powershell -File "D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.ps1" -Task "_healthcheck-task.md" -DryRun
+   powershell -File "${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.ps1" -Task "_healthcheck-task.md" -DryRun
    ```
 3. Reporte:
    - Wrapper rodou sem erro? (✅/❌)
@@ -188,4 +188,4 @@ Review por marco está sendo pulado (R11 ampliada).
 - Regras: `01_REGRAS_INEGOCIAVEIS.md` R10, R11, R13
 - Marcações 🤖/✓: `01_REGRAS_INEGOCIAVEIS.md` R2 (Marcações visuais)
 - Playbook DeepSeek + matriz de routing: `04_MODEL_ROUTING.md`
-- Plugin: `D:/Claud Automations/_Novo_Projeto/plugin/percus-review/`
+- Plugin: `${env:PERCUS_CANON_DIR}/plugin/percus-review/`

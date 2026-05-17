@@ -7,7 +7,7 @@ description: Use em PR que toca form/lead/conversion. Valida que os 15 campos ca
 
 Auditoria automatica dos 15 campos canonicos de atribuicao paid media. Formato escolhido (Opcao C hibrido com threshold explicito) validado por conselho 3-membros (consult `Painel/.deepseek/council-log/20260516-174848-consult.jsonl`).
 
-Spec dos 15 campos: `D:\Claud Automations\_Novo_Projeto\03_TRACKING_ATTRIBUITION.md`.
+Spec dos 15 campos: `${env:PERCUS_CANON_DIR}\03_TRACKING_ATTRIBUITION.md`.
 
 ## Quando rodar
 
@@ -33,7 +33,7 @@ Spec dos 15 campos: `D:\Claud Automations\_Novo_Projeto\03_TRACKING_ATTRIBUITION
 
 ```bash
 # Modo default: grep estatico, threshold explicito
-python "D:/Claud Automations/_Novo_Projeto/plugin/percus-review/scripts/tracking_audit.py"
+python "${env:PERCUS_CANON_DIR}/plugin/percus-review/scripts/tracking_audit.py"
 
 # JSON output (CI)
 python scripts/tracking_audit.py --json
@@ -70,7 +70,7 @@ Sem este threshold explicito o veredito seria nao-deterministico (risco apontado
 
 ```
 [tracking-audit] projeto: <slug>
-Spec: 15 campos canonicos R2 (D:\Claud Automations\_Novo_Projeto\03_TRACKING_ATTRIBUITION.md)
+Spec: 15 campos canonicos R2 (${env:PERCUS_CANON_DIR}\03_TRACKING_ATTRIBUITION.md)
 
 Camada 1 — Form/Input (HTML/JSX/TSX)
   ✓ fbclid, gclid, gbraid, wbraid, msclkid, ttclid
@@ -158,7 +158,7 @@ Se grep gerar >2 falsos-negativos reportados (ex.: `<input name={`utm_${k}`}>` d
 
 ## Referencias
 
-- Spec 15 campos: `D:\Claud Automations\_Novo_Projeto\03_TRACKING_ATTRIBUITION.md` Secao 2.
+- Spec 15 campos: `${env:PERCUS_CANON_DIR}\03_TRACKING_ATTRIBUITION.md` Secao 2.
 - Decisao Opcao C: `Painel Gestao e Afiliados/.deepseek/council-log/20260516-174848-consult.jsonl`.
 - Skill source-of-truth runtime: projeto `Paid Midia Tracking` (PMT) em `D:\Claud Automations\Paid Midia Tracking\`.
 - Skill irma: `pages-scan` (catalog feature), `security-audit` (R14-R19).

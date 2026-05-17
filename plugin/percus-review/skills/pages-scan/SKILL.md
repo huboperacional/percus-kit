@@ -43,7 +43,7 @@ isStaticHtml = Path("static").exists() or Path("public").exists()
 Rodar o wrapper:
 
 ```bash
-python "D:/Claud Automations/_Novo_Projeto/plugin/percus-review/scripts/scan_pages.py"
+python "${env:PERCUS_CANON_DIR}/plugin/percus-review/scripts/scan_pages.py"
 ```
 
 Output: imprime lista + posta no Painel.
@@ -74,4 +74,4 @@ Skip: `$env:PERCUS_SKIP_PAGES_SCAN=1`.
 - Tabela `project_pages` no Painel: `execution/database/migration_features.sql`
 - Endpoint: `POST https://api.ads4pros.com/admin/pages/ingest` (API), UI em `https://gestao.ads4pros.com/projeto-detalhe.html` (estatico)
 - Drill-down UI: `projeto-detalhe.html` aba Paginas
-- Convencao: `D:/Claud Automations/_Novo_Projeto/05_FEATURE_TRACKING.md`
+- Convencao: `${env:PERCUS_CANON_DIR}/05_FEATURE_TRACKING.md`

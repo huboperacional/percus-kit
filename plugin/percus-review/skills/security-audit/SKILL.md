@@ -24,7 +24,7 @@ Runner deterministic de checklist de seguranca canon Percus. **Formato: YAML dec
 ## Como rodar
 
 ```bash
-python "D:/Claud Automations/_Novo_Projeto/plugin/percus-review/scripts/security_audit.py"
+python "${env:PERCUS_CANON_DIR}/plugin/percus-review/scripts/security_audit.py"
 ```
 
 Opcoes:

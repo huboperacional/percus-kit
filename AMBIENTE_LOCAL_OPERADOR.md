@@ -51,6 +51,34 @@ Após setar, **reabrir o terminal** pra env vars persistentes carregarem.
 
 ---
 
+## Path do canon Percus — `PERCUS_CANON_DIR` (CRÍTICO — define UMA vez)
+
+**Problema que resolve:** comandos do canon (UPGRADE_PARA_FASE6, SCOPE_COUNCIL, etc) e templates (CLAUDE.template, AGENTS.template) referenciam paths do canon via `${env:PERCUS_CANON_DIR}/...`. Sem essa env var apontando pra onde você clonou o repo `huboperacional/percus-kit`, qualquer comando colado em projeto-alvo quebra com "path não existe".
+
+**Bootstrap por máquina nova** (faça uma vez, ver `comandos/SETUP_NOVA_MAQUINA.md` pra automação):
+
+```powershell
+# 1. Clonar o canon onde preferir (ex: D:\Claud Automations\_Novo_Projeto, C:\dev\percus-kit, $HOME\percus-kit)
+git clone https://github.com/huboperacional/percus-kit.git "D:\Claud Automations\_Novo_Projeto"
+
+# 2. Apontar a env var pro path escolhido
+[Environment]::SetEnvironmentVariable('PERCUS_CANON_DIR', 'D:\Claud Automations\_Novo_Projeto', 'User')
+
+# 3. REABRIR todos os terminais (VS Code + PowerShell) — env vars persistentes só carregam em processos novos
+```
+
+**Verificar:**
+```powershell
+$canon = [Environment]::GetEnvironmentVariable('PERCUS_CANON_DIR', 'User')
+"PERCUS_CANON_DIR: $canon"
+"Existe: $(Test-Path $canon)"
+"CANON_VERSION: $(Get-Content (Join-Path $canon 'CANON_VERSION.md') -TotalCount 5 -ErrorAction SilentlyContinue)"
+```
+
+**Manter sincronizado:** mensalmente (ou quando alguém anunciar release), `cd $env:PERCUS_CANON_DIR && git pull origin main` pra puxar mudanças do canon.
+
+---
+
 ## API keys do kit Percus (User-scope — define UMA vez, vale pra todos projetos)
 
 **Problema que resolve:** todo projeto novo Percus precisa de DeepSeek + Groq + Anthropic + Painel keys. Antes desta seção, cada projeto pedia `.env` local com as 4-5 keys, repetidamente. Solução: env vars User-scope. Wrappers (`deepseek.ps1`, `groq-llama.ps1`, `cross-claude.ps1`, etc) já fazem `if (-not $env:KEY) { load .env do cwd }` — se a key já estiver no env do user, eles enxergam sem precisar `.env` no projeto.
@@ -154,8 +182,8 @@ Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 } | Select-Obj
 [Environment]::GetEnvironmentVariable('HF_HOME', 'User')
 npm config get cache
 
-# Confirmar env vars de API keys do kit Percus
-@('DEEPSEEK_API_KEY','GROQ_API_KEY','ANTHROPIC_API_KEY','PAINEL_API_URL','CATALOG_INGEST_KEY') | ForEach-Object {
+# Confirmar env vars do kit Percus (canon path + API keys)
+@('PERCUS_CANON_DIR','DEEPSEEK_API_KEY','GROQ_API_KEY','ANTHROPIC_API_KEY','PAINEL_API_URL','CATALOG_INGEST_KEY') | ForEach-Object {
     $v = [Environment]::GetEnvironmentVariable($_, 'User')
     "$_ : $(if ($v) { 'OK' } else { 'MISSING' })"
 }
@@ -184,7 +212,8 @@ Se algum item falhar, rodar setup desta doc antes de qualquer trabalho.
 ## Histórico
 
 - **2026-05-15**: introdução desta doc após diagnóstico de C: cheio (16 GB livres em 465 GB total). Eixo E do plano "Refatoração estratégica Percus".
-- **2026-05-17**: seção "API keys do kit Percus (User-scope)" adicionada. Resolve "todo projeto novo pede as mesmas 5 keys". Wrappers existentes já honram `$env:KEY` antes de tentar carregar `.env` — então env vars User-scope se tornam fonte primária, `.env` por projeto vira override opcional.
+- **2026-05-17 (v6.4.0)**: seção "API keys do kit Percus (User-scope)" adicionada. Resolve "todo projeto novo pede as mesmas 5 keys".
+- **2026-05-17 (v6.5.0)**: seção "Path do canon Percus — `PERCUS_CANON_DIR`" adicionada. Resolve "todo comando do canon referencia `D:\Claud Automations\_Novo_Projeto` que só existe na máquina do operador principal". Canon agora é portável — opera de qualquer path, basta apontar a env var. Comandos do canon migraram pra `${env:PERCUS_CANON_DIR}/...` em vez de path hardcoded.
 
 ## Referências
 

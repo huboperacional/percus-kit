@@ -4,7 +4,7 @@
 #   2. catalogCrawler.py (pull, 1h, fallback)
 #
 # Schema: Backstage-lite Percus. Convencao completa em:
-#   D:\Claud Automations\_Novo_Projeto\05_FEATURE_TRACKING.md
+#   ${env:PERCUS_CANON_DIR}\05_FEATURE_TRACKING.md
 #
 # Substitua <placeholders> e ajuste features[] conforme estado real do projeto.
 

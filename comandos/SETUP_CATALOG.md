@@ -18,7 +18,7 @@ ultima-atualizacao: 2026-05-15
 ## Cole no chat do Claude Code do projeto-alvo
 
 ```
-Adotar feature-tracking cross-projeto seguindo `D:\Claud Automations\_Novo_Projeto\comandos\SETUP_CATALOG.md`. Comece pelo Passo 0 (diagnóstico) e mostre o resultado antes de prosseguir.
+Adotar feature-tracking cross-projeto seguindo `${env:PERCUS_CANON_DIR}\comandos\SETUP_CATALOG.md`. Comece pelo Passo 0 (diagnóstico) e mostre o resultado antes de prosseguir.
 ```
 
 ---
@@ -42,7 +42,7 @@ Adotar feature-tracking cross-projeto seguindo `D:\Claud Automations\_Novo_Proje
 
 Copiar template:
 ```powershell
-Copy-Item "D:\Claud Automations\_Novo_Projeto\templates\catalog-info.yaml.template" "catalog-info.yaml"
+Copy-Item "${env:PERCUS_CANON_DIR}\templates\catalog-info.yaml.template" "catalog-info.yaml"
 ```
 
 Preencher com base no Passo 0:
@@ -65,7 +65,7 @@ New-Item -ItemType Directory -Path "docs\adrs" -Force | Out-Null
 
 Copiar template + preencher:
 ```powershell
-Copy-Item "D:\Claud Automations\_Novo_Projeto\templates\adr-0000-template.md" "docs\adrs\0001-percus-feature-tracking-adopted.md"
+Copy-Item "${env:PERCUS_CANON_DIR}\templates\adr-0000-template.md" "docs\adrs\0001-percus-feature-tracking-adopted.md"
 ```
 
 Conteúdo mínimo:

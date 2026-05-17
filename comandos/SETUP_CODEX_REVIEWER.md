@@ -187,7 +187,7 @@ Adicionar `.codex/` ao `.gitignore` se não estiver:
 
 Espelha as regras Percus do `CLAUDE.md` em formato que o Codex lê. **Sem isso, o Codex revisa sem conhecer R1-R12.**
 
-Usar o template `D:\Claud Automations\_Novo_Projeto\templates\AGENTS.template.md` como base.
+Usar o template `${env:PERCUS_CANON_DIR}\templates\AGENTS.template.md` como base.
 
 Conteúdo mínimo:
 - Stack do projeto

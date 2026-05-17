@@ -11,7 +11,7 @@ Esse arquivo (uma linha com semver, ex: `6.3.0`) declara qual versão do canon P
 
 **Protocolo no primeiro turno de cada sessão** (não negociável):
 1. Rodar `Get-Content .percus-version` (ou `cat .percus-version` em bash) — capturar versão do projeto.
-2. Rodar `Get-Content "D:\Claud Automations\_Novo_Projeto\CANON_VERSION.md" -TotalCount 5` — capturar versão canônica atual.
+2. Rodar `Get-Content "${env:PERCUS_CANON_DIR}\CANON_VERSION.md" -TotalCount 5` — capturar versão canônica atual.
 3. Declarar em voz alta no primeiro turno: "Projeto na versão X.Y.Z, canônica atual A.B.C — alinhado/divergente."
 4. Se divergente, sugerir ao usuário rodar `comandos/UPGRADE_PARA_FASE6.md` (ou mais recente) antes de qualquer trabalho não-trivial.
 
@@ -141,7 +141,7 @@ Agente Claude Code AUTO-DISPARA review antes de qualquer `git commit` que ele me
 
 1. **ANTES de `git commit`** que toca código, rodar via Bash tool:
    ```
-   pwsh -NoProfile -ExecutionPolicy Bypass -File "D:\Claud Automations\_Novo_Projeto\scripts\percus-review-auto.ps1"
+   pwsh -NoProfile -ExecutionPolicy Bypass -File "${env:PERCUS_CANON_DIR}\scripts\percus-review-auto.ps1"
    ```
    (ou `.sh` em Unix; passe `-Base <ref>` se for review de escopo)
 
@@ -158,22 +158,22 @@ Agente Claude Code AUTO-DISPARA review antes de qualquer `git commit` que ele me
 
 **Ao fechar marco:** mesmo padrão, mas com wrapper de marco:
 ```
-pwsh -File "D:\Claud Automations\_Novo_Projeto\scripts\percus-milestone-review-auto.ps1" -Base <commit-inicio-marco>
+pwsh -File "${env:PERCUS_CANON_DIR}\scripts\percus-milestone-review-auto.ps1" -Base <commit-inicio-marco>
 ```
 Marco é SEMPRE dual — wrapper sempre emite marker `__PERCUS_NEEDS_CROSS_CLAUDE__`, agente sempre dispatcha Sonnet adicional.
 
 **Caso especial — usuário commitando manualmente no terminal:** Layer 2 (git hook nativo) bloqueia se não houver review fresco. Usuário roda `/percus-review:review` no chat manualmente nesse caso. Auto-trigger é só do agente, não do humano.
 
-**Skills vs slash commands do plugin** (leitura obrigatória antes de mencionar `/algo:coisa` pro user): `D:\Claud Automations\_Novo_Projeto\comandos\SKILLS_VS_COMMANDS.md`. Resumo: slash commands são digitados pelo user. Skills são auto-trigger pelo agente via `Skill` tool — **não existem** como slash command. Se você (agente) está prestes a pedir pro user "rodar `/percus-review:feature-flow`", `/percus-review:tracking-audit`, ou qualquer outro nome listado em `plugin/percus-review/skills/`, **PARE** — invoque você mesmo via `Skill` tool.
+**Skills vs slash commands do plugin** (leitura obrigatória antes de mencionar `/algo:coisa` pro user): `${env:PERCUS_CANON_DIR}\comandos\SKILLS_VS_COMMANDS.md`. Resumo: slash commands são digitados pelo user. Skills são auto-trigger pelo agente via `Skill` tool — **não existem** como slash command. Se você (agente) está prestes a pedir pro user "rodar `/percus-review:feature-flow`", `/percus-review:tracking-audit`, ou qualquer outro nome listado em `plugin/percus-review/skills/`, **PARE** — invoque você mesmo via `Skill` tool.
 
-Setup primeira vez: `D:\Claud Automations\_Novo_Projeto\comandos\SETUP_REVIEW_ROUTING.md`.
+Setup primeira vez: `${env:PERCUS_CANON_DIR}\comandos\SETUP_REVIEW_ROUTING.md`.
 Regras que o revisor usa: `AGENTS.md` (irmão deste arquivo, na raiz do projeto).
 
 Plugin Codex (`codex@openai-codex`) descontinuado em 2026-05-03 por custo. Não usar.
 
 ## Routing de modelos (R13)
 
-Implementação mecânica delegada ao DeepSeek V4 via wrapper `D:\Claud Automations\_Novo_Projeto\scripts\deepseek-impl.{ps1,sh}`. Saída é tratada como rascunho — sempre revisada por Claude (R1–R12) e revisor cross-provider (R11) antes de virar commit.
+Implementação mecânica delegada ao DeepSeek V4 via wrapper `${env:PERCUS_CANON_DIR}\scripts\deepseek-impl.{ps1,sh}`. Saída é tratada como rascunho — sempre revisada por Claude (R1–R12) e revisor cross-provider (R11) antes de virar commit.
 
 **Marker obrigatório:** ao aplicar saída DeepSeek (`-Apply`), commit message deve terminar com:
 ```
@@ -189,7 +189,7 @@ O router de R11 detecta esse trailer e roteia revisão pra Cross-Claude (não De
 
 **Quando NÃO delegar:** brainstorm, decisão arquitetural, debug não-trivial, pasta sensível, tarefas visuais (segue R10/`DESIGN_WORKFLOW.md`).
 
-**Após delegação aplicada:** marcar a feature no PLANO/HANDOFF com `🤖`. Playbook completo em `D:\Claud Automations\_Novo_Projeto\04_MODEL_ROUTING.md` seção "Como delegar".
+**Após delegação aplicada:** marcar a feature no PLANO/HANDOFF com `🤖`. Playbook completo em `${env:PERCUS_CANON_DIR}\04_MODEL_ROUTING.md` seção "Como delegar".
 
 ## Design (R10)
 
@@ -198,7 +198,7 @@ Tela ou componente novo: NÃO usar Claude artifacts (vetado pra produção pela 
 - Tela/fluxo novo → v0.dev (browser, créditos Vercel)
 - Diagrama → Excalidraw / Mermaid em markdown
 
-Workflow detalhado: `D:\Claud Automations\_Novo_Projeto\comandos\DESIGN_WORKFLOW.md`.
+Workflow detalhado: `${env:PERCUS_CANON_DIR}\comandos\DESIGN_WORKFLOW.md`.
 
 ## Workflow obrigatório ao iniciar sessão
 
@@ -224,13 +224,13 @@ Ver `checklists/CHECKLIST_ENCERRAR_SESSAO.md`. HANDOFF + PLANO + mock-audit atua
 
 ## Referências externas
 
-- **Regras universais Percus:** `D:\Claud Automations\_Novo_Projeto\01_REGRAS_INEGOCIAVEIS.md`
-- **Stack e infra Percus:** `D:\Claud Automations\_Novo_Projeto\02_INFRA_E_STACK_PERCUS.md`
-- **Tracking de atribuição:** `D:\Claud Automations\_Novo_Projeto\03_TRACKING_ATTRIBUITION.md` (se projeto tem forms)
+- **Regras universais Percus:** `${env:PERCUS_CANON_DIR}\01_REGRAS_INEGOCIAVEIS.md`
+- **Stack e infra Percus:** `${env:PERCUS_CANON_DIR}\02_INFRA_E_STACK_PERCUS.md`
+- **Tracking de atribuição:** `${env:PERCUS_CANON_DIR}\03_TRACKING_ATTRIBUITION.md` (se projeto tem forms)
 - **Auth canônico:** `D:\Claud Automations\Claude Financas NEW\familia-api\app\modules\auth\` (read-only)
-- **Setup Review Routing (cross-provider):** `D:\Claud Automations\_Novo_Projeto\comandos\SETUP_REVIEW_ROUTING.md`
-- **Setup DeepSeek (R13):** `D:\Claud Automations\_Novo_Projeto\comandos\SETUP_DEEPSEEK.md`
-- **Routing de modelos:** `D:\Claud Automations\_Novo_Projeto\04_MODEL_ROUTING.md`
-- **Design workflow (R10):** `D:\Claud Automations\_Novo_Projeto\comandos\DESIGN_WORKFLOW.md`
-- **Upgrade consolidador Fase 4:** `D:\Claud Automations\_Novo_Projeto\comandos\UPGRADE_PROJETO_FASE2.md`
+- **Setup Review Routing (cross-provider):** `${env:PERCUS_CANON_DIR}\comandos\SETUP_REVIEW_ROUTING.md`
+- **Setup DeepSeek (R13):** `${env:PERCUS_CANON_DIR}\comandos\SETUP_DEEPSEEK.md`
+- **Routing de modelos:** `${env:PERCUS_CANON_DIR}\04_MODEL_ROUTING.md`
+- **Design workflow (R10):** `${env:PERCUS_CANON_DIR}\comandos\DESIGN_WORKFLOW.md`
+- **Upgrade consolidador Fase 4:** `${env:PERCUS_CANON_DIR}\comandos\UPGRADE_PROJETO_FASE2.md`
 - **AGENTS.md (irmão deste arquivo):** regras espelhadas para o revisor cross-provider — manter sincronizado com este CLAUDE.md

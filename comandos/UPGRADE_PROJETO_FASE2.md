@@ -152,7 +152,7 @@ Aplicar fluxo de `comandos/SETUP_REVIEW_ROUTING.md` em modo "skip o que já exis
   /plugin marketplace add huboperacional/percus-kit
   /plugin install percus-review
   ```
-  Alternativo (kit local): `/plugin marketplace add D:/Claud Automations/_Novo_Projeto` + `/plugin install percus-review`
+  Alternativo (kit local): `/plugin marketplace add ${env:PERCUS_CANON_DIR}` + `/plugin install percus-review`
 - Validar com `/percus-review:review` em smoke trivial (Passo 6)
 
 **Bifurcação CLI standalone vs Extensão VS Code (informativo):**
@@ -166,7 +166,7 @@ $ext = (code --list-extensions 2>$null | Select-String "anthropic.claude-code")
 
 | Cenário detectado | Caminho de instalação |
 |---|---|
-| CLI standalone presente | **Caminho A** — abrir `claude` no PowerShell e rodar `/plugin marketplace add huboperacional/percus-kit` + `/plugin install percus-review` (ou path local `D:/Claud Automations/_Novo_Projeto` se offline) |
+| CLI standalone presente | **Caminho A** — abrir `claude` no PowerShell e rodar `/plugin marketplace add huboperacional/percus-kit` + `/plugin install percus-review` (ou path local `${env:PERCUS_CANON_DIR}` se offline) |
 | Só Extensão VS Code | **Caminho B** — UI: `/plu` → "Manage plugins" → aba Plugins → "Install from local" → cola path do plugin |
 | Ambos | Caminho A (mais rápido) ou B (UI) |
 | Nenhum (raro) | `npm i -g @anthropic-ai/claude-code` → reabrir → seguir Caminho A |
@@ -195,7 +195,7 @@ Substituir referências a `/codex:review` em `CLAUDE.md`, `AGENTS.md`, `GEMINI.m
 Aplicar fluxo do `comandos/SETUP_DEEPSEEK.md`:
 
 - Verificar `DEEPSEEK_API_KEY` no `.env` (PARAR se ausente)
-- Verificar wrapper presente em `D:/Claud Automations/_Novo_Projeto/scripts/`
+- Verificar wrapper presente em `${env:PERCUS_CANON_DIR}/scripts/`
 - Adicionar `.deepseek/` ao `.gitignore` (próximo passo já cobre)
 - Smoke test em dry-run com `_smoke-deepseek.md` mínimo (somar dois inteiros)
 - Validar que retornou bloco `===WRITE===` com tokens < 1500
@@ -238,7 +238,7 @@ Tela ou componente novo: NÃO usar Claude artifacts (vetado pra produção pela 
 - Tela/fluxo → v0.dev
 - Diagrama → Excalidraw / Mermaid
 
-Workflow detalhado: `D:/Claud Automations/_Novo_Projeto/comandos/DESIGN_WORKFLOW.md`
+Workflow detalhado: `${env:PERCUS_CANON_DIR}/comandos/DESIGN_WORKFLOW.md`
 
 ## R11 — Review cross-provider (commit + marco)
 `/percus-review:review` é obrigatório em DOIS momentos:
@@ -260,18 +260,18 @@ O router de R11 detecta esse trailer e roteia revisão pra Cross-Claude (anti au
 
 Quando delegar (TODOS): plano explícito + arquivos nomeados + sem decisão arquitetural + fora de pasta sensível + ≤3 arquivos ou padrão repetido.
 
-Playbook: `D:/Claud Automations/_Novo_Projeto/04_MODEL_ROUTING.md` seção "Como delegar".
+Playbook: `${env:PERCUS_CANON_DIR}/04_MODEL_ROUTING.md` seção "Como delegar".
 ```
 
 **Para `AGENTS.md`** (revisor cross-provider precisa saber pra revisar com critério):
 
-Recriar a partir do template slim em `D:/Claud Automations/_Novo_Projeto/templates/AGENTS.template.md` (~4.4 KB). Substitui versão Codex-era. Preservar seções "O que é este projeto" e "Stack" se já preenchidas no AGENTS.md anterior — mesclar.
+Recriar a partir do template slim em `${env:PERCUS_CANON_DIR}/templates/AGENTS.template.md` (~4.4 KB). Substitui versão Codex-era. Preservar seções "O que é este projeto" e "Stack" se já preenchidas no AGENTS.md anterior — mesclar.
 
 ---
 
 ### Passo 5 — `.gitignore` com `.deepseek/`
 
-Garantir que `.deepseek/` está no `.gitignore` do projeto. Se faltar `.gitignore` inteiro, criar baseado em `D:/Claud Automations/_Novo_Projeto/templates/.gitignore.example`.
+Garantir que `.deepseek/` está no `.gitignore` do projeto. Se faltar `.gitignore` inteiro, criar baseado em `${env:PERCUS_CANON_DIR}/templates/.gitignore.example`.
 
 Linha `.codex/` (Fase 2 anterior) pode permanecer ou ser removida — não atrapalha.
 

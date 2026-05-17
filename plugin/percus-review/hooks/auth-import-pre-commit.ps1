@@ -76,7 +76,7 @@ try {
         "encontrados $($findings.Count) import(s) de auth providers vetados (R7 — usar auth-service Percus)."
     ) + $findings + @(
         "Migre pra percus-auth ou GET https://auth.huboperacional.com.br/.",
-        "Ver D:\Claud Automations\_Novo_Projeto\02_INFRA_E_STACK_PERCUS.md secao 'Auth'.",
+        "Ver ${env:PERCUS_CANON_DIR}\02_INFRA_E_STACK_PERCUS.md secao 'Auth'.",
         "Skip (raro, declare motivo): `$env:PERCUS_SKIP_AUTH_IMPORT=1"
     ))
     exit 2

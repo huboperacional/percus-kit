@@ -20,7 +20,7 @@ ultima-atualizacao: 2026-05-03
 ## Prompt para colar
 
 ```
-Aplique o upgrade Fase 4 neste projeto seguindo `D:\Claud Automations\_Novo_Projeto\comandos\UPGRADE_PARA_FASE4.md`.
+Aplique o upgrade Fase 4 neste projeto seguindo `${env:PERCUS_CANON_DIR}\comandos\UPGRADE_PARA_FASE4.md`.
 
 Comece pelo Passo 0 (diagnóstico de estado). NÃO execute Passos 1-3 ainda — só me mostre o resultado do diagnóstico e qual caminho (A/B/C) será seguido. Aguarde minha confirmação antes de prosseguir.
 
@@ -213,7 +213,7 @@ Caminho rápido (CLI standalone):
 /plugin install percus-review
 ```
 
-**Alternativo (kit local):** `/plugin marketplace add D:/Claud Automations/_Novo_Projeto` + `/plugin install percus-review`
+**Alternativo (kit local):** `/plugin marketplace add ${env:PERCUS_CANON_DIR}` + `/plugin install percus-review`
 
 ### B.3 — Validar `DEEPSEEK_API_KEY`
 
@@ -245,7 +245,7 @@ Por:
 1. Antes de cada commit (router auto: DeepSeek/Cross-Claude/duplo)
 2. Ao concluir cada marco: `/percus-review:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo)
 
-Matriz de routing detalhada: `D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md` R11.
+Matriz de routing detalhada: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` R11.
 Plugin Codex (`codex@openai-codex`) descontinuado em 2026-05-03 por custo.
 
 ## Routing de modelos (R13) — marker obrigatório
@@ -383,6 +383,6 @@ Reportar ao final:
 - Setup isolado DeepSeek: [`SETUP_DEEPSEEK.md`](SETUP_DEEPSEEK.md)
 - Upgrade detalhado completo: [`UPGRADE_PROJETO_FASE2.md`](UPGRADE_PROJETO_FASE2.md) (mesmo conteúdo Fase 4 apesar do nome)
 - Healthcheck: [`HEALTHCHECK_FASE2.md`](HEALTHCHECK_FASE2.md)
-- Plugin: `D:/Claud Automations/_Novo_Projeto/plugin/percus-review/`
-- Regras: `D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md` R11, R13
-- Routing de modelos: `D:/Claud Automations/_Novo_Projeto/04_MODEL_ROUTING.md`
+- Plugin: `${env:PERCUS_CANON_DIR}/plugin/percus-review/`
+- Regras: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` R11, R13
+- Routing de modelos: `${env:PERCUS_CANON_DIR}/04_MODEL_ROUTING.md`

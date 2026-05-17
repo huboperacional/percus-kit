@@ -8,15 +8,15 @@
   Resolve plugin percus-review instalado a nível de usuário (CLAUDE_CONFIG_DIR
   ou ~/.claude default), localiza versão mais recente, dispatch via review-router
   + deepseek-review da versão instalada. Path absoluto estável -- agente chama
-  por path direto (D:/Claud Automations/_Novo_Projeto/scripts/percus-review-auto.ps1).
+  por path direto (${env:PERCUS_CANON_DIR}/scripts/percus-review-auto.ps1).
 
   Quando decisão exige Cross-Claude (cross-claude ou dual), wrapper emite marker
   __PERCUS_NEEDS_CROSS_CLAUDE__ no stderr -- agente lê e dispatch Sonnet subagent
   via Agent tool (não dá pra fazer de PowerShell).
 
 .EXAMPLE
-  pwsh -File "D:/Claud Automations/_Novo_Projeto/scripts/percus-review-auto.ps1"
-  pwsh -File "D:/Claud Automations/_Novo_Projeto/scripts/percus-review-auto.ps1" -Base main
+  pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-review-auto.ps1"
+  pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-review-auto.ps1" -Base main
 
 .NOTES
   Exit codes: 0 = success, 1 = plugin não encontrado, 2 = router falhou, 3 = deepseek-review falhou

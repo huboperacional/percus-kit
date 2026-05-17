@@ -64,7 +64,7 @@ Reportar matriz e pedir confirmação.
 
 ### Passo 2 — Instalar plugin `@percus/review` (se ausente)
 
-Plugin local do kit em `D:/Claud Automations/_Novo_Projeto/plugin/percus-review/`. Instalação a nível de usuário (1× por máquina, vale pra todos os projetos).
+Plugin local do kit em `${env:PERCUS_CANON_DIR}/plugin/percus-review/`. Instalação a nível de usuário (1× por máquina, vale pra todos os projetos).
 
 **Caminho A — CLI standalone (preferido)**
 
@@ -81,7 +81,7 @@ No chat:
 
 **Caminho alternativo (sem internet, kit local):**
 ```
-/plugin marketplace add D:/Claud Automations/_Novo_Projeto
+/plugin marketplace add ${env:PERCUS_CANON_DIR}
 /plugin install percus-review
 ```
 
@@ -106,7 +106,7 @@ Não criar placeholder. Aguardar confirmação.
 
 ### Passo 4 — Criar/atualizar `AGENTS.md` na raiz do projeto
 
-Usar template slim em `D:/Claud Automations/_Novo_Projeto/templates/AGENTS.template.md` (~4.4 KB).
+Usar template slim em `${env:PERCUS_CANON_DIR}/templates/AGENTS.template.md` (~4.4 KB).
 
 Substitui qualquer `AGENTS.md` Codex-era no projeto (que era ~7.3 KB). Se já existe AGENTS.md, mesclar — preservar seções "O que é este projeto" e "Stack" se já preenchidas.
 
@@ -194,7 +194,7 @@ Atualizar `CLAUDE.md` do projeto: substituir qualquer seção "Code review cross
 1. Antes de cada commit que muda código
 2. Ao concluir cada marco de plano
 
-Em commit pré-commit: router auto decide DeepSeek / Cross-Claude / duplo (matriz em `D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md` R11).
+Em commit pré-commit: router auto decide DeepSeek / Cross-Claude / duplo (matriz em `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` R11).
 Em marco: `/percus-review:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo).
 
 Sem review nos últimos 5min antes do commit → não pode commitar.
@@ -260,8 +260,8 @@ Custo estimado mensal: $2-5 total (vs $200-400 com Codex anterior).
 
 ## Referências
 
-- Plugin: `D:/Claud Automations/_Novo_Projeto/plugin/percus-review/`
-- Template AGENTS.md slim: `D:/Claud Automations/_Novo_Projeto/templates/AGENTS.template.md`
-- R11 detalhada: `D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md`
-- Matriz de routing: `D:/Claud Automations/_Novo_Projeto/04_MODEL_ROUTING.md` seção "Roteamento de revisores"
+- Plugin: `${env:PERCUS_CANON_DIR}/plugin/percus-review/`
+- Template AGENTS.md slim: `${env:PERCUS_CANON_DIR}/templates/AGENTS.template.md`
+- R11 detalhada: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md`
+- Matriz de routing: `${env:PERCUS_CANON_DIR}/04_MODEL_ROUTING.md` seção "Roteamento de revisores"
 - DeepSeek API: https://platform.deepseek.com

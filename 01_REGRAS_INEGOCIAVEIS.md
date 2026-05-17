@@ -54,10 +54,10 @@ Auditoria completa em `_AUDIT_2026-05-15.md`. Conselho expandido em `06_CONSELHO
 
 Paths citados nas regras seguem duas formas:
 
-- **Path absoluto** (`D:/Claud Automations/_Novo_Projeto/...`): aponta para arquivo do **kit Percus** (regras, templates, comandos, scripts auxiliares). NÃO existe no repo do projeto que está sendo revisado — é referência cross-projeto. Vale para toda regra que entra em `AGENTS.md` via transclusão (R10, R11, R13).
+- **Path absoluto** (`${env:PERCUS_CANON_DIR}/...`): aponta para arquivo do **kit Percus** (regras, templates, comandos, scripts auxiliares). NÃO existe no repo do projeto que está sendo revisado — é referência cross-projeto. Vale para toda regra que entra em `AGENTS.md` via transclusão (R10, R11, R13).
 - **Path relativo** (`docs/...`, `HANDOFF.md`, `CLAUDE.md`): aponta para arquivo **dentro do repo do projeto atual**. É criado pelos templates do kit no setup inicial.
 
-**Para revisores não-Claude (Codex, etc.):** se um path absoluto começando com `D:/Claud Automations/_Novo_Projeto/` for citado, **NÃO** trate como referência morta no repo do projeto — é arquivo do kit, fora do repo, propositalmente externo.
+**Para revisores não-Claude (Codex, etc.):** se um path absoluto começando com `${env:PERCUS_CANON_DIR}/` for citado, **NÃO** trate como referência morta no repo do projeto — é arquivo do kit, fora do repo, propositalmente externo.
 
 ### Config dir do Claude Code (`CLAUDE_CONFIG_DIR`)
 
@@ -255,8 +255,8 @@ Não confiar em disciplina — os hooks são gate. Escape declarável em voz alt
 
 **Agora**: agente Claude Code AUTORIZADO a auto-disparar review via wrapper kit-level antes de qualquer `git commit` que ele mesmo for executar via Bash tool. Wrapper:
 
-- Pre-commit: `pwsh -File "D:/Claud Automations/_Novo_Projeto/scripts/percus-review-auto.ps1"` (ou `.sh` em Unix)
-- Marco: `pwsh -File "D:/Claud Automations/_Novo_Projeto/scripts/percus-milestone-review-auto.ps1" -Base <commit-inicio-marco>`
+- Pre-commit: `pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-review-auto.ps1"` (ou `.sh` em Unix)
+- Marco: `pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-milestone-review-auto.ps1" -Base <commit-inicio-marco>`
 
 Wrapper resolve plugin instalado, dispatch DeepSeek (caso default) ou emite marker `__PERCUS_NEEDS_CROSS_CLAUDE__` no stderr quando decisão exige Cross-Claude (pasta sensível, marco, ou commit de DeepSeek). Agente lê marker → dispatch Sonnet subagent via Agent tool → consolida findings → decide commit.
 
@@ -287,7 +287,7 @@ Hook Layer 1+2 continua sendo backstop final — se agente esquecer auto-trigger
 
 ## R10. Design — gate por trigger lexical (v0.dev + shadcn MCP, NÃO Claude artifacts)
 
-**Regra:** Se o pedido contém qualquer um destes triggers, **PARE antes de codar** e siga `D:/Claud Automations/_Novo_Projeto/comandos/DESIGN_WORKFLOW.md`:
+**Regra:** Se o pedido contém qualquer um destes triggers, **PARE antes de codar** e siga `${env:PERCUS_CANON_DIR}/comandos/DESIGN_WORKFLOW.md`:
 
 `landing page`, `página inicial`, `home`, `redesign`, `redesenhar`, `refazer tela`, `hero section`, `seção de X`, `banner`, `CTA`, `dashboard`, `painel`, `tela de métricas`, `fluxo de onboarding`, `fluxo de cadastro`, `fluxo de checkout`, `pitch deck`, `apresentação`, `one-pager`, `melhorar UI/UX`, `deixar mais bonito`, `modernizar visual`, ou qualquer pedido que envolva **mais de 1 tela nova**.
 
@@ -303,7 +303,7 @@ Hook Layer 1+2 continua sendo backstop final — se agente esquecer auto-trigger
 **Vetado para produção visual:** Claude artifacts (claude.ai/design). Fica indisponível ~6/7 dias por semana e bloqueia trabalho. Pode ser usado pra rascunho descartável quando estiver disponível, mas **não é o caminho oficial**.
 
 **Resposta obrigatória ao detectar trigger:**
-> Essa tarefa é visual. Antes de codar, vou seguir `D:/Claud Automations/_Novo_Projeto/comandos/DESIGN_WORKFLOW.md`:
+> Essa tarefa é visual. Antes de codar, vou seguir `${env:PERCUS_CANON_DIR}/comandos/DESIGN_WORKFLOW.md`:
 > 1. Identifico se é componente isolado (→ shadcn MCP) ou tela nova (→ v0.dev)
 > 2. Você gera/aprova o draft visual no canal certo
 > 3. A partir do código aprovado, sigo o fluxo `[0]→[5-T]`
@@ -341,10 +341,10 @@ Justificativa do design: dois provedores diferentes (DeepSeek Inc + Anthropic) c
 
 ### Setup primeira vez
 
-Seguir `D:/Claud Automations/_Novo_Projeto/comandos/SETUP_REVIEW_ROUTING.md`. Cada projeto precisa de:
+Seguir `${env:PERCUS_CANON_DIR}/comandos/SETUP_REVIEW_ROUTING.md`. Cada projeto precisa de:
 - `DEEPSEEK_API_KEY` no `.env`
 - Plugin `@percus/review` instalado (uma vez globalmente)
-- `AGENTS.md` na raiz (template em `D:/Claud Automations/_Novo_Projeto/templates/AGENTS.template.md`) — sem isso, o reviewer revisa cego
+- `AGENTS.md` na raiz (template em `${env:PERCUS_CANON_DIR}/templates/AGENTS.template.md`) — sem isso, o reviewer revisa cego
 
 ### Tratamento de findings
 
@@ -369,7 +369,7 @@ Commitar e "rodar review depois" — derrota o propósito. Interceptar **antes**
 
 ### Exceção estrutural — kit Percus (`_Novo_Projeto/`)
 
-O próprio kit de iniciação (`D:/Claud Automations/_Novo_Projeto/`) é **exceção a R11**. Mudanças nele (regras, templates, comandos, scripts auxiliares) **não exigem review** porque:
+O próprio kit de iniciação (`${env:PERCUS_CANON_DIR}/`) é **exceção a R11**. Mudanças nele (regras, templates, comandos, scripts auxiliares) **não exigem review** porque:
 
 1. Kit é convenção/regra, não código de produção
 2. Reviewer precisaria de `AGENTS.md` espelhando R1-R13 — manter sincronizado seria atrito puro
@@ -518,13 +518,13 @@ Mudanças no kit ainda devem: (a) ser feitas via plano explícito, (b) ser revis
 - Decidir "vou só guardar `email` na minha tabela e ignorar `identity_id`" — perde o link cross-produto, perde SSO, vira drift garantido.
 
 **Referência primária:** `D:\Claud Automations\OWNERSHIP.md` (quadro de ownership + árvore de decisão "criar ou referenciar?").
-**Receita prática:** `D:\Claud Automations\_Novo_Projeto\checklists\CHECKLIST_AUTH_NOVO_PROJETO.md`.
+**Receita prática:** `${env:PERCUS_CANON_DIR}\checklists\CHECKLIST_AUTH_NOVO_PROJETO.md`.
 
 ---
 
 ## R13. Roteamento de modelos — DeepSeek implementa, Claude arquiteta, Codex revisa
 
-**Regra:** Tarefas de implementação **mecânica** devem ser delegadas ao DeepSeek V4 via wrapper `D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.{ps1,sh}`, seguindo o playbook em `D:/Claud Automations/_Novo_Projeto/04_MODEL_ROUTING.md` seção "Como delegar". Saída do DeepSeek é tratada como **rascunho** — sempre revisada por Claude (validação contra R1–R12) e por Codex (R11) antes de virar commit. **Decisões arquiteturais permanecem com Claude.**
+**Regra:** Tarefas de implementação **mecânica** devem ser delegadas ao DeepSeek V4 via wrapper `${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.{ps1,sh}`, seguindo o playbook em `${env:PERCUS_CANON_DIR}/04_MODEL_ROUTING.md` seção "Como delegar". Saída do DeepSeek é tratada como **rascunho** — sempre revisada por Claude (validação contra R1–R12) e por Codex (R11) antes de virar commit. **Decisões arquiteturais permanecem com Claude.**
 
 **Marker obrigatório no commit:** ao aplicar saída DeepSeek via wrapper (`-Apply`), o commit message **deve** terminar com o trailer Git:
 
@@ -544,7 +544,7 @@ O router de review (R11) detecta esse trailer e roteia revisão pra Cross-Claude
 - Brainstorm, exploração, decisão de trade-off
 - Debug de causa desconhecida
 - Pasta sensível (auth, pagamentos, migrations)
-- Tasks visuais (segue R10 + `D:/Claud Automations/_Novo_Projeto/comandos/DESIGN_WORKFLOW.md`)
+- Tasks visuais (segue R10 + `${env:PERCUS_CANON_DIR}/comandos/DESIGN_WORKFLOW.md`)
 
 **Gate de verificação:**
 1. `DEEPSEEK_API_KEY` carregada na sessão
@@ -559,7 +559,7 @@ O router de review (R11) detecta esse trailer e roteia revisão pra Cross-Claude
 - DeepSeek API down — implementa direto no Claude e marca em voz alta
 - Plano não está pronto ainda — volta pro arquiteto antes de delegar
 
-**Detalhes operacionais:** `D:/Claud Automations/_Novo_Projeto/04_MODEL_ROUTING.md` (matriz + playbook completo). Wrapper: `D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.{ps1,sh}`.
+**Detalhes operacionais:** `${env:PERCUS_CANON_DIR}/04_MODEL_ROUTING.md` (matriz + playbook completo). Wrapper: `${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.{ps1,sh}`.
 
 ---
 

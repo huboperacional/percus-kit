@@ -65,7 +65,7 @@ CATALOG-INFO.YAML: <presente | ausente>
 ULTIMO REVIEW: <timestamp do .deepseek/reviews/ mais recente | nunca>
 
 CANON PERCUS (resumo):
-- R1-R19 em D:\Claud Automations\_Novo_Projeto\01_REGRAS_INEGOCIAVEIS.md
+- R1-R19 em ${env:PERCUS_CANON_DIR}\01_REGRAS_INEGOCIAVEIS.md
 - Stack canonico em 02_INFRA_E_STACK_PERCUS.md
 - Tracking em 03_TRACKING_ATTRIBUITION.md
 - Feature tracking em 05_FEATURE_TRACKING.md
@@ -135,6 +135,6 @@ Roda mensalmente, custo agregado < $0.20/projeto/ano.
 
 ## Referencias
 
-- Canon: `D:\Claud Automations\_Novo_Projeto\01_REGRAS_INEGOCIAVEIS.md`
+- Canon: `${env:PERCUS_CANON_DIR}\01_REGRAS_INEGOCIAVEIS.md`
 - ADR pattern: `_Novo_Projeto/templates/adr-0000-template.md`
 - Auditoria similar: `_Novo_Projeto/_AUDIT_2026-05-15.md` (formato de tabela drift por regra)

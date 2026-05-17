@@ -37,7 +37,7 @@ Avança SÓ com verificação. Não arredondar.
 **Auto-trigger via wrapper kit-level (v5.1.0+):** antes de cada `git commit` que você for executar via Bash tool, rode:
 
 ```
-pwsh -NoProfile -ExecutionPolicy Bypass -File "D:\Claud Automations\_Novo_Projeto\scripts\percus-review-auto.ps1"
+pwsh -NoProfile -ExecutionPolicy Bypass -File "${env:PERCUS_CANON_DIR}\scripts\percus-review-auto.ps1"
 ```
 
 (ou `.sh` em Unix). Wrapper resolve plugin instalado + decide router + dispatch DeepSeek. Se output stderr tiver marker `__PERCUS_NEEDS_CROSS_CLAUDE__`, dispatch Sonnet subagent IMEDIATAMENTE via Agent tool com prompt R11 cross-claude-review e salve findings em `.deepseek/reviews/<ts>-cross-claude.jsonl`.
@@ -84,7 +84,7 @@ Se operador responde "sim sem ter testado", marque `[4-C]` em vez de `[5-T]` (co
 - **R13:** trailer `Co-implemented-by: deepseek-v4` no commit se aplicar saída do wrapper
 
 ## Referência completa
-`D:/Claud Automations/_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md`
+`${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md`
 
 ## Skills upstream que invoco
-Ver `D:/Claud Automations/_Novo_Projeto/comandos/USANDO_SUPERPOWERS.md` (tabela Tier 1).
+Ver `${env:PERCUS_CANON_DIR}/comandos/USANDO_SUPERPOWERS.md` (tabela Tier 1).

@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 # Hook on-stop Percus — bloqueia stop se sessão tocou código sem atualizar HANDOFF.md (R8).
 # Falha graceful: qualquer erro -> exit 0.
 
@@ -52,7 +52,7 @@ try {
         if ($catalogEdited) {
             $cwd = (Get-Location).Path
             if (Test-Path (Join-Path $cwd "catalog-info.yaml")) {
-                $publishScript = "D:\Claud Automations\_Novo_Projeto\plugin\percus-review\scripts\catalog_publish.py"
+                $publishScript = "${env:PERCUS_CANON_DIR}\plugin\percus-review\scripts\catalog_publish.py"
                 if (Test-Path $publishScript) {
                     try {
                         $logFile = Join-Path $cwd ".deepseek\catalog-publish.log"

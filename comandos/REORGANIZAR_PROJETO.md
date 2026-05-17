@@ -11,7 +11,7 @@ ultima-atualizacao: 2026-04-25
 > Cole este prompt no projeto atual. O agente vai ler o projeto como ele está hoje
 > e criar/atualizar os arquivos de acompanhamento sem tocar em nenhum código.
 >
-> **Templates de referência:** `D:\Claud Automations\_Novo_Projeto\templates\` (CLAUDE / HANDOFF / PLANO / mock-audit).
+> **Templates de referência:** `${env:PERCUS_CANON_DIR}\templates\` (CLAUDE / HANDOFF / PLANO / mock-audit).
 
 ---
 

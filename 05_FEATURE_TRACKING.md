@@ -30,7 +30,7 @@ fase-introducao: Fase 6
 
 ### `catalog-info.yaml` (raiz do repo)
 
-Template em `D:\Claud Automations\_Novo_Projeto\templates\catalog-info.yaml.template`. Schema:
+Template em `${env:PERCUS_CANON_DIR}\templates\catalog-info.yaml.template`. Schema:
 
 ```yaml
 apiVersion: percus.io/v1
@@ -66,7 +66,7 @@ spec:
 
 ### `docs/adrs/NNNN-<slug>.md` (Architecture Decision Records)
 
-Template em `D:\Claud Automations\_Novo_Projeto\templates\adr-0000-template.md`. Schema MADR + extensão Percus:
+Template em `${env:PERCUS_CANON_DIR}\templates\adr-0000-template.md`. Schema MADR + extensão Percus:
 
 ```markdown
 # ADR-NNNN: <título da decisão>

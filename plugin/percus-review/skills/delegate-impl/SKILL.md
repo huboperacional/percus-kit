@@ -58,7 +58,7 @@ Quando operador autoriza delegacao, **NAO delegue tudo de uma vez**. Faca dry-ru
 Ex.: pra "criar 5 endpoints CRUD", delegue so o endpoint do primeiro recurso.
 
 ```bash
-pwsh -NoProfile -ExecutionPolicy Bypass -File "D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.ps1" `
+pwsh -NoProfile -ExecutionPolicy Bypass -File "${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.ps1" `
     -Task "<descricao da unidade UNICA, com contexto suficiente>" `
     -OutputFile /tmp/deepseek-dryrun.diff
 ```
@@ -128,7 +128,7 @@ Permite rastreabilidade (auditavel em git log) + ativa router R11 pra Cross-Clau
 
 ## Referencias
 
-- Wrapper: `D:/Claud Automations/_Novo_Projeto/scripts/deepseek-impl.{ps1,sh}`.
+- Wrapper: `${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.{ps1,sh}`.
 - Spec R13: `_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md`.
 - Decisao Opcao C+E: `Painel Gestao e Afiliados/.deepseek/council-log/20260516-175220-consult.jsonl`.
 - Skill irma: `feature-flow` (orquestra R1-R13, decide quando delegar como step 3).
