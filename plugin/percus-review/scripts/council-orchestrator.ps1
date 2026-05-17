@@ -40,6 +40,11 @@ param(
     [ValidateSet("consult","pre-mortem","review")]
     [string]$Mode = "consult"
     ,[int]$MaxInputTokens = 8000
+    ,[string]$DeepSeekModel = "deepseek-chat"
+    ,[string]$GroqModel     = "llama-3.3-70b-versatile"
+    ,[AllowEmptyString()]
+    [ValidateSet("claude-haiku-4-5","claude-sonnet-4-6","claude-opus-4-7","")]
+    [string]$CrossClaudeModel = ""
 )
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -93,6 +98,16 @@ if (-not $SystemPrompt) {
     }
 }
 
+# F.2 Automatic router: choose Cross-Claude model by mode (unless overridden)
+if (-not $CrossClaudeModel) {
+    $CrossClaudeModel = switch ($Mode) {
+        "consult"    { "claude-haiku-4-5" }
+        "review"     { "claude-sonnet-4-6" }
+        "pre-mortem" { "claude-opus-4-7" }
+        default      { "claude-sonnet-4-6" }
+    }
+}
+
 # Parse providers list
 $wanted = $Providers.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
 
@@ -128,14 +143,22 @@ foreach ($p in $asyncProviders) {
         DEEPSEEK_API_KEY = $env:DEEPSEEK_API_KEY
         GROQ_API_KEY     = $env:GROQ_API_KEY
     }
+    $modelForProvider = switch ($p) {
+        "deepseek"   { $DeepSeekModel }
+        "groq-llama" { $GroqModel }
+        default      { "" }
+    }
     $jobs[$p] = Start-Job -ScriptBlock {
-        param($Wrapper, $PromptF, $SysPrompt, $EnvVars)
+        param($Wrapper, $PromptF, $SysPrompt, $EnvVars, $ModelArg)
         foreach ($kv in $EnvVars.GetEnumerator()) {
             if ($kv.Value) { Set-Item -Path "env:$($kv.Key)" -Value $kv.Value }
         }
-        # Capture only stdout from wrapper; stderr (warnings) goes to job's stderr stream
-        & $Wrapper -PromptFile $PromptF -SystemPrompt $SysPrompt
-    } -ArgumentList $wrapperPath, $tmpPrompt, $SystemPrompt, $envSnapshot
+        if ($ModelArg) {
+            & $Wrapper -PromptFile $PromptF -SystemPrompt $SysPrompt -Model $ModelArg
+        } else {
+            & $Wrapper -PromptFile $PromptF -SystemPrompt $SysPrompt
+        }
+    } -ArgumentList $wrapperPath, $tmpPrompt, $SystemPrompt, $envSnapshot, $modelForProvider
 }
 
 # Collect cross-claude (already provided OR marker)
@@ -144,7 +167,7 @@ if ($wantsCrossClaude) {
     if ($CrossClaudeFile -and (Test-Path $CrossClaudeFile)) {
         $crossClaude = @{
             provider   = "cross-claude"
-            model      = "claude-sonnet-4-6"
+            model      = $CrossClaudeModel
             status     = "ok"
             content    = (Get-Content $CrossClaudeFile -Raw)
             latency_ms = 0
@@ -152,7 +175,10 @@ if ($wantsCrossClaude) {
     } else {
         # Emit marker pro agente
         [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__")
-        [Console]::Error.WriteLine("[council-orchestrator] dispatch Sonnet subagent com prompt:")
+        [Console]::Error.WriteLine("[council-orchestrator] dispatch Cross-Claude subagent com prompt:")
+        [Console]::Error.WriteLine("---MODEL-HINT---")
+        [Console]::Error.WriteLine($CrossClaudeModel)
+        [Console]::Error.WriteLine("---END-MODEL-HINT---")
         [Console]::Error.WriteLine("---PROMPT---")
         [Console]::Error.WriteLine("$SystemPrompt`n`n$userPrompt")
         [Console]::Error.WriteLine("---END-PROMPT---")

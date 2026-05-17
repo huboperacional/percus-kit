@@ -10,6 +10,9 @@ PROVIDERS="deepseek,groq-llama"
 CROSS_CLAUDE_FILE=""
 MODE="consult"
 MAX_INPUT_TOKENS=8000
+DEEPSEEK_MODEL="deepseek-chat"
+GROQ_MODEL="llama-3.3-70b-versatile"
+CROSS_CLAUDE_MODEL=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -19,6 +22,9 @@ while [[ $# -gt 0 ]]; do
         --cross-claude-file) CROSS_CLAUDE_FILE="$2"; shift 2;;
         --mode) MODE="$2"; shift 2;;
         --max-input-tokens) MAX_INPUT_TOKENS="$2"; shift 2;;
+        --deepseek-model) DEEPSEEK_MODEL="$2"; shift 2;;
+        --groq-model) GROQ_MODEL="$2"; shift 2;;
+        --cross-claude-model) CROSS_CLAUDE_MODEL="$2"; shift 2;;
         *) shift;;
     esac
 done
@@ -71,6 +77,16 @@ if [[ -z "$SYSTEM_PROMPT" ]]; then
     esac
 fi
 
+# F.2 Automatic router: choose Cross-Claude model by mode (unless overridden)
+if [[ -z "$CROSS_CLAUDE_MODEL" ]]; then
+    case "$MODE" in
+        consult)    CROSS_CLAUDE_MODEL="claude-haiku-4-5";;
+        review)     CROSS_CLAUDE_MODEL="claude-sonnet-4-6";;
+        pre-mortem) CROSS_CLAUDE_MODEL="claude-opus-4-7";;
+        *)          CROSS_CLAUDE_MODEL="claude-sonnet-4-6";;
+    esac
+fi
+
 IFS=',' read -ra WANTED <<< "$PROVIDERS"
 
 # Separate cross-claude
@@ -116,8 +132,17 @@ for p in "${ASYNC_PROVIDERS[@]}"; do
     fi
     OUT=$(mktemp)
     OUTPUT_FILES[$p]="$OUT"
+    MODEL_ARG=""
+    case "$p" in
+        deepseek)   MODEL_ARG="$DEEPSEEK_MODEL";;
+        groq-llama) MODEL_ARG="$GROQ_MODEL";;
+    esac
     (
-        bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --system-prompt "$SYSTEM_PROMPT" > "$OUT" 2>&1
+        if [[ -n "$MODEL_ARG" ]]; then
+            bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --system-prompt "$SYSTEM_PROMPT" --model "$MODEL_ARG" > "$OUT" 2>&1
+        else
+            bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --system-prompt "$SYSTEM_PROMPT" > "$OUT" 2>&1
+        fi
     ) &
 done
 
@@ -126,10 +151,13 @@ CROSS_CLAUDE_JSON=""
 if [[ $WANTS_CROSS_CLAUDE -eq 1 ]]; then
     if [[ -n "$CROSS_CLAUDE_FILE" && -f "$CROSS_CLAUDE_FILE" ]]; then
         CC_CONTENT=$(cat "$CROSS_CLAUDE_FILE")
-        CROSS_CLAUDE_JSON=$(jq -n --arg c "$CC_CONTENT" '{provider:"cross-claude", model:"claude-sonnet-4-6", status:"ok", content:$c, latency_ms:0}')
+        CROSS_CLAUDE_JSON=$(jq -n --arg c "$CC_CONTENT" --arg m "$CROSS_CLAUDE_MODEL" '{provider:"cross-claude", model:$m, status:"ok", content:$c, latency_ms:0}')
     else
         echo "__PERCUS_NEEDS_CROSS_CLAUDE__" >&2
-        echo "[council-orchestrator] dispatch Sonnet subagent com prompt:" >&2
+        echo "[council-orchestrator] dispatch Cross-Claude subagent com prompt:" >&2
+        echo "---MODEL-HINT---" >&2
+        echo "${CROSS_CLAUDE_MODEL}" >&2
+        echo "---END-MODEL-HINT---" >&2
         echo "---PROMPT---" >&2
         echo "${SYSTEM_PROMPT}" >&2
         echo "" >&2

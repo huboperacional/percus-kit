@@ -4,7 +4,7 @@ prevalece-sobre: nenhum (regras inegociáveis vencem)
 prevalecido-por: [01_REGRAS_INEGOCIAVEIS, CLAUDE.md do projeto]
 quando-usar: SEMPRE — define qual modelo executa qual tipo de task
 leitura: 4 min
-ultima-atualizacao: 2026-05-02
+ultima-atualizacao: 2026-05-17
 ---
 
 # 04 — Roteamento de Modelos por Task
@@ -297,6 +297,22 @@ Agente Claude Code dispara review automaticamente via wrappers kit-level (path e
 | `scripts/deepseek-impl.ps1` (`.sh`) | Implementação mecânica delegada (R13) | Wrapper de IMPLEMENTAÇÃO DeepSeek, separado dos wrappers de REVIEW |
 
 **Distinção importante:** `deepseek-impl` = implementador (escreve código). `percus-review-auto` = revisor (lê código). São scripts diferentes com APIs diferentes do DeepSeek (chat completion vs review prompt).
+
+## Fase 6 — Router automatico Cross-Claude (Eixo F.2, v6.3.0)
+
+Orchestrator escolhe modelo Cross-Claude por mode (override com `-CrossClaudeModel` no PS, `--cross-claude-model` no .sh):
+
+| Mode | Default | Racional |
+|---|---|---|
+| consult | claude-haiku-4-5 | Respostas curtas (<150 palavras), baixo custo |
+| review | claude-sonnet-4-6 | Findings cross-provider, qualidade alta |
+| pre-mortem | claude-opus-4-7 | Raciocinio profundo, 3 motivos concretos |
+
+DeepSeek e Groq tambem aceitam `-DeepSeekModel` / `-GroqModel` (PS) ou `--deepseek-model` / `--groq-model` (bash). Default: `deepseek-chat` e `llama-3.3-70b-versatile`.
+
+Marker pro Agent tool dispatch passa a incluir bloco `---MODEL-HINT---<model>---END-MODEL-HINT---` em stderr, permitindo ao agente orquestrador saber qual modelo dispatchear para o subagent Cross-Claude.
+
+---
 
 ## Referências cruzadas
 
