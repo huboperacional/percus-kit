@@ -39,10 +39,32 @@ param(
     [string]$CrossClaudeFile,
     [ValidateSet("consult","pre-mortem","review")]
     [string]$Mode = "consult"
+    ,[int]$MaxInputTokens = 8000
 )
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Estimate-Tokens([string]$text) {
+    if (-not $text) { return 0 }
+    # Heuristica conservadora: 1 token ~ 3.5 chars (overestima leve, evita undertruncate)
+    return [int]([Math]::Ceiling($text.Length / 3.5))
+}
+
+function Truncate-Prompt([string]$text, [int]$maxTok) {
+    $tok = Estimate-Tokens $text
+    if ($tok -le $maxTok) { return @{ text = $text; truncated = $false; original_tokens = $tok } }
+    # Preservar 1000 tokens iniciais (~3500 chars) + resto final
+    $headChars = 3500
+    $tailChars = [int](($maxTok - 1000) * 3.5)
+    if ($tailChars -lt 1000) { $tailChars = 1000 }
+    if ($text.Length -le $headChars + $tailChars) { return @{ text = $text; truncated = $false; original_tokens = $tok } }
+    $head = $text.Substring(0, $headChars)
+    $tail = $text.Substring($text.Length - $tailChars)
+    $cut = $tok - $maxTok
+    $newText = "$head`n`n[...TRUNCATED ~$cut tokens...]`n`n$tail"
+    return @{ text = $newText; truncated = $true; original_tokens = $tok }
+}
 
 $pluginRoot = Split-Path $PSScriptRoot -Parent  # .../percus-review/
 $providersDir = Join-Path $pluginRoot "providers"
@@ -77,6 +99,16 @@ $wanted = $Providers.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { 
 # Separate cross-claude (handled differently)
 $asyncProviders = $wanted | Where-Object { $_ -ne "cross-claude" }
 $wantsCrossClaude = $wanted -contains "cross-claude"
+
+# F.5 smart truncation conservador
+$combinedForCheck = "$SystemPrompt`n$userPrompt"
+$trunc = Truncate-Prompt $combinedForCheck $MaxInputTokens
+if ($trunc.truncated) {
+    [Console]::Error.WriteLine("[council-orchestrator] AVISO: prompt truncado de $($trunc.original_tokens) -> ~$MaxInputTokens tokens.")
+    # Aplicar truncation apenas ao userPrompt; SystemPrompt fica intacto (e curto)
+    $userTrunc = Truncate-Prompt $userPrompt ($MaxInputTokens - (Estimate-Tokens $SystemPrompt))
+    $userPrompt = $userTrunc.text
+}
 
 # Write prompt to temp file for jobs to read
 $tmpPrompt = [System.IO.Path]::GetTempFileName()
@@ -168,6 +200,8 @@ $result = @{
     responses        = $responses
     total_latency_ms = $totalLatency
     cross_claude_pending = ($wantsCrossClaude -and (-not $crossClaude))
+    truncated        = $trunc.truncated
+    original_token_count = $trunc.original_tokens
 }
 
 $result | ConvertTo-Json -Depth 10 | Out-File -FilePath $logFile -Encoding utf8
