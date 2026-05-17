@@ -6,11 +6,14 @@ dos providers; fallback tiktoken cl100k_base), aplica preco fixo e agrega.
 from __future__ import annotations
 import argparse
 import json
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 
+# Keys duplicadas (ex: "deepseek" e "deepseek-chat") sao aliases deliberados:
+# cobrem tanto o provider name retornado pela API quanto o model name nos logs.
 PRICING_PER_MTOKEN = {
     "deepseek-chat":           {"in": 0.27, "out": 1.10},
     "deepseek":                {"in": 0.27, "out": 1.10},
@@ -23,13 +26,9 @@ PRICING_PER_MTOKEN = {
 }
 
 
-def parse_log_file(path: Path) -> list[dict[str, Any]]:
-    """Extrai uma entrada por resposta de provider. Tolera entradas sem usage."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return []
-
+def parse_log_data(data: dict[str, Any], path: Path) -> list[dict[str, Any]]:
+    """Extrai uma entrada por resposta de provider a partir de um dict ja parseado.
+    Tolera entradas sem usage e responses nulas."""
     mode = data.get("mode", "unknown")
     ts = data.get("timestamp", "")
     prompt_text = (data.get("prompt") or "") + "\n" + (data.get("system_prompt") or "")
@@ -54,6 +53,15 @@ def parse_log_file(path: Path) -> list[dict[str, Any]]:
             "source": str(path),
         })
     return entries
+
+
+def parse_log_file(path: Path) -> list[dict[str, Any]]:
+    """Le o arquivo JSONL e delega para parse_log_data. Retorna [] em caso de erro."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return []
+    return parse_log_data(data, path)
 
 
 def _estimate_tokens(prompt: str, completion: str) -> tuple[int, int]:
@@ -137,24 +145,32 @@ def main():
     p.add_argument("--output", default="-")
     args = p.parse_args()
 
+    if args.days <= 0:
+        p.error("--days deve ser > 0")
+
     cutoff = datetime.now() - timedelta(days=args.days)
     entries: list[dict[str, Any]] = []
     for log in Path(args.root).rglob(".deepseek/council-log/*.jsonl"):
         try:
+            # Leitura unica: raw dict e reaproveitado tanto pro filtro de cutoff
+            # quanto para parse_log_data (evita double file read).
             raw = json.loads(log.read_text(encoding="utf-8"))
             ts_str = raw.get("timestamp", "")
             if ts_str:
                 # Normalize timezone: strip offset (e.g. -03:00, +00:00, Z) to naive local
-                import re as _re
-                ts_clean = _re.sub(r"[+-]\d{2}:\d{2}$|Z$", "", ts_str)
+                ts_clean = re.sub(r"[+-]\d{2}:\d{2}$|Z$", "", ts_str)
                 ts = datetime.fromisoformat(ts_clean)
             else:
                 ts = cutoff
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError, ValueError):
             ts = cutoff
+            raw = {}
+        # Cada JSONL = 1 consulta com timestamp unico; entries herdam esse timestamp.
+        # O filtro per-file e correto: se a consulta esta fora do periodo, todas as suas
+        # entries (um por provider) tambem estao.
         if ts < cutoff:
             continue
-        entries.extend(parse_log_file(log))
+        entries.extend(parse_log_data(raw, log))
 
     agg = aggregate(entries)
     md = render_markdown(agg, entries, args.days)
