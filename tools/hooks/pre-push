@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Pre-push hook — valida que marketplace.json e plugin.json declaram a mesma versão.
+# Instalar: bash tools/hooks/install.sh
+# Razão: incidente recorrente em que marketplace.json (raiz) ficava parado em versão
+# antiga enquanto plugin.json interno era bumped a cada release, fazendo a UI do
+# Claude Code marketplace oferecer versão obsoleta. Ver HANDOFF v6.7.1.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+MARKET="$ROOT/.claude-plugin/marketplace.json"
+PLUGIN="$ROOT/plugin/percus-review/plugin.json"
+
+if [[ ! -f "$MARKET" || ! -f "$PLUGIN" ]]; then
+  echo "pre-push: marketplace.json ou plugin.json faltando — skipping check" >&2
+  exit 0
+fi
+
+MV="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['plugins'][0]['version'])" "$MARKET")"
+PV="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['version'])" "$PLUGIN")"
+
+if [[ "$MV" != "$PV" ]]; then
+  echo "" >&2
+  echo "X pre-push BLOQUEADO: versoes divergentes" >&2
+  echo "  .claude-plugin/marketplace.json  -> $MV" >&2
+  echo "  plugin/percus-review/plugin.json -> $PV" >&2
+  echo "" >&2
+  echo "  Bump os DOIS arquivos pra mesma versao antes de pushar." >&2
+  echo "  (incidente recorrente -- ver HANDOFF v6.7.1)" >&2
+  echo "" >&2
+  exit 1
+fi
+
+if [[ -f "$ROOT/plugin/.claude-plugin/marketplace.json" ]]; then
+  echo "X pre-push BLOQUEADO: plugin/.claude-plugin/marketplace.json ressurgiu (duplicacao)." >&2
+  echo "  Fonte unica = .claude-plugin/marketplace.json (raiz). Delete o duplicado." >&2
+  exit 1
+fi
+
+echo "OK pre-push: versoes em sincronia ($MV)"
+exit 0

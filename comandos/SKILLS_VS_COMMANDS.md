@@ -91,7 +91,7 @@ ultima-atualizacao: 2026-05-17
 
 Antes do agente escrever "rode `/X:Y`" no chat pro user:
 
-1. **`/X:Y` existe como command?** Olha em `plugin/percus-review/commands/` e `plugin/.claude-plugin/marketplace.json`. Se não, é skill ou inexistente.
+1. **`/X:Y` existe como command?** Olha em `plugin/percus-review/commands/` e `.claude-plugin/marketplace.json`. Se não, é skill ou inexistente.
 2. **Se é skill, eu (agente) consigo invocar via Skill tool?** Sim — sempre. User não precisa colar nada.
 3. **Se é auto-trigger (review):** eu (agente) consigo rodar o wrapper via Bash tool? Sim. Não passa responsabilidade pro user.
 
@@ -102,6 +102,6 @@ Se a resposta de qualquer um for "sim, eu posso fazer", **faça**. Não jogue pr
 ## Referências
 
 - Plugin: `${env:PERCUS_CANON_DIR}/plugin/percus-review/`
-- Marketplace canônico: `plugin/.claude-plugin/marketplace.json` (lista commands) + skills auto-discovered de `skills/<nome>/SKILL.md`
+- Marketplace canônico: `.claude-plugin/marketplace.json` (lista commands) + skills auto-discovered de `skills/<nome>/SKILL.md`
 - Wrapper auto-trigger: `scripts/percus-review-auto.ps1` (cwd do projeto-alvo)
 - Conselho 3-membros: `scripts/council-orchestrator.ps1` (`-Mode consult|pre-mortem|review`)
