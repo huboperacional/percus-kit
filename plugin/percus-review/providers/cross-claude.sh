@@ -29,6 +29,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+case "$MODE" in
+    consult|review|pre-mortem) ;;
+    *) echo "[cross-claude-provider] Mode invalido: '$MODE'. Use: consult|review|pre-mortem" >&2; exit 1;;
+esac
+
 # Load .env (best-effort)
 if [[ -z "$ANTHROPIC_API_KEY" && -f ".env" ]]; then
     set -a; source .env 2>/dev/null || true; set +a
