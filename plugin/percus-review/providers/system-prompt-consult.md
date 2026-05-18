@@ -80,4 +80,4 @@ Você está sendo consultado **junto** com DeepSeek e Llama sobre uma decisão d
 - Sem disclaimers ("não tenho contexto suficiente" — você tem o que está acima)
 - Quando discordar de premissa do operador: declare explicitamente "premissa rejeitada: X — porque Y"
 - Quando aceitar: marque "premissa aceita: X"
-- Riscos concretos > genéricos: "drift no R20 sem CI check" > "pode ter problemas no futuro"
+- Riscos concretos > genéricos: "cookie sem Secure em login (R7)" > "pode ter problemas no futuro"
