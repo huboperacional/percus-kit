@@ -159,10 +159,21 @@ for p in "${ASYNC_PROVIDERS[@]}"; do
         cross-claude) MODEL_ARG="$CROSS_CLAUDE_MODEL";;
     esac
     (
-        if [[ -n "$MODEL_ARG" ]]; then
-            bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --system-prompt "$SYSTEM_PROMPT" --model "$MODEL_ARG" > "$OUT" 2>&1
+        # F.1 fix v6.6.1: pra cross-claude, passar --mode pra carregar system-prompt-{mode}.md
+        # (enriquecido com R1-R19, ativa cache Anthropic). NAO passar --system-prompt
+        # senao wrapper detecta override e pula o file load.
+        if [[ "$WRAPPER" == *cross-claude* ]]; then
+            if [[ -n "$MODEL_ARG" ]]; then
+                bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --mode "$MODE" --model "$MODEL_ARG" > "$OUT" 2>&1
+            else
+                bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --mode "$MODE" > "$OUT" 2>&1
+            fi
         else
-            bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --system-prompt "$SYSTEM_PROMPT" > "$OUT" 2>&1
+            if [[ -n "$MODEL_ARG" ]]; then
+                bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --system-prompt "$SYSTEM_PROMPT" --model "$MODEL_ARG" > "$OUT" 2>&1
+            else
+                bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --system-prompt "$SYSTEM_PROMPT" > "$OUT" 2>&1
+            fi
         fi
     ) &
 done

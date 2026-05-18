@@ -173,16 +173,27 @@ foreach ($p in $asyncProviders) {
         default        { "" }
     }
     $jobs[$p] = Start-Job -ScriptBlock {
-        param($Wrapper, $PromptF, $SysPrompt, $EnvVars, $ModelArg)
+        param($Wrapper, $PromptF, $SysPrompt, $EnvVars, $ModelArg, $ModeArg)
         foreach ($kv in $EnvVars.GetEnumerator()) {
             if ($kv.Value) { Set-Item -Path "env:$($kv.Key)" -Value $kv.Value }
         }
-        if ($ModelArg) {
-            & $Wrapper -PromptFile $PromptF -SystemPrompt $SysPrompt -Model $ModelArg
+        if ($Wrapper -match 'cross-claude') {
+            # F.1 fix v6.6.1: pra cross-claude, passar -Mode pra carregar system-prompt-{mode}.md
+            # (enriquecido com R1-R19, ativa cache Anthropic). NAO passar -SystemPrompt
+            # senao wrapper detecta override via PSBoundParameters e pula o file load.
+            if ($ModelArg) {
+                & $Wrapper -PromptFile $PromptF -Mode $ModeArg -Model $ModelArg
+            } else {
+                & $Wrapper -PromptFile $PromptF -Mode $ModeArg
+            }
         } else {
-            & $Wrapper -PromptFile $PromptF -SystemPrompt $SysPrompt
+            if ($ModelArg) {
+                & $Wrapper -PromptFile $PromptF -SystemPrompt $SysPrompt -Model $ModelArg
+            } else {
+                & $Wrapper -PromptFile $PromptF -SystemPrompt $SysPrompt
+            }
         }
-    } -ArgumentList $wrapperPath, $tmpPrompt, $SystemPrompt, $envSnapshot, $modelForProvider
+    } -ArgumentList $wrapperPath, $tmpPrompt, $SystemPrompt, $envSnapshot, $modelForProvider, $Mode
 }
 
 # Collect cross-claude (already provided OR marker)
