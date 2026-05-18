@@ -13,7 +13,7 @@
   Path pra arquivo com prompt completo. Se omitido, le stdin.
 
 .PARAMETER SystemPrompt
-  Override do system prompt. Default: "Voce e consultor cross-provider Percus..."
+  Override do system prompt. Se omitido, carrega system-prompt-{Mode}.md do diretorio providers/.
 
 .PARAMETER Temperature
   Default: 0.2.
@@ -27,18 +27,25 @@
 .PARAMETER Endpoint
   Default: https://api.anthropic.com/v1/messages
 
+.PARAMETER Mode
+  Modo de operacao: consult | review | pre-mortem. Default: consult.
+  Determina qual system-prompt-{Mode}.md carrega. pre-mortem faz fold pra consult.
+
 .EXAMPLE
   Get-Content prompt.txt | .\cross-claude.ps1 > out.json
   .\cross-claude.ps1 -PromptFile prompt.txt -Model "claude-haiku-4-5"
+  .\cross-claude.ps1 -PromptFile prompt.txt -Mode review
 #>
 [CmdletBinding()]
 param(
     [string]$PromptFile,
-    [string]$SystemPrompt = "Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos.",
+    [string]$SystemPrompt,
     [double]$Temperature = 0.2,
     [int]$MaxTokens = 1024,
     [string]$Model = "claude-sonnet-4-6",
-    [string]$Endpoint = "https://api.anthropic.com/v1/messages"
+    [string]$Endpoint = "https://api.anthropic.com/v1/messages",
+    [ValidateSet("consult","review","pre-mortem")]
+    [string]$Mode = "consult"
 )
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -62,6 +69,20 @@ if (-not $env:ANTHROPIC_API_KEY) {
 if (-not $env:ANTHROPIC_API_KEY) {
     [Console]::Error.WriteLine("[cross-claude-provider] ANTHROPIC_API_KEY ausente no .env ou env vars.")
     exit 2
+}
+
+# Resolve SystemPrompt: -SystemPrompt explícito vence; senão carrega system-prompt-{Mode}.md;
+# fallback: default inline curto (mantém retrocompat se arquivo faltar).
+if (-not $PSBoundParameters.ContainsKey('SystemPrompt') -or -not $SystemPrompt) {
+    $modeFile = if ($Mode -eq 'pre-mortem') { 'consult' } else { $Mode }
+    $promptPath = Join-Path $PSScriptRoot "system-prompt-$modeFile.md"
+    if (Test-Path $promptPath) {
+        $raw = Get-Content $promptPath -Raw
+        # Strip YAML frontmatter (---...---)
+        $SystemPrompt = $raw -replace '^---\r?\n[\s\S]*?\r?\n---\r?\n', ''
+    } else {
+        $SystemPrompt = "Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
+    }
 }
 
 # Read prompt
