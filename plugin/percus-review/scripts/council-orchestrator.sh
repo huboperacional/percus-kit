@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Council orchestrator (Unix) - roda DeepSeek + Llama em paralelo via background jobs.
 # Cross-Claude (subagent Sonnet): emite marker em stderr OU le --cross-claude-file.
+#
+# F2 — Code Context Injection: --code-context-dir ou blocks ```file:path``` no prompt
+# injetam codigo no system prompt. Providers devem validar claims (anti-alucinacao).
 
 set -eo pipefail
 
@@ -13,6 +16,9 @@ MAX_INPUT_TOKENS=8000
 DEEPSEEK_MODEL="deepseek-chat"
 GROQ_MODEL="llama-3.3-70b-versatile"
 CROSS_CLAUDE_MODEL=""
+# F2 params
+CODE_CONTEXT_DIR=""
+MAX_TOKENS_PER_FILE=2000
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -25,6 +31,8 @@ while [[ $# -gt 0 ]]; do
         --deepseek-model) DEEPSEEK_MODEL="$2"; shift 2;;
         --groq-model) GROQ_MODEL="$2"; shift 2;;
         --cross-claude-model) CROSS_CLAUDE_MODEL="$2"; shift 2;;
+        --code-context-dir) CODE_CONTEXT_DIR="$2"; shift 2;;
+        --max-tokens-per-file) MAX_TOKENS_PER_FILE="$2"; shift 2;;
         *) shift;;
     esac
 done
@@ -53,6 +61,138 @@ truncate_prompt() {
 
 ${tail}"
   TRUNCATED=true; ORIG_TOK=$tok
+}
+
+# ---------------------------------------------------------------------------
+# F2 — truncate_file_content: trunca conteudo de arquivo a max_tok tokens (chars/3)
+# Sets global: TRUNC_FILE_TEXT (string), FILE_WAS_TRUNCATED (true/false)
+# ---------------------------------------------------------------------------
+truncate_file_content() {
+    local text="$1"; local max_tok="$2"
+    local tok; tok=$(estimate_tokens "$text")
+    if [ "$tok" -le "$max_tok" ]; then
+        FILE_WAS_TRUNCATED=false
+        TRUNC_FILE_TEXT="$text"
+        return
+    fi
+    local max_chars=$(( max_tok * 3 ))
+    TRUNC_FILE_TEXT="${text:0:$max_chars}"$'\n'"[...TRUNCATED to ~${max_tok} tokens...]"
+    FILE_WAS_TRUNCATED=true
+}
+
+# ---------------------------------------------------------------------------
+# F2 — get_premise_validity: extrai premise_validity das primeiras 10 linhas do content
+# Outputs: "ok", "invalid", "unverified", ou "" (ausente)
+# ---------------------------------------------------------------------------
+get_premise_validity() {
+    local content="$1"
+    echo "$content" | head -10 | grep -ioE 'premise_validity\s*:\s*(ok|invalid|unverified)' | \
+        grep -ioE '(ok|invalid|unverified)$' | head -1 | tr '[:upper:]' '[:lower:]'
+}
+
+# ---------------------------------------------------------------------------
+# F2 — build_code_context_block: le arquivos e monta bloco de contexto
+# Sets global: CODE_CONTEXT_BLOCK (string), CODE_CONTEXT_FILES (array), HAS_CODE_CONTEXT (0/1)
+# ---------------------------------------------------------------------------
+build_code_context_block() {
+    CODE_CONTEXT_BLOCK=""
+    CODE_CONTEXT_FILES=()
+    HAS_CODE_CONTEXT=0
+    local max_files=8
+    local file_count=0
+
+    if [[ -n "$CODE_CONTEXT_DIR" && -d "$CODE_CONTEXT_DIR" ]]; then
+        # Caminho A: pasta curada
+        while IFS= read -r -d '' fpath; do
+            if [ "$file_count" -ge "$max_files" ]; then
+                echo "[council-orchestrator][F2] AVISO: CodeContextDir tem mais de $max_files arquivos; usando primeiros $max_files." >&2
+                break
+            fi
+            local fname; fname=$(basename "$fpath")
+            local raw; raw=$(cat "$fpath" 2>/dev/null || true)
+            truncate_file_content "$raw" "$MAX_TOKENS_PER_FILE"
+            if [ "$FILE_WAS_TRUNCATED" = "true" ]; then
+                echo "[council-orchestrator][F2] AVISO: arquivo '$fname' truncado a ~$MAX_TOKENS_PER_FILE tokens." >&2
+            fi
+            CODE_CONTEXT_BLOCK+="$fname"$'\n'"---"$'\n'"$TRUNC_FILE_TEXT"$'\n\n'
+            CODE_CONTEXT_FILES+=("$fname")
+            (( file_count++ )) || true
+        done < <(find "$CODE_CONTEXT_DIR" \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \
+            -o -name "*.go" -o -name "*.rs" -o -name "*.ps1" -o -name "*.sh" -o -name "*.md" \) \
+            -maxdepth 1 -type f -print0 2>/dev/null)
+    else
+        # Caminho B: parse ```file:path``` blocks no prompt
+        local found_paths
+        found_paths=$(echo "$USER_PROMPT" | grep -oP '(?<=```file:)[^\s`]+' 2>/dev/null || true)
+        while IFS= read -r fpath; do
+            [[ -z "$fpath" ]] && continue
+            if [ "$file_count" -ge "$max_files" ]; then
+                echo "[council-orchestrator][F2] AVISO: limite de $max_files arquivos via file_block atingido." >&2
+                break
+            fi
+            # Resolver path
+            local resolved
+            if [[ "$fpath" = /* ]]; then
+                resolved="$fpath"
+            else
+                resolved="$(pwd)/$fpath"
+            fi
+            if [[ ! -f "$resolved" ]]; then
+                echo "[council-orchestrator][F2] AVISO: arquivo referenciado no prompt nao encontrado: $resolved" >&2
+                continue
+            fi
+            local fname; fname=$(basename "$fpath")
+            local raw; raw=$(cat "$resolved" 2>/dev/null || true)
+            truncate_file_content "$raw" "$MAX_TOKENS_PER_FILE"
+            if [ "$FILE_WAS_TRUNCATED" = "true" ]; then
+                echo "[council-orchestrator][F2] AVISO: arquivo '$fname' truncado a ~$MAX_TOKENS_PER_FILE tokens." >&2
+            fi
+            CODE_CONTEXT_BLOCK+="$fpath"$'\n'"---"$'\n'"$TRUNC_FILE_TEXT"$'\n\n'
+            CODE_CONTEXT_FILES+=("$fpath")
+            (( file_count++ )) || true
+        done <<< "$found_paths"
+    fi
+
+    if [ "${#CODE_CONTEXT_FILES[@]}" -gt 0 ]; then
+        HAS_CODE_CONTEXT=1
+        echo "[council-orchestrator][F2] ${#CODE_CONTEXT_FILES[@]} arquivo(s) de codigo injetados no system prompt." >&2
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# F2 — build_enriched_system_prompt: prefixa system prompt com contexto + instrucao
+# Sets global: ENRICHED_SYSTEM_PROMPT
+# ---------------------------------------------------------------------------
+build_enriched_system_prompt() {
+    if [ "$HAS_CODE_CONTEXT" -eq 0 ]; then
+        ENRICHED_SYSTEM_PROMPT="$SYSTEM_PROMPT"
+        return
+    fi
+    ENRICHED_SYSTEM_PROMPT=$(cat <<ENRICHED
+=== CONTEXTO DE CODIGO (referenciado no prompt) ===
+
+${CODE_CONTEXT_BLOCK}
+=== INSTRUCAO ANTI-ALUCINACAO ===
+
+Voce esta consultando sobre uma decisao. O prompt do operador inclui claims
+tecnicos sobre o codigo acima. ANTES de opinar, VALIDE se claims refletem
+o codigo real apresentado. Se algum claim e factualmente errado, reporte como
+INVALIDA_PREMISSA em vez de opinar sobre a alternativa.
+
+=== TIPOS DE RESPOSTA OBRIGATORIOS ===
+
+Comece sua resposta com UMA das tags:
+- \`premise_validity: ok\` -- claims do prompt sao consistentes com codigo
+- \`premise_validity: invalid\` -- pelo menos 1 claim e factualmente errado (cite qual)
+- \`premise_validity: unverified\` -- nao consegui ler/validar (lib externa, ambiguous)
+
+Apos a tag, sua opiniao normal segue.
+
+=== INSTRUCAO ORIGINAL ===
+
+${SYSTEM_PROMPT}
+ENRICHED
+)
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -120,6 +260,11 @@ for p in "${WANTED[@]}"; do
         ASYNC_PROVIDERS+=("$p")
     fi
 done
+
+# F2 — Load code context (Caminho A precede Caminho B)
+build_code_context_block
+build_enriched_system_prompt
+SYSTEM_PROMPT="$ENRICHED_SYSTEM_PROMPT"
 
 # F.5 smart truncation conservador
 COMBINED_CHECK="${SYSTEM_PROMPT}
@@ -210,15 +355,27 @@ for p in "${ASYNC_PROVIDERS[@]}"; do
     CONTENT=$(cat "$OUT")
     # Try parse as JSON; if fail, wrap as error
     if echo "$CONTENT" | jq -e . >/dev/null 2>&1; then
+        # F2: parse premise_validity quando code context presente
+        if [ "$HAS_CODE_CONTEXT" -eq 1 ]; then
+            PCONTENT=$(echo "$CONTENT" | jq -r '.content // ""')
+            PV=$(get_premise_validity "$PCONTENT")
+            CONTENT=$(echo "$CONTENT" | jq --arg pv "$PV" '. + {premise_validity: $pv}')
+        fi
         RESPONSES_JSON=$(echo "$RESPONSES_JSON" | jq --argjson r "$CONTENT" '. + [$r]')
     else
-        ERR=$(jq -n --arg p "$p" --arg c "$CONTENT" '{provider:$p, status:"error", error:$c, latency_ms:0}')
+        ERR=$(jq -n --arg p "$p" --arg c "$CONTENT" '{provider:$p, status:"error", error:$c, latency_ms:0, premise_validity:""}')
         RESPONSES_JSON=$(echo "$RESPONSES_JSON" | jq --argjson r "$ERR" '. + [$r]')
     fi
     rm -f "$OUT"
 done
 
 if [[ -n "$CROSS_CLAUDE_JSON" ]]; then
+    # F2: parse premise_validity para cross-claude
+    if [ "$HAS_CODE_CONTEXT" -eq 1 ]; then
+        CC_CONTENT_TEXT=$(echo "$CROSS_CLAUDE_JSON" | jq -r '.content // ""')
+        CC_PV=$(get_premise_validity "$CC_CONTENT_TEXT")
+        CROSS_CLAUDE_JSON=$(echo "$CROSS_CLAUDE_JSON" | jq --arg pv "$CC_PV" '. + {premise_validity: $pv}')
+    fi
     RESPONSES_JSON=$(echo "$RESPONSES_JSON" | jq --argjson r "$CROSS_CLAUDE_JSON" '. + [$r]')
 fi
 
@@ -226,6 +383,23 @@ rm -f "$TMP_PROMPT"
 
 END_MS=$(date +%s%3N)
 TOTAL_LATENCY=$((END_MS - START_MS))
+
+# F2 — compute premise_validity_consensus
+PREMISE_CONSENSUS=""
+if [ "$HAS_CODE_CONTEXT" -eq 1 ]; then
+    HAS_INVALID=$(echo "$RESPONSES_JSON" | jq '[.[] | select(.premise_validity == "invalid")] | length')
+    HAS_UNVERIF=$(echo "$RESPONSES_JSON" | jq '[.[] | select(.premise_validity == "unverified")] | length')
+    HAS_OK=$(echo "$RESPONSES_JSON"      | jq '[.[] | select(.premise_validity == "ok")] | length')
+    if [ "$HAS_INVALID" -gt 0 ]; then
+        PREMISE_CONSENSUS="invalid"
+    elif [ "$HAS_UNVERIF" -gt 0 ]; then
+        PREMISE_CONSENSUS="unverified"
+    elif [ "$HAS_OK" -gt 0 ]; then
+        PREMISE_CONSENSUS="ok"
+    else
+        PREMISE_CONSENSUS="unverified"
+    fi
+fi
 
 # Log
 LOG_DIR=".deepseek/council-log"
@@ -236,6 +410,9 @@ CROSS_PENDING="false"
 if [[ $WANTS_CROSS_CLAUDE -eq 1 && -z "$CROSS_CLAUDE_JSON" ]]; then
     CROSS_PENDING="true"
 fi
+
+# Build code_context_files JSON array
+CC_FILES_JSON=$(printf '%s\n' "${CODE_CONTEXT_FILES[@]:-}" | jq -R . | jq -s . 2>/dev/null || echo "[]")
 
 RESULT=$(jq -n \
     --arg mode "$MODE" \
@@ -248,7 +425,10 @@ RESULT=$(jq -n \
     --argjson cross_pending "$CROSS_PENDING" \
     --argjson truncated "${FINAL_TRUNCATED:-false}" \
     --argjson orig_tok "${FINAL_ORIG_TOK:-0}" \
-    '{mode:$mode, timestamp:$ts, prompt:$prompt, system_prompt:$sys, providers_called:$wanted, responses:$responses, total_latency_ms:$total_lat, cross_claude_pending:$cross_pending, truncated:$truncated, original_token_count:$orig_tok}')
+    --argjson has_ctx "$HAS_CODE_CONTEXT" \
+    --argjson cc_files "$CC_FILES_JSON" \
+    --arg pv_consensus "$PREMISE_CONSENSUS" \
+    '{mode:$mode, timestamp:$ts, prompt:$prompt, system_prompt:$sys, providers_called:$wanted, responses:$responses, total_latency_ms:$total_lat, cross_claude_pending:$cross_pending, truncated:$truncated, original_token_count:$orig_tok, has_code_context:$has_ctx, code_context_files:$cc_files, premise_validity_consensus:$pv_consensus}')
 
 echo "$RESULT" > "$LOG_FILE"
 echo "$RESULT"

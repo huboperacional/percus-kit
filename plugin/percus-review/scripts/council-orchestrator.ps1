@@ -11,6 +11,10 @@
   Output: JSON em stdout com array de respostas + sintese sugerida (heuristic).
   Log: .deepseek/council-log/<timestamp>.jsonl
 
+  F2 — Code Context Injection: quando -CodeContextDir eh passado, ou quando o prompt
+  contem blocos ```file:path```, os arquivos sao lidos e injetados no system prompt.
+  Providers devem validar claims antes de opinar (anti-alucinacao).
+
 .PARAMETER PromptFile
   Path do arquivo com prompt user. Se omitido, le stdin.
 
@@ -27,9 +31,19 @@
 .PARAMETER Mode
   "consult" (default), "pre-mortem", "review". Afeta system prompt sugerido.
 
+.PARAMETER CodeContextDir
+  [F2] Pasta com arquivos de codigo curados (*.py, *.ts, *.tsx, *.js, *.go, *.rs, *.ps1, *.sh, *.md).
+  Quando presente, arquivos sao injetados no system prompt pra validacao de claims.
+  Limite: 8 arquivos, 2000 tokens por arquivo (MaxTokensPerFile). Se CodeContextDir passado,
+  blocks ```file:path``` no prompt sao ignorados (Caminho A precede Caminho B).
+
+.PARAMETER MaxTokensPerFile
+  [F2] Limite de tokens por arquivo de codigo injetado (default: 2000).
+
 .EXAMPLE
   echo "Devo renomear users.name?" | .\council-orchestrator.ps1
   .\council-orchestrator.ps1 -PromptFile q.txt -Providers "deepseek,groq-llama,cross-claude"
+  .\council-orchestrator.ps1 -PromptFile q.txt -CodeContextDir ./src/services -Mode review
 #>
 [CmdletBinding()]
 param(
@@ -45,6 +59,9 @@ param(
     ,[AllowEmptyString()]
     [ValidateSet("claude-haiku-4-5","claude-sonnet-4-6","claude-opus-4-7","")]
     [string]$CrossClaudeModel = ""
+    # F2 — code context injection
+    ,[string]$CodeContextDir = ""
+    ,[int]$MaxTokensPerFile  = 2000
 )
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -84,6 +101,157 @@ function Limit-Prompt([string]$text, [int]$maxTok) {
     return @{ text = $newText; truncated = $true; original_tokens = $tok }
 }
 
+# ---------------------------------------------------------------------------
+# F2 — Get-CodeContext: lê arquivos de codigo e retorna hashtable path->content
+# Caminho A: -CodeContextDir (pasta curada, precede B)
+# Caminho B: parser de blocks ```file:path``` no prompt
+# Limite: MaxTokensPerFile tokens/arquivo, 8 arquivos total
+# ---------------------------------------------------------------------------
+function Get-CodeContext {
+    param(
+        [string]$ContextDir,
+        [string]$PromptText,
+        [int]$MaxTokPerFile,
+        [string]$CWD
+    )
+    $result = [ordered]@{}
+    $FileBlockPattern = '```file:([^\s`]+)'
+    $maxFiles = 8
+    $extensions = @('*.py','*.ts','*.tsx','*.js','*.go','*.rs','*.ps1','*.sh','*.md')
+
+    if ($ContextDir -and (Test-Path $ContextDir)) {
+        # Caminho A: pasta curada
+        $files = @()
+        foreach ($ext in $extensions) {
+            $files += Get-ChildItem -Path $ContextDir -Filter $ext -File -ErrorAction SilentlyContinue
+        }
+        if ($files.Count -gt $maxFiles) {
+            [Console]::Error.WriteLine("[council-orchestrator][F2] AVISO: CodeContextDir tem $($files.Count) arquivos; usando primeiros $maxFiles.")
+            $files = $files | Select-Object -First $maxFiles
+        }
+        foreach ($f in $files) {
+            $raw = Get-Content $f.FullName -Raw -Encoding utf8 -ErrorAction SilentlyContinue
+            if (-not $raw) { continue }
+            $truncResult = Limit-Prompt $raw $MaxTokPerFile
+            if ($truncResult.truncated) {
+                [Console]::Error.WriteLine("[council-orchestrator][F2] AVISO: arquivo '$($f.Name)' truncado de $($truncResult.original_tokens) -> ~$MaxTokPerFile tokens.")
+            }
+            $result[$f.Name] = $truncResult.text
+        }
+    } elseif ($PromptText) {
+        # Caminho B: parse ```file:path``` blocks no prompt
+        $matches2 = [regex]::Matches($PromptText, $FileBlockPattern)
+        $seen = @{}
+        foreach ($m in $matches2) {
+            if ($result.Count -ge $maxFiles) {
+                [Console]::Error.WriteLine("[council-orchestrator][F2] AVISO: limite de $maxFiles arquivos via file_block atingido; ignorando restantes.")
+                break
+            }
+            $filePath = $m.Groups[1].Value.Trim()
+            if ($seen[$filePath]) { continue }
+            $seen[$filePath] = $true
+            # Resolver path relativo ao CWD
+            $resolved = if ([System.IO.Path]::IsPathRooted($filePath)) { $filePath } else { Join-Path $CWD $filePath }
+            if (-not (Test-Path $resolved)) {
+                [Console]::Error.WriteLine("[council-orchestrator][F2] AVISO: arquivo referenciado no prompt nao encontrado: $resolved")
+                continue
+            }
+            $raw = Get-Content $resolved -Raw -Encoding utf8 -ErrorAction SilentlyContinue
+            if (-not $raw) { continue }
+            $truncResult = Limit-Prompt $raw $MaxTokPerFile
+            if ($truncResult.truncated) {
+                [Console]::Error.WriteLine("[council-orchestrator][F2] AVISO: arquivo '$filePath' truncado de $($truncResult.original_tokens) -> ~$MaxTokPerFile tokens.")
+            }
+            $result[$filePath] = $truncResult.text
+        }
+    }
+    return $result
+}
+
+# ---------------------------------------------------------------------------
+# F2 — Build-EnrichedSystemPrompt: prefixa system prompt com contexto de codigo
+# e instrucao anti-alucinacao quando code_context presente
+# ---------------------------------------------------------------------------
+function Build-EnrichedSystemPrompt {
+    param(
+        [string]$BaseSystemPrompt,
+        [hashtable]$CodeContext
+    )
+    if (-not $CodeContext -or $CodeContext.Count -eq 0) {
+        return $BaseSystemPrompt
+    }
+
+    $codeBlock = ""
+    foreach ($path in $CodeContext.Keys) {
+        $codeBlock += "$path`n---`n$($CodeContext[$path])`n`n"
+    }
+
+    $enriched = @"
+=== CONTEXTO DE CODIGO (referenciado no prompt) ===
+
+$codeBlock
+=== INSTRUCAO ANTI-ALUCINACAO ===
+
+Voce esta consultando sobre uma decisao. O prompt do operador inclui claims
+tecnicos sobre o codigo acima. ANTES de opinar, VALIDE se claims refletem
+o codigo real apresentado. Se algum claim e factualmente errado, reporte como
+INVALIDA_PREMISSA em vez de opinar sobre a alternativa.
+
+=== TIPOS DE RESPOSTA OBRIGATORIOS ===
+
+Comece sua resposta com UMA das tags:
+- ``premise_validity: ok`` -- claims do prompt sao consistentes com codigo
+- ``premise_validity: invalid`` -- pelo menos 1 claim e factualmente errado (cite qual)
+- ``premise_validity: unverified`` -- nao consegui ler/validar (lib externa, ambiguous)
+
+Apos a tag, sua opiniao normal segue.
+
+=== INSTRUCAO ORIGINAL ===
+
+$BaseSystemPrompt
+"@
+    return $enriched
+}
+
+# ---------------------------------------------------------------------------
+# F2 — Get-PremiseValidity: extrai premise_validity da primeira linha nao-vazia do content
+# Retorna "ok", "invalid", "unverified", ou "" (ausente/nao-aplicavel)
+# ---------------------------------------------------------------------------
+function Get-PremiseValidity([string]$content) {
+    if (-not $content) { return "" }
+    # Procurar nas primeiras 5 linhas (providers podem ter whitespace antes)
+    $lines = $content -split "`n" | Select-Object -First 10
+    foreach ($line in $lines) {
+        $trimmed = $line.Trim()
+        if ($trimmed -match '(?i)premise_validity\s*:\s*(ok|invalid|unverified)') {
+            return $matches[1].ToLower()
+        }
+    }
+    return ""
+}
+
+# ---------------------------------------------------------------------------
+# F2 — Get-PremiseValidityConsensus: agrega premise_validity de todas responses
+# Regra: >=1 invalid -> "invalid"; >=1 unverified (sem invalid) -> "unverified"; else "ok"
+# Se nenhum provider retornou tag -> "unverified" (seguro por default)
+# ---------------------------------------------------------------------------
+function Get-PremiseValidityConsensus([array]$responses) {
+    $hasInvalid    = $false
+    $hasUnverified = $false
+    $hasOk         = $false
+    $anyTag        = $false
+    foreach ($r in $responses) {
+        $pv = $r.premise_validity
+        if ($pv -eq "invalid")    { $hasInvalid = $true; $anyTag = $true }
+        elseif ($pv -eq "unverified") { $hasUnverified = $true; $anyTag = $true }
+        elseif ($pv -eq "ok")     { $hasOk = $true; $anyTag = $true }
+    }
+    if (-not $anyTag) { return "unverified" }
+    if ($hasInvalid)    { return "invalid" }
+    if ($hasUnverified) { return "unverified" }
+    return "ok"
+}
+
 $pluginRoot = Split-Path $PSScriptRoot -Parent  # .../percus-review/
 $providersDir = Join-Path $pluginRoot "providers"
 
@@ -109,6 +277,14 @@ if (-not $SystemPrompt) {
         "pre-mortem" { "Voce e consultor de pre-mortem Percus. Leia o plano e responda: SE este plano falhar em 30 dias, por que? Liste exatamente 3 motivos concretos em ordem de probabilidade decrescente, com 1 frase cada." }
         "review"     { "Voce e revisor cross-provider Percus (R11). Aponte bugs, regressoes, violacoes R1-R19, mocks escondidos, JWT em localStorage, imports vetados. Se nada relevante: 'Sem findings criticos'." }
     }
+}
+
+# F2 — Load code context (Caminho A: CodeContextDir; Caminho B: file_block parser)
+$codeContext = Get-CodeContext -ContextDir $CodeContextDir -PromptText $userPrompt -MaxTokPerFile $MaxTokensPerFile -CWD (Get-Location).Path
+$hasCodeContext = ($codeContext.Count -gt 0)
+if ($hasCodeContext) {
+    [Console]::Error.WriteLine("[council-orchestrator][F2] $($codeContext.Count) arquivo(s) de codigo injetados no system prompt.")
+    $SystemPrompt = Build-EnrichedSystemPrompt -BaseSystemPrompt $SystemPrompt -CodeContext $codeContext
 }
 
 # F.2 Automatic router: choose Cross-Claude model by mode (unless overridden)
@@ -231,21 +407,36 @@ foreach ($name in $jobs.Keys) {
     Remove-Job -Job $job -Force
     try {
         $obj = $jsonStr | ConvertFrom-Json
-        $responses += $obj
+        # F2: parse premise_validity da content (quando code context foi injetado)
+        $pv = if ($hasCodeContext) { Get-PremiseValidity ($obj.content) } else { "" }
+        # Adicionar campo ao objeto (convertendo PSCustomObject pra hashtable para mutabilidade)
+        $objHash = @{}
+        $obj.PSObject.Properties | ForEach-Object { $objHash[$_.Name] = $_.Value }
+        $objHash["premise_validity"] = $pv
+        $responses += $objHash
     } catch {
         $responses += @{
-            provider   = $name
-            status     = "error"
-            error      = "Failed to parse provider output: $jsonStr"
-            latency_ms = 0
+            provider          = $name
+            status            = "error"
+            error             = "Failed to parse provider output: $jsonStr"
+            latency_ms        = 0
+            premise_validity  = ""
         }
     }
 }
-if ($crossClaude) { $responses += $crossClaude }
+if ($crossClaude) {
+    # F2: parse premise_validity do cross-claude (se code context presente)
+    $ccPV = if ($hasCodeContext) { Get-PremiseValidity ($crossClaude.content) } else { "" }
+    $crossClaude["premise_validity"] = $ccPV
+    $responses += $crossClaude
+}
 
 Remove-Item $tmpPrompt -Force -ErrorAction SilentlyContinue
 
 $totalLatency = [int]((Get-Date) - $start).TotalMilliseconds
+
+# F2: calcular premise_validity_consensus
+$premiseConsensus = if ($hasCodeContext) { Get-PremiseValidityConsensus $responses } else { "" }
 
 # Log to .deepseek/council-log/
 $logDir = Join-Path (Get-Location) ".deepseek\council-log"
@@ -263,6 +454,10 @@ $result = @{
     cross_claude_pending = ($wantsCrossClaude -and (-not $crossClaude))
     truncated        = $trunc.truncated
     original_token_count = $trunc.original_tokens
+    # F2 — code context injection metadata
+    code_context_files        = @($codeContext.Keys)
+    has_code_context          = $hasCodeContext
+    premise_validity_consensus = $premiseConsensus
 }
 
 $result | ConvertTo-Json -Depth 10 | Out-File -FilePath $logFile -Encoding utf8
