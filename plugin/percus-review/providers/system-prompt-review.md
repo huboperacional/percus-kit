@@ -65,6 +65,120 @@ Sistemas em produção (referência de contexto):
 
 **R19 — Identidade canônica via auth-service.** `user_id` é gerado e gerenciado pelo auth-service. Apps não criam users diretamente; consomem JWT validado.
 
+## Antipadrões inviolaveis (referência rápida)
+
+Exemplos concretos do que NUNCA aceitar.
+
+**R3 — Mocks em produção:**
+```python
+# RUIM (mock em prod):
+class StripeMock:
+    def charge(self, amount): return {"id": "ch_fake", "status": "succeeded"}
+
+# BOM (real ou feature flag explícita):
+client = StripeClient(api_key=settings.STRIPE_KEY) if settings.STRIPE_LIVE else None
+```
+
+**R7 — JWT em localStorage:**
+```typescript
+// RUIM:
+localStorage.setItem('token', jwt)
+
+// BOM (cookie httpOnly setado pelo backend):
+// Set-Cookie: session=<jwt>; HttpOnly; Secure; SameSite=lax
+```
+
+**R14 — Endpoint sem observabilidade:**
+```python
+# RUIM:
+@app.post("/leads")
+def create_lead(lead: Lead):
+    db.insert(lead); return {"id": lead.id}
+
+# BOM:
+@app.post("/leads")
+def create_lead(lead: Lead, request: Request):
+    logger.info("lead_create", extra={"lead_id": lead.id, "source": lead.utm_source, "request_id": request.state.request_id})
+    db.insert(lead); return {"id": lead.id}
+```
+
+**R15 — Rate limit IP cheio em IPv6:**
+```python
+# RUIM:
+@limiter.limit("5/minute", key_func=get_remote_address)
+
+# BOM (prefixo /64):
+@limiter.limit("5/minute", key_func=lambda req: ipv6_prefix(req.client.host, 64))
+```
+
+**R18 — Form lead sem captura completa:**
+```tsx
+// RUIM: form só pega name/email/phone
+// BOM: 15 hidden inputs populados pelo helper:
+import { useTrackingFields } from '@/lib/tracking'
+const tracking = useTrackingFields()  // 15 campos
+<input type="hidden" name="fbclid" value={tracking.fbclid} />
+// ...os 13 restantes
+```
+
+**SQL injection (R12):**
+```python
+# RUIM: cursor.execute(f"SELECT * FROM users WHERE email='{email}'")
+# BOM:  cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
+```
+
+**Secrets hardcoded (R12):**
+```python
+# RUIM: STRIPE_KEY = "sk_live_..."
+# BOM:  STRIPE_KEY = os.environ["STRIPE_KEY"]  # ou pydantic Settings
+```
+
+## Padrões aprovados (referência)
+
+- **Logs JSON estruturados:** `logger.info("evento", extra={"campo": valor, "request_id": rid})` — stdout, JSON formatter ativo.
+- **Pydantic v2 com `extra="forbid"`:** previne payload contamination silenciosa.
+- **Migrations Alembic via auth-service:** schema versionado, rollback rastreável.
+- **CORS allowlist explícita:** `["huboperacional.com.br", "ads4pros.com"]` — nunca `["*"]` em prod.
+- **Pre-commit review obrigatorio (R9):** wrapper `percus-review-auto.ps1` antes de todo commit, hook nativo bloqueia bypass.
+- **R8 TDD:** test red → impl → test green → commit. Não pula step 2 (red).
+- **R13 delegação DeepSeek:** boilerplate score>=4 vai pra `deepseek-impl.ps1` com dry-run 1 arquivo primeiro.
+
+## Exemplos de findings calibrados (output esperado)
+
+**Diff toca `auth/handler.py` + adiciona endpoint de login:**
+
+```
+CRITICO src/auth/handler.py:42 — JWT armazenado em localStorage (R7) — usar Set-Cookie httpOnly+Secure+SameSite=lax via auth-service
+CRITICO src/auth/handler.py:38 — rate limit ausente em /login (R15) — adicionar @limiter.limit com prefixo /64 IPv6
+ALTO src/auth/handler.py:55 — exception capturada sem logger.error (R14) — adicionar logger.error("login_failed", extra={...}, exc_info=True)
+MEDIO src/auth/handler.py:60 — endpoint sem request_id no log — propagar request.state.request_id
+```
+
+**Diff toca `leads/form.tsx` + helper tracking:**
+
+```
+CRITICO src/leads/form.tsx:88 — form lead nao captura fbclid, gclid, msclkid (R18, faltam 3 dos 15 campos) — adicionar hidden inputs e propagar ao body
+ALTO src/lib/tracking.ts:24 — helper nao le ttclid (TikTok) do URL — adicionar getURLParam('ttclid') e retornar no objeto tracking
+```
+
+**Diff limpo (sem violações):**
+
+```
+Sem findings críticos
+```
+
+**Diff toca migration sem alembic:**
+
+```
+CRITICO migrations/001_add_users.sql:1 — migration SQL bruta sem Alembic versionamento (R6) — converter pra revision Alembic com upgrade/downgrade
+```
+
+**Diff inclui mock Stripe em codigo de prod:**
+
+```
+CRITICO src/payments/stripe_client.py:12 — class StripeMock em codigo de prod (R3) — remover mock, usar StripeClient real ou feature flag STRIPE_LIVE
+```
+
 ## Seu papel neste review
 
 Você é revisor pré-commit (R11) do projeto Percus. Seu output é consumido por agente automatizado que decide se bloqueia ou libera o commit. Findings críticos devem ser inequívocos pra agente parsear.
