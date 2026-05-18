@@ -14,16 +14,28 @@
   __PERCUS_NEEDS_CROSS_CLAUDE__ no stderr -- agente lê e dispatch Sonnet subagent
   via Agent tool (não dá pra fazer de PowerShell).
 
+  F3 — Fact-check pipeline obrigatorio: apos reviewer principal, findings [SEV: risco|bug]
+  sao validados via Sonnet fact-check. Findings INFUNDADO sao filtrados antes do output
+  principal. Audit block preserva todos os veredictos. Opt-out via -NoFactCheck.
+
+.PARAMETER Base
+  Branch/commit base pra git diff. Default: vazio (usa staged + unstaged).
+
+.PARAMETER NoFactCheck
+  Desabilita fact-check pipeline (opt-out pra reviews triviais: doc-only, etc).
+
 .EXAMPLE
   pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-review-auto.ps1"
   pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-review-auto.ps1" -Base main
+  pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-review-auto.ps1" -NoFactCheck
 
 .NOTES
   Exit codes: 0 = success, 1 = plugin não encontrado, 2 = router falhou, 3 = deepseek-review falhou
 #>
 [CmdletBinding()]
 param(
-    [string]$Base = ""
+    [string]$Base = "",
+    [switch]$NoFactCheck
 )
 $ErrorActionPreference = "Stop"
 
@@ -61,12 +73,54 @@ if (-not $current) {
 
 [Console]::Error.WriteLine("[percus-review-auto] plugin v$($current.Name) em $($current.FullName)")
 
-$routerScript = Join-Path $current.FullName "scripts\review-router.ps1"
+$routerScript   = Join-Path $current.FullName "scripts\review-router.ps1"
 $deepseekScript = Join-Path $current.FullName "scripts\deepseek-review.ps1"
+$factCheckScript = Join-Path $current.FullName "scripts\fact-check.ps1"
 
 if (-not (Test-Path $routerScript)) {
     [Console]::Error.WriteLine("[percus-review-auto] ERRO: review-router.ps1 ausente em $($current.FullName)\scripts\")
     exit 1
+}
+
+# === Fact-check pipeline helper ===
+# Recebe output do reviewer, passa pelo fact-check, emite filtered_output + audit block.
+# Se fact-check nao disponivel ou -NoFactCheck, passa output direto.
+function Invoke-FactCheck {
+    param([string]$ReviewOutput, [switch]$Skip)
+
+    if ($Skip -or $NoFactCheck) {
+        [Console]::Error.WriteLine("[percus-review-auto] fact-check: skipped (--no-fact-check)")
+        return $ReviewOutput
+    }
+
+    if (-not (Test-Path $factCheckScript)) {
+        [Console]::Error.WriteLine("[percus-review-auto] WARN: fact-check.ps1 nao encontrado em $factCheckScript — passando output direto")
+        return $ReviewOutput
+    }
+
+    [Console]::Error.WriteLine("[percus-review-auto] fact-check: iniciando pipeline F3...")
+    $tmpFindings = [System.IO.Path]::GetTempFileName()
+    try {
+        [System.IO.File]::WriteAllText($tmpFindings, $ReviewOutput, [System.Text.Encoding]::UTF8)
+        $fcOut = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $factCheckScript -FindingsFile $tmpFindings 2>&1
+        $fcJson = $fcOut | ConvertFrom-Json -ErrorAction SilentlyContinue
+        if ($fcJson -and $fcJson.filtered_output -ne $null) {
+            $stats = "total=$($fcJson.findings_total) confirmado=$($fcJson.findings_confirmed) infundado=$($fcJson.findings_infundado) parcial=$($fcJson.findings_parcial)"
+            [Console]::Error.WriteLine("[percus-review-auto] fact-check: $stats")
+            if ($fcJson.findings_infundado -gt 0) {
+                [Console]::Error.WriteLine("[percus-review-auto] WARN: $($fcJson.findings_infundado) finding(s) INFUNDADO(s) filtrado(s) do output principal — ver bloco Audit")
+            }
+            return $fcJson.filtered_output
+        } else {
+            [Console]::Error.WriteLine("[percus-review-auto] WARN: fact-check retornou JSON invalido — passando output original")
+            return $ReviewOutput
+        }
+    } catch {
+        [Console]::Error.WriteLine("[percus-review-auto] WARN: fact-check falhou: $($_.Exception.Message) — passando output original")
+        return $ReviewOutput
+    } finally {
+        Remove-Item $tmpFindings -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # === Run router (decisão deepseek/cross-claude/dual) ===
@@ -89,30 +143,38 @@ try {
 [Console]::Error.WriteLine("[percus-review-auto] decisao: $($decision.decision) (sensitive=$($decision.sensitive), from_deepseek=$($decision.from_deepseek), $($decision.files_count) arquivo(s))")
 
 # === Dispatch ===
-$reviewWritten = $false
-
 switch ($decision.decision) {
     "deepseek" {
         $deepseekArgs = @()
         if ($Base) { $deepseekArgs += @("-Base", $Base) }
-        & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs
+        # Captura output do reviewer pra passar pelo fact-check pipeline (F3)
+        $reviewOutput = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs 2>&1 |
+            Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } |
+            Out-String
         if ($LASTEXITCODE -ne 0) {
             [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE)")
             exit 3
         }
-        $reviewWritten = $true
+        # F3: fact-check pipeline obrigatorio
+        $finalOutput = Invoke-FactCheck -ReviewOutput $reviewOutput
+        Write-Output $finalOutput
     }
 
     "dual" {
         # Roda DeepSeek (cobre layer cheap), agente faz Sonnet via Agent tool
         $deepseekArgs = @()
         if ($Base) { $deepseekArgs += @("-Base", $Base) }
-        & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs
+        # Captura output do reviewer pra passar pelo fact-check pipeline (F3)
+        $reviewOutput = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs 2>&1 |
+            Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } |
+            Out-String
         if ($LASTEXITCODE -ne 0) {
             [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE)")
             exit 3
         }
-        $reviewWritten = $true
+        # F3: fact-check pipeline obrigatorio
+        $finalOutput = Invoke-FactCheck -ReviewOutput $reviewOutput
+        Write-Output $finalOutput
         [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review.")
     }
 
@@ -121,6 +183,8 @@ switch ($decision.decision) {
         # Mas hook precisa de .jsonl em .deepseek/reviews/ pra liberar commit.
         # Solucao: agente vai dispatchar Sonnet e DEVE salvar saida em .deepseek/reviews/
         # via wrapper save-review (ou criar manualmente).
+        # Nota: fact-check nao aplicavel aqui — nao ha output de reviewer local; Sonnet
+        # subagent (dispatched via Agent tool) e responsavel por validar seus proprios findings.
         $reviewDir = ".deepseek\reviews"
         New-Item -ItemType Directory -Path $reviewDir -Force | Out-Null
         $placeholderPath = Join-Path $reviewDir "$(Get-Date -Format 'yyyyMMdd-HHmmss')-deferred-cross-claude.jsonl"
@@ -134,7 +198,6 @@ switch ($decision.decision) {
         } | ConvertTo-Json -Compress | Set-Content -Path $placeholderPath -Encoding UTF8
         [Console]::Error.WriteLine("[percus-review-auto] placeholder escrito em $placeholderPath (libera hook por TTL)")
         [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: commit veio de DeepSeek (decision=cross-claude). DEVE dispatchar Sonnet subagent via Agent tool agora -- DeepSeek NAO revisa proprio output (R11).")
-        $reviewWritten = $true
     }
 
     "council" {
@@ -143,12 +206,17 @@ switch ($decision.decision) {
         # 3 perspectivas em paralelo pra mudanca grande+sensivel ou pra revisar mudanca DS.
         $deepseekArgs = @()
         if ($Base) { $deepseekArgs += @("-Base", $Base) }
-        & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs
+        # Captura output do reviewer pra passar pelo fact-check pipeline (F3)
+        $reviewOutput = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs 2>&1 |
+            Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } |
+            Out-String
         if ($LASTEXITCODE -ne 0) {
             [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE)")
             exit 3
         }
-        $reviewWritten = $true
+        # F3: fact-check pipeline obrigatorio
+        $finalOutput = Invoke-FactCheck -ReviewOutput $reviewOutput
+        Write-Output $finalOutput
 
         # Tambem invoca Llama via orchestrator pra adicionar 3a perspectiva ao log council-log/
         $orchScript = Join-Path $current.FullName "scripts\council-orchestrator.ps1"
