@@ -1,8 +1,29 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.7.0-alpha`
+**Versão canônica em `huboperacional/percus-kit`:** `6.7.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.7.0 — 2026-05-18
+
+**Sprint 2 completo (sobre v6.7.0-alpha):**
+
+- **Fact-check pipeline (F3 reformulado):** `scripts/fact-check.ps1`/.sh — etapa OBRIGATÓRIA pós-reviewer. Findings `[SEV: risco|bug]` passam por subagent Sonnet que lê arquivos citados. INFUNDADO filtrado do output principal; audit block preserva todos. Integrado em `percus-review-auto.ps1` (default). Opt-out via `--no-fact-check`.
+- **Echo dedup (F5):** `scripts/dedup-findings.ps1`/.sh — agrupa findings por MD5(file_path + 100 chars). PR stacks com mesmo finding viram "1 unique, presente em N PRs" em vez de "N confirmações independentes".
+- **Test suite regressão (F6):** `tests/hardening-2026-05-18.tests.ps1` — 11 testes estáticos que validam todas as defesas implementadas. 11/11 pass. Rode em CI ou pre-release.
+- **Skill enforcement (F7):** `commands/council-consult.md` ganha seção "Pre-requisitos (enforcement v6.7.0+)" exigindo fact-check de findings críticos antes de escalar. Warning estruturado pro agente seguir.
+
+**Sprint 1 (v6.7.0-alpha, 2026-05-18 — incluído no v6.7.0 final):**
+- Router F1: sensitive_paths +5 padrões (alembic, internal, infra, config, services)
+- Canon F4ab: R11 expansion + R20 nova ("decisões de conselho não autorizam ação externa pública")
+- Hook F4c: external-action-guard.ps1 (PreToolUse, bloqueia gh pr comment/slack-cli/push sem PERCUS_EXTERNAL_OVERRIDE)
+- Council F2: -CodeContextDir + premise_validity + premise_validity_consensus aggregator
+
+**Smoke validations:**
+- F2 (orchestrator code injection): ambos providers retornaram `premise_validity: invalid` em claim falso sobre outbox pattern. Comportamento que preveniria incidente 2026-05-18.
+- F6 (hardening tests): 11/11 pass cobrindo todos os 4 cenários do reporter + 3 bonus.
 
 ---
 
