@@ -7,21 +7,24 @@
 
 set -eo pipefail
 
-SYSTEM_PROMPT="Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
+SYSTEM_PROMPT=""
+SYSTEM_PROMPT_EXPLICIT=0
 TEMPERATURE="0.2"
 MAX_TOKENS="1024"
 MODEL="claude-sonnet-4-6"
 ENDPOINT="https://api.anthropic.com/v1/messages"
 PROMPT_FILE=""
+MODE="consult"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --prompt-file)    PROMPT_FILE="$2"; shift 2;;
-        --system-prompt)  SYSTEM_PROMPT="$2"; shift 2;;
+        --system-prompt)  SYSTEM_PROMPT="$2"; SYSTEM_PROMPT_EXPLICIT=1; shift 2;;
         --temperature)    TEMPERATURE="$2"; shift 2;;
         --max-tokens)     MAX_TOKENS="$2"; shift 2;;
         --model)          MODEL="$2"; shift 2;;
         --endpoint)       ENDPOINT="$2"; shift 2;;
+        --mode)           MODE="$2"; shift 2;;
         *) shift;;
     esac
 done
@@ -34,6 +37,29 @@ fi
 if [[ -z "$ANTHROPIC_API_KEY" ]]; then
     echo "[cross-claude-provider] ANTHROPIC_API_KEY ausente no .env ou env vars." >&2
     exit 2
+fi
+
+# Resolve SystemPrompt: --system-prompt explícito vence; senão carrega system-prompt-{mode}.md;
+# fallback: default inline curto (mantém retrocompat se arquivo faltar).
+if [[ "$SYSTEM_PROMPT_EXPLICIT" -eq 0 || -z "$SYSTEM_PROMPT" ]]; then
+    MODE_FILE="$MODE"
+    [[ "$MODE" == "pre-mortem" ]] && MODE_FILE="consult"
+    # BASE_DIR resolve diretório do script (handle symlinks)
+    BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROMPT_PATH="$BASE_DIR/system-prompt-${MODE_FILE}.md"
+    if [[ -f "$PROMPT_PATH" ]]; then
+        # Strip YAML frontmatter via awk
+        SYSTEM_PROMPT=$(awk 'BEGIN{found_first=0; in_yaml=0; printed=0}
+            /^---$/ {
+                if (found_first==0) { found_first=1; in_yaml=1; next }
+                if (in_yaml==1) { in_yaml=0; printed=1; next }
+            }
+            in_yaml==0 && printed==1 { print }
+            in_yaml==0 && found_first==0 { print }
+        ' "$PROMPT_PATH")
+    else
+        SYSTEM_PROMPT="Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
+    fi
 fi
 
 if [[ -n "$PROMPT_FILE" ]]; then
