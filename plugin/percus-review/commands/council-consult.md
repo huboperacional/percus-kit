@@ -16,6 +16,48 @@ Use para decisao **reversivel + baixo blast radius** onde 3 perspectivas ajudam:
 - Decisao de produto (escopo, prazo, prioridade).
 - Pasta sensivel (auth/payment/migrations) — esses passam pelo modo "review_sensitive" automatico.
 
+## Pre-requisitos (enforcement v6.7.0+)
+
+ANTES de invocar council-consult com findings técnicos como contexto, verifique:
+
+1. **Findings críticos passaram por fact-check?**
+   Se contexto inclui findings com `[SEV: risco]` ou `[SEV: bug]`, eles devem ter sido
+   processados por `fact-check.ps1` (F3 pipeline) ou conter metadata `fact_check: CONFIRMADO`.
+
+   **Como verificar:**
+   - Rodou `/percus-review:review` no diff completo? Output já passou pelo F3 desde v6.7.0+.
+   - Está consolidando findings manualmente? Rode antes:
+     ```bash
+     cat findings.md | pwsh -File "${env:PERCUS_CANON_DIR}/plugin/percus-review/scripts/fact-check.ps1"
+     ```
+
+2. **Se você está escalando finding INFUNDADO ou unverified para o council:**
+   - **STOP.** O council vai votar em premissa textual sem ver código.
+   - Anti-padrão observado (incidente Plexco Tasks 2026-05-18): council 3/3 ratificou
+     alegação falsa do DeepSeek porque viu só texto, não código. Resultado: 4 PR
+     comments públicos errados foram postados, operador perdeu confiança.
+
+3. **Council ≠ autorização pra ação externa pública** (R20):
+   Consenso 3/3 do council é licença pra ação reversível interna apenas. PR comment,
+   Slack, deploy, push: gate explícito do operador OBRIGATÓRIO antes de executar.
+   Hook `external-action-guard.ps1` (PreToolUse) bloqueia `gh pr comment`, `slack-cli`,
+   `git push` sem `PERCUS_EXTERNAL_OVERRIDE=1`.
+
+## Warning automático
+
+Se você (agente) usa esta skill com:
+- Findings críticos no contexto
+- Sem evidência de fact-check (`fact_check: CONFIRMADO` ausente)
+- Sem confirmação do operador
+
+**Pare e pergunte ao operador antes de prosseguir.** Mensagem sugerida:
+
+> "Vou consultar o council sobre findings críticos. Os findings já passaram por
+> fact-check (F3 pipeline)? Se não, recomendo rodar `fact-check.ps1` primeiro
+> pra evitar council ratificar alegação não verificada (anti-padrão R20)."
+
+Aguarda resposta explícita antes de chamar `council-orchestrator.ps1`.
+
 ## Fluxo (passo a passo do agente)
 
 1. **Salve a pergunta + opcoes A/B/C** em `/tmp/council-q.txt`. Formato:
@@ -77,6 +119,8 @@ Apos sintese, mostre na conversa:
 - ❌ Usar consult pra decisao irreversivel (deploy, drop table, push force) — pergunte sempre.
 - ❌ Aceitar consenso 3/3 cego em pasta sensivel — opere consult-review primeiro.
 - ❌ Pular consult pra "ir mais rapido" — quando elegivel, defaulta consult (custo/latencia minimos).
+- ❌ Escalar finding nao verificado pro council sem fact-check (F3) — council ratifica premissa textual; incidente Plexco Tasks 2026-05-18.
+- ❌ Executar acao externa publica (PR comment, push, Slack) com base em consenso 3/3 sem gate do operador (R20).
 
 ## Referencias
 
