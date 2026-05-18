@@ -56,7 +56,13 @@ $sensitivePatterns = @(
     '(^|[/\\])payment[^/\\]*[/\\]',
     '(^|[/\\])migrations[/\\]',
     '(^|[/\\])credentials[/\\]',
-    '^\.env'
+    '^\.env',
+    # Expansion 2026-05-18 (incidente Plexco Tasks):
+    '(^|[/\\])alembic[/\\]versions[/\\]',
+    '(^|[/\\])api[/\\]v\d+[/\\]internal',
+    '(^|[/\\])infra[/\\].*\.(yaml|yml)$',
+    '(^|[/\\])(backend|app)[/\\].*config\.py$',
+    '(^|[/\\])services[/\\](auth|payment|notification|webhook)[/\\]'
 )
 $isSensitive = $false
 foreach ($f in $files) {

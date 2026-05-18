@@ -3,7 +3,8 @@
 #
 # Inspeciona arquivos tocados (cached + working tree, ou <base>..HEAD) e o
 # trailer do último commit. Decide:
-#   - "dual"         se tocar pasta sensível (auth/, payment*/, migrations/, credentials/, .env)
+#   - "dual"         se tocar pasta sensível (auth/, payment*/, migrations/, credentials/, .env,
+#                    alembic/versions/, api/v*/internal*, infra/*.yaml, config.py, services/webhook/)
 #   - "cross-claude" se último commit tem trailer "Co-implemented-by: deepseek"
 #   - "deepseek"     caso contrário (default cross-provider)
 
@@ -50,7 +51,12 @@ if [[ -n "$FILES" ]]; then
             || [[ "$f" =~ (^|/)payment[^/]*/ ]] \
             || [[ "$f" =~ (^|/)migrations/ ]] \
             || [[ "$f" =~ (^|/)credentials/ ]] \
-            || [[ "$f" =~ ^\.env ]]; then
+            || [[ "$f" =~ ^\.env ]] \
+            || [[ "$f" =~ (^|/)alembic/versions/ ]] \
+            || [[ "$f" =~ (^|/)api/v[0-9]+/internal ]] \
+            || [[ "$f" =~ (^|/)infra/.*\.(yaml|yml)$ ]] \
+            || [[ "$f" =~ (^|/)(backend|app)/.*config\.py$ ]] \
+            || [[ "$f" =~ (^|/)services/(auth|payment|notification|webhook)/ ]]; then
             IS_SENSITIVE=1
             break
         fi
