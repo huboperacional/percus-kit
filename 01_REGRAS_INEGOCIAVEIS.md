@@ -45,6 +45,7 @@ Tabela rápida — quem usa o quê:
 | R17 (magic links centralizado) | 📖 | auth-service `/auth/magic/*` |
 | R18 (tracking ≠ auth) | 📖 | princípio de separação |
 | R19 (identidade canônica) | 📖 | `OWNERSHIP.md` |
+| R20 (ação externa pública — gate operador) | 📖 + 🤖 (v6.7.0+) | hook `external-action-guard.ps1` (NOVO v6.7.0) |
 
 Auditoria completa em `_AUDIT_2026-05-15.md`. Conselho expandido em `06_CONSELHO_PERCUS.md`.
 
@@ -331,6 +332,7 @@ Hook Layer 1+2 continua sendo backstop final — se agente esquecer auto-trigger
 | Pre-commit em pasta sensível (`**/auth/**`, `**/payment*/**`, `**/migrations/**`, `**/credentials/**`, `.env*`) | **DeepSeek + Cross-Claude duplo** | Defesa em profundidade onde o risco × consequência paga o custo |
 | Pre-commit de saída DeepSeek (commit com trailer `Co-implemented-by: deepseek-v4` — ver R13) | **Cross-Claude apenas** (subagent Sonnet) | Princípio R11: revisor ≠ implementador. DeepSeek não pode auto-revisar |
 | Marco (fim de fase/feature/épico) | **DeepSeek + Cross-Claude duplo** | Frequência baixa, gate crítico — vale defesa em profundidade |
+| Pre-commit com alegação sobre função importada (lib externa, auth-service, SDK) | **Cross-Claude obrigatório no review** | DeepSeek pode alucinar comportamento por nome de função sem ler implementação. Cross-Claude segue imports melhor. Detectado por F4c hook quando reviewer principal foi só DeepSeek. |
 
 Justificativa do design: dois provedores diferentes (DeepSeek Inc + Anthropic) cobrem viés de modelo de cada um. Cross-Claude é grátis (consome plano Claude). DeepSeek é ~$0.02/call. Custo agregado mensal estimado: $2-5.
 
@@ -350,6 +352,13 @@ Seguir `${env:PERCUS_CANON_DIR}/comandos/SETUP_REVIEW_ROUTING.md`. Cada projeto 
 
 - **Bug ou regressão:** corrigir antes de commitar
 - **Risco / violação de regra Percus:** corrigir antes de commitar **OU** declarar em voz alta por que está ignorando
+- **Alegação técnica (comportamento de função importada, API contract, side-effect):**
+  OBRIGATÓRIO ler ou testar a implementação antes de levantar como crítico.
+  Se não foi possível ler (ex.: lib externa), marcar na conclusão como
+  "alegação não verificada — validar manualmente" para evitar bloqueio em base falsa.
+  **Anti-padrão observado (incidente 2026-05-18):** DeepSeek alegou bug de ordering em
+  função importada sem ler implementação; função era outbox pattern atômico; bug
+  inexistente foi propagado para 4 PR comments públicos.
 - **Preferência de estilo:** ignorar é OK, mas declare em voz alta para criar rastro
 
 ### Gate de verificação
@@ -560,6 +569,68 @@ O router de review (R11) detecta esse trailer e roteia revisão pra Cross-Claude
 - Plano não está pronto ainda — volta pro arquiteto antes de delegar
 
 **Detalhes operacionais:** `${env:PERCUS_CANON_DIR}/04_MODEL_ROUTING.md` (matriz + playbook completo). Wrapper: `${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.{ps1,sh}`.
+
+---
+
+## R20. Decisões de conselho não autorizam ação externa pública
+
+**Regra:** Consenso do conselho 3-membros (DeepSeek + Llama + Cross-Claude) é
+**licença para ação reversível interna** — commit local, refactor, design choice,
+escolha de stack em decisão de design. **Não é licença para ação externa pública**
+baseada em premissa técnica.
+
+### Definição de "ação externa pública"
+
+Inclui (não exaustivo):
+- Comment em PR de repositório público
+- Mensagem em Slack/Discord/email coletivo
+- Deploy em produção
+- Push pra remote (main, tag, branch)
+- Criação/fechamento de issue pública
+- Resposta automatizada a sistema externo (Stripe, Linear, GitHub API, webhooks)
+
+### Gate obrigatório antes de ação externa pública baseada em finding técnico
+
+1. **Operador valida síntese do conselho explicitamente** — silêncio NÃO é OK.
+   "Aprovado" textual (ou equivalente) é obrigatório.
+2. **Findings críticos passaram por fact-check independente do código real**
+   (ver R11 expansion + F3 fact-check pipeline do plugin).
+3. **OU** operador declara explicitamente "ciente do risco, prosseguir"
+   (R5 escape hatch com motivo declarado em voz alta).
+
+### Anti-padrão (incidente Plexco Tasks 2026-05-18)
+
+Conselho 3/3 votou OPÇÃO A (bloquear) em finding técnico → agente postou 4 PR
+comments públicos pedindo bloqueio de merge → finding era alucinação do DeepSeek
+sobre função importada que não foi lida → retração necessária. Operador perdeu
+confiança no conselho. Plugin v6.7.0 introduz hook `external-action-guard.ps1`
+que bloqueia tools externos quando council recente tem `premise_validity≠ok`
+OU findings sem `fact_check: CONFIRMADO`.
+
+### Gate verificável
+
+- Antes de qualquer ação externa pública pelo agente:
+  - Log explícito de `operator_approved: true` na conversa, OU
+  - Variável de ambiente `PERCUS_EXTERNAL_OVERRIDE=1` com motivo declarado em commit/log
+- **Logs de council consult NÃO contam como autorização** (são opinião, não gate)
+- Hook `plugin/percus-review/hooks/external-action-guard.ps1` (v6.7.0+) faz
+  enforcement runtime via PreToolUse bloqueando `gh pr comment`, `gh issue close`,
+  `slack-cli`, `git push` sem aprovação explícita
+
+### Relação com R5
+
+R5 cobre operações **técnicas** irreversíveis (DELETE, drop, force-push, paid op).
+R20 cobre operações **comunicação/sociais** irreversíveis (PR comment, Slack post)
+baseadas em premissa técnica que pode ser alucinação.
+
+R5 escape hatch é "ciente do risco técnico, prosseguir".
+R20 escape hatch é "operador validou síntese do council + fact-check".
+
+### Exceções (quando R20 não se aplica)
+
+- Push de docs-only (.md, README) que não tocou código nem regra de negócio
+- Comment em PR DO PRÓPRIO operador (não em PR de terceiros)
+- Resposta a comando explícito do operador ("posta esse comment exato")
 
 ---
 
