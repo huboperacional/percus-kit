@@ -26,7 +26,7 @@ Describe "cross-claude.ps1 -Mode load logic" {
 
     It "tem fallback se arquivo system-prompt-{mode}.md ausente" {
         $wrapper = Get-Content $wrapperPath -Raw
-        $wrapper | Should -Match 'if \(Test-Path'
+        $wrapper | Should -Match 'if \(Test-Path \$promptPath\)'
     }
 
     It "trata pre-mortem como consult (fold)" {

@@ -75,11 +75,12 @@ if (-not $env:ANTHROPIC_API_KEY) {
 # fallback: default inline curto (mantém retrocompat se arquivo faltar).
 if (-not $PSBoundParameters.ContainsKey('SystemPrompt') -or -not $SystemPrompt) {
     $modeFile = if ($Mode -eq 'pre-mortem') { 'consult' } else { $Mode }
-    $promptPath = Join-Path $PSScriptRoot "system-prompt-$modeFile.md"
+    $baseDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path }
+    $promptPath = Join-Path $baseDir "system-prompt-$modeFile.md"
     if (Test-Path $promptPath) {
         $raw = Get-Content $promptPath -Raw
         # Strip YAML frontmatter (---...---)
-        $SystemPrompt = $raw -replace '^---\r?\n[\s\S]*?\r?\n---\r?\n', ''
+        $SystemPrompt = $raw -replace '^---\r?\n[\s\S]*?\r?\n---(\r?\n|$)', ''
     } else {
         $SystemPrompt = "Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
     }
