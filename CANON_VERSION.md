@@ -1,8 +1,25 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.6.1`
+**Versão canônica em `huboperacional/percus-kit`:** `6.7.0-alpha`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.7.0-alpha — 2026-05-18
+
+**Anti-hallucination hardening Sprint 1** (pós-incidente Plexco Tasks):
+
+- **Router (F1):** `sensitive_paths` expandido com `alembic/versions/`, `api/v\d+/internal`, `infra/*.yaml`, `(backend|app)/.*config.py`, `services/(auth|payment|notification|webhook)/`. PRs tocando esses paths agora rotam `decision=dual` automaticamente.
+- **Canon (F4ab):** R11 ganha adendo "alegação técnica sobre função importada → ler implementação OU marcar 'não verificada'" + linha na matriz de roteamento. R20 nova: "decisões de conselho não autorizam ação externa pública" (PR comments, Slack, deploy, push) sem gate explícito do operador.
+- **Hook (F4c):** `external-action-guard.ps1` PreToolUse bloqueia `gh pr comment`, `gh issue close`, `slack-cli`, `git push` sem `PERCUS_EXTERNAL_OVERRIDE=1`. Layer 1 enforcement runtime do R20.
+- **Council (F2):** `council-orchestrator.ps1` ganha `-CodeContextDir <path>` + parser ```file:path```. Providers recebem código real + instrução pra reportar `premise_validity: ok|invalid|unverified` antes de opinar. Aggregator `premise_validity_consensus` no output JSON. Smoke validou: claim falso sobre outbox pattern → ambos providers retornaram `invalid`.
+
+**Pendente v6.7.0 final (Sprint 2):**
+- F3: fact-check pipeline (etapa obrigatória, INFUNDADO filtrado antes do consolidador)
+- F5: echo dedup em PR stacks
+- F6: test suite hardening-2026-05-18 (4 cenários do reporter)
+- F7: skill `council-consult` enforcement
 
 ---
 
