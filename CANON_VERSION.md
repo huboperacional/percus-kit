@@ -1,8 +1,40 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.7.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.7.2`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.7.2 — 2026-05-19
+
+**Cross-repo R11 + diagnostic hardening** (pós-incidentes consolidados 2026-05-19).
+
+Contexto: sessão Plexco Tasks reportou dois incidentes além do incidente 2026-05-18 já endereçado em v6.7.0:
+- **Incidente 2** (wrapper auto-rename + branch autônoma): plugin v6.7.1 já não reproduz — `hooks.json` não registra `PostToolUse:Edit` e nenhum script cria branches. Coberto agora por **invariantes de teste** que falham se essa propriedade regredir.
+- **Incidente 3** (hook freshness lê CWD em vez de git toplevel, quebra R11 cross-repo): **corrigido**.
+
+**Mudanças:**
+
+- **Proposta F (hook cross-repo):** `hooks/pre-commit-check.ps1` e `.sh` parseiam `cd <dir> && git commit` e `git -C <dir> commit` do comando, resolvem `git rev-parse --show-toplevel` do target, e procuram `.deepseek/reviews/` no repo TARGET — não no CWD do agente. Cross-repo work (CWD do agente ≠ repo do commit) passa a respeitar R11 sem workaround "cópia placeholder review".
+- **Proposta G (diagnostic):** mensagens de bloqueio do hook incluem `git root: <repo>`, `searched: <path>` e `cwd: <path>` (este último apenas quando difere do git root). Operador/agente sabe imediatamente se erro é cross-repo, missing review, ou path-resolution.
+- **Invariante D+E (regressão):** `tests/hardening-2026-05-19.tests.ps1` falha o build se:
+  - `hooks.json` ganha entrada `PostToolUse` (qualquer matcher), ou
+  - qualquer hook `PreToolUse` declara matcher `Edit|Write|MultiEdit|NotebookEdit`, ou
+  - qualquer `.ps1`/`.sh`/`.cmd` em `scripts/hooks/skills/commands` contém `git checkout -b`/`git switch -c`/`git branch <novo>`.
+- **`.percus-version`** atualizado: estava parado em `6.5.2` (não estava no loop de validação pre-push) → `6.7.2`.
+
+**Decidido NÃO fazer agora:** skill `/percus-review:version` (bonus do doc 2026-05-19). Operador hoje lê `CANON_VERSION.md`; adicionar skill inflaria surface area sem incidente claro. Re-avaliar se houver terceira ocorrência de confusão de versão.
+
+**Council consultado (3/3 Opção A):** DeepSeek + Llama + Cross-Claude concordaram com o escopo (F+G+invariante D/E, adiar skill version). Cross-Claude destacou: "F sem G deixa hook em modo fallback silencioso — viola R14 (observabilidade estruturada)". Por isso F e G entraram no mesmo bump.
+
+---
+
+## Changelog v6.7.1 — 2026-05-18
+
+- **Fix marketplace.json duplicação:** `.claude-plugin/marketplace.json` (raiz, fonte única consumida pela UI) estava parado em `6.5.2` enquanto `plugin/.claude-plugin/marketplace.json` (duplicado órfão) era bumpado a cada release. Causa raiz de 3 incidentes recorrentes em v6.6.0/v6.6.1/v6.7.0.
+- Deletado `plugin/.claude-plugin/marketplace.json`. Fonte única passa a ser raiz.
+- **Pre-push hook (`tools/hooks/pre-push`):** bloqueia `git push` se `marketplace.json` vs `plugin/percus-review/plugin.json` divergem em versão, ou se duplicação ressurgir. Install via `tools/hooks/install.sh`.
 
 ---
 
