@@ -423,7 +423,12 @@ Mudanças no kit ainda devem: (a) ser feitas via plano explícito, (b) ser revis
 
 1. **Canonicalizar** antes de usar como chave de rate limit:
    - Email: `lowercase` + `strip plus-tag` (`user+1@gmail.com` → `user@gmail.com`).
-   - Telefone: **E.164** (RFC 3966), normalizado (`+55 11 99999-9999` → `+5511999999999`).
+   - **Telefone — duas formas canônicas distintas, NUNCA misturar:**
+     - **JWT/API form (consumer-facing):** E.164 **COM `+`** (`+55 11 99999-9999` → `+5511999999999`). Usado em `sub` claim do JWT, payloads de `/otp/*`, `/auth/magic/*`, e qualquer input HTTP externo. Gerado via `libphonenumber.format_number(..., E164)` em `libs/python/percus-auth/src/percus_auth/phone.py:normalize_phone`.
+     - **DB storage form (interno):** digits-only **SEM `+`** (`+5511999999999` → `5511999999999`). Convenção cravada em 2026-05-15 pós-Strangler Etapa 2 do Plexco Tasks (migration 040). Aplica-se a `auth.identities.phone`, `plexco_tasks.users.phone`, `familia_api.users.phone`, e qualquer FK ou unique index sobre telefone.
+     - **Regra de uso obrigatória:** consumer (qualquer serviço Percus) **SEMPRE** normaliza antes do WHERE: `handle.lstrip("+")` ou `phone_handle_for_db_lookup(handle)` da lib `percus-auth >= 0.3.0`. Insert/update no DB **SEMPRE** strips o `+` antes do `INSERT`/`UPDATE`.
+     - **Justificativa:** mudar DB form pra E.164 exige migration cross-project (auth-service + Plexco + Familia + Coach + Painel) — alto custo operacional sem ganho semântico proporcional. Aceitar a divergência storage/API como contrato explícito é mais barato e tem ZERO risco de drift se a regra estiver no canon.
+     - **Anti-padrão:** `WHERE phone == sub_handle` direto sem strip. Em prod isso falha silenciosamente (sub tem `+`, DB não) — Plexco Tasks deps.py incidente 2026-05-15 + auth-service `resolve_identity_id_from_sub` incidente 2026-05-19 (commit `b3ad061`).
    - Hash SHA-256 do canonicalizado quando logado em audit.
 2. **Rate limit por IP usar /64 em IPv6** (não /128). Cliente residencial tem 2^64 endereços por /128 — limite por /128 é zero proteção.
 3. **Dual-key rate limit:** por IP **+** por destino (não OR; ambos os limites valem).
