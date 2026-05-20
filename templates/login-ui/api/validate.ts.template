@@ -1,0 +1,38 @@
+// POST /api/auth/validate — set cookie httpOnly após validar OTP
+import { NextRequest, NextResponse } from "next/server";
+
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
+const COOKIE_NAME = "percus_session";
+
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const upstream = await fetch(`${AUTH_SERVICE_URL}/otp/validate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!upstream.ok) {
+    const err = await upstream.json().catch(() => ({}));
+    return NextResponse.json(err, { status: upstream.status });
+  }
+
+  const data = await upstream.json() as { access_token: string; refresh_token: string };
+  const response = NextResponse.json({ ok: true });
+  // R7: httpOnly + Secure + SameSite=lax
+  response.cookies.set(COOKIE_NAME, data.access_token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 15,  // 15 min — alinhado com TTL JWT
+  });
+  response.cookies.set("percus_refresh", data.refresh_token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/api/auth",  // só auth route lê refresh
+    maxAge: 60 * 60 * 24 * 30,
+  });
+  return response;
+}

@@ -1,0 +1,18 @@
+import { NextRequest, NextResponse } from "next/server";
+
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
+
+export async function POST(req: NextRequest) {
+  const refresh = req.cookies.get("percus_refresh")?.value;
+  if (refresh) {
+    await fetch(`${AUTH_SERVICE_URL}/logout`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ refresh_token: refresh }),
+    }).catch(() => { /* best-effort */ });
+  }
+  const response = NextResponse.json({ ok: true });
+  response.cookies.delete("percus_session");
+  response.cookies.delete("percus_refresh");
+  return response;
+}
