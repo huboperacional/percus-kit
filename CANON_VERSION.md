@@ -1,8 +1,31 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.7.2`
+**Versão canônica em `huboperacional/percus-kit`:** `6.8.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.8.0 — 2026-05-20
+
+**Sprint v6.8 — Canonização do padrão auth** (5 frentes paralelas A-E).
+
+**Breaking changes:**
+- R7.5: audience naming **MUST** ser kebab-case. Audiences legadas com underscore precisam ser migradas via `UPGRADE_PARA_FASE7.md`.
+- Lib `percus-auth` bump 0.3.x → 0.4.0 (novos hooks `useTenant`/`TenantProvider`).
+- Schema `auth.audiences` ganha 8 colunas (branding + origins + alias_slugs).
+
+**Novidades:**
+- Endpoint público `GET /tenants/by-origin` no auth-service (rate-limited).
+- Templates `templates/login-ui/` canônicos extraídos do Plexco Tasks (parametrizado por tenant).
+- Script `tools/scaffold-percus-project.ps1`/`.sh` idempotente.
+- `COMANDO_PROJETO_NOVO.md` aciona scaffold + checklist humano.
+- `UPGRADE_PARA_FASE7.md` novo.
+- R7.5 (kebab-case enforcement) + R7.6 (tenant detection) cravadas no canon.
+
+**Refs:**
+- Spec: [docs/superpowers/specs/2026-05-19-sprint-v6.8-auth-canonization-design.md](docs/superpowers/specs/2026-05-19-sprint-v6.8-auth-canonization-design.md)
+- Planos: [docs/superpowers/plans/2026-05-19-sprint-v6.8-frente-*.md](docs/superpowers/plans/)
 
 ---
 

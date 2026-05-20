@@ -59,9 +59,13 @@ FLUXO GREENFIELD:
    - PULA somente se projeto trivial (<1 mes de trabalho dedicado, stack ja decidida por restricao externa).
 
 4. Setup auth (R7 — auth-service Percus):
-   - Auth-service em prod em `https://auth.huboperacional.com.br` desde 2026-05-06.
-   - Lib cliente self-hosted: pip install https://auth.huboperacional.com.br/dist/percus_auth-<ver>-py3-none-any.whl OU npm install https://auth.huboperacional.com.br/dist/percus-auth-<ver>.tgz
+   - Auth-service em prod em `https://auth.huboperacional.com.br` (Fase 7 v6.8.0+).
+   - Rodar o scaffold mecanico (1 comando, idempotente):
+     pwsh "${env:PERCUS_CANON_DIR}/tools/scaffold-percus-project.ps1" -ProjectPath "$PWD" -AudienceFallback <slug-kebab-case>
+     (ou `bash "${env:PERCUS_CANON_DIR}/tools/scaffold-percus-project.sh" --project-path . --audience-fallback <slug-kebab-case>` em Unix.)
+   - Depois abrir `CHECKLIST_AUTH.md` (gerado pelo script) e completar os passos humanos: criar audience + branding na UI do auth-service, smoke E2E.
    - VETADO em projeto novo: GoTrue, Supabase Auth, NextAuth, magic-link proprio, senha sem 2FA, refresh JWT stateless. Ver R7 em 01_REGRAS_INEGOCIAVEIS.md.
+   - Detalhes completos: secao "Setup auth (R7)" abaixo deste comando.
 
 5. Validacao final:
    - `cat .percus-version` mostra versao canonica.
@@ -75,6 +79,41 @@ Premissas operacionais:
 
 Nao toque em codigo de negocio neste turno. So setup de ferramentas, configs, regras, templates.
 ```
+
+---
+
+## Setup auth (R7 — auth-service Percus)
+
+Auth-service em prod em `https://auth.huboperacional.com.br` (Fase 7 v6.8.0+).
+
+### 4.1 Scaffold mecânico (1 comando)
+
+```pwsh
+pwsh "$env:PERCUS_CANON_DIR/tools/scaffold-percus-project.ps1" `
+    -ProjectPath "$PWD" `
+    -AudienceFallback <slug-kebab-case>
+```
+
+(ou `bash tools/scaffold-percus-project.sh --project-path . --audience-fallback <slug-kebab-case>` em Unix.)
+
+Idempotente. Copia `templates/login-ui/` → `src/components/auth/`, gera `.env.local`, instala `percus-auth >= 0.4.0`, cria `CHECKLIST_AUTH.md`.
+
+### 4.2 Checklist humano (depois do scaffold)
+
+Abrir `CHECKLIST_AUTH.md` no projeto (gerado pelo script) e completar:
+
+- [ ] **Audience** — criar em `https://auth.huboperacional.com.br/admin/audiences/new` (slug **kebab-case** — R7), preencher `origins` com prod + staging + preview deploys
+- [ ] **Branding** — `PUT /admin/audiences/{slug}/branding` (exige step-up TOTP):
+  - `product_name`, `logo_url`, `palette: { primary, accent }`, `copy.helper_text` (opcional), `support_contact_url`
+- [ ] **Smoke E2E** — `/login` renderiza com product_name correto + fluxo OTP → validate → `/me` funciona
+- [ ] Cookie httpOnly + Secure + SameSite=Lax visível em DevTools
+
+### 4.3 Refs
+
+- Spec auth completa: [_Novo_Projeto/PADRAO_AUTH_SERVICE_INTEGRATION_V2.md](../PADRAO_AUTH_SERVICE_INTEGRATION_V2.md)
+- R7 canon: [_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md#R7](../01_REGRAS_INEGOCIAVEIS.md)
+- R15 (phone normalization JWT/DB): [_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md#R15](../01_REGRAS_INEGOCIAVEIS.md)
+- Templates: [_Novo_Projeto/templates/login-ui/README.md](../templates/login-ui/README.md)
 
 ---
 
