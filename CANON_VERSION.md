@@ -1,8 +1,28 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.8.2`
+**Versão canônica em `huboperacional/percus-kit`:** `6.8.3`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.8.3 — 2026-05-20
+
+**Novo comando `/percus-review:version`.**
+
+`commands/version.md` — comando que mostra a versão do plugin `percus-review`
+instalado na sessão atual, o changelog condensado, e — se o canon estiver
+alcançável (`$PERCUS_CANON_DIR` ou path padrão) — compara com `.percus-version`
+e sinaliza drift (ex: "plugin instalado v6.8.0 mas canon já em v6.8.3 — atualize
+pela UI do marketplace").
+
+Motivação: a skill foi adiada 2× (v6.7.0, v6.7.2) com a nota "re-avaliar se
+houver 3ª ocorrência de confusão de versão". As ocorrências chegaram — incidente
+v6.7.0-vs-v6.7.1 (memória `check-origin-before-resume`) + o cache do plugin
+ficando defasado do canon durante a própria Sprint v6.8. O comando torna o drift
+visível sob demanda em vez de exigir leitura manual do `CANON_VERSION.md`.
+
+`disable-model-invocation: true` — é comando de operador, não auto-invocável.
 
 ---
 
