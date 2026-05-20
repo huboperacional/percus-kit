@@ -32,7 +32,7 @@ files=$(get_percus_staged_files "$project_root" .py .ts .tsx .js .jsx .go .rs .j
 # Patterns: "regex|why"
 declare -a patterns=(
     '\bMOCK_(?!OK\b)\w+|identificador MOCK_*'
-    '\b(TODO|FIXME|XXX|HACK)\b[: ]|TODO/FIXME/XXX/HACK pendente'
+    '\b(?-i:TODO|FIXME|XXX|HACK)\b[: ]|TODO/FIXME/XXX/HACK pendente'
     'lorem[[:space:]]+ipsum|lorem ipsum'
     'dummy_|dummy_'
     'placeholder_value|placeholder_value'

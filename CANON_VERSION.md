@@ -1,8 +1,37 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.8.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.8.1`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.8.1 — 2026-05-20
+
+**Fix mock-scan — falso-positivo R3 em palavras acentuadas.**
+
+Sintoma: durante a Sprint v6.8 Frente B, o hook `mock-scan` bloqueou um commit
+legítimo flagrando `aria-label="Método de login"` como "TODO/FIXME/XXX/HACK
+pendente" — a palavra portuguesa "mé**todo**" contém "todo".
+
+Causa raiz (dupla):
+1. `Get-PercusStagedContent` (`_helpers.ps1`) lia o output do `git show` com a
+   codepage OEM (cp850/cp437) em vez de UTF-8. O "é" (UTF-8 `C3 A9`) virava 2
+   bytes não-word → criava uma word-boundary falsa antes de "todo".
+2. O padrão `\b(?:TODO|FIXME|XXX|HACK)\b[: ]` casava case-insensitive (default
+   do `-match`/`grep -i`), então "todo" minúsculo dentro de "método" casava.
+
+Fix:
+- `Get-PercusStagedContent` força `[Console]::OutputEncoding = UTF8` ao ler o git.
+- Markers viram **case-sensitive** via grupo `(?-i:TODO|FIXME|XXX|HACK)` nos dois
+  hooks (`.ps1` e `.sh`) — TODO/FIXME/XXX/HACK são convenção maiúscula; matching
+  insensível era a causa latente. Markers reais (`// TODO:`, `# FIXME `) seguem
+  bloqueando.
+- `mock-scan-pre-commit.ps1` ganha dual stdin path (`[Console]::In` + fallback
+  `$input`), igual ao `pre-commit-check.ps1` — torna o hook testável via Pester.
+- Comentário obsoleto em `external-action-guard.ps1` removido ("F3 Sprint 2" —
+  F3 entregue na v6.7.0).
+- Novo `tests/mock-scan.tests.ps1` — 6 testes de regressão. Suite: 72/72.
 
 ---
 

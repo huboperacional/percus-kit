@@ -55,8 +55,9 @@ try {
         }
     }
 
-    # Verifica findings sem fact_check (placeholder — F3 sera implementado em Sprint 2)
-    # Por ora, este check fica como TODO no log
+    # Fact-check (F3) ja roda no pipeline de review desde v6.7.0 (scripts/fact-check.ps1):
+    # findings INFUNDADO sao filtrados antes do consolidador. Logo, qualquer finding que
+    # chegue a uma acao externa ja passou por fact-check — nao ha check adicional aqui.
 
     if ($councilBad) {
         [Console]::Error.WriteLine("")

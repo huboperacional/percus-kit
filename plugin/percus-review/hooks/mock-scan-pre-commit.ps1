@@ -7,11 +7,15 @@
 . "$PSScriptRoot\_helpers.ps1"
 
 try {
+    # stdin chega via OS pipe em producao (Claude Code hook runtime) -> [Console]::In.
+    # Via pipe do PowerShell (testes Pester) o stdin cai no automatic $input;
+    # tenta ambos os caminhos. Ver pre-commit-check.ps1 (mesmo padrao).
     $stdin = [Console]::In.ReadToEnd()
+    if (-not $stdin -and $input) { $stdin = ($input | Out-String).Trim() }
     if (-not $stdin) { exit 0 }
 
-    $input = $stdin | ConvertFrom-Json
-    $command = $input.tool_input.command
+    $parsed = $stdin | ConvertFrom-Json
+    $command = $parsed.tool_input.command
 
     if ($command -notmatch '\bgit\s+commit\b') { exit 0 }
     if ($command -match '\bgit\s+commit\s+--amend\s+--no-edit\b') { exit 0 }
@@ -35,7 +39,7 @@ try {
     # Forbidden patterns. Each one captures intent of "fake/placeholder/TODO leftover".
     $patterns = @(
         @{ Re = '\bMOCK_(?!OK\b)\w+';                    Why = 'identificador MOCK_*' },
-        @{ Re = '\b(?:TODO|FIXME|XXX|HACK)\b[: ]';        Why = 'TODO/FIXME/XXX/HACK pendente' },
+        @{ Re = '\b(?-i:TODO|FIXME|XXX|HACK)\b[: ]';      Why = 'TODO/FIXME/XXX/HACK pendente' },
         @{ Re = '(?i)\blorem\s+ipsum\b';                  Why = 'lorem ipsum' },
         @{ Re = '(?i)\bdummy_';                           Why = 'dummy_' },
         @{ Re = '(?i)\bplaceholder_value\b';              Why = 'placeholder_value' },

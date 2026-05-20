@@ -56,12 +56,23 @@ function Get-PercusStagedContent {
     <#
     .SYNOPSIS
         Retorna conteudo staged (versao no index) de um arquivo.
+    .NOTES
+        Forca decode UTF-8 do output do git. Sem isso, PowerShell decodifica
+        a saida nativa com a codepage OEM (cp850/cp437), mojibakando chars
+        acentuados — ex: "e" de "metodo" vira 2 bytes nao-word, criando uma
+        word-boundary falsa que faz \btodo\b casar dentro de "metodo".
     #>
     param(
         [string]$ProjectRoot,
         [string]$RelPath
     )
-    return (& git -C $ProjectRoot show ":${RelPath}" 2>$null) -join "`n"
+    $prevEnc = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        return (& git -C $ProjectRoot show ":${RelPath}" 2>$null) -join "`n"
+    } finally {
+        [Console]::OutputEncoding = $prevEnc
+    }
 }
 
 function Write-PercusBlock {
