@@ -208,6 +208,32 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 
 **Admin / role privilegiada:** OTP + TOTP step-up obrigatório. Username+password é dívida — phishing/credential-stuffing sem ganho. TOTP enrollment no primeiro login da role admin. **Encrypt at rest** do `secret_b32` é obrigatório em produção (Docker Secret ou KMS — aprendizado Fase 4 do auth-service).
 
+### R7.5 — Audience naming canônico (v6.8.0+)
+
+Slugs em `auth.audiences.slug` **DEVEM** ser kebab-case: `^[a-z0-9]+(-[a-z0-9]+)*$`.
+
+- ✅ `plexco-tasks`, `plexco-coach`, `familia`, `painel`, `paid-media`
+- ❌ `plexco_tasks` (underscore proibido — incidente 2026-05-19)
+- ❌ `PlexcoTasks` (camelCase proibido)
+
+Migração de audiences legadas com underscore: ver [`comandos/UPGRADE_PARA_FASE7.md`](comandos/UPGRADE_PARA_FASE7.md) §2.
+
+Enforcement runtime: regression test no plugin `percus-review` (Frente E) falha o build se grep encontrar audience com underscore em código consumidor.
+
+### R7.6 — Tenant detection canônico (v6.8.0+)
+
+Pré-autenticação, o frontend descobre o tenant via:
+
+```
+GET /tenants/by-origin?origin=<window.location.origin>
+```
+
+Response: `{ audience, product_name, logo_url, palette, copy, support_contact_url }`. Rate-limited 100 req/min por origin. Cache 5min sessionStorage no frontend via `useTenant()` da lib `percus-auth >= 0.4.0`.
+
+Fallback: `PERCUS_AUTH_AUDIENCE_FALLBACK` env quando o endpoint falha (auth-service down ou origin não registrado).
+
+Spec completa: [`PADRAO_AUTH_SERVICE_INTEGRATION_V2.md`](PADRAO_AUTH_SERVICE_INTEGRATION_V2.md) + [`docs/superpowers/specs/2026-05-19-sprint-v6.8-auth-canonization-design.md`](docs/superpowers/specs/2026-05-19-sprint-v6.8-auth-canonization-design.md).
+
 ---
 
 ## R8. Sessão sem HANDOFF é débito técnico

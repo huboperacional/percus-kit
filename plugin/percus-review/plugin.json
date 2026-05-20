@@ -1,7 +1,7 @@
 {
   "name": "percus-review",
-  "version": "6.7.2",
-  "description": "Percus kit Fase 7 v6.7.2 — Cross-repo R11 + diagnostic hardening (pos-incidente 2026-05-19). Hook pre-commit-check.ps1/.sh agora parseia 'cd <dir>' e 'git -C <dir>' do comando, resolve via git rev-parse --show-toplevel, e procura review no repo TARGET (nao no CWD do agente). Mensagens de bloqueio incluem git root + searched + cwd diagnostics (Proposta G). Test suite hardening-2026-05-19 cobre invariantes D (sem PostToolUse Edit/Write) e E (zero git checkout -b em scripts). Mantém v6.7.1 (marketplace.json sync + pre-push guard), v6.7.0 (anti-hallucination Sprint 1+2), v6.6.x (F.1 cache + orchestrator integration), v6.5.x, v6.4.0, v6.3.0.",
+  "version": "6.8.0",
+  "description": "Percus kit Fase 7 v6.8.0 — Sprint v6.8 canonizacao do padrao auth (5 frentes A-E). Endpoint publico GET /tenants/by-origin no auth-service, templates/login-ui canonicos, scaffold-percus-project.ps1/.sh idempotente, R7.5 (audience kebab-case) + R7.6 (tenant detection) cravadas no canon, lib percus-auth bump 0.3.x -> 0.4.0. Mantém v6.7.2 (cross-repo R11 + diagnostic hardening), v6.7.1 (marketplace.json sync + pre-push guard), v6.7.0 (anti-hallucination Sprint 1+2), v6.6.x (F.1 cache + orchestrator integration), v6.5.x, v6.4.0, v6.3.0.",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",
