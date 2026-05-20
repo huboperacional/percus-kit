@@ -1,0 +1,17 @@
+/* Variáveis alimentadas dinamicamente pelo TenantProvider.
+ * Set em <html style="--percus-primary: ..."> via useEffect no Provider,
+ * OU via inline style no card root.
+ */
+.loginRoot {
+  --percus-primary: var(--percus-primary, #FF6B35);
+  --percus-accent: var(--percus-accent, #F7C59F);
+}
+
+.cta {
+  background: var(--percus-primary);
+  color: white;
+}
+
+.cta:hover {
+  background: color-mix(in srgb, var(--percus-primary) 90%, black);
+}

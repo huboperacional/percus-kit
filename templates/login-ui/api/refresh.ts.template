@@ -1,0 +1,32 @@
+// POST /api/auth/refresh — gira o access cookie via refresh
+import { NextRequest, NextResponse } from "next/server";
+
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL!;
+const COOKIE_NAME = "percus_session";
+
+export async function POST(req: NextRequest) {
+  const refresh = req.cookies.get("percus_refresh")?.value;
+  if (!refresh) {
+    return NextResponse.json({ error: "no_refresh" }, { status: 401 });
+  }
+  const upstream = await fetch(`${AUTH_SERVICE_URL}/refresh`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ refresh_token: refresh }),
+  });
+  if (!upstream.ok) {
+    const response = NextResponse.json({ error: "refresh_failed" }, { status: 401 });
+    response.cookies.delete(COOKIE_NAME);
+    response.cookies.delete("percus_refresh");
+    return response;
+  }
+  const data = await upstream.json() as { access_token: string; refresh_token: string };
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(COOKIE_NAME, data.access_token, {
+    httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 60 * 15,
+  });
+  response.cookies.set("percus_refresh", data.refresh_token, {
+    httpOnly: true, secure: true, sameSite: "lax", path: "/api/auth", maxAge: 60 * 60 * 24 * 30,
+  });
+  return response;
+}

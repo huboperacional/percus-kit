@@ -1,0 +1,17 @@
+{
+  "name": "@percus/login-ui-template",
+  "version": "6.8.0",
+  "private": true,
+  "description": "Canonical copy-paste login UI template for Percus projects (Sprint v6.8 Frente B).",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6",
+    "@testing-library/react": "^16",
+    "jsdom": "^25",
+    "react": "^19",
+    "react-dom": "^19",
+    "vitest": "^2.0.0"
+  }
+}
