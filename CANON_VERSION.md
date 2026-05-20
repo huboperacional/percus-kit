@@ -1,8 +1,37 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.8.1`
+**Versão canônica em `huboperacional/percus-kit`:** `6.8.2`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.8.2 — 2026-05-20
+
+**Smoke v6.8 — corrige nome da lib nos templates e scaffold.**
+
+Smoke ponta-a-ponta dos entregáveis da Sprint v6.8 (Frente B `templates/login-ui/`
++ Frente C `scaffold-percus-project`) rodando o scaffold contra um projeto Next.js
+real. Dois bugs encontrados:
+
+1. **Nome da lib errado.** A lib Node real é `@percus/auth` (scoped), com toda a
+   API de tenant (`useTenant`, `TenantProvider`, `getTenantConfig`, `TenantConfig`)
+   exportada do **export root**. Os templates e o scaffold importavam
+   `percus-auth/tenant` — pacote unscoped + subpath `/tenant` que não existe no
+   `exports` da lib. **Todo projeto scaffoldado quebraria na resolução de import.**
+   Origem: o plano da Frente D assumiu `percus-auth` unscoped; Frentes B/C
+   herdaram. Fix: `percus-auth/tenant` → `@percus/auth` em `login-card.tsx`,
+   `support-link.tsx`, `vitest.config.ts`, `login-card.test.tsx`, stub,
+   `README.md`, `scaffold-percus-project.ps1/.sh` (`npm install @percus/auth`),
+   e nos code-blocks de `MIGRATION_KIT_AUTH.template.md` (`@percus/auth/express`,
+   `@percus/auth/next`). Lib Python segue `percus-auth` (correto — pip).
+2. **`.env.example` incompleto.** O passo 6 do `README.md` (mount do
+   `TenantProvider`) lê `NEXT_PUBLIC_PERCUS_AUDIENCE_FALLBACK` e
+   `NEXT_PUBLIC_PERCUS_PRODUCT_FALLBACK`, mas o `.env.example` não as definia
+   (o scaffold já tinha a substituição, sem alvo). Adicionadas.
+
+Scaffold validado: re-scaffold produz `import { useTenant } from "@percus/auth"`.
+Template login-ui: 10/10 testes vitest verdes.
 
 ---
 

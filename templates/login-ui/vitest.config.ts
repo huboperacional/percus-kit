@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
  * jsdom é necessário para o render test de login-card.test.tsx.
  *
  * Os arquivos do template importam `@/components/ui/*`, `@/lib/utils`,
- * `lucide-react` e `percus-auth/tenant` — esses resolvem no projeto destino,
+ * `lucide-react` e `@percus/auth` — esses resolvem no projeto destino,
  * NÃO no canon. Para o render test rodar isolado, as importações abaixo são
- * apontadas para stubs de teste (__tests__/__stubs__/ui.tsx). `percus-auth/tenant`
+ * apontadas para stubs de teste (__tests__/__stubs__/ui.tsx). `@percus/auth`
  * é mockado via `vi.mock` dentro do próprio teste.
  *
  * IMPORTANTE: os stubs são infra de teste — NÃO fazem parte do copy-paste.
@@ -30,7 +30,7 @@ export default defineConfig({
       "@/components/ui/dropdown-menu": stub("./__tests__/__stubs__/ui.tsx"),
       "@/lib/utils": stub("./__tests__/__stubs__/ui.tsx"),
       "lucide-react": stub("./__tests__/__stubs__/ui.tsx"),
-      "percus-auth/tenant": stub("./__tests__/__stubs__/tenant.ts"),
+      "@percus/auth": stub("./__tests__/__stubs__/tenant.ts"),
     },
   },
 });

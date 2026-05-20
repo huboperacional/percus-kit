@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTenant } from "percus-auth/tenant";
+import { useTenant } from "@percus/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CountryDialPicker, DEFAULT_COUNTRY, type Country } from "./country-dial-picker";

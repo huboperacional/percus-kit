@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
 import { LoginCard } from "../components/login-card";
 
-vi.mock("percus-auth/tenant", () => ({
+vi.mock("@percus/auth", () => ({
   useTenant: () => ({
     status: "ready",
     config: {

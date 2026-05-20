@@ -109,12 +109,12 @@ async def me(claims = Depends(bearer_auth(percus))):
 ### Node (Express ou Next.js)
 
 ```bash
-npm install https://auth.huboperacional.com.br/dist/percus-auth-0.1.0.tgz
+npm install https://auth.huboperacional.com.br/dist/percus-auth-0.4.0.tgz
 ```
 
 ```ts
 // src/lib/auth.ts
-import { PercusAuth } from "percus-auth"
+import { PercusAuth } from "@percus/auth"
 
 export const percus = new PercusAuth({
   jwksUrl: "https://auth.huboperacional.com.br/.well-known/jwks.json",
@@ -125,7 +125,7 @@ export const percus = new PercusAuth({
 
 ```ts
 // Express middleware
-import { bearerAuth } from "percus-auth/express"
+import { bearerAuth } from "@percus/auth/express"
 import { percus } from "./lib/auth"
 
 app.get("/me", bearerAuth(percus), (req, res) => {
@@ -135,7 +135,7 @@ app.get("/me", bearerAuth(percus), (req, res) => {
 
 ```ts
 // Next.js (App Router) API route
-import { validateBearerFromRequest } from "percus-auth/next"
+import { validateBearerFromRequest } from "@percus/auth/next"
 import { percus } from "@/lib/auth"
 
 export async function GET(request: Request) {

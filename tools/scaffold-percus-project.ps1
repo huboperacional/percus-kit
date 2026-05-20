@@ -4,7 +4,7 @@
 Scaffold Percus auth pattern em projeto Next.js/FastAPI existente.
 
 .DESCRIPTION
-Idempotente. Copia templates/login-ui pro projeto, gera .env.local stub, instala lib percus-auth.
+Idempotente. Copia templates/login-ui pro projeto, gera .env.local stub, instala lib @percus/auth.
 NAO acessa auth-service (audience + branding sao passos humanos do checklist).
 
 .PARAMETER ProjectPath
@@ -104,8 +104,8 @@ if ($isNextJs) {
     # Install lib
     Push-Location $ProjectPath
     try {
-        Write-Host "[scaffold] npm install percus-auth@^0.4.0..." -ForegroundColor Cyan
-        npm install percus-auth@^0.4.0 2>&1 | Out-String | Write-Host
+        Write-Host "[scaffold] npm install @percus/auth@^0.4.0..." -ForegroundColor Cyan
+        npm install '@percus/auth@^0.4.0' 2>&1 | Out-String | Write-Host
         if ($LASTEXITCODE -ne 0) {
             Write-Host "  [warn] npm install falhou (ok se lib nao publicada ainda)" -ForegroundColor Yellow
         }

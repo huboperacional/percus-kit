@@ -1,6 +1,6 @@
 "use client";
 
-import { useTenant } from "percus-auth/tenant";
+import { useTenant } from "@percus/auth";
 
 export function SupportLink() {
   const { config } = useTenant();

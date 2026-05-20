@@ -83,7 +83,7 @@ if [[ -f "$PROJECT_PATH/package.json" ]]; then
     echo "  [create] .env.local"
   fi
 
-  (cd "$PROJECT_PATH" && npm install percus-auth@^0.4.0 || echo "  [warn] npm install falhou (ok se lib nao publicada ainda)")
+  (cd "$PROJECT_PATH" && npm install '@percus/auth@^0.4.0' || echo "  [warn] npm install falhou (ok se lib nao publicada ainda)")
 elif [[ -f "$PROJECT_PATH/pyproject.toml" ]]; then
   echo "[scaffold] tipo: FastAPI"
   (cd "$PROJECT_PATH" && pip install "percus-auth>=0.4.0" || echo "  [warn] pip install falhou")

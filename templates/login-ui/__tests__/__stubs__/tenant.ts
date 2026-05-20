@@ -1,11 +1,11 @@
 /**
- * Test-only resolution stub for `percus-auth/tenant`.
+ * Test-only resolution stub for `@percus/auth`.
  *
  * NOT part of the copy-paste template. The real module ships in the
- * `percus-auth` lib (>= 0.4.0) and resolves in the target project.
- * vitest.config.ts aliases the bare `percus-auth/tenant` import here so Vite's
+ * `@percus/auth` lib (>= 0.4.0) and resolves in the target project.
+ * vitest.config.ts aliases the bare `@percus/auth` import here so Vite's
  * import-analysis can resolve it; individual tests override behavior with
- * `vi.mock("percus-auth/tenant", ...)`.
+ * `vi.mock("@percus/auth", ...)`.
  */
 export interface TenantCopy {
   helper_text?: string;

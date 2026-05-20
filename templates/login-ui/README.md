@@ -33,10 +33,10 @@ Template copy-paste (estilo shadcn) para construir página de login Percus em qu
    }
    ```
 
-6. Em `<projeto>/src/app/layout.tsx`, montar `TenantProvider` da lib `percus-auth >= 0.4.0`:
+6. Em `<projeto>/src/app/layout.tsx`, montar `TenantProvider` da lib `@percus/auth >= 0.4.0`:
 
    ```tsx
-   import { TenantProvider } from "percus-auth/tenant";
+   import { TenantProvider } from "@percus/auth";
 
    export default function RootLayout({ children }) {
      return (

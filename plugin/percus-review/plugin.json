@@ -1,7 +1,7 @@
 {
   "name": "percus-review",
-  "version": "6.8.1",
-  "description": "Percus kit Fase 7 v6.8.1 — fix mock-scan hook: falso-positivo R3 em palavras acentuadas (PT 'metodo' contem 'todo'). Causa: decode OEM do git show mojibakava 'e' acentuado criando word-boundary falsa + match case-insensitive de TODO/FIXME/XXX/HACK. Fix: Get-PercusStagedContent forca UTF-8 + markers viram case-sensitive (?-i:). mock-scan ganha dual stdin path (testavel). Mantém v6.8.0 (Sprint v6.8 canonizacao auth: GET /tenants/by-origin, templates/login-ui, scaffold-percus-project, R7.5+R7.6, lib percus-auth 0.4.0), v6.7.2 (cross-repo R11), v6.7.1 (marketplace sync), v6.7.0 (anti-hallucination), v6.6.x, v6.5.x, v6.4.0, v6.3.0.",
+  "version": "6.8.2",
+  "description": "Percus kit Fase 7 v6.8.2 — smoke v6.8: corrige nome da lib nos templates/scaffold. A lib Node real e @percus/auth (scoped) com a API de tenant no export root; templates/login-ui + scaffold + MIGRATION_KIT importavam 'percus-auth/tenant' (subpath inexistente) — todo projeto scaffoldado quebraria. Fix: imports -> @percus/auth; .env.example ganha NEXT_PUBLIC_PERCUS_AUDIENCE/PRODUCT_FALLBACK que o README ja usava. Mantém v6.8.1 (mock-scan UTF-8 + case-sensitive markers), v6.8.0 (Sprint v6.8 canonizacao auth), v6.7.2 (cross-repo R11), v6.7.1 (marketplace sync), v6.7.0 (anti-hallucination), v6.6.x, v6.5.x, v6.4.0, v6.3.0.",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",
