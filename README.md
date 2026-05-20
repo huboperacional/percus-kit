@@ -2,7 +2,7 @@
 
 > Conjunto canônico de regras, templates, comandos e tooling para projetos de software Percus (FastAPI + React + PostgreSQL + JWT cookie httpOnly).
 
-**Estado atual:** Fase 6 em construção (feature tracking cross-projeto + conselho 3-membros + ambiente local sanitizado) · Fase 5 ativa (skills + hooks superpowers) · Fase 4 estável (review cross-provider sem Codex/OpenAI).
+**Estado atual:** Fase 7 v6.8.3 — canonização do padrão auth (endpoint `/tenants/by-origin`, `templates/login-ui/`, `scaffold-percus-project`, R7.5/R7.6, lib `@percus/auth` 0.4.0) + hardening anti-hallucination (v6.7.x). Fase 6 concluída (feature tracking cross-projeto + conselho 3-membros + ambiente local sanitizado) · Fase 5 ativa (skills + hooks superpowers) · Fase 4 estável (review cross-provider sem Codex/OpenAI).
 
 ---
 
@@ -110,7 +110,8 @@ _Novo_Projeto/
 | Fase 3 | 2026-05-02 | Histórico | Harmonização do kit + tooling |
 | Fase 4 | 2026-05-03 | ESTÁVEL (main) | Plugin `@percus/review` (DeepSeek + Cross-Claude), Codex eliminado |
 | Fase 5 | 2026-05-03 | Estável (branch `fase5-superpowers-adoption`) | Skills + hooks para forçar adoção de superpowers |
-| **Fase 6** | **2026-05-15** | **EM CONSTRUÇÃO** | **Feature tracking cross-projeto + conselho 3-membros (DeepSeek + Cross-Claude + Llama via Groq) + ambiente local sanitizado** |
+| Fase 6 | 2026-05-15 | Histórico | Feature tracking cross-projeto + conselho 3-membros (DeepSeek + Cross-Claude + Llama via Groq) + ambiente local sanitizado |
+| **Fase 7** | **2026-05-18** | **ESTÁVEL (main) — v6.8.3** | **Hardening anti-hallucination (fact-check F3, dedup, R20, cross-repo R11) + canonização do padrão auth (Sprint v6.8: tenant detection, `templates/login-ui/`, `scaffold-percus-project`, R7.5/R7.6)** |
 
 **Docs Fase 6 (Sprint 1 do Eixo B concluído):**
 - `_AUDIT_2026-05-15.md` — auditoria R1-R19 com decisão por regra (hook/skill/doc).
