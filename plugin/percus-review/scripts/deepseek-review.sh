@@ -68,8 +68,19 @@ if [[ -z "$(echo "$DIFF" | tr -d '[:space:]')" ]]; then
 fi
 
 # === LOAD AGENTS.md ===
+# Normaliza pra UTF-8 antes de mandar pro jq. AGENTS.md salvo em CP1252
+# (Notepad legacy / Word / Win11 ANSI locale) vira bytes UTF-8 inválidos que
+# jq repassa crus e a API DeepSeek rejeita ("invalid unicode code point").
+# iconv é opcional: se ausente, fallback é cat (comportamento original).
 if [[ -f AGENTS.md ]]; then
-    AGENTS="$(cat AGENTS.md)"
+    if command -v iconv >/dev/null 2>&1; then
+        AGENTS="$(iconv -f UTF-8 -t UTF-8 -c AGENTS.md 2>/dev/null)"
+        if [[ -z "$AGENTS" ]]; then
+            AGENTS="$(iconv -f CP1252 -t UTF-8 AGENTS.md 2>/dev/null || cat AGENTS.md)"
+        fi
+    else
+        AGENTS="$(cat AGENTS.md)"
+    fi
 else
     AGENTS="(AGENTS.md ausente — revise pelo bom senso de Percus)"
 fi
@@ -112,17 +123,21 @@ BODY="$(jq -n \
     }')"
 
 # === CALL API ===
-RESPONSE="$(curl -sS -X POST "$ENDPOINT" \
+# Body via stdin (--data-binary @-), NÃO via argv. Em git-bash Windows, curl
+# recebe argv via Windows-API que reencoda UTF-8 → CP1252 → UTF-8 e quebra
+# multi-byte chars, gerando "invalid unicode code point" no parser DeepSeek.
+# Stdin contorna o argv inteiro.
+RESPONSE="$(printf '%s' "$BODY" | curl -sS -X POST "$ENDPOINT" \
     -H "Authorization: Bearer ${DEEPSEEK_API_KEY}" \
     -H "Content-Type: application/json; charset=utf-8" \
-    --data-binary "$BODY")" || {
+    --data-binary @-)" || {
     echo "[deepseek-review] ERRO: chamada API falhou." >&2
     exit 1
 }
 
-FINDINGS="$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')"
+FINDINGS="$(printf '%s' "$RESPONSE" | jq -r '.choices[0].message.content // empty' 2>/dev/null)"
 if [[ -z "$FINDINGS" ]]; then
-    echo "[deepseek-review] ERRO: resposta vazia. Raw:" >&2
+    echo "[deepseek-review] ERRO: resposta vazia ou inválida. Raw:" >&2
     echo "$RESPONSE" >&2
     exit 1
 fi

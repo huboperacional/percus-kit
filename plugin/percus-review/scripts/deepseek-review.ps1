@@ -73,9 +73,18 @@ if (-not $diff) {
 }
 
 # === LOAD AGENTS.md ===
+# Força leitura UTF-8 + fallback CP1252. Sem -Encoding explícito, PS 5.1 lê em
+# ANSI do locale (Win11 PT-BR = CP1252), bytes acentuados viram chars inválidos
+# pra UTF-8 no body JSON e DeepSeek API rejeita ("invalid unicode code point").
 $agentsPath = Join-Path (Get-Location) 'AGENTS.md'
 $agents = if (Test-Path $agentsPath) {
-    Get-Content $agentsPath -Raw
+    try {
+        Get-Content $agentsPath -Raw -Encoding UTF8 -ErrorAction Stop
+    } catch {
+        # Arquivo não-UTF-8: re-le como CP1252 e converte.
+        $rawBytes = [System.IO.File]::ReadAllBytes($agentsPath)
+        [System.Text.Encoding]::GetEncoding(1252).GetString($rawBytes)
+    }
 } else {
     "(AGENTS.md ausente — revise pelo bom senso de Percus)"
 }

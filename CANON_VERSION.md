@@ -1,8 +1,55 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.8.3`
+**Versão canônica em `huboperacional/percus-kit`:** `6.8.4`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.8.4 — 2026-05-23
+
+**Fix(deepseek-review): `curl` argv mangla UTF-8 em git-bash Windows + AGENTS.md tolerante a CP1252.**
+
+Bug: o pre-commit hook quebrava com `messages[0].content: invalid unicode code
+point at line N col M` da API DeepSeek. Reproduzido nesta própria sessão durante
+implementação do fix — mesmo SEM `AGENTS.md` presente, o erro acontecia, o que
+descartou a hipótese inicial de que era só encoding de `AGENTS.md`.
+
+**Root cause real (descoberto via reprodução ao vivo):** o `curl` 8.18 do git-bash
+recebe argv via Windows API (`CreateProcessW`), que reencoda UTF-8 → CP1252 → UTF-8
+e quebra sequências multi-byte (`Você`, `código`, `padrão`, etc.) que existem no
+próprio `SYSTEM_PROMPT` do script. O body JSON sai válido do `jq`, mas chega
+corrompido na API. Teste empírico: passar o mesmo body via `--data-binary @file`
+ou stdin funciona perfeito; via `--data-binary "$BODY"` (argv) falha.
+
+Fix em [plugin/percus-review/scripts/deepseek-review.sh:126](plugin/percus-review/scripts/deepseek-review.sh):
+`printf '%s' "$BODY" | curl ... --data-binary @-` — body vai por stdin, contorna
+o argv mangling do Windows. Esse é o fix principal.
+
+Fix complementar em [plugin/percus-review/scripts/deepseek-review.sh:71](plugin/percus-review/scripts/deepseek-review.sh):
+normalização UTF-8 defensiva de `AGENTS.md` via `iconv` (UTF-8 com `-c`, fallback
+CP1252, fallback `cat`). Mantém o pipeline robusto se o `AGENTS.md` do
+projeto-cliente também estiver fora de UTF-8 — independente do argv mangling.
+
+Fix simétrico em [plugin/percus-review/scripts/deepseek-review.ps1:76](plugin/percus-review/scripts/deepseek-review.ps1):
+`Get-Content -Encoding UTF8` explícito com fallback CP1252. A `.ps1` já passava o
+body por `Invoke-RestMethod -Body $bodyBytes` (bytes UTF-8 explícitos, L113), então
+o caminho do argv mangling não a afeta — só a leitura do `AGENTS.md` precisava de
+guard.
+
+**Decisão do conselho** (`/percus-review:council-consult` com DeepSeek + Llama):
+consenso 2/2 em "normalização defensiva" (sobre o pedaço do `AGENTS.md`). O fix
+real (argv → stdin) emergiu durante teste de fumaça, após o conselho. Ambos os
+caminhos ficaram no v6.8.4 porque cobrem causas distintas do mesmo sintoma.
+
+**Lição registrada:** rodar o próprio `deepseek-review.sh` localmente antes de
+declarar fix completo. O bug foi reproduzido apenas porque tentei satisfazer o
+hook de R11 e o script falhou em ambiente local — sem isso, teria comitado
+"fix-AGENTS.md-CP1252" sem ter corrigido o caminho principal.
+
+**Não inclui** (registrado como follow-up v6.8.5): melhorar mensagem de erro
+quando `curl` retorna 400 do DeepSeek — hoje só diz "chamada API falhou", deveria
+exibir o body pra debug ser segundos em vez de minutos.
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "name": "percus-review",
-  "version": "6.8.3",
-  "description": "Percus kit Fase 7 v6.8.3 — novo comando /percus-review:version: mostra versao do plugin instalado + changelog condensado e checa drift contra o canon (.percus-version). Resolve a confusao recorrente de 'qual versao estou rodando'. Mantém v6.8.2 (smoke v6.8: fix nome lib @percus/auth nos templates), v6.8.1 (mock-scan UTF-8 + case-sensitive markers), v6.8.0 (Sprint v6.8 canonizacao auth), v6.7.2 (cross-repo R11), v6.7.1 (marketplace sync), v6.7.0 (anti-hallucination), v6.6.x, v6.5.x, v6.4.0, v6.3.0.",
+  "version": "6.8.4",
+  "description": "Percus kit Fase 7 v6.8.4 — fix(deepseek-review): curl argv mangla UTF-8 em git-bash Windows + AGENTS.md tolerante a CP1252. Root cause real: curl em mingw recebe argv via Windows API que reencoda UTF-8→CP1252→UTF-8 e quebra multi-byte chars do proprio SYSTEM_PROMPT. Fix: body via stdin (--data-binary @-) em vez de argv. Bonus: iconv defensivo em AGENTS.md e Get-Content -Encoding UTF8 explicito no .ps1. Mantém v6.8.3 (comando /percus-review:version), v6.8.2 (smoke v6.8: fix nome lib @percus/auth nos templates), v6.8.1 (mock-scan UTF-8 + case-sensitive markers), v6.8.0 (Sprint v6.8 canonizacao auth), v6.7.2 (cross-repo R11), v6.7.1 (marketplace sync), v6.7.0 (anti-hallucination), v6.6.x, v6.5.x, v6.4.0, v6.3.0.",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",
