@@ -733,7 +733,7 @@ Convenção é **sugestão**, não trava: projetos full-stack (FastAPI + Next) p
    Se o projeto tinha bloco de 10 (canon ≤v6.9.x) e foi re-alocado pra bloco de 20 (canon ≥v6.10.0), o `port_base` provavelmente mudou — operador re-roda `percus-review:port-allocate`, atualiza `.env`, e re-aplica configs.
 5. Convenção escolhida documentada em `docs/PORTS.md` do projeto (mapa offset → serviço real).
 
-**Auditoria visual:** `https://gestao.ads4pros.com/projetos.html` mostra badge `PORTS 3020·3039` em cada card de projeto que tem alocação confirmada (bloco de 20 desde v6.10.0).
+**Auditoria visual:** `https://gestao.ads4pros.com/projetos.html` mostra badge `PORTS 3100·3119` em cada card de projeto que tem alocação confirmada (bloco de 20 desde v6.10.0).
 
 **Anti-pattern (item novo no resumo, final do arquivo):** "Hardcode de porta em vite.config/docker-compose depois de alocar `port_base`" — gera colisão silenciosa quando outro projeto pegar a mesma porta literal.
 

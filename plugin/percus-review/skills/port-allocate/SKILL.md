@@ -47,13 +47,13 @@ python "${PERCUS_CANON_DIR}/plugin/percus-review/scripts/port_allocate.py" --slu
 Stdout (uma linha, consumível por scaffold):
 
 ```
-PERCUS_PORT_BASE=3020
+PERCUS_PORT_BASE=3080
 ```
 
 Stderr (informativo):
 
 ```
-[port-allocate] OK slug=tiatendo port_base=3020 range=3020..3039 kind=cached
+[port-allocate] OK slug=tiatendo port_base=3080 range=3080..3099 kind=cached
 ```
 
 Cache em `.percus-ports.json` (commitar em git):
@@ -61,8 +61,8 @@ Cache em `.percus-ports.json` (commitar em git):
 ```json
 {
   "slug": "tiatendo",
-  "port_base": 3020,
-  "range_end": 3039,
+  "port_base": 3080,
+  "range_end": 3099,
   "allocated_at": "2026-05-26T13:17:09Z",
   "unverified": false,
   "kind": "painel-allocated"
@@ -74,9 +74,9 @@ Cache em `.percus-ports.json` (commitar em git):
 - Adicionar `PERCUS_PORT_BASE=NNNN` ao `.env.example` do projeto.
 - Trocar porta literal por env var:
   - **Vite (`vite.config.ts`)** — `server.port = Number(process.env.PERCUS_PORT_BASE)` + **`strictPort: true` obrigatório** (sem isso o Vite cai pra ephemeral e a alocação não tem efeito).
-  - **Next.js (`package.json`)** — `"dev": "next dev --port 3020"`, `"start": "next start --port 3020"`.
-  - **Storybook (`package.json`)** — `"storybook": "storybook dev -p 3022 --no-open"` (port_base + 2).
-  - **Playwright UI** — `npx playwright test --ui-port=3023 --ui-host=127.0.0.1` (port_base + 3).
+  - **Next.js (`package.json`)** — `"dev": "next dev --port 3080"`, `"start": "next start --port 3080"`.
+  - **Storybook (`package.json`)** — `"storybook": "storybook dev -p 3082 --no-open"` (port_base + 2).
+  - **Playwright UI** — `npx playwright test --ui-port=3083 --ui-host=127.0.0.1` (port_base + 3).
   - **docker-compose.yml** — `ports: ["${PERCUS_PORT_BASE}:3000"]`.
 - Convenção de offsets alinhada com Painel: ver tabela em `01_REGRAS_INEGOCIAVEIS.md` R22 / `02_INFRA_E_STACK_PERCUS.md` §5.5.
 - Documente a convenção escolhida no `docs/PORTS.md` do projeto (mapa offset → serviço real, especialmente em full-stack onde `+1` pode ser backend em vez de preview).
@@ -108,6 +108,6 @@ Se o Painel não responder (network error, sem credencial, endpoint não deploya
 - Convenção de offsets: [02_INFRA_E_STACK_PERCUS.md](../../02_INFRA_E_STACK_PERCUS.md) §5.5
 - **Manual operacional Painel-side:** `Painel Gestao e Afiliados/docs/PORT_ALLOCATION_CONSUMER_GUIDE.md` (snapshot vigente de alocações, troubleshooting, curl direto)
 - Endpoint VIVO em prod: `POST https://api.ads4pros.com/admin/projects/port-allocate` (header `X-Internal-Auth`)
-- Auditoria visual: `https://gestao.ads4pros.com/projetos.html` (badge `PORTS 3020·3039` em cada projeto)
+- Auditoria visual: `https://gestao.ads4pros.com/projetos.html` (badge `PORTS 3100·3119` em cada projeto)
 - Wrapper: `plugin/percus-review/scripts/port_allocate.py`
 - Setup catalog (mesma key): `comandos/SETUP_CATALOG.md`

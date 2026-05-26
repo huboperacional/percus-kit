@@ -594,7 +594,7 @@ Use o **default Vite** a não ser que o produto tenha tráfego público SEO-depe
 
 Cada projeto Percus recebe um **bloco de 20 portas locais** alocado pelo Painel de Gestão (`POST /admin/projects/port-allocate` → cache em `.percus-ports.json`). Resolve colisão silenciosa quando rodar 2 projetos simultaneamente em dev. **Endpoint vivo em produção desde 2026-05-26** (`api.ads4pros.com`).
 
-**Range global:** 3000–9999 (≈349 projetos × 20 portas — expandido em v6.10.0). Source of truth na coluna `projects.port_base` da Painel (UNIQUE parcial). Auditoria visual: `https://gestao.ads4pros.com/projetos.html` (badge `PORTS 3020·3039`).
+**Range global:** 3000–9999 (≈349 projetos × 20 portas — expandido em v6.10.0). Source of truth na coluna `projects.port_base` da Painel (UNIQUE parcial). Auditoria visual: `https://gestao.ads4pros.com/projetos.html` (badge `PORTS 3100·3119`).
 
 **Concorrência:** o endpoint serializa alocações via `pg_advisory_xact_lock(4242)` + UNIQUE INDEX `uq_projects_port_base`. 2 consultas simultâneas do mesmo slug retornam o mesmo `port_base` (idempotência); slugs distintos recebem blocos diferentes garantidos pelo lock.
 

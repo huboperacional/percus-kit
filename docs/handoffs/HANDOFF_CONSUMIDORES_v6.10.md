@@ -14,19 +14,21 @@ Agora (v6.10.0): cada projeto tem **20 portas locais** (`port_base` .. `port_bas
 
 Range global expandiu de `3100-4099` (100 projetos) para `3000-9999` (~349 projetos).
 
-**Tudo foi re-alocado.** Seu projeto provavelmente recebeu um `port_base` novo:
+**Quase todos os projetos foram re-alocados** (apenas `painel-gestao` manteve `3100` por coincidência de ordenação UUID). Snapshot **real** pós-migration em prod (ordem por `id` UUID, confirmada via smoke 2026-05-26):
 
-| slug | port_base antigo | port_base novo |
+| slug | port_base antigo (v6.9.x) | port_base novo (v6.10.0) |
 |---|---|---|
-| painel-gestao | 3100 | 3000 |
-| tiatendo | 3110 | 3020 |
-| familia-milionaria | 3120 | 3040 |
-| ghl-evolution | 3130 | 3060 |
-| robo-vendas | 3140 | 3080 |
-| social-midia | 3150 | 3100 |
-| zap-disparador | 3160 | 3120 |
+| familia-milionaria | 3120 | **3000** |
+| ghl-evolution | 3130 | **3020** |
+| robo-vendas | 3140 | **3040** |
+| zap-disparador | 3160 | **3060** |
+| tiatendo | 3110 | **3080** |
+| painel-gestao | 3100 | **3100** |
+| social-midia | 3150 | **3120** |
 
-> Ordem real foi `ORDER BY id`. Se o snapshot acima divergir do banco, **autoridade é o Painel** — rode `port-allocate` que ele te devolve o número certo.
+> Painel é a fonte canônica — rode `port-allocate` que ele te devolve o número certo. A tabela acima é só pra referência rápida.
+
+**Próximo bloco livre para projeto novo:** 3140·3159.
 
 ---
 

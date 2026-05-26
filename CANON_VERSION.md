@@ -30,7 +30,21 @@ Decisão: bloco de 10 portas era apertado pra projeto full-stack real (Vite + St
 - `docs/handoffs/HANDOFF_PAINEL_v6.10.md` (novo) — passo-a-passo pra aplicar no Painel.
 - `docs/handoffs/HANDOFF_CONSUMIDORES_v6.10.md` (novo) — passo-a-passo pra cada projeto consumidor re-alocar.
 
-**Próximo bloco livre após migration:** 3140 (assumindo 7 projetos atuais re-alocados de 3000 a 3120; ver §3 do consumer guide pós-update).
+**Snapshot real pós-migration** (ordem por `id` UUID divergiu do otimista do handoff — verdade do banco):
+
+| slug | port_base | range |
+|---|---|---|
+| familia-milionaria | 3000 | 3000·3019 |
+| ghl-evolution | 3020 | 3020·3039 |
+| robo-vendas | 3040 | 3040·3059 |
+| zap-disparador | 3060 | 3060·3079 |
+| tiatendo | 3080 | 3080·3099 |
+| painel-gestao | 3100 | 3100·3119 |
+| social-midia | 3120 | 3120·3139 |
+
+**Próximo bloco livre:** 3140·3159.
+
+**Deploy Painel confirmado:** imagem `ads4pros-api:fase7-20260526b` (sha `39fc67b49cd7`) vivo em prod. Commits Painel: `db8f3d6` (feat R22-v2) + `5eb9664` (docs snapshot real). Smoke E2E ok: `/health` 200, `port-allocate` idempotente, bloco-de-20 confirmado por `kind:new` saltar de 3120→3140. Backup `pg_dump --data-only -t projects` salvo na VPS antes da migration (rollback procedure no §4 do handoff Painel).
 
 ---
 
