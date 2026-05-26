@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""port_allocate.py — Aloca PERCUS_PORT_BASE consultando o Painel (canon v6.9.1).
+"""port_allocate.py — Aloca PERCUS_PORT_BASE consultando o Painel (canon v6.10.0).
 
 Source of truth: Painel `POST /admin/projects/port-allocate` (endpoint idempotente).
-VIVO em prod desde 2026-05-26 (ads4pros-api:fase7-20260526a).
+VIVO em prod desde 2026-05-26.
 Cache local: <projeto>/.percus-ports.json (versionado em git).
-Fallback offline (exceção): hash(slug) % 100 -> 3100 + hash*10, marcado unverified=true.
+Fallback offline (excecao): hash(slug) % 350 -> 3000 + hash*20, marcado unverified=true.
+Bloco de 20 portas / range global 3000-9999 desde v6.10.0 (era 10 / 3100-4099).
 
 Manual operacional: Painel Gestao e Afiliados/docs/PORT_ALLOCATION_CONSUMER_GUIDE.md.
 
@@ -41,9 +42,9 @@ except ImportError:
     sys.exit(1)
 
 
-RANGE_START = 3100
-RANGE_END = 4090
-BLOCK_SIZE = 10
+RANGE_START = 3000
+RANGE_END = 9980  # ultimo port_base valido; range_end = 9999
+BLOCK_SIZE = 20
 CACHE_FILE = ".percus-ports.json"
 
 
@@ -77,11 +78,12 @@ def _resolveAuth() -> tuple[str, Optional[str]]:
 
 
 def _deterministicFallback(slug: str) -> int:
-    """Hash do slug % 100 -> bloco 3100..4090. Determinismo: sempre o mesmo slug
-    cai no mesmo port_base offline. Colisao possivel (~1% por par de slugs);
+    """Hash do slug % numBlocks -> bloco em [RANGE_START, RANGE_END]. Determinismo:
+    sempre o mesmo slug cai no mesmo port_base offline. Colisao possivel;
     reconcile com Painel quando voltar online detecta e re-aloca."""
     h = hashlib.sha256(slug.encode("utf-8")).hexdigest()
-    blockIdx = int(h[:8], 16) % ((RANGE_END - RANGE_START) // BLOCK_SIZE + 1)
+    numBlocks = (RANGE_END - RANGE_START) // BLOCK_SIZE + 1
+    blockIdx = int(h[:8], 16) % numBlocks
     return RANGE_START + blockIdx * BLOCK_SIZE
 
 

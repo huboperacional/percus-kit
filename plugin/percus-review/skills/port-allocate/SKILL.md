@@ -1,11 +1,13 @@
 ---
 name: port-allocate
-description: Use ao criar projeto Percus novo OU ao migrar um legado para o padrão de portas locais (R22). Aloca PERCUS_PORT_BASE único via Painel; cache local em .percus-ports.json. Fallback determinístico se Painel offline.
+description: Use ao criar projeto Percus novo OU ao migrar um legado para o padrão de portas locais (R22). Aloca PERCUS_PORT_BASE único (bloco de 20 portas, canon v6.10.0+) via Painel; cache local em .percus-ports.json. Fallback determinístico se Painel offline.
 ---
 
 # Percus — Port Allocate
 
-Aloca um **bloco de 10 portas locais** para o projeto (port_base, port_base+1, ..., port_base+9) consultando o Painel de Gestão como source of truth. Resolve colisões de porta em dev quando rodar múltiplos projetos Percus simultaneamente.
+Aloca um **bloco de 20 portas locais** para o projeto (port_base, port_base+1, ..., port_base+19) consultando o Painel de Gestão como source of truth. Resolve colisões de porta em dev quando rodar múltiplos projetos Percus simultaneamente.
+
+> **Breaking v6.10.0:** bloco passou de 10 → 20 portas; range global expandiu de 3100-4090 → 3000-9999. Projetos alocados sob v6.9.x foram re-alocados — operador re-roda esta skill em cada projeto e ajusta `.env` + configs.
 
 ## Quando usar
 
@@ -45,22 +47,22 @@ python "${PERCUS_CANON_DIR}/plugin/percus-review/scripts/port_allocate.py" --slu
 Stdout (uma linha, consumível por scaffold):
 
 ```
-PERCUS_PORT_BASE=3110
+PERCUS_PORT_BASE=3020
 ```
 
 Stderr (informativo):
 
 ```
-[port-allocate] OK slug=plexco-tasks port_base=3110 range=3110..3119 kind=cached
+[port-allocate] OK slug=tiatendo port_base=3020 range=3020..3039 kind=cached
 ```
 
 Cache em `.percus-ports.json` (commitar em git):
 
 ```json
 {
-  "slug": "plexco-tasks",
-  "port_base": 3110,
-  "range_end": 3119,
+  "slug": "tiatendo",
+  "port_base": 3020,
+  "range_end": 3039,
   "allocated_at": "2026-05-26T13:17:09Z",
   "unverified": false,
   "kind": "painel-allocated"
@@ -72,9 +74,9 @@ Cache em `.percus-ports.json` (commitar em git):
 - Adicionar `PERCUS_PORT_BASE=NNNN` ao `.env.example` do projeto.
 - Trocar porta literal por env var:
   - **Vite (`vite.config.ts`)** — `server.port = Number(process.env.PERCUS_PORT_BASE)` + **`strictPort: true` obrigatório** (sem isso o Vite cai pra ephemeral e a alocação não tem efeito).
-  - **Next.js (`package.json`)** — `"dev": "next dev --port 3170"`, `"start": "next start --port 3170"`.
-  - **Storybook (`package.json`)** — `"storybook": "storybook dev -p 3172 --no-open"` (port_base + 2).
-  - **Playwright UI** — `npx playwright test --ui-port=3173 --ui-host=127.0.0.1` (port_base + 3).
+  - **Next.js (`package.json`)** — `"dev": "next dev --port 3020"`, `"start": "next start --port 3020"`.
+  - **Storybook (`package.json`)** — `"storybook": "storybook dev -p 3022 --no-open"` (port_base + 2).
+  - **Playwright UI** — `npx playwright test --ui-port=3023 --ui-host=127.0.0.1` (port_base + 3).
   - **docker-compose.yml** — `ports: ["${PERCUS_PORT_BASE}:3000"]`.
 - Convenção de offsets alinhada com Painel: ver tabela em `01_REGRAS_INEGOCIAVEIS.md` R22 / `02_INFRA_E_STACK_PERCUS.md` §5.5.
 - Documente a convenção escolhida no `docs/PORTS.md` do projeto (mapa offset → serviço real, especialmente em full-stack onde `+1` pode ser backend em vez de preview).
@@ -87,17 +89,17 @@ Chamada repetida com mesmo slug retorna mesmo `port_base`. Cache local + endpoin
 
 Se o Painel não responder (network error, sem credencial, endpoint não deployado ainda):
 
-1. Calcula `hash(slug) % 100 → 3100 + hash*10` (determinístico — mesmo slug sempre cai no mesmo bloco).
+1. Calcula `hash(slug) % 350 → 3000 + hash*20` (determinístico — mesmo slug sempre cai no mesmo bloco; bloco de 20 em v6.10.0+).
 2. Escreve `.percus-ports.json` com `unverified: true`.
 3. Próxima rodada com Painel online: detecta `unverified` e reconcilia.
 
-**Risco aceito** (registrado no plano): ~1% de chance de hash collision entre 2 slugs distintos. Reconcile detecta e re-aloca o slot perdedor.
+**Risco aceito** (registrado no plano): chance baixa de hash collision entre 2 slugs distintos. Reconcile detecta e re-aloca o slot perdedor.
 
 ## Anti-padrões
 
 - ❌ Editar `.percus-ports.json` à mão sem rodar o script (cache fica fora de sync com Painel).
 - ❌ Hardcode de porta em vite.config/docker-compose depois de alocar `port_base` (viola R22).
-- ❌ Usar `port_base` fora do range alocado (e.g., front em `+0`, mas worker em `+27` — fora do bloco).
+- ❌ Usar `port_base` fora do range alocado (e.g., front em `+0`, mas worker em `+27` — fora do bloco de 20).
 - ❌ Pular `--name` em projeto novo e ignorar o erro "name not provided" (deixa estado pela metade no Painel).
 
 ## Referências
@@ -106,6 +108,6 @@ Se o Painel não responder (network error, sem credencial, endpoint não deploya
 - Convenção de offsets: [02_INFRA_E_STACK_PERCUS.md](../../02_INFRA_E_STACK_PERCUS.md) §5.5
 - **Manual operacional Painel-side:** `Painel Gestao e Afiliados/docs/PORT_ALLOCATION_CONSUMER_GUIDE.md` (snapshot vigente de alocações, troubleshooting, curl direto)
 - Endpoint VIVO em prod: `POST https://api.ads4pros.com/admin/projects/port-allocate` (header `X-Internal-Auth`)
-- Auditoria visual: `https://gestao.ads4pros.com/projetos.html` (badge `PORTS 3110·3119` em cada projeto)
+- Auditoria visual: `https://gestao.ads4pros.com/projetos.html` (badge `PORTS 3020·3039` em cada projeto)
 - Wrapper: `plugin/percus-review/scripts/port_allocate.py`
 - Setup catalog (mesma key): `comandos/SETUP_CATALOG.md`

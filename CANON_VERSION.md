@@ -1,8 +1,36 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.9.1`
+**Versão canônica em `huboperacional/percus-kit`:** `6.10.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.10.0 — 2026-05-26 (noite)
+
+**R22 v2 — bloco de 20 portas + range expandido 3000-9999.**
+
+Decisão: bloco de 10 portas era apertado pra projeto full-stack real (Vite + Storybook + Playwright + backend FastAPI + worker + Postgres local + Redis local consomem 7-8 offsets, quase zero margem). Bumpamos para **20 portas/projeto** e expandimos range global de `3100-4090` (100 projetos) para `3000-9999` (~349 projetos).
+
+**Breaking — todos os projetos já alocados foram re-alocados.** Snapshot pré-v6.10 (`painel-gestao` 3100, `tiatendo` 3110, etc.) virou (`painel-gestao` 3000, `tiatendo` 3020, etc.). Operador precisa re-rodar `/percus-review:port-allocate` em cada projeto, atualizar `.env` e configs (vite/next/compose). Documentado em `docs/handoffs/HANDOFF_CONSUMIDORES_v6.10.md`.
+
+**Cross-repo Painel:** mudanças no Painel ficam descritas em `docs/handoffs/HANDOFF_PAINEL_v6.10.md` — canon **não** comita lá (cross-repo write protocol). Operador aplica manualmente:
+- Migration nova (drop CHECK antigo, zera `port_base`, re-aloca por `ORDER BY id`, novo CHECK `BETWEEN 3000 AND 9980 AND port_base % 20 = 0`).
+- `catalogEngine.py:77-79` constantes (`PORT_ALLOC_RANGE_START=3000`, `PORT_ALLOC_RANGE_END=9980`, `PORT_ALLOC_BLOCK_SIZE=20`).
+- `docs/PORT_ALLOCATION_CONSUMER_GUIDE.md` snapshot + seção concorrência explícita.
+- Tests `test_portAllocate.py` ajustados pros novos números.
+
+**Concorrência (documentada explicitamente):** o endpoint já era seguro via `pg_advisory_xact_lock(4242)` + UNIQUE INDEX `uq_projects_port_base`. 2 consultas simultâneas do mesmo slug → mesmo `port_base` (idempotência). 2 consultas simultâneas de slugs distintos → blocos distintos garantidos pelo lock; UNIQUE INDEX é rede de segurança. Nada muda no código — só fica documentado pra agentes/consumidores não duvidarem.
+
+**Canon — arquivos tocados nesta release:**
+- `01_REGRAS_INEGOCIAVEIS.md` R22 — bloco 20, range 3000-9999, tabela de 12 offsets nomeados + reserva, seção "Garantia de unicidade sob concorrência".
+- `02_INFRA_E_STACK_PERCUS.md` §5.5 — mesma tabela, exemplos atualizados (port_base=3140 next free).
+- `plugin/percus-review/skills/port-allocate/SKILL.md` — banner breaking v6.10, exemplos com tiatendo 3020·3039.
+- `plugin/percus-review/scripts/port_allocate.py` — `BLOCK_SIZE=20`, `RANGE_START=3000`, `RANGE_END=9980`, fallback ajustado.
+- `docs/handoffs/HANDOFF_PAINEL_v6.10.md` (novo) — passo-a-passo pra aplicar no Painel.
+- `docs/handoffs/HANDOFF_CONSUMIDORES_v6.10.md` (novo) — passo-a-passo pra cada projeto consumidor re-alocar.
+
+**Próximo bloco livre após migration:** 3140 (assumindo 7 projetos atuais re-alocados de 3000 a 3120; ver §3 do consumer guide pós-update).
 
 ---
 

@@ -5,8 +5,8 @@
   "plugins": [
     {
       "name": "percus-review",
-      "description": "Review cross-provider Percus (DeepSeek + Groq-Llama + Cross-Claude) — Fase 7 v6.9.1 (sync R22 pos-deploy Painel)",
-      "version": "6.9.1",
+      "description": "Review cross-provider Percus (DeepSeek + Groq-Llama + Cross-Claude) — Fase 7 v6.10.0 (R22 v2: bloco 20 portas / range 3000-9999)",
+      "version": "6.10.0",
       "source": "./plugin/percus-review"
     }
   ]

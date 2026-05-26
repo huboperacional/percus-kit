@@ -592,11 +592,13 @@ Use o **default Vite** a não ser que o produto tenha tráfego público SEO-depe
 
 ### 5.5. Alocação central de portas locais (R22)
 
-Cada projeto Percus recebe um **bloco de 10 portas locais** alocado pelo Painel de Gestão (`POST /admin/projects/port-allocate` → cache em `.percus-ports.json`). Resolve colisão silenciosa quando rodar 2 projetos simultaneamente em dev. **Endpoint vivo em produção desde 2026-05-26** (`api.ads4pros.com`, imagem `ads4pros-api:fase7-20260526a`).
+Cada projeto Percus recebe um **bloco de 20 portas locais** alocado pelo Painel de Gestão (`POST /admin/projects/port-allocate` → cache em `.percus-ports.json`). Resolve colisão silenciosa quando rodar 2 projetos simultaneamente em dev. **Endpoint vivo em produção desde 2026-05-26** (`api.ads4pros.com`).
 
-**Range global:** 3100–4099 (100 projetos × 10 portas). Source of truth na coluna `projects.port_base` da Painel (UNIQUE parcial). Auditoria visual: `https://gestao.ads4pros.com/projetos.html` (badge `PORTS 3110·3119`).
+**Range global:** 3000–9999 (≈349 projetos × 20 portas — expandido em v6.10.0). Source of truth na coluna `projects.port_base` da Painel (UNIQUE parcial). Auditoria visual: `https://gestao.ads4pros.com/projetos.html` (badge `PORTS 3020·3039`).
 
-**Tabela canônica de offsets** (alinhada com [PORT_ALLOCATION_CONSUMER_GUIDE.md](D:/Claud%20Automations/Painel%20Gestao%20e%20Afiliados/docs/PORT_ALLOCATION_CONSUMER_GUIDE.md)):
+**Concorrência:** o endpoint serializa alocações via `pg_advisory_xact_lock(4242)` + UNIQUE INDEX `uq_projects_port_base`. 2 consultas simultâneas do mesmo slug retornam o mesmo `port_base` (idempotência); slugs distintos recebem blocos diferentes garantidos pelo lock.
+
+**Tabela canônica de offsets — bloco de 20** (alinhada com [PORT_ALLOCATION_CONSUMER_GUIDE.md](D:/Claud%20Automations/Painel%20Gestao%20e%20Afiliados/docs/PORT_ALLOCATION_CONSUMER_GUIDE.md)):
 
 | Offset | Uso típico |
 |---|---|
@@ -605,10 +607,16 @@ Cada projeto Percus recebe um **bloco de 10 portas locais** alocado pelo Painel 
 | `+2` | Storybook |
 | `+3` | Playwright UI mode |
 | `+4` | Mock server / MSW |
-| `+5` | Outro daemon (Tauri sidecar, mailhog UI, electron-builder) |
-| `+6..+9` | Reserva — documente em `docs/PORTS.md` |
+| `+5` | Backend FastAPI/uvicorn (full-stack) |
+| `+6` | Worker (celery/rq/cron-runner) |
+| `+7` | Postgres local dedicado |
+| `+8` | Redis local dedicado |
+| `+9` | MinIO / object storage local |
+| `+10` | Mailhog / dev SMTP UI |
+| `+11` | Outro daemon (Tauri sidecar, electron-builder, etc.) |
+| `+12..+19` | Reserva — documente em `docs/PORTS.md` |
 
-Convenção é **sugestão**: projetos full-stack podem mapear `+1` como backend e `+2` como worker em vez de Storybook/preview. Decisão do projeto fica em `docs/PORTS.md`. O que **não** muda: 10 portas, começa em `${PERCUS_PORT_BASE}`, nada exposto fora do bloco.
+Convenção é **sugestão**: projetos full-stack podem remapear como precisarem. Decisão do projeto fica em `docs/PORTS.md`. O que **não** muda: **20 portas**, começa em `${PERCUS_PORT_BASE}`, nada exposto fora do bloco.
 
 **Como configurar (uma vez por projeto):**
 
@@ -616,21 +624,21 @@ Convenção é **sugestão**: projetos full-stack podem mapear `+1` como backend
 # 1. Aloca port_base via Painel (idempotente, endpoint vivo).
 python "${PERCUS_CANON_DIR}/plugin/percus-review/scripts/port_allocate.py" \
   --slug meu-projeto --name "Meu Projeto"
-# stdout: PERCUS_PORT_BASE=3170
+# stdout: PERCUS_PORT_BASE=3140
 
 # 2. Adiciona ao .env.example e .env do projeto.
-echo "PERCUS_PORT_BASE=3170" >> .env.example
+echo "PERCUS_PORT_BASE=3140" >> .env.example
 
 # 3. vite.config.ts (frontend Vite — strictPort OBRIGATÓRIO):
 #   server: { port: Number(process.env.PERCUS_PORT_BASE), strictPort: true }
 #   preview: { port: Number(process.env.PERCUS_PORT_BASE) + 1, strictPort: true }
 
 # 4. package.json scripts (Next.js):
-#   "dev": "next dev --port 3170"
-#   "storybook": "storybook dev -p 3172 --no-open"
+#   "dev": "next dev --port 3140"
+#   "storybook": "storybook dev -p 3142 --no-open"
 
-# 5. uvicorn (backend full-stack mapeado em +1):
-#   uvicorn.run(app, port=int(os.environ['PERCUS_PORT_BASE']) + 1)
+# 5. uvicorn (backend full-stack mapeado em +5):
+#   uvicorn.run(app, port=int(os.environ['PERCUS_PORT_BASE']) + 5)
 
 # 6. docker-compose.yml — expose host port:
 #   ports: ["${PERCUS_PORT_BASE}:3000"]
@@ -639,12 +647,12 @@ echo "PERCUS_PORT_BASE=3170" >> .env.example
 `.percus-ports.json` (versionado em git) guarda o estado:
 
 ```json
-{"slug": "meu-projeto", "port_base": 3170, "range_end": 3179, "unverified": false}
+{"slug": "meu-projeto", "port_base": 3140, "range_end": 3159, "unverified": false}
 ```
 
-**Infra compartilhada (Postgres 5432, Redis 6379, MinIO 9000) fica fora do bloco.** Containers separados por projeto isolam-se via Docker network; se precisar expor no host, usar offsets `+5..+9`.
+**Infra compartilhada do VPS (Postgres 5432, Redis 6379, MinIO 9000) fica fora do bloco.** Bloco do projeto cobre infra **local** dedicada — se um projeto subir Postgres local dedicado, usa `+7` (não a porta 5432 padrão, que não é controlada pelo Painel).
 
-**Fallback offline** (exceção pós-deploy 2026-05-26): se Painel inacessível na alocação inicial, o wrapper cai em `hash(slug) % 100 → 3100 + hash*10` e marca `unverified: true`. Próxima execução com Painel online reconcilia (1% de chance teórica de hash collision — detectada no reconcile, re-aloca slot novo).
+**Fallback offline** (exceção pós-deploy 2026-05-26): se Painel inacessível na alocação inicial, o wrapper cai em `hash(slug) % 350 → 3000 + hash*20` e marca `unverified: true`. Próxima execução com Painel online reconcilia (chance baixa de hash collision — detectada no reconcile, re-aloca slot novo).
 
 **Manual operacional completo:** `Painel Gestao e Afiliados/docs/PORT_ALLOCATION_CONSUMER_GUIDE.md` (snapshot de alocações vigentes, troubleshooting, smoke direto via curl). **Regra:** `01_REGRAS_INEGOCIAVEIS.md` R22.
 
