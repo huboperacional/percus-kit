@@ -1,8 +1,35 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.9.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.9.1`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.9.1 — 2026-05-26 (tarde)
+
+**Sync com Painel pós-deploy R22.**
+
+Após a sessão Painel deployar a v6.9.0 em prod (imagem `ads4pros-api:fase7-20260526a`, endpoint vivo, 7 projetos já alocados de 3100 a 3169), a Painel publicou `docs/PORT_ALLOCATION_CONSUMER_GUIDE.md` consolidando o padrão operacional real. O canon-side estava com 3 desvios em relação ao guia operacional:
+
+1. **Tabela de offsets divergente.** Canon v6.9.0 pensava em "full-stack" (`+0` front, `+1` back, `+2` worker, `+3` admin UI, `+4` mailhog). Painel mapeou ferramentas reais do dev frontend Vite (`+0` dev server, `+1` preview, `+2` Storybook, `+3` Playwright UI, `+4` mock/MSW, `+5` outro daemon). Como a stack default Percus é Vite + frontend e a convenção é **sugestão** (não trava), o canon foi alinhado com a Painel. Full-stack continua livre pra mapear `+1` como backend em `docs/PORTS.md` do projeto.
+2. **`strictPort: true` não era pré-requisito explícito.** Sem isso o Vite cai pra ephemeral e a alocação não tem efeito — exatamente o bug que motivou R22. Agora obrigatório em R22 gate 4.
+3. **Estado do endpoint vago.** Canon ainda dizia "fallback é default" — invertido: endpoint vivo é o padrão, fallback é exceção rara.
+
+Arquivos sincronizados em [commit a confirmar]:
+- `01_REGRAS_INEGOCIAVEIS.md` R22 — tabela de offsets, `strictPort: true` no gate, referência ao consumer guide, anotação de auditoria visual via `gestao.ads4pros.com/projetos.html`.
+- `02_INFRA_E_STACK_PERCUS.md` §5.5 — mesma tabela, exemplos de config alinhados (Vite strictPort, Next `--port`, Storybook `-p`, Playwright `--ui-port`).
+- `plugin/percus-review/skills/port-allocate/SKILL.md` — exemplos por stack, referência ao consumer guide, badge UI.
+- `plugin/percus-review/scripts/port_allocate.py` — docstring atualizada (endpoint vivo, fallback como exceção).
+
+**Próximo bloco livre no momento desta release:** 3170. 7 projetos já alocados (snapshot vivo em [gestao.ads4pros.com/projetos.html](https://gestao.ads4pros.com/projetos.html)).
+
+**Roadmap v6.10+** (registrado pelo guia Painel, ainda fora de escopo):
+- Expandir constraint `chk_projects_port_base_range` quando passar de 100 projetos.
+- Liberação de bloco quando projeto é desativado (hoje a coluna fica órfã).
+- Dashboard de detecção de colisões via `lsof -i :PORT` em healthcheck local.
+
+Princípio reforçado pela sincronização: **quando canon e Painel divergem em ponto operacional, Painel vence** — é o que está vivo em produção. Canon documenta o "porquê"; Painel documenta o "como agora".
 
 ---
 

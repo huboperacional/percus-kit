@@ -20,7 +20,7 @@ Se o projeto já tem `.percus-ports.json` válido (`unverified: false`), o scrip
 - `.env` do projeto (ou env do processo) com:
   - `PAINEL_API_URL` (default `https://api.ads4pros.com`)
   - `CATALOG_INGEST_KEY` (mesma key do skill `catalog-publish`)
-- Se nenhuma credencial estiver presente, **fallback offline determinístico** entra automaticamente — operador é avisado via stderr e `.percus-ports.json` recebe `unverified: true`.
+- Endpoint vivo em prod desde 2026-05-26 (`ads4pros-api:fase7-20260526a`). **Fallback offline determinístico** entra automaticamente se Painel inacessível — operador é avisado via stderr e `.percus-ports.json` recebe `unverified: true` (exceção, não default).
 
 ## Fluxo
 
@@ -70,9 +70,14 @@ Cache em `.percus-ports.json` (commitar em git):
 ### 4. Próximo passo (operador)
 
 - Adicionar `PERCUS_PORT_BASE=NNNN` ao `.env.example` do projeto.
-- Trocar `port: 5173` (literal) por `port: Number(process.env.PERCUS_PORT_BASE ?? 3000)` em `vite.config.ts` / `next.config.ts`.
-- Em `docker-compose.yml`, expor portas como `${PERCUS_PORT_BASE}:3000` (host:container).
-- Convenção de offsets em `02_INFRA_E_STACK_PERCUS.md` — frontend usa `+0`, backend `+1`, etc.
+- Trocar porta literal por env var:
+  - **Vite (`vite.config.ts`)** — `server.port = Number(process.env.PERCUS_PORT_BASE)` + **`strictPort: true` obrigatório** (sem isso o Vite cai pra ephemeral e a alocação não tem efeito).
+  - **Next.js (`package.json`)** — `"dev": "next dev --port 3170"`, `"start": "next start --port 3170"`.
+  - **Storybook (`package.json`)** — `"storybook": "storybook dev -p 3172 --no-open"` (port_base + 2).
+  - **Playwright UI** — `npx playwright test --ui-port=3173 --ui-host=127.0.0.1` (port_base + 3).
+  - **docker-compose.yml** — `ports: ["${PERCUS_PORT_BASE}:3000"]`.
+- Convenção de offsets alinhada com Painel: ver tabela em `01_REGRAS_INEGOCIAVEIS.md` R22 / `02_INFRA_E_STACK_PERCUS.md` §5.5.
+- Documente a convenção escolhida no `docs/PORTS.md` do projeto (mapa offset → serviço real, especialmente em full-stack onde `+1` pode ser backend em vez de preview).
 
 ## Idempotência
 
@@ -98,7 +103,9 @@ Se o Painel não responder (network error, sem credencial, endpoint não deploya
 ## Referências
 
 - Regra: R22 em [01_REGRAS_INEGOCIAVEIS.md](../../01_REGRAS_INEGOCIAVEIS.md)
-- Convenção de offsets: [02_INFRA_E_STACK_PERCUS.md](../../02_INFRA_E_STACK_PERCUS.md)
-- Endpoint: `POST {PAINEL_API_URL}/admin/projects/port-allocate` (header `X-Internal-Auth`)
+- Convenção de offsets: [02_INFRA_E_STACK_PERCUS.md](../../02_INFRA_E_STACK_PERCUS.md) §5.5
+- **Manual operacional Painel-side:** `Painel Gestao e Afiliados/docs/PORT_ALLOCATION_CONSUMER_GUIDE.md` (snapshot vigente de alocações, troubleshooting, curl direto)
+- Endpoint VIVO em prod: `POST https://api.ads4pros.com/admin/projects/port-allocate` (header `X-Internal-Auth`)
+- Auditoria visual: `https://gestao.ads4pros.com/projetos.html` (badge `PORTS 3110·3119` em cada projeto)
 - Wrapper: `plugin/percus-review/scripts/port_allocate.py`
 - Setup catalog (mesma key): `comandos/SETUP_CATALOG.md`

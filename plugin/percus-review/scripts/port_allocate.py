@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""port_allocate.py — Aloca PERCUS_PORT_BASE consultando o Painel (canon v6.9.0).
+"""port_allocate.py — Aloca PERCUS_PORT_BASE consultando o Painel (canon v6.9.1).
 
 Source of truth: Painel `POST /admin/projects/port-allocate` (endpoint idempotente).
+VIVO em prod desde 2026-05-26 (ads4pros-api:fase7-20260526a).
 Cache local: <projeto>/.percus-ports.json (versionado em git).
-Fallback offline: hash(slug) % 100 -> 3100 + hash*10, marcado unverified=true.
+Fallback offline (exceção): hash(slug) % 100 -> 3100 + hash*10, marcado unverified=true.
+
+Manual operacional: Painel Gestao e Afiliados/docs/PORT_ALLOCATION_CONSUMER_GUIDE.md.
 
 Uso:
     python port_allocate.py --slug <slug> [--name <Nome Bonito>]

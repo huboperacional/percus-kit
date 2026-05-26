@@ -701,30 +701,38 @@ R20 escape hatch é "operador validou síntese do council + fact-check".
 
 **Why:** colisão real observada em 2026-05-26 (porta `52924` ephemeral atribuída por Vite/Node a dois projetos diferentes). Causa estrutural: Far-West de portas, cada projeto inventava as suas (3000 Next + 8000 FastAPI + 5273 Vite + 3100 Node + ...). Inventário mostrou 6 projetos ativos sem padrão. Solução: source of truth única no Painel (`projects.port_base INT UNIQUE`); bloco de 10 portas por projeto cobre frontend + backend + worker + reserva sem 2ª alocação; range total 3100-4090 = 100 projetos × 10 portas.
 
-**Tabela de offsets (canônica):**
+**Tabela de offsets (canônica — alinhada com [PORT_ALLOCATION_CONSUMER_GUIDE.md](D:/Claud%20Automations/Painel%20Gestao%20e%20Afiliados/docs/PORT_ALLOCATION_CONSUMER_GUIDE.md) §4.2):**
 
-| Offset | Serviço típico |
+| Offset | Uso típico |
 |---|---|
-| `+0` | frontend principal (Next/Vite) |
-| `+1` | backend principal (FastAPI/Express/Nest) |
-| `+2` | worker / backend secundário |
-| `+3` | frontend secundário / admin UI |
-| `+4` | mailhog UI / dev tooling |
-| `+5..+9` | reserva (overflow, novos serviços, infra host-exposta) |
+| `+0` | Dev server principal (Vite/Next/Fastify/uvicorn) |
+| `+1` | Preview/build local (`vite preview`, `next start`) — ou backend secundário em projeto full-stack |
+| `+2` | Storybook |
+| `+3` | Playwright UI mode |
+| `+4` | Mock server / MSW |
+| `+5` | Outro daemon (Tauri sidecar, electron-builder, mailhog UI, etc) |
+| `+6..+9` | Reserva — uso livre dentro do projeto, documente no `docs/PORTS.md` |
+
+Convenção é **sugestão**, não trava: projetos full-stack (FastAPI + Next) podem mapear `+1` como backend principal em vez de preview. Decisão do projeto fica em `docs/PORTS.md` ou `README.md` pra agentes futuros / colegas. O que **não** muda: bloco é de 10 portas, começa em `${PERCUS_PORT_BASE}`, e nenhuma porta exposta no host pode estar fora dele.
 
 **Gate de verificação:**
 
-1. Projeto tem `.percus-ports.json` versionado em git com `port_base`, `range_end`, `unverified: false` (ou `true` só se alocação foi feita offline e ainda não reconciliou).
+1. Projeto tem `.percus-ports.json` versionado em git com `port_base`, `range_end`, `unverified: false` (ou `true` só se alocação foi feita offline e ainda não reconciliou — endpoint Painel está vivo em prod desde 2026-05-26, fallback offline é exceção).
 2. Configs (`vite.config`, `next.config`, `docker-compose`, `package.json` scripts) referenciam `process.env.PERCUS_PORT_BASE` ou `${PERCUS_PORT_BASE}`, nunca literais.
 3. `.env.example` declara `PERCUS_PORT_BASE=NNNN` (placeholder; valor real fica em `.env` local).
+4. **`strictPort: true` obrigatório em Vite** (sem isso o Vite cai pra ephemeral e a alocação não tem efeito). Para Next.js: `next dev --port $PERCUS_PORT_BASE` no script de `package.json`. Storybook: `storybook dev -p $((PERCUS_PORT_BASE+2)) --no-open`.
+5. Convenção escolhida documentada em `docs/PORTS.md` do projeto (mapa offset → serviço real).
+
+**Auditoria visual:** `https://gestao.ads4pros.com/projetos.html` mostra badge `PORTS 3110·3119` em cada card de projeto que tem alocação confirmada.
 
 **Anti-pattern (item novo no resumo, final do arquivo):** "Hardcode de porta em vite.config/docker-compose depois de alocar `port_base`" — gera colisão silenciosa quando outro projeto pegar a mesma porta literal.
 
 **Refs:**
 - Skill: `percus-review:port-allocate` (canon `plugin/percus-review/skills/port-allocate/SKILL.md`)
 - Wrapper Python: `plugin/percus-review/scripts/port_allocate.py`
-- Endpoint Painel: `POST /admin/projects/port-allocate` (X-Internal-Auth)
-- Migration Painel: `Painel Gestao e Afiliados/execution/database/migration_port_base.sql`
+- Endpoint Painel (VIVO em prod): `POST https://api.ads4pros.com/admin/projects/port-allocate` (X-Internal-Auth)
+- Manual operacional Painel-side: `Painel Gestao e Afiliados/docs/PORT_ALLOCATION_CONSUMER_GUIDE.md`
+- Migration aplicada: `Painel Gestao e Afiliados/execution/database/migration_port_base.sql`
 - Plano original: `D:\Claud Automations\.claude-home\plans\analisa-essa-devolutiva-e-floofy-candy.md`
 
 ---
