@@ -665,6 +665,70 @@ R20 escape hatch é "operador validou síntese do council + fact-check".
 
 ---
 
+## R21. FK invariant pattern — parent INSERT upfront, não confiar em ordering implícito de TX
+
+**Regra:** toda foreign key entre tabelas inseridas no mesmo TX OU em sequência rápida (mesmo handler, mesmo job, mesmo orchestrator step) exige uma das 3 abordagens — em ordem de preferência:
+
+1. **Parent INSERT upfront (placeholder se necessário)** — preferido. Insere o pai antes de qualquer `db.flush()` que toque um filho. Se o pai depende de cálculo que só termina mid-TX (LLM call, async result, computed field), inserir com placeholder + marker `frozen_at IS NULL` (ou equivalente) e UPDATE no final. Filtros downstream `WHERE frozen_at IS NOT NULL` mantêm placeholders fora de endpoints de leitura.
+2. **FK `DEFERRABLE INITIALLY DEFERRED`** — aceitável apenas em schemas simples sem risco de split TX futuro. **Mascara fragilidade:** refactor para async/split-job/multi-TX move o FK check para COMMIT, parent ainda não existe, silent failure idêntica sem o comentário CRITICAL avisando. Use só quando o invariante "parent e child sempre commitam juntos" for arquiteturalmente garantido.
+3. **child.parent_id NULLABLE durante in-flight + UPDATE depois** — só pra casos onde child consegue existir sem parent (raro, geralmente é cheiro de modelagem errada).
+
+**Why:** Coach `coach_cost_ledger.brief_id` FK NOT DEFERRABLE (mig 0029, 2026-05-12) + `brief_id = uuid.uuid4()` gerado upfront em `orchestrator.run_pipeline` + brief INSERT só em step f (compose_brief). Cada `db.flush()` em step intermediário (`record_cost` dentro de `extract_signals/stakeholders/commitments/memory`) violava FK. Bug DORMENTE 9 dias (v0.19.0 2026-05-13 → smoke PR#6 2026-05-22), silenciado por catch `IntegrityError` tratado como "race-resolved" sem distinguir tipo. Council 3-vozes 2/3 votou Opção B (placeholder upfront); Cross-Claude: "DEFERRABLE faria a mesma coisa — esconder a raiz".
+
+**Gate de verificação:**
+
+1. **Audit de schema** — script equivalente a `.tmp/audit_fk_deferrable.py` do Coach (query `information_schema.referential_constraints` + `pg_constraint.condeferrable`) lista FKs entre tabelas tocadas no mesmo handler. Output esperado: cada FK NOT DEFERRABLE tem justificativa documentada (parent-first ordering OU comentário linkando este R21).
+2. **Cleanup cron de placeholders verifica FK ON DELETE de TODOS os children antes de implementar** — `SET NULL` perde audit trail, `CASCADE` perde rows, `RESTRICT` quebra cleanup. Decisão consciente documentada.
+3. **Golden test E2E sem mock da camada que dispara FK** — se o orchestrator chama `record_cost(parent_id=...)` dentro de `_call_with_retry`, o teste pode mockar `_call_with_retry` (não a camada inteira `chat_json`), mantendo `record_cost` ativo. Mock que pula a função que dispara o INSERT do child **não exercita o invariante**.
+4. **IntegrityError catch DIFERENCIADO** — UNIQUE viol (race-resolved legítimo) vs FK viol (bug). Catch genérico `except IntegrityError` é anti-padrão; deve distinguir por constraint name ou por tipo.
+
+**Anti-pattern:** comentário `# CRITICAL: ... otherwise FK-violate` no código sem teste correspondente que valide a invariante. Sinal de dívida técnica conhecida não coberta. **Toda vez que se escreve CRITICAL, exige test que valide o invariante.**
+
+**Refs:**
+- Post-mortem completo: `huboperacional/plexco-coach/docs/post-mortems/2026-05-22-fk-not-deferrable-bug.md` (canary do problema).
+- Plano de fix Coach: `D:\Claud Automations\.claude-home\plans\gleaming-wondering-rossum.md`.
+- Review Tasks-side: `D:\Claud Automations\.claude-home\plans\ok-vamos-aguardar-o-hazy-squirrel.md`.
+
+---
+
+## R22. Alocação central de portas locais — `PERCUS_PORT_BASE` obrigatório
+
+**Regra:** todo projeto Percus tem um `PERCUS_PORT_BASE` único e determinístico alocado pelo Painel de Gestão via skill `percus-review:port-allocate`. As portas locais expostas no host devem ser `${PERCUS_PORT_BASE} + N` (N em `[0,9]`) seguindo a tabela de offsets em [02_INFRA_E_STACK_PERCUS.md](02_INFRA_E_STACK_PERCUS.md).
+
+**Forbidden:**
+- Hardcode de porta literal (`port: 5173`, `EXPOSE 8000`) em `vite.config.*`, `next.config.*`, `docker-compose*.yml`, `package.json` scripts ou `.env*` fora do bloco alocado.
+- Rodar projeto novo sem antes ter alocado `port_base` (gera colisão a primeira vez que dois projetos rodam simultâneos).
+
+**Why:** colisão real observada em 2026-05-26 (porta `52924` ephemeral atribuída por Vite/Node a dois projetos diferentes). Causa estrutural: Far-West de portas, cada projeto inventava as suas (3000 Next + 8000 FastAPI + 5273 Vite + 3100 Node + ...). Inventário mostrou 6 projetos ativos sem padrão. Solução: source of truth única no Painel (`projects.port_base INT UNIQUE`); bloco de 10 portas por projeto cobre frontend + backend + worker + reserva sem 2ª alocação; range total 3100-4090 = 100 projetos × 10 portas.
+
+**Tabela de offsets (canônica):**
+
+| Offset | Serviço típico |
+|---|---|
+| `+0` | frontend principal (Next/Vite) |
+| `+1` | backend principal (FastAPI/Express/Nest) |
+| `+2` | worker / backend secundário |
+| `+3` | frontend secundário / admin UI |
+| `+4` | mailhog UI / dev tooling |
+| `+5..+9` | reserva (overflow, novos serviços, infra host-exposta) |
+
+**Gate de verificação:**
+
+1. Projeto tem `.percus-ports.json` versionado em git com `port_base`, `range_end`, `unverified: false` (ou `true` só se alocação foi feita offline e ainda não reconciliou).
+2. Configs (`vite.config`, `next.config`, `docker-compose`, `package.json` scripts) referenciam `process.env.PERCUS_PORT_BASE` ou `${PERCUS_PORT_BASE}`, nunca literais.
+3. `.env.example` declara `PERCUS_PORT_BASE=NNNN` (placeholder; valor real fica em `.env` local).
+
+**Anti-pattern (item novo no resumo, final do arquivo):** "Hardcode de porta em vite.config/docker-compose depois de alocar `port_base`" — gera colisão silenciosa quando outro projeto pegar a mesma porta literal.
+
+**Refs:**
+- Skill: `percus-review:port-allocate` (canon `plugin/percus-review/skills/port-allocate/SKILL.md`)
+- Wrapper Python: `plugin/percus-review/scripts/port_allocate.py`
+- Endpoint Painel: `POST /admin/projects/port-allocate` (X-Internal-Auth)
+- Migration Painel: `Painel Gestao e Afiliados/execution/database/migration_port_base.sql`
+- Plano original: `D:\Claud Automations\.claude-home\plans\analisa-essa-devolutiva-e-floofy-candy.md`
+
+---
+
 ## Resumo dos anti-padrões mais comuns
 
 1. ❌ Marcar `[5-T]` sem rodar ciclo CRUD
@@ -693,3 +757,7 @@ R20 escape hatch é "operador validou síntese do council + fact-check".
 24. ❌ Serviço tier-1 (auth, pagamento, webhook) em produção sem traces OTel + audit hash chain (R14)
 25. ❌ Admin com username+pwd sem TOTP step-up (R7)
 26. ❌ Auth próprio em projeto novo após auth-service v1 publicado (R7) — duplicação proibida
+27. ❌ Gerar UUID do pai upfront e INSERT do pai só no final do TX, com filhos sendo flush no meio — viola R21 silenciosamente até primeiro novo registro real
+28. ❌ Catch genérico `except IntegrityError` como "race-resolved" sem distinguir UNIQUE viol vs FK viol (R21) — silencia bug por dias
+29. ❌ Hardcode de porta literal em `vite.config`/`next.config`/`docker-compose` depois de alocar `port_base` (R22) — gera colisão silenciosa quando outro projeto pegar a mesma porta
+30. ❌ Rodar projeto Percus sem ter alocado `PERCUS_PORT_BASE` via skill `port-allocate` (R22) — primeira vez que dois projetos rodam juntos, conflito de porta

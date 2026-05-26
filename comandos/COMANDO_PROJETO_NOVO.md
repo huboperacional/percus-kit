@@ -53,6 +53,13 @@ FLUXO GREENFIELD:
    - `.percus-version` (de `.percus-version.template`, copia versao canonica atual)
    - `catalog-info.yaml` (de `catalog-info.yaml.template`)
 
+2.5. Alocar PERCUS_PORT_BASE (R22 — registro central de portas locais):
+   - Roda 1x: `python "${env:PERCUS_CANON_DIR}/plugin/percus-review/scripts/port_allocate.py" --slug <slug> --name "<Nome Bonito>"`
+   - Stdout retorna `PERCUS_PORT_BASE=NNNN`; cache grava em `.percus-ports.json` (commitar).
+   - Adicionar `PERCUS_PORT_BASE=NNNN` ao `.env.example` e `.env` do projeto.
+   - Convencao de offsets (frontend +0, backend +1, etc): ver 02_INFRA secao 5.5 ou skill `percus-review:port-allocate`.
+   - Se Painel offline: fallback deterministico entra automatico; reconciliar quando voltar.
+
 3. Apos templates criados, rodar `${env:PERCUS_CANON_DIR}/comandos/SCOPE_COUNCIL.md` (gate de scope dia 1):
    - 3 etapas: Claude principal solo -> conselho 3-membros pre-mortem paralelo -> sintese humana
    - ~25 min, ~$0.005

@@ -1,8 +1,54 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.8.4`
+**Versão canônica em `huboperacional/percus-kit`:** `6.9.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.9.0 — 2026-05-26
+
+**R22: alocação central de portas locais via Painel.**
+
+Bug: dois projetos Percus colidiram na porta `52924` (ephemeral atribuído por
+Vite/Node sem `strict-port`). Causa estrutural: Far-West de portas — cada projeto
+inventava as suas (3000 Next + 8000 FastAPI + 5273 Vite + 3100 Node + ...), sem
+padrão cross-projeto.
+
+**Solução: source of truth no Painel + bloco de 10 portas por projeto.**
+
+Cada projeto Percus recebe um `port_base` único alocado pelo Painel (`projects.port_base INT UNIQUE` partial). Bloco de 10 portas cobre frontend (+0), backend (+1), worker (+2), reserva (+3..+9). Range global 3100-4090 = 100 projetos.
+
+**Lado Painel** (cross-repo, autorizado em voz alta nesta execução; ver plano `analisa-essa-devolutiva-e-floofy-candy.md`):
+
+- Migration `execution/database/migration_port_base.sql`: `ALTER TABLE projects ADD COLUMN port_base INT NULL` + UNIQUE index parcial + CHECK constraint do range.
+- Engine `allocatePortBase(slug, name)` em `execution/engine/catalogEngine.py`: idempotente, serializado via `pg_advisory_xact_lock`, auto-cria projeto se name fornecido.
+- Endpoint `POST /admin/projects/port-allocate` em `execution/api/catalogRoutes.py`: header `X-Internal-Auth` (mesma key de `/admin/catalog/ingest`).
+- Tests integration em `tests/test_portAllocate.py` (cobertos: auto-create, idempotência, alocação sequencial, erro sem name).
+- **Pendência operador:** aplicar migration na VPS (`psql ... -f migration_port_base.sql`) e reiniciar API container.
+
+**Lado canon** (escopo deste commit):
+
+- Skill `percus-review:port-allocate` para projetos novos + migração de legados.
+- Wrapper `plugin/percus-review/scripts/port_allocate.py` (Python primary, mesmo padrão de `catalog_publish.py`):
+  - Consulta Painel; fallback `hash(slug) % 100 → 3100 + hash*10` se offline.
+  - Cache local `.percus-ports.json` versionado em git (`unverified: true` se fallback).
+  - Idempotente; cache hit verified faz short-circuit.
+- R22 em `01_REGRAS_INEGOCIAVEIS.md` + anti-padrões 29-30 na lista.
+- Seção 5.5 em `02_INFRA_E_STACK_PERCUS.md` com tabela canônica de offsets.
+- Passo 2.5 em `comandos/COMANDO_PROJETO_NOVO.md` (alocar port_base após templates).
+
+**Pre-mortem do conselho** (DeepSeek + Llama; Cross-Claude falhou 400 nesta rodada — consenso 2/2):
+
+- **Risco crítico identificado e mitigado:** plano original entregava canon antes da Painel, deixaria a ferramenta quebrada. Mitigação: ordem invertida — Painel-side primeiro, canon-side depois.
+- Riscos aceitos como dívida documentada: hash collision ~1% (reconcile detecta); merge conflict em `.percus-ports.json` offline em branches paralelas (git força resolução); resistência adoção legados (1 projeto-piloto serve de exemplo).
+
+**Próximos passos (operador, fora deste commit):**
+
+1. Aplicar `migration_port_base.sql` na VPS + reiniciar API (Painel).
+2. `curl -X POST .../admin/projects/port-allocate -d '{"slug":"test-foo","name":"Test Foo"}'` → confirmar `{port_base: 3100, ...}`.
+3. Rodar `port-allocate` em 1 projeto piloto (Plexco Tasks recomendado), ajustar `vite.config` + `docker-compose` para usar `process.env.PERCUS_PORT_BASE`.
+4. Documentar exemplo do piloto em UPGRADE_PARA_FASE8 (futuro).
 
 ---
 

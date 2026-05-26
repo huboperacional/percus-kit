@@ -590,6 +590,56 @@ Use o **default Vite** a não ser que o produto tenha tráfego público SEO-depe
 
 **Workflow detalhado:** `comandos/DESIGN_WORKFLOW.md`. Trigger e gate em `01_REGRAS_INEGOCIAVEIS.md` R10.
 
+### 5.5. Alocação central de portas locais (R22)
+
+Cada projeto Percus recebe um **bloco de 10 portas locais** alocado pelo Painel de Gestão (`POST /admin/projects/port-allocate` → cache em `.percus-ports.json`). Resolve colisão silenciosa quando rodar 2 projetos simultaneamente em dev.
+
+**Range global:** 3100–4099 (100 projetos × 10 portas). Source of truth na coluna `projects.port_base` da Painel (UNIQUE parcial).
+
+**Tabela canônica de offsets** dentro do bloco do projeto:
+
+| Offset | Serviço típico |
+|---|---|
+| `+0` | frontend principal (Next/Vite) |
+| `+1` | backend principal (FastAPI/Express/Nest) |
+| `+2` | worker / backend secundário |
+| `+3` | frontend secundário / admin UI |
+| `+4` | mailhog UI / dev tooling |
+| `+5..+9` | reserva (overflow, novos serviços, infra host-exposta) |
+
+**Como configurar (uma vez por projeto):**
+
+```bash
+# 1. Aloca port_base via Painel (idempotente; fallback offline se sem rede).
+python "${PERCUS_CANON_DIR}/plugin/percus-review/scripts/port_allocate.py" \
+  --slug meu-projeto --name "Meu Projeto"
+# stdout: PERCUS_PORT_BASE=3110
+
+# 2. Adiciona ao .env.example e .env do projeto.
+echo "PERCUS_PORT_BASE=3110" >> .env.example
+
+# 3. vite.config.ts (frontend +0):
+#   server: { port: Number(process.env.PERCUS_PORT_BASE ?? 3000) }
+
+# 4. main.py / uvicorn (backend +1):
+#   uvicorn.run(app, port=int(os.environ['PERCUS_PORT_BASE']) + 1)
+
+# 5. docker-compose.yml — expose host port:
+#   ports: ["${PERCUS_PORT_BASE}:3000"]
+```
+
+`.percus-ports.json` (versionado em git) guarda o estado:
+
+```json
+{"slug": "meu-projeto", "port_base": 3110, "range_end": 3119, "unverified": false}
+```
+
+**Infra compartilhada (Postgres 5432, Redis 6379, MinIO 9000) fica fora do bloco.** Containers separados por projeto isolam-se via Docker network; se houver necessidade de expor no host, usar offsets `+5..+9` do bloco do projeto.
+
+**Fallback offline:** se Painel inacessível na alocação inicial, o wrapper cai em `hash(slug) % 100 → 3100 + hash*10` e marca `unverified: true` em `.percus-ports.json`. Próxima execução com Painel online reconcilia (1% de chance teórica de hash collision — detectada no reconcile, re-aloca slot novo).
+
+**Detalhes operacionais:** skill `percus-review:port-allocate`. Regra completa: `01_REGRAS_INEGOCIAVEIS.md` R22.
+
 ---
 
 ## 6. VPS — infraestrutura física
