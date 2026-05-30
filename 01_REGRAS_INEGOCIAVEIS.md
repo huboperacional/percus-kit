@@ -416,17 +416,15 @@ Commitar e "rodar review depois" — derrota o propósito. Interceptar **antes**
 - DeepSeek API down → router faz fallback automático pra Cross-Claude (declarar em voz alta)
 - Plugin `@percus/review` indisponível — declarar e marcar TODO de "revisar retroativamente"
 
-### Exceção estrutural — kit Percus (`_Novo_Projeto/`)
+### Kit Percus (`_Novo_Projeto/`) — sem exceção a R11
 
-O próprio kit de iniciação (`${env:PERCUS_CANON_DIR}/`) é **exceção a R11**. Mudanças nele (regras, templates, comandos, scripts auxiliares) **não exigem review** porque:
+O kit de iniciação (`${env:PERCUS_CANON_DIR}/`) segue R11 **como qualquer projeto** — mudanças nele (regras, templates, comandos, scripts, plugin, hooks) passam pelo mesmo gate de review cross-provider de qualquer commit.
 
-1. Kit é convenção/regra, não código de produção
-2. Reviewer precisaria de `AGENTS.md` espelhando R1-R13 — manter sincronizado seria atrito puro
-3. Auditoria do kit é feita por revisão humana + outro Claude paralelo (cross-Claude na própria sessão) — suficiente para o tipo de mudança que o kit recebe
+> Até v6.14.0 o kit era **exceção** a R11. A isenção foi removida porque (1) já era **letra morta** — o hook `pre-commit-check` sempre aplicou o gate uniformemente, sem carve-out pro kit; e (2) o kit hoje shippa **código executável real** (plugin: scripts + ~12 hooks ×3 shells + 123 testes), não só convenção — exatamente o tipo de código que o review existe pra proteger (bugs reais já foram pegos: regex de parse no `fact-check.ps1`, parsing ASCII/PS5.1). Uma regra só, pra tudo.
 
-Mudanças no kit ainda devem: (a) ser feitas via plano explícito, (b) ser revisadas pelo usuário antes de virar canon, (c) passar por verificação de consistência cruzada (greps de referências mortas, validação de sintaxe).
+Além do review, mudanças no kit ainda devem: (a) ser feitas via plano explícito, (b) ser revisadas pelo usuário antes de virar canon, (c) passar por verificação de consistência cruzada (greps de referências mortas, validação de sintaxe). Estes são **aditivos** ao review, não substitutos.
 
-**Esta exceção NÃO se estende a projetos reais.** Todo projeto Percus mantém R11 ampliada (commit + marco) sem afrouxamento.
+As exceções gerais declaráveis em voz alta (acima — docs-only, hot fix, DeepSeek down → fallback Cross-Claude) valem pro kit como pra qualquer projeto.
 
 ---
 
