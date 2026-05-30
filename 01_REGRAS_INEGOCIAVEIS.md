@@ -218,7 +218,7 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 
 **Vetado em projetos novos:** GoTrue, PostgREST, `@supabase/supabase-js`, NextAuth, magic-link puro fora do auth-service (R17), senha pura sem 2FA, refresh JWT stateless, JWT HS256 com chave compartilhada cross-projetos.
 
-**Magic links** (first-login, convite, reset) — primitiva centralizada do auth-service via `/auth/magic/*`. Projetos consomem, não reimplementam (R17).
+**Magic links** (first-login, convite, reset) — primitiva centralizada do auth-service via `/auth/magic/*`. Projetos consomem, não reimplementam (R17). **Pilar 1 (Padrão Auth Percus v2 — ver `PADRAO_AUTH_SERVICE.md` Seção L):** `/otp/request` passa a emitir OTP **e** magic juntos, sem opt-in — 🔶 rollout Sprint A; até o deploy, o comportamento exclusivo segue vigente.
 
 **Admin / role privilegiada:** OTP + TOTP step-up obrigatório. Username+password é dívida — phishing/credential-stuffing sem ganho. TOTP enrollment no primeiro login da role admin. **Encrypt at rest** do `secret_b32` é obrigatório em produção (Docker Secret ou KMS — aprendizado Fase 4 do auth-service).
 
@@ -453,6 +453,8 @@ As exceções gerais declaráveis em voz alta (acima — docs-only, hot fix, Dee
 
 **Tier-2 (CRUD interno, dashboard, ferramenta operacional):** structlog + métricas básicas suficiente. OTel opcional.
 
+**Pilar 5 (Padrão Auth Percus v2 — `PADRAO_AUTH_SERVICE.md` Seção L.5):** define o set mínimo de métricas auth cross-product (`auth.magic.*`, `auth.otp.*`, `auth.signup`, `auth.identity.linked`) → SigNoz, redesenhando o audit-chain (item 4) como audit trail via OTel exporter. 🔶 planejado (Sprint A base) — SigNoz ainda não subiu.
+
 ---
 
 ## R15. Rate limit canônico — IPv6 /64 + canonicalização de destino
@@ -473,7 +475,7 @@ As exceções gerais declaráveis em voz alta (acima — docs-only, hot fix, Dee
 4. **Implementação:** Redis `INCR + EXPIRE`, prefixo `{slug}:rl:{tipo}:{chave}`.
 5. **OTP storage no DB:** quando OTP for persistido em Postgres (e não só Redis), código deve ir como **bcrypt hash (rounds=10)** — nunca em plain text. Validação roda dentro de transação com **`SELECT ... FOR UPDATE`** na row do OTP pra evitar race condition no incremento de tentativas. Validado em prod no auth-service. (Aprendizado Fase 1.)
 
-**Defaults razoáveis (auth-service):** 10/h por IP/64, 5/h por destino canonicalizado, 5 tentativas por OTP.
+**Defaults razoáveis (auth-service):** 10/h por IP/64, 5/h por destino canonicalizado, 5 tentativas por OTP. (Pilar 1 v2: `/otp/request` emite OTP+magic num **único** request — conta 1 contra o limite por destino, não 2.)
 
 **Gate de verificação:** smoke test com `user+1@`, `user+2@`, `user+3@` do mesmo email base — devem todos contar como mesmo destino. Smoke com 11 requests do mesmo /64 IPv6 — 11º deve bloquear.
 
@@ -517,9 +519,11 @@ As exceções gerais declaráveis em voz alta (acima — docs-only, hot fix, Dee
 4. **Rate limit** por `identity_id|destino` pra evitar flood de emissão.
 5. **Observabilidade** (R14) — log de issue/consume/expiry.
 
+**Pilar 1 — emissão combinada (Padrão Auth Percus v2, `PADRAO_AUTH_SERVICE.md` Seção L.1):** o magic deixa de ser só first-login/convite/reset — `/otp/request` passa a emitir um magic **junto com** todo OTP, na mesma mensagem, sem opt-in. Todas as propriedades acima (single-use, TTL, bind, rate-limit, observabilidade) seguem valendo. **Status:** 🔶 rollout Sprint A — não em prod; projetos novos já codam pro par.
+
 **Vetado em projetos:** geração própria de magic-link, schema próprio de welcome_codes, validação local sem chamar `/auth/magic/consume`. Surface crítico de bugs (replay, TTL bypass, single-use race) **não pode** ter N implementações divergentes.
 
-**Transição:** projetos pré-auth-service v1 podem manter implementação atual (ex.: `auth.welcome_codes` do Painel) — migram via runbook quando auth-service publicar.
+**Transição:** projetos pré-auth-service v1 podem manter implementação atual (ex.: `auth.welcome_codes` do Painel) — migram via runbook quando auth-service publicar. O Painel **ainda roda auth próprio** (não migrou); o caminho é o **Pilar 2** (Padrão Auth Percus v2, Seção L.2), ⬜ bloqueado por script de migração `old_user_id→identity_id`.
 
 **Gate de verificação:** smoke E2E — emitir, consumir uma vez (sucesso), tentar consumir 2ª vez (falha). Smoke de TTL — emitir, esperar TTL+1s, tentar consumir (falha).
 
@@ -550,11 +554,11 @@ As exceções gerais declaráveis em voz alta (acima — docs-only, hot fix, Dee
 
 **Regra:** Identidade de login é primitiva centralizada no `auth-service`. Outros projetos consomem via `identity_id`. Esta regra é a aplicação prática do contrato cross-projeto descrito em `D:\Claud Automations\OWNERSHIP.md` — leia aquele documento antes de mexer em qualquer tabela de user/profile/affiliate.
 
-1. **Criar identidade de login = SÓ via auth-service** (`POST /internal/identities`). Nenhum projeto pode criar tabela própria de credencial (bcrypt + password, OTP local, refresh próprio, magic-link próprio).
+1. **Criar identidade de login = SÓ via auth-service** (`POST /internal/identities`). Nenhum projeto pode criar tabela própria de credencial (bcrypt + password, OTP local, refresh próprio, magic-link próprio). **Pilar 1 (Padrão Auth Percus v2):** o signup passa a coletar **`name + phone + email`** obrigatórios → contract `/internal/identities/v2` required (breaking, ≥60d, major bump `percus-auth`; ver `PADRAO_AUTH_SERVICE.md` B.1.v2). 🔶 Sprint A — V1 (optional) segue vigente até o `/v2`.
 2. **Referenciar identidade = via `identity_id UUID`** (FK lógica pra `auth.identities.id`). FK lógica porque os DBs são fisicamente separados; integridade é mantida pela aplicação.
 3. **Em tabelas multi-tenant** (`users`, `profiles`, `affiliates`): **NUNCA** use `UNIQUE` global em `email` ou `phone`. Sempre `UNIQUE(organization_id, email)` (e idem pra `phone`) **OU** drop unique confiando em `identity_id` como chave de identidade real. UNIQUE global quebra multi-org no primeiro usuário que existe em 2 orgs (bug real — Plexco Tasks sessão 33, convite `moacir@ads4pros.com`).
 4. **Tracking de origem da identidade** mora em `auth.identities.origin` (TEXT). Formato canônico: `"<sistema>:<id-local>"` — exemplos: `"painel:affiliate-abc"`, `"plexco-tasks:invitation-7c8e1d"`, `"signup:lp-gate"`. Setado no momento de criação, não atualizado depois.
-5. **Exceção transitória:** `Painel Gestão` pode manter bcrypt local pra admin SaaS (sunset planejado pra Etapa 4 do Strangler Fig — ver `OWNERSHIP.md`). **Outros projetos não têm essa exceção** — sem bcrypt local, sem schema de credencial próprio.
+5. **Exceção transitória:** `Painel Gestão` ainda roda auth próprio (OTP+HS256) e mantém bcrypt local pra admin SaaS — **não migrou**. Sunset = **Pilar 2** do Padrão Auth Percus v2 (Seção L.2, ⬜ Sprint B, bloqueado por script de migração `old_user_id→identity_id`), antes pensado como Etapa 4 do Strangler Fig (ver `OWNERSHIP.md`). **Outros projetos não têm essa exceção** — sem bcrypt local, sem schema de credencial próprio.
 
 **Gate de verificação:**
 
