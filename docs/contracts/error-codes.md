@@ -4,7 +4,7 @@ audiência: backend auth-service + consumers (libs `percus-auth` Python/Node)
 versão: V1 (2026-05-15)
 status: vigente
 política-de-evolução: enum open/extensible — adicionar value = minor bump lib, renomear/remover = major bump + 60d window
-referência: PADRAO_AUTH_SERVICE_INTEGRATION_V2 Seção B.2
+referência: PADRAO_AUTH_SERVICE Seção B.2
 ---
 
 # Registry de `error_code` — auth-service

@@ -1,8 +1,47 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.10.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.11.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.11.0 — 2026-05-30
+
+**Limpa cosmética do canon + template canônico de `.claude/settings.json`.**
+
+Fase 1 do plano v6.11.0→v7.0.0 ([acabei-de-perceber-que-quirky-toast.md](D:/Claud Automations/.claude-home/plans/acabei-de-perceber-que-quirky-toast.md)) — refactor incremental do canon. Esta release é cosmética + setup canônico de settings; zero breaking pros consumidores.
+
+**Consolidação AUTH (3 → 1 arquivo):**
+- `PADRAO_AUTH_SERVICE_INTEGRATION_V2.md` → renomeado para `PADRAO_AUTH_SERVICE.md` (versionamento volta pro git, sai do nome de arquivo).
+- `AUTH_SERVICE_PATTERNS_LEARNED_2026-05-15.md` → removido (já absorvido na Seção I do consolidado desde v6.9.x).
+- `REVIEW_AUTH_INTEGRATION_2026-05-15.md` → removido (review de momento da sessão 35; decisões já refletidas no consolidado).
+- Refs atualizadas em: `01_REGRAS_INEGOCIAVEIS.md`, `checklists/CHECKLIST_AUDIENCE_NOVA.md`, `comandos/COMANDO_PROJETO_NOVO.md`, `docs/contracts/{error-codes,redirect-reasons,MIGRATION_V1_TO_V2}.md`.
+
+**Stale removidos da raiz** (artefatos operacionais de sessão, não canon — git history preserva conteúdo):
+- `_AUDIT_2026-05-15.md`, `_AUDIT_2026-05-17_eixo-f.md`, `_AUDIT_2026-05-17_eixo-f-pos-entrega.md`
+- `baseline-2026-05-17.md`, `baseline-2026-05-17-v2.md` (eram untracked)
+- `diagnostico-disco-c-2026-05-15.md`
+
+**NOVO — template canônico de settings:**
+- `templates/settings.template.json` — `bypassPermissions` + `allow:*` (mode operador único Rodrigo), `additionalDirectories` portáveis (`${env:USERPROFILE}` em vez de placeholder), `enableAllProjectMcpServers: true`, 3 hooks padronizados (SessionStart GATE INICIO / UserPromptSubmit GATE VISUAL com regex refinada / Stop ENCERRAMENTO).
+- `comandos/SETUP_CLAUDE_SETTINGS.md` — runbook passo-a-passo de aplicação em projeto novo OU existente, incluindo drift detection e anti-padrões.
+- **GATE VISUAL regex** refinada após observar falsos-positivos recorrentes na sessão de planejamento desta release: era `(landing page|p[aá]gina inicial|redesign|...|paleta|layout novo)` — disparava em qualquer menção genérica de design; agora `(gerar (mockup|wireframe|design)|criar tela nova|redesenhar.*(p[áa]gina|tela)|v0\.dev|claude\.ai/design|hero section|reestilizar.*UI|landing page (nova|do zero)|mockup do figma)` — exige verbo de criação + objeto visual concreto.
+- **GATE INICIO + ENCERRAMENTO** agora explicitam "Se eh canon/lib/tooling, ignore." pra silenciar ruído em sessões onde `HANDOFF.md`/`docs/PLANO.md` não existem (canon próprio, libs, tooling).
+
+**00_LEIA_PRIMEIRO.md** ganha 2 linhas novas na tabela de roteamento:
+- "Configurar `.claude/settings.json` canônico" → `comandos/SETUP_CLAUDE_SETTINGS.md`
+- "Integrar com `auth-service`" → `PADRAO_AUTH_SERVICE.md`
+
+**NÃO incluído nesta release** (deliberadamente):
+- `COACH_AUDIENCE_WA_OVERRIDE_2026-05-15.md` permanece na raiz do canon — é handoff destinado ao Plexco Coach. Operador reforçou (2026-05-30): nunca tocar em projetos fora do CWD; mecanismo canônico é entregar caixa de texto pro operador colar manualmente. Caixa será entregue ao fim desta release; arquivo será deletado em v6.11.1 após confirmação.
+- `templates/login-ui/` permanece intacto — análise revelou que pasta tem só 21 arquivos tracked (o "3155" inicial era `node_modules/` untracked). Login-ui é canon legítimo, alinhado com `auth-service/libs/node` via `@percus/auth`.
+
+**Refs aprovação:**
+- Plano completo: `D:/Claud Automations/.claude-home/plans/acabei-de-perceber-que-quirky-toast.md`
+- Conselho consult cascata 3 níveis (2026-05-30 11:38): consenso 2/2 Opção A.
+- Conselho pre-mortem do plano original (2026-05-30 11:42): identificou riscos críticos endereçados nesta versão (cascata virou experimento condicional; login-ui mantido; enforcement sem promoção automática).
+- Conselho consult otimização Groq (2026-05-30 11:55): Vetor B + D adotados pra v6.14.0 (paralelo); Vetor A + C descartados.
 
 ---
 

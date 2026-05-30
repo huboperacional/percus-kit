@@ -1,16 +1,16 @@
 ---
 tipo: guia de migração cross-repo
 audiência: tech leads de cada projeto Percus + revisores
-quando-usar: ao migrar referências de `PADRAO_AUTH_CROSS_PROJETO.md` (V1) → `PADRAO_AUTH_SERVICE_INTEGRATION_V2.md` (V2)
+quando-usar: ao migrar referências de `PADRAO_AUTH_CROSS_PROJETO.md` (V1) → `PADRAO_AUTH_SERVICE.md` (V2)
 status: vigente
-referência: PADRAO_AUTH_SERVICE_INTEGRATION_V2 (V2 doc principal)
+referência: PADRAO_AUTH_SERVICE (V2 doc principal)
 ---
 
 # Migração V1 → V2 — guia operacional
 
 ## Resumo
 
-V1 (`PADRAO_AUTH_CROSS_PROJETO.md`) foi substituído por V2 (`PADRAO_AUTH_SERVICE_INTEGRATION_V2.md`) em 2026-05-15. V1 está arquivado em `.archive/PADRAO_AUTH_CROSS_PROJETO.md`.
+V1 (`PADRAO_AUTH_CROSS_PROJETO.md`) foi substituído por V2 (`PADRAO_AUTH_SERVICE.md`) em 2026-05-15. V1 está arquivado em `.archive/PADRAO_AUTH_CROSS_PROJETO.md`.
 
 Este guia lista o que mudou + como atualizar referências cross-repo.
 
@@ -58,9 +58,9 @@ grep -r -l -i "PADRAO_AUTH_CROSS_PROJETO" . --include="*.md" --include="*.py" --
 - "ver _Novo_Projeto/PADRAO_AUTH..."
 
 **Depois:**
-- `PADRAO_AUTH_SERVICE_INTEGRATION_V2.md`
+- `PADRAO_AUTH_SERVICE.md`
 - "padrão auth service integration V2"
-- "ver _Novo_Projeto/PADRAO_AUTH_SERVICE_INTEGRATION_V2.md (V2, 2026-05-15)"
+- "ver _Novo_Projeto/PADRAO_AUTH_SERVICE.md (V2, 2026-05-15)"
 
 ### Passo 3 — refatorar substring-match em error responses
 
@@ -138,7 +138,7 @@ Coach/Painel (futuro): pedir secret próprio ao auth-service team antes do prime
 
 Cada repo precisa:
 
-- [ ] Refs `PADRAO_AUTH_CROSS_PROJETO` substituídas por `PADRAO_AUTH_SERVICE_INTEGRATION_V2`.
+- [ ] Refs `PADRAO_AUTH_CROSS_PROJETO` substituídas por `PADRAO_AUTH_SERVICE`.
 - [ ] README/CLAUDE.md/AGENTS.md mencionam V2 explicitamente.
 - [ ] CI tem `User-Agent: <product-name>/<lib-version>` no client HTTP do auth-service (telemetria de adoção).
 - [ ] Migration de phone canonical (E.164 com `+`) se for outlier (Plexco Tasks é).

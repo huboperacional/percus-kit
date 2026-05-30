@@ -3,12 +3,12 @@ tipo: spec executivo oficial (cross-projeto)
 audiência: tech leads de cada projeto Percus + revisores de PR no auth-service
 quando-usar: ao integrar qualquer projeto Percus com `auth-service`, ou ao revisar PR que toca contrato cross-produto
 leitura: 8 min
-status: vigente desde 2026-05-15 — substitui `PADRAO_AUTH_CROSS_PROJETO.md` (V1, agora em `.archive/`)
+status: vigente desde 2026-05-15 — substitui `PADRAO_AUTH_CROSS_PROJETO.md` (V1, em `.archive/`). Em v6.11.0 absorveu também `AUTH_SERVICE_PATTERNS_LEARNED_2026-05-15.md` (já refletido em Seção I) e `REVIEW_AUTH_INTEGRATION_2026-05-15.md` (review de momento — git history preserva).
 plano-operacional: `D:\Claud Automations\.claude-home\plans\bora-resolver-o-que-fancy-hopper.md`
 docs-relacionados: `docs/contracts/error-codes.md`, `docs/contracts/redirect-reasons.md`, `docs/contracts/MIGRATION_V1_TO_V2.md`, `checklists/CHECKLIST_AUDIENCE_NOVA.md`, `infra/approved-evolution-instances.yaml`
 ---
 
-# PADRÃO DE INTEGRAÇÃO COM AUTH-SERVICE — V2 (ESTÚDIO PERCUS)
+# PADRÃO DE INTEGRAÇÃO COM AUTH-SERVICE (ESTÚDIO PERCUS)
 
 **Resumo em 1 frase:** Todo projeto Percus que tem login usa o `auth-service` (`https://auth.huboperacional.com.br`) como provedor único de identidade; consume via lib `percus-auth` v0.2.0+; segue contratos congelados de error/redirect/audience documentados aqui.
 
@@ -584,8 +584,8 @@ R: Auth-service ignora seu payload e grava `origin=plexco-tasks`. `origin_contex
 - **Registry de reasons**: [docs/contracts/redirect-reasons.md](docs/contracts/redirect-reasons.md)
 - **Migração V1→V2 (cross-repo grep guide)**: [docs/contracts/MIGRATION_V1_TO_V2.md](docs/contracts/MIGRATION_V1_TO_V2.md)
 - **Regra R19 (identidade canônica)**: `01_REGRAS_INEGOCIAVEIS.md`
-- **Aprendizados Plexco originais**: `AUTH_SERVICE_PATTERNS_LEARNED_2026-05-15.md`
-- **Review de Etapa 1 Strangler**: `REVIEW_AUTH_INTEGRATION_2026-05-15.md`
+- **Aprendizados Plexco originais (absorvidos na Seção I)**: removidos do canon em v6.11.0; ver git history se precisar (`git log --diff-filter=D -- AUTH_SERVICE_PATTERNS_LEARNED_2026-05-15.md`).
+- **Review de Etapa 1 Strangler**: removido em v6.11.0 (era review de momento da sessão 35 de 2026-05-14/15; decisões já refletidas neste doc).
 
 ---
 

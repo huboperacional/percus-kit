@@ -4,7 +4,7 @@ audiência: backend auth-service + frontend consumers + libs `percus-auth`
 versão: V1 (2026-05-15)
 status: vigente
 política-de-evolução: enum open/extensible — reason desconhecido = log warning + `reason=unknown` (nunca 500)
-referência: PADRAO_AUTH_SERVICE_INTEGRATION_V2 Seção H
+referência: PADRAO_AUTH_SERVICE Seção H
 ---
 
 # Registry de `?reason=` — redirects pra login page

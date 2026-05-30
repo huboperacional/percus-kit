@@ -1,0 +1,61 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "additionalDirectories": [
+      "d:\\tmp",
+      "d:\\Claud Automations",
+      "${env:USERPROFILE}\\Downloads"
+    ],
+    "allow": [
+      "Bash(*)",
+      "PowerShell(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Read(*)",
+      "MultiEdit(*)",
+      "WebSearch",
+      "WebFetch(domain:*)",
+      "mcp__*"
+    ],
+    "deny": []
+  },
+  "enableAllProjectMcpServers": true,
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[GATE INICIO] Se este projeto tem HANDOFF.md/docs/PLANO.md: leia primeiro pra saber estado atual e proximos passos. Se eh canon/lib/tooling, ignore.'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "(gerar (mockup|wireframe|design)|criar tela nova|redesenhar.*(p[áa]gina|tela)|v0\\.dev|claude\\.ai/design|hero section|reestilizar.*UI|landing page (nova|do zero)|mockup do figma)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[GATE VISUAL] Trigger de UI detectado. Antes de codar: (a) ja existe mockup do Claude Design? (b) caso nao: gerar primeiro em https://claude.ai/design e me mandar o link.'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[ENCERRAMENTO] Se foi a ultima acao da sessao em projeto de produto: atualizar HANDOFF.md (estado + proximo passo), docs/PLANO.md (mudancas de status [X]->[Y]), docs/mock-audit.md (se mexeu em frontend). Se canon/lib, ignorar.'"
+          }
+        ]
+      }
+    ]
+  }
+}

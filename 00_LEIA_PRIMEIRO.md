@@ -29,6 +29,8 @@ ultima-atualizacao: 2026-04-29
 | **Encerrar sessão** | `checklists/CHECKLIST_ENCERRAR_SESSAO.md` |
 | **Configurar revisor cross-provider (1ª vez no projeto)** | `comandos/SETUP_REVIEW_ROUTING.md` (instala plugin `@percus/review`, cria `AGENTS.md`) |
 | **Configurar DeepSeek como implementador (1ª vez no projeto)** | `comandos/SETUP_DEEPSEEK.md` (valida `.env`, smoke test) |
+| **Configurar `.claude/settings.json` canônico (permissions + hooks SessionStart/Stop)** | `comandos/SETUP_CLAUDE_SETTINGS.md` (template em `templates/settings.template.json`, padronizado em v6.11.0) |
+| **Integrar com `auth-service` (login, OTP, magic-link, identidade)** | `PADRAO_AUTH_SERVICE.md` (spec executivo cross-projeto, antes era `PADRAO_AUTH_SERVICE_INTEGRATION_V2.md`) |
 | **Atualizar projeto legado pra Fase 4 (review+DeepSeek+design, migra Codex→Percus)** | `comandos/UPGRADE_PROJETO_FASE2.md` (consolidador) |
 | **Auditar se Fase 4 está sendo usada (não só configurada)** | `comandos/HEALTHCHECK_FASE2.md` (3 níveis: config + uso histórico + teste comportamental) |
 

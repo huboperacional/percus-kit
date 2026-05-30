@@ -232,7 +232,7 @@ Response: `{ audience, product_name, logo_url, palette, copy, support_contact_ur
 
 Fallback: `PERCUS_AUTH_AUDIENCE_FALLBACK` env quando o endpoint falha (auth-service down ou origin não registrado).
 
-Spec completa: [`PADRAO_AUTH_SERVICE_INTEGRATION_V2.md`](PADRAO_AUTH_SERVICE_INTEGRATION_V2.md) + [`docs/superpowers/specs/2026-05-19-sprint-v6.8-auth-canonization-design.md`](docs/superpowers/specs/2026-05-19-sprint-v6.8-auth-canonization-design.md).
+Spec completa: [`PADRAO_AUTH_SERVICE.md`](PADRAO_AUTH_SERVICE.md) + [`docs/superpowers/specs/2026-05-19-sprint-v6.8-auth-canonization-design.md`](docs/superpowers/specs/2026-05-19-sprint-v6.8-auth-canonization-design.md).
 
 ---
 

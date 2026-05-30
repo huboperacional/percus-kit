@@ -3,7 +3,7 @@ tipo: checklist passo-a-passo
 audiência: tech lead de projeto novo registrando audience no auth-service
 quando-usar: ao adicionar `meu-produto` ao auth-service pela primeira vez
 leitura: 4 min
-referência: PADRAO_AUTH_SERVICE_INTEGRATION_V2 Seção D
+referência: PADRAO_AUTH_SERVICE Seção D
 ---
 
 # Checklist — registrar audience nova no auth-service
