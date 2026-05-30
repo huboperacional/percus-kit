@@ -2,7 +2,7 @@
 
 > Conjunto canônico de regras, templates, comandos e tooling para projetos de software Percus (FastAPI + React + PostgreSQL + JWT cookie httpOnly).
 
-**Estado atual:** Fase 7 v6.8.3 — canonização do padrão auth (endpoint `/tenants/by-origin`, `templates/login-ui/`, `scaffold-percus-project`, R7.5/R7.6, lib `@percus/auth` 0.4.0) + hardening anti-hallucination (v6.7.x). Fase 6 concluída (feature tracking cross-projeto + conselho 3-membros + ambiente local sanitizado) · Fase 5 ativa (skills + hooks superpowers) · Fase 4 estável (review cross-provider sem Codex/OpenAI).
+**Estado atual:** Fase 7 — **versão canônica autoritativa em `CANON_VERSION.md`** (atualmente **v6.14.0**). Releases recentes: v6.14.0 (otimização Groq no conselho: triagem de fact-check + tie-breaker), v6.12.0 (enforcement do tracking `[5-T]` via hooks `crud-evidence-warn` + `state-drift-check`), v6.11.0 (limpa cosmética + template `settings.json`), v6.10.0 (R22 alocação central de portas), v6.9.x (sync Painel), Sprint v6.8 (canonização do padrão auth), v6.7.x (hardening anti-hallucination). Fase 6 (conselho 3-membros) e Fase 4 (review cross-provider sem Codex/OpenAI) estáveis.
 
 ---
 
@@ -10,7 +10,7 @@
 
 Este repositório é a **fonte da verdade** das convenções Percus aplicadas em todos os projetos. Inclui:
 
-- **Regras inegociáveis** (R1-R13) que valem em qualquer projeto Percus
+- **Regras inegociáveis** (R1-R22) que valem em qualquer projeto Percus
 - **Templates** prontos para `CLAUDE.md`, `AGENTS.md`, `HANDOFF.md`, `PLANO.md`, `mock-audit.md`
 - **Comandos prontos** para colar no chat do Claude Code (setup, upgrade, healthcheck, design, refactor)
 - **Plugin `@percus/review`** — review cross-provider via DeepSeek + Cross-Claude (substitui Codex CLI desde 2026-05-03)
@@ -54,7 +54,7 @@ Faça healthcheck Fase 4 deste projeto, conforme `${env:PERCUS_CANON_DIR}\comand
 ```
 _Novo_Projeto/
 ├── 00_LEIA_PRIMEIRO.md              ← roteamento e índice mestre
-├── 01_REGRAS_INEGOCIAVEIS.md        ← regras universais R1-R13
+├── 01_REGRAS_INEGOCIAVEIS.md        ← regras universais R1-R22
 ├── 02_INFRA_E_STACK_PERCUS.md       ← stack + VPS + auth + DB
 ├── 03_TRACKING_ATTRIBUITION.md      ← UTMs/click IDs em forms
 ├── 04_MODEL_ROUTING.md              ← Claude=arquiteto, DeepSeek=implementador, multi-revisor
@@ -111,7 +111,7 @@ _Novo_Projeto/
 | Fase 4 | 2026-05-03 | ESTÁVEL (main) | Plugin `@percus/review` (DeepSeek + Cross-Claude), Codex eliminado |
 | Fase 5 | 2026-05-03 | Estável (branch `fase5-superpowers-adoption`) | Skills + hooks para forçar adoção de superpowers |
 | Fase 6 | 2026-05-15 | Histórico | Feature tracking cross-projeto + conselho 3-membros (DeepSeek + Cross-Claude + Llama via Groq) + ambiente local sanitizado |
-| **Fase 7** | **2026-05-18** | **ESTÁVEL (main) — v6.8.3** | **Hardening anti-hallucination (fact-check F3, dedup, R20, cross-repo R11) + canonização do padrão auth (Sprint v6.8: tenant detection, `templates/login-ui/`, `scaffold-percus-project`, R7.5/R7.6)** |
+| **Fase 7** | **2026-05-18 →** | **ATIVA — v6.14.0** (ver `CANON_VERSION.md`) | **v6.14.0 Groq (triagem fact-check + tie-breaker) · v6.12.0 enforcement `[5-T]` (hooks) · v6.11.0 limpa + `settings.json` · v6.10.0 R22 portas · v6.9.x Painel · Sprint v6.8 canonização auth · v6.7.x hardening anti-hallucination** |
 
 **Docs Fase 6 (Sprint 1 do Eixo B concluído):**
 - `_AUDIT_2026-05-15.md` — auditoria R1-R19 com decisão por regra (hook/skill/doc).
