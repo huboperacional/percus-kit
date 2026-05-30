@@ -5,8 +5,8 @@
   "plugins": [
     {
       "name": "percus-review",
-      "description": "Review cross-provider Percus (DeepSeek + Groq-Llama + Cross-Claude) — Fase 7 v6.14.0 (otimizacao Groq: triagem fact-check Vetor B opt-in + tie-breaker Llama Vetor D; mantem enforcement [5-T] da v6.12.0)",
-      "version": "6.14.0",
+      "description": "Review cross-provider Percus (DeepSeek + Groq-Llama + Cross-Claude) — Fase 7 v6.15.0 (governanca: R11 sem excecao pro kit + refresh README + housekeeping; mantem otimizacao Groq da v6.14.0 e enforcement [5-T] da v6.12.0)",
+      "version": "6.15.0",
       "source": "./plugin/percus-review"
     }
   ]

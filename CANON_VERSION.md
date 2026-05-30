@@ -1,8 +1,22 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.14.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.15.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.15.0 — 2026-05-30
+
+**Governança: R11 sem exceção pro kit + refresh de docs + housekeeping cross-repo.**
+
+Release de higiene pós-v6.14.0 — **sem mudança de comportamento de tooling** (o gate de R11 já era uniforme). Consolida 3 mudanças no canon. Versão reservada `6.13.0` segue pulada (piloto cascata cross-repo, não bumpa o canon).
+
+- **R11 sem exceção estrutural pro kit** (`01_REGRAS_INEGOCIAVEIS.md`): a isenção que dispensava `_Novo_Projeto/` de review cross-provider foi removida. Era **letra morta** — o hook `pre-commit-check` nunca teve carve-out pro kit (aplica o gate de ≤5min uniformemente, bloqueou commits do próprio canon). E a premissa ("kit é convenção, não código de produção") caducou: o kit shippa código executável real (plugin: scripts + ~12 hooks ×3 shells + 123 testes), com bugs reais já pegos por review (regex de parse no `fact-check.ps1`, ASCII/PS5.1). Os requisitos (a) plano explícito (b) revisão do usuário (c) consistência cruzada permanecem como **aditivos** ao review, não substitutos. Trade-off aceito: DeepSeek passa ao caminho crítico de todo commit do kit; válvula = `PERCUS_HOOKS_DISABLED`. **Não afeta projetos consumidores** — a exceção só valia pro próprio kit.
+- **Refresh completo do corpo do README:** mapa de pastas reescrito contra a árvore real (faltavam `05`/`06`/`PADRAO_AUTH_SERVICE`/`AMBIENTE`/`tools`/`infra`/`docs/{handoffs,contracts}` + `settings.template.json` + `login-ui/` + subdirs do plugin); Fase 5 "branch only" → absorvida em main; ref morta a `_AUDIT_2026-05-15.md` removida; seção do plugin 2 → 3 membros (conselho + Llama/Groq); onboarding "Fase 4" → genérico/Fase 7. O bump anterior (`bea45ba`) só corrigira o header de versão — este completa o corpo.
+- **Housekeeping cross-repo:** removido `COACH_AUDIENCE_WA_OVERRIDE_2026-05-15.md` (handoff específico do Plexco Coach) da raiz — canon não hospeda artefato de projeto; original vive em Plexco Tasks. ⚠️ continha API key real do Evolution → **rotacionar** (permanece no histórico git até scrub).
+
+**Sem código novo / sem testes novos** — mudanças só em docs/regra.
 
 ---
 
