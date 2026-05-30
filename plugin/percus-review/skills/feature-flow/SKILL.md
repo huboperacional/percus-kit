@@ -76,6 +76,24 @@ Posso marcar [5-T]? (sim/nao)
 
 Se operador responde "sim sem ter testado", marque `[4-C]` em vez de `[5-T]` (codigo concluido + nao testado E2E) e registre no HANDOFF que testes E2E ficaram pendentes. **Nunca arredonde [4-C] -> [5-T] sem CRUD real.**
 
+### Ao marcar [5-T] (v6.12.0+): trailer + atualizar PLANO E HANDOFF juntos
+
+Quando o operador confirma o ciclo CRUD e voce vai marcar `[5-T]`, faca as TRES coisas na MESMA operacao (elimina drift na origem):
+
+1. **Atualize `docs/PLANO.md` E `HANDOFF.md` na mesma leva de edits** — a feature vira `[5-T]` nos dois. Nunca atualize so um (o hook on-stop `state-drift-check` bloqueia o encerramento se PLANO e HANDOFF divergirem).
+2. **Inclua o trailer `CRUD-verified: YYYY-MM-DD HH:MM`** no commit que marca `[5-T]`. Use a data/hora reais da confirmacao. Exemplo:
+
+   ```
+   git commit -m "feat(x): finaliza feature Y" -m "CRUD-verified: 2026-05-30 14:32"
+   ```
+
+   (Em PowerShell, use o here-string single-quoted `@'...'@` se a mensagem tiver multiplas linhas.)
+3. O hook pre-commit `crud-evidence-warn` **avisa** (nao bloqueia) se voce marcar `[5-T]` sem o trailer. Se o aviso aparecer e voce de fato rodou o ciclo, re-commite com o trailer. Se NAO rodou, reverta pra `[4-C]`.
+
+**Hooks de enforcement desta release (so observabilidade — sem promocao automatica warn->block):**
+- `crud-evidence-warn` (pre-commit, warn-only): avisa `[5-T]` adicionado sem trailer. Skip: `$env:PERCUS_SKIP_CRUD_WARN=1`.
+- `state-drift-check` (on-stop, BLOQUEIA): impede encerrar sessao com PLANO ≠ HANDOFF no status de alguma feature. Skip: `$env:PERCUS_SKIP_DRIFT_CHECK=1` (declarar motivo).
+
 ## Outros gates inline (não esquece)
 
 - **R3:** mock = banner MODO DEMO + toast "salvo localmente"

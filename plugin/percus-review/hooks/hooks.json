@@ -43,6 +43,11 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/external-action-guard.cmd\"",
             "async": false
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/crud-evidence-warn.cmd\"",
+            "async": false
           }
         ]
       }
@@ -53,6 +58,11 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/on-stop-check.cmd\"",
+            "async": false
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/state-drift-check.cmd\"",
             "async": false
           }
         ]

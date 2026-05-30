@@ -1,8 +1,33 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.11.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.12.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.12.0 — 2026-05-30
+
+**Enforcement do tracking `[5-T]`: warn pre-commit + drift check on-stop.**
+
+Fase 2 do plano v6.11.0→v7.0.0 ([acabei-de-perceber-que-quirky-toast.md](D:/Claud Automations/.claude-home/plans/acabei-de-perceber-que-quirky-toast.md)). Resolve a dor comprovada do `[0]→[5-T]`: até v6.11 o enforcement era só documental — nenhum hook validava que um `[5-T]` declarado teve ciclo CRUD real, e nada checava se `PLANO.md` e `HANDOFF.md` concordam. Resultado era drift silencioso entre o que o PLANO declara e o que o código faz.
+
+**2 hooks novos (sem promoção automática warn→block — decisão do conselho):**
+
+- **`crud-evidence-warn.ps1`/`.sh`/`.cmd`** (PreToolUse:Bash, **warn-only / exit 0**): quando o staged diff de `PLANO.md`/`HANDOFF.md` adiciona uma feature `[5-T]` e o `git commit` não carrega o trailer `CRUD-verified: YYYY-MM-DD`, avisa no stderr e loga em `.deepseek/crud-warn.log` (instrumentação pro soak). Nunca bloqueia. Reformat/EOF-newline que re-adiciona uma linha `[5-T]` idêntica NÃO dispara (só transição real). Skip: `PERCUS_SKIP_CRUD_WARN=1`.
+- **`state-drift-check.ps1`/`.sh`/`.cmd`** (Stop event, **bloqueia / exit 2**): compara o status de cada feature entre `docs/PLANO.md` (fonte da verdade) e `HANDOFF.md`. Bloqueia o encerramento se alguma feature tem tag divergente (ex: `[5-T]` no PLANO vs `[3-H]` no HANDOFF), nomeando a feature e as duas tags. **Conservador (fail-open):** só bloqueia em match confiável de nome normalizado; qualquer erro de parsing → exit 0. Skip: `PERCUS_SKIP_DRIFT_CHECK=1`.
+
+**Parsing conservador:** PLANO via bullets `- \`[tag]\` Nome — desc` (a tabela de Legenda é ignorada por ser markdown table, não bullet); HANDOFF via tabela escopada à seção `## Status de Features`. Normalização de nome remove marcações visuais (🎨🤖✓✅) e acentos/em-dash. Fonte dos hooks 100% ASCII de propósito — PS 5.1 lê `.ps1` sem BOM como cp1252 e quebraria em string literal não-ASCII (smart-quotes); os chars de matching vêm de code point via `[char]`.
+
+**Skill + canon:**
+- `skills/feature-flow/SKILL.md` — ao marcar `[5-T]`, instrui atualizar `PLANO.md` **e** `HANDOFF.md` na mesma operação + incluir o trailer `CRUD-verified:` no commit (elimina a classe de drift por origem).
+- `01_REGRAS_INEGOCIAVEIS.md` R2 — nova subseção documentando o trailer e os dois hooks.
+
+**TDD (R9):** `tests/crud-evidence-warn.tests.ps1` (13 testes) + `tests/state-drift-check.tests.ps1` (13 testes). Suite total: 98/98 verde. Smoke cruzado validado: `.ps1` sob pwsh 7 **e** Windows PowerShell 5.1 (caminho real do `.cmd`), `.sh` sob git-bash + python3.
+
+**Pendente (soak):** rodar 14 dias em ≥2 projetos coletando quantas vezes `warn` e `block` dispararam (adesão real + drift que estava silencioso). Promoção warn→block só sob pedido explícito do operador após o soak.
+
+**Não incluído:** `COACH_AUDIENCE_WA_OVERRIDE_2026-05-15.md` permanece na raiz (operador ainda não confirmou que colou no Plexco Coach — fechar em release cosmética futura).
 
 ---
 

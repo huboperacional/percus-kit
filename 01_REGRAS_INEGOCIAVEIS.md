@@ -106,6 +106,20 @@ Criar X → F5 (dado continua?) → Editar X → F5 (mudou?) → Deletar X → F
 
 **Regra de profundidade > largura:** Não inicie feature nova enquanto outra da mesma frente estiver entre `[1-S]` e `[3-H]`. Não acumule features pela metade.
 
+### Evidência de `[5-T]`: trailer `CRUD-verified` (enforcement v6.12.0+)
+
+O commit que transiciona uma feature para `[5-T]` **SHOULD** conter o trailer `CRUD-verified: YYYY-MM-DD HH:MM` — a prova, no histórico git, de que o ciclo CRUD com F5 (R1) foi rodado de fato, não arredondado de `[4-C]`.
+
+```
+git commit -m "feat(x): finaliza feature Y" -m "CRUD-verified: 2026-05-30 14:32"
+```
+
+Dois hooks do plugin `percus-review` cuidam disso (sem promoção automática warn→block — decisão registrada no plano v6.11→v7.0):
+- **`crud-evidence-warn`** (pre-commit, **warn-only**): avisa quando um `[5-T]` é adicionado a `PLANO.md`/`HANDOFF.md` sem o trailer. Não bloqueia. Skip: `PERCUS_SKIP_CRUD_WARN=1`.
+- **`state-drift-check`** (on-stop, **bloqueia**): impede encerrar a sessão se `docs/PLANO.md` (fonte da verdade) e `HANDOFF.md` divergem no status de alguma feature. Skip: `PERCUS_SKIP_DRIFT_CHECK=1` (declarar motivo em voz alta).
+
+A skill `percus-review:feature-flow` atualiza PLANO **e** HANDOFF na mesma operação ao marcar `[5-T]`, eliminando a classe de drift por origem.
+
 ### Marcações visuais (opcionais, ortogonais à tag de status)
 
 Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumulam (uma feature pode ter várias).
