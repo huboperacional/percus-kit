@@ -43,7 +43,7 @@ Antes de QUALQUER `AskUserQuestion` na sessao brainstorming, checar se operador 
 
 Quando voce ia formular pergunta com N opcoes:
 
-a. Construa um prompt em `/tmp/council-brainstorm.txt`:
+a. Monte o prompt (⚠️ **NUNCA num nome de arquivo fixo** tipo `/tmp/council-brainstorm.txt` — no Windows vira `d:\tmp\...` e fica stale entre runs; bug 2026-05-30. Temp unico no passo b):
    ```
    CONTEXTO BRAINSTORM: <2-3 linhas do contexto da sessao ate aqui>
    
@@ -60,12 +60,14 @@ a. Construa um prompt em `/tmp/council-brainstorm.txt`:
    3) Qual risco invisivel da opcao A?
    ```
 
-b. Rode orchestrator em mode consult:
+b. Rode orchestrator em mode consult — arquivo temp **unico** por invocacao (nunca nome fixo):
    ```powershell
-   pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.ps1" `
-       -PromptFile "/tmp/council-brainstorm.txt" `
-       -Mode consult `
-       -Providers "deepseek,groq-llama"
+   $Q = Join-Path $env:TEMP "council-brainstorm-$([guid]::NewGuid().ToString('N')).txt"
+   @'
+   <conteudo do passo a>
+   '@ | Set-Content -LiteralPath $Q -Encoding utf8
+   pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.ps1" -PromptFile $Q -Mode consult -Providers "deepseek,groq-llama"
+   Remove-Item -LiteralPath $Q -Force -ErrorAction SilentlyContinue
    ```
 
    (Cross-claude opcional aqui — latencia +30s por pergunta vira atrito. So adicionar se decisao grande.)

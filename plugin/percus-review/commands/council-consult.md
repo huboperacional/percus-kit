@@ -60,7 +60,7 @@ Aguarda resposta explícita antes de chamar `council-orchestrator.ps1`.
 
 ## Fluxo (passo a passo do agente)
 
-1. **Salve a pergunta + opcoes A/B/C** em `/tmp/council-q.txt`. Formato:
+1. **Monte a pergunta + opcoes A/B/C.** Formato do conteudo:
    ```
    PERGUNTA: <pergunta clara, 1-2 linhas>
    CONTEXTO: <2-4 linhas relevantes>
@@ -68,20 +68,24 @@ Aguarda resposta explícita antes de chamar `council-orchestrator.ps1`.
    OPCAO B: <opcao>
    (OPCAO C: opcional)
    ```
+   > ⚠️ **NUNCA salve num nome de arquivo FIXO** tipo `/tmp/council-q.txt` (bug 2026-05-30: no Windows `/tmp/...` resolve pra `d:\tmp\...` e o arquivo fica **stale entre runs** — o orchestrator le o prompt VELHO e o conselho "revisa a coisa errada de novo"). Use um arquivo temp **unico por invocacao** (passo 3).
 
 2. **Decida providers** com base no risco/sensibilidade:
    - Decisao trivial (rename, refactor mecanico): `--providers "deepseek,groq-llama"` (2 providers, ~$0.002, latencia ~2s).
    - Decisao com impacto medio: `--providers "deepseek,groq-llama,cross-claude"` (3 providers, ~$0.005 + 1 subagent, latencia ~30s).
 
-3. **Rode o orchestrator:**
+3. **Rode o orchestrator** — arquivo temp **unico** escrito e consumido na MESMA invocacao pwsh, com cleanup:
    ```powershell
-   pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.ps1" `
-       -PromptFile "/tmp/council-q.txt" `
-       -Mode consult `
-       -Providers "deepseek,groq-llama"
+   $Q = Join-Path $env:TEMP "council-q-$([guid]::NewGuid().ToString('N')).txt"
+   @'
+   <conteudo do passo 1 — PERGUNTA/CONTEXTO/OPCAO A/B/C>
+   '@ | Set-Content -LiteralPath $Q -Encoding utf8
+   pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.ps1" -PromptFile $Q -Mode consult -Providers "deepseek,groq-llama"
+   Remove-Item -LiteralPath $Q -Force -ErrorAction SilentlyContinue
    ```
+   Unix: `Q=$(mktemp); printf '%s' "$prompt" > "$Q"; bash "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.sh" --prompt-file "$Q" --mode consult --providers "deepseek,groq-llama"; rm -f "$Q"`. (Alternativa ainda mais a prova de stale: passar o prompt por **stdin** — orchestrator le stdin se `-PromptFile`/`--prompt-file` for omitido.)
 
-4. **Se output stderr tiver `__PERCUS_NEEDS_CROSS_CLAUDE__`:** dispatch subagent Sonnet via Agent tool (subagent_type=general-purpose) com o prompt mostrado no stderr. Salve resposta em `/tmp/council-cc.txt`. Re-invoque orchestrator com `-CrossClaudeFile "/tmp/council-cc.txt"`.
+4. **Se output stderr tiver `__PERCUS_NEEDS_CROSS_CLAUDE__`:** dispatch subagent Sonnet via Agent tool (subagent_type=general-purpose) com o prompt mostrado no stderr. Salve a resposta num arquivo temp **unico** (`$CC = Join-Path $env:TEMP "council-cc-$([guid]::NewGuid().ToString('N')).txt"`; Unix `mktemp`) e re-invoque com `-CrossClaudeFile $CC`. **NUNCA reuse `/tmp/council-cc.txt`** (mesmo motivo de stale do passo 1).
 
 5. **Leia o ultimo log** em `.deepseek/council-log/<ts>-consult.jsonl` e sintetize:
    - **3/3 concordam** → execute sem perguntar, registre no commit log que conselho foi consultado.

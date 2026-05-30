@@ -49,7 +49,7 @@ test -f catalog-info.yaml && echo "catalog-info: presente"
 
 ### 2. Montar payload pro conselho
 
-Salve em `/tmp/council-drift.txt`:
+Monte o payload (⚠️ **NUNCA num nome fixo** tipo `/tmp/council-drift.txt` — no Windows vira `d:\tmp\...` e fica stale entre runs; bug 2026-05-30. Temp unico no passo 3):
 
 ```
 PROJETO: <slug do projeto>
@@ -76,16 +76,19 @@ PERGUNTA: Liste exatamente 5 pontos de drift mais criticos entre como este proje
 
 ### 3. Rode orchestrator em mode "review" com 3 providers
 
+Arquivo temp **unico** por invocacao (nunca nome fixo):
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.ps1" `
-    -PromptFile "/tmp/council-drift.txt" `
-    -Mode review `
-    -Providers "deepseek,groq-llama,cross-claude"
+$Q = Join-Path $env:TEMP "council-drift-$([guid]::NewGuid().ToString('N')).txt"
+@'
+<payload do passo 2>
+'@ | Set-Content -LiteralPath $Q -Encoding utf8
+pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.ps1" -PromptFile $Q -Mode review -Providers "deepseek,groq-llama,cross-claude"
+Remove-Item -LiteralPath $Q -Force -ErrorAction SilentlyContinue
 ```
 
 ### 4. Cross-Claude marker
 
-Se stderr `__PERCUS_NEEDS_CROSS_CLAUDE__`: dispatch Sonnet subagent. Salve em `/tmp/council-cc.txt`. Re-invoque com `-CrossClaudeFile "/tmp/council-cc.txt"`.
+Se stderr `__PERCUS_NEEDS_CROSS_CLAUDE__`: dispatch Sonnet subagent. Salve num temp **unico** (`$CC = Join-Path $env:TEMP "council-cc-$([guid]::NewGuid().ToString('N')).txt"`; Unix `mktemp`). Re-invoque com `-CrossClaudeFile $CC`. **Nunca reuse `/tmp/council-cc.txt`.**
 
 ### 5. Sintese e ranking
 

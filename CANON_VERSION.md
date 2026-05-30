@@ -1,8 +1,20 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.16.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.16.1`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.16.1 — 2026-05-30
+
+**Fix: council usava caminho de arquivo FIXO (`/tmp/council-*.txt`) → prompt stale entre runs.**
+
+Bug reportado por projeto (2026-05-30), **root cause confirmado por reprodução**: os command docs do conselho (`council-consult`, `council-brainstorm`, `council-pre-mortem`, `drift-detect`) mandavam o agente salvar a pergunta num **nome de arquivo fixo** `/tmp/council-*.txt`. No Windows `/tmp/...` resolve pra `d:\tmp\...`; quando a 2ª pergunta não sobrescrevia o arquivo, o orchestrator lia o prompt **VELHO** → o conselho "revisava a coisa errada de novo". (NÃO era cache do orchestrator — ele lê `Get-Content -Raw` fresco — NEM o `prompt_cache_hit_tokens` da DeepSeek, que é red herring de cache de prefixo server-side.)
+
+- Os 4 command docs agora instruem **arquivo temp único por invocação** (`$env:TEMP` + GUID no Windows / `mktemp` no Unix), escrito e consumido na mesma invocação com cleanup. Idem pro `-CrossClaudeFile`. Stdin documentado como alternativa à prova de stale.
+- Housekeeping: removidos 45 `council-*.txt` stale acumulados em `d:\tmp\` (dumping ground compartilhado entre sessões).
+- Só docs de comando; `council-orchestrator` e providers **inalterados** (já liam fresco).
 
 ---
 

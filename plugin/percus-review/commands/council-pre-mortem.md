@@ -9,17 +9,19 @@ Use **antes de ExitPlanMode** em planos com escopo nao-trivial. Conselho aponta 
 
 ## Fluxo
 
-1. **Salve o plano** em `/tmp/council-plan.txt` (markdown completo do plano que voce ia chamar `ExitPlanMode` com).
+1. **Tenha o plano** (markdown completo do plano que voce ia chamar `ExitPlanMode` com).
 
-2. **Rode orchestrator em modo pre-mortem com os 3 providers:**
+2. **Rode orchestrator em modo pre-mortem com os 3 providers** — arquivo temp **unico** por invocacao. ⚠️ **NUNCA nome fixo** tipo `/tmp/council-plan.txt` (no Windows vira `d:\tmp\...` e fica stale entre runs — bug 2026-05-30):
    ```powershell
-   pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.ps1" `
-       -PromptFile "/tmp/council-plan.txt" `
-       -Mode pre-mortem `
-       -Providers "deepseek,groq-llama,cross-claude"
+   $Q = Join-Path $env:TEMP "council-plan-$([guid]::NewGuid().ToString('N')).txt"
+   @'
+   <markdown completo do plano>
+   '@ | Set-Content -LiteralPath $Q -Encoding utf8
+   pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.ps1" -PromptFile $Q -Mode pre-mortem -Providers "deepseek,groq-llama,cross-claude"
+   Remove-Item -LiteralPath $Q -Force -ErrorAction SilentlyContinue
    ```
 
-3. **Se stderr `__PERCUS_NEEDS_CROSS_CLAUDE__`:** dispatch subagent Sonnet com prompt mostrado. Salve em `/tmp/council-cc.txt`. Re-invoque com `-CrossClaudeFile "/tmp/council-cc.txt"`.
+3. **Se stderr `__PERCUS_NEEDS_CROSS_CLAUDE__`:** dispatch subagent Sonnet com prompt mostrado. Salve num temp **unico** (`$CC = Join-Path $env:TEMP "council-cc-$([guid]::NewGuid().ToString('N')).txt"`; Unix `mktemp`). Re-invoque com `-CrossClaudeFile $CC`. **Nunca reuse `/tmp/council-cc.txt`.**
 
 4. **Leia ultimo log** em `.deepseek/council-log/<ts>-pre-mortem.jsonl`. Cada provider deve ter retornado **3 motivos concretos de falha em ordem de probabilidade**.
 
