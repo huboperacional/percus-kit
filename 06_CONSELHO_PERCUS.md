@@ -107,6 +107,25 @@ Comando manual: `/council:pre-mortem <path-to-plan>`.
 3. Síntese aparece como **contexto adicional** antes do operador responder.
 4. Operador ainda responde — o conselho não substitui o operador.
 
+### Otimizações Groq (v6.14.0)
+
+Duas otimizações isoladas exploram latência (~3×) e custo (~10×) do Groq-Llama na pipeline, sem mexer em criatividade (brainstorm segue Sonnet) nem em precisão de código (DeepSeek). Ambas opt-in / gated — **zero mudança visível por default**.
+
+**Vetor B — Triagem de fact-check (Llama upstream do Sonnet).**
+- `scripts/fact-check-triage.ps1`/`.sh`: classifica cada finding `[SEV: risco|bug]` como **PLAUSIVEL** (coerente, não precisa do Sonnet) ou **SUSPEITA** (duvidoso / exige ler código → escalar). Em dúvida → SUSPEITA.
+- Integrado em `fact-check.ps1` via `$env:PERCUS_FACTCHECK_TRIAGE`:
+  - ausente → **OFF** (default; Sonnet em tudo, comportamento histórico).
+  - `1`/`shadow` → **dual-run**: roda Llama **e** Sonnet, loga concordância em `.deepseek/metrics/factcheck-triage.jsonl` (calibração ~30 dias). Output inalterado.
+  - `gate` → Llama PLAUSIVEL **pula** o Sonnet (economia esperada 70-80% no item mais caro). Ativar só após a calibração mostrar ≥90% de concordância.
+- **Sem promoção automática** shadow→gate — operador ativa `gate` manualmente após revisar as métricas.
+
+**Vetor D — Tie-breaker Llama no conselho.**
+- Quando exatamente 2 providers respondem com sucesso, o **groq-llama NÃO está entre eles** (ex: Cross-Claude falhou 400), E os 2 divergem em `premise_validity`, o orchestrator chama a Llama como 3º voto.
+- Reportado como **"convergência 2/3 informal — tie-breaker fraco"** (`tie_breaker_invoked: true` no JSON), **não** como consenso. Operador decide.
+- Custo desprezível (~$0.0001/call), latência ~1.6s. Conservador: sem sinal estruturado de divergência (premise_validity), não dispara.
+
+**Descartados (consenso 2/2 do conselho):** Vetor A (brainstorm via Llama — Sonnet é melhor pra criatividade) e Vetor C (geração de código via Llama — DeepSeek é mais preciso na sintaxe).
+
 Diferença pra Modo 2: Modo 2 reduz perguntas (consenso → não pergunta); Modo 4 enriquece perguntas (sempre pergunta, mas com 3 perspectivas anexadas).
 
 ---

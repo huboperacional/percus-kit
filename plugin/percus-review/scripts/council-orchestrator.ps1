@@ -255,6 +255,11 @@ function Get-PremiseValidityConsensus([array]$responses) {
 $pluginRoot = Split-Path $PSScriptRoot -Parent  # .../percus-review/
 $providersDir = Join-Path $pluginRoot "providers"
 
+# Vetor D (v6.14.0): funcoes do tie-breaker Llama (dot-source, sem main body)
+$tieBreakerLib = Join-Path $PSScriptRoot "council-tiebreaker.ps1"
+if (Test-Path $tieBreakerLib) { . $tieBreakerLib }
+$PsExe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
+
 # Read prompt
 if ($PromptFile) {
     if (-not (Test-Path $PromptFile)) {
@@ -438,6 +443,25 @@ $totalLatency = [int]((Get-Date) - $start).TotalMilliseconds
 # F2: calcular premise_validity_consensus
 $premiseConsensus = if ($hasCodeContext) { Get-PremiseValidityConsensus $responses } else { "" }
 
+# Vetor D (v6.14.0) — Llama tie-breaker: exatamente 2 OK, sem groq-llama entre eles,
+# e premise_validity divergente. Resultado e "convergencia 2/3 informal" (operador decide).
+$tieBreakerInvoked = $false
+$tieBreaker = $null
+if ((Get-Command Test-CouncilNeedsTieBreaker -ErrorAction SilentlyContinue) -and (Test-CouncilNeedsTieBreaker -Responses $responses)) {
+    $groqWrapperTB = Join-Path $providersDir "groq-llama.ps1"
+    $tb = Invoke-LlamaTieBreaker -Responses $responses -UserPrompt $userPrompt -Wrapper $groqWrapperTB -PsExe $PsExe
+    if ($tb.status -eq "ok") {
+        $tieBreakerInvoked = $true
+        $tieBreaker = @{
+            provider = "groq-llama"
+            role     = "tie-breaker"
+            content  = $tb.content
+            note     = "convergencia 2/3 informal -- tie-breaker fraco; operador decide"
+        }
+        [Console]::Error.WriteLine("[council-orchestrator][Vetor D] tie-breaker Llama invocado (2 providers OK divergentes, sem groq-llama).")
+    }
+}
+
 # Log to .deepseek/council-log/
 $logDir = Join-Path (Get-Location) ".deepseek\council-log"
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
@@ -458,6 +482,9 @@ $result = @{
     code_context_files        = @($codeContext.Keys)
     has_code_context          = $hasCodeContext
     premise_validity_consensus = $premiseConsensus
+    # Vetor D (v6.14.0)
+    tie_breaker_invoked       = $tieBreakerInvoked
+    tie_breaker               = $tieBreaker
 }
 
 $result | ConvertTo-Json -Depth 10 | Out-File -FilePath $logFile -Encoding utf8

@@ -1,8 +1,32 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.12.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.14.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.14.0 — 2026-05-30
+
+**Otimização Groq na pipeline do conselho: triagem de fact-check (Vetor B) + tie-breaker (Vetor D).**
+
+Fase 4 do plano v6.11.0→v7.0.0. Explora latência/custo do Groq-Llama onde faz sentido, sem tocar criatividade (brainstorm segue Sonnet) nem precisão de código (DeepSeek). **6.13.0 pulado de propósito** — reservado pro piloto cascata (cross-repo Plexco Tasks, não bumpa o canon). Ambas otimizações **opt-in / gated — zero mudança por default**.
+
+**Vetor B — triagem Llama upstream do Sonnet:**
+- Novo `scripts/fact-check-triage.ps1` + `.sh`: classifica cada finding `[SEV: risco|bug]` em **PLAUSIVEL** (passa) ou **SUSPEITA**/unverified (escala pro Sonnet). Em dúvida → SUSPEITA. `-Wrapper` injetável (testável offline). 9 testes Pester + smoke `.sh`.
+- `fact-check.ps1` integra via `$env:PERCUS_FACTCHECK_TRIAGE`: ausente=**OFF** (histórico); `1`/`shadow`=dual-run (Llama+Sonnet, loga concordância em `.deepseek/metrics/factcheck-triage.jsonl`, output inalterado); `gate`=Llama plausível pula o Sonnet (economia). **Sem promoção automática shadow→gate.** 5 testes de integração (default-off inalterado / shadow loga / gate pula / suspeita escala).
+- **Bug latente corrigido:** o regex de parse de findings do `fact-check.ps1` usava `(?ms)…[^\[]*?…$` — o flag `m` fazia `$` casar em todo fim-de-linha, truncando cada bloco no 1º EOL (file_path/descrição vazios). Corrigido pra `(?s)…\.*?…\z` (`.ps1` e `.sh`). Teste de regressão adicionado.
+
+**Vetor D — tie-breaker Llama no conselho:**
+- Nova lib `scripts/council-tiebreaker.ps1` (funções puras, dot-sourcável): `Test-CouncilNeedsTieBreaker` (gatilho: exatamente 2 providers OK, groq-llama NÃO entre eles, `premise_validity` divergente com ≥1 não-vazio) + `Invoke-LlamaTieBreaker`. 10 testes.
+- `council-orchestrator.ps1`/`.sh` dot-sourceiam a lib e emitem `tie_breaker_invoked` + `tie_breaker` no JSON. Resultado é **"convergência 2/3 informal — tie-breaker fraco"**, operador decide. Bloco `.sh` é não-fatal (set +e local) — nunca aborta o output principal.
+- `06_CONSELHO_PERCUS.md` (seção "Otimizações Groq") + `commands/council-consult.md` (síntese trata `tie_breaker_invoked`) documentam ambos. Skill `feature-flow` inalterada.
+
+**Descartados (consenso 2/2 do conselho):** Vetor A (brainstorm Llama) e Vetor C (geração de código Llama).
+
+**TDD (R9):** +24 testes novos. Fonte `.ps1` 100% ASCII (PS 5.1). Smoke `.sh` (triagem) via git-bash + python3.
+
+**Pendências (operador):** (1) soak: rodar `PERCUS_FACTCHECK_TRIAGE=1` (shadow) ~30 dias em reviews reais e conferir ≥90% de concordância Llama-PLAUSIVEL vs Sonnet-CONFIRMADO antes de ativar `gate`. (2) **Parity gap conhecido:** a integração da triagem no `fact-check.sh` (modos shadow/gate) NÃO foi portada — só o fix do regex landou no `.sh`; o `.ps1` tem a feature completa (operador roda Windows). (3) `council-orchestrator.sh` Vetor D não foi testado neste host (sem jq local) — validar em Unix.
 
 ---
 

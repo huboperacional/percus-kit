@@ -401,6 +401,38 @@ if [ "$HAS_CODE_CONTEXT" -eq 1 ]; then
     fi
 fi
 
+# Vetor D (v6.14.0) — Llama tie-breaker: exatamente 2 OK, sem groq-llama entre eles,
+# premise_validity divergente (>=1 nao-vazio). Bloco NAO-FATAL (set +e local): nunca
+# aborta o output principal mesmo se jq/wrapper falhar. NOTA: nao testado neste host
+# (sem jq local) — validar em Unix antes de confiar.
+TIE_BREAKER_INVOKED=false
+TIE_BREAKER_JSON="null"
+set +e
+{
+    OK_COUNT=$(echo "$RESPONSES_JSON" | jq '[.[] | select(.status=="ok")] | length' 2>/dev/null || echo 0)
+    LLAMA_IN_OK=$(echo "$RESPONSES_JSON" | jq '[.[] | select(.status=="ok" and .provider=="groq-llama")] | length' 2>/dev/null || echo 0)
+    PV_DISTINCT=$(echo "$RESPONSES_JSON" | jq '[.[] | select(.status=="ok") | (.premise_validity // "")] | unique | length' 2>/dev/null || echo 0)
+    PV_NONEMPTY=$(echo "$RESPONSES_JSON" | jq '[.[] | select(.status=="ok") | (.premise_validity // "") | select(. != "")] | length' 2>/dev/null || echo 0)
+    if [ "${OK_COUNT:-0}" -eq 2 ] && [ "${LLAMA_IN_OK:-0}" -eq 0 ] && [ "${PV_DISTINCT:-0}" -ge 2 ] && [ "${PV_NONEMPTY:-0}" -ge 1 ]; then
+        TB_WRAPPER="$PROVIDERS_DIR/groq-llama.sh"
+        if [ -f "$TB_WRAPPER" ]; then
+            OPINIONS=$(echo "$RESPONSES_JSON" | jq -r '[.[] | select(.status=="ok") | "--- \(.provider) (premise_validity=\(.premise_validity // "")) ---\n\(.content)\n"] | join("\n")' 2>/dev/null || echo "")
+            TB_SYS="Voce e desempate (tie-breaker) tecnico. Dois consultores divergiram. Leia a pergunta original e as duas opinioes. Diga qual posicao e mais defensavel e por que, em no maximo 80 palavras. Comece com 'TIE-BREAK:'."
+            TB_TMP=$(mktemp)
+            printf 'Pergunta original:\n%s\n\nOpinioes divergentes:\n%s' "$USER_PROMPT" "$OPINIONS" > "$TB_TMP"
+            TB_OUT=$(bash "$TB_WRAPPER" --prompt-file "$TB_TMP" --system-prompt "$TB_SYS" --max-tokens 256 2>/dev/null || echo "")
+            rm -f "$TB_TMP"
+            if echo "$TB_OUT" | jq -e '.status=="ok"' >/dev/null 2>&1; then
+                TB_CONTENT=$(echo "$TB_OUT" | jq -r '.content // ""')
+                TIE_BREAKER_INVOKED=true
+                TIE_BREAKER_JSON=$(jq -n --arg c "$TB_CONTENT" '{provider:"groq-llama", role:"tie-breaker", content:$c, note:"convergencia 2/3 informal -- tie-breaker fraco; operador decide"}' 2>/dev/null || echo "null")
+                echo "[council-orchestrator][Vetor D] tie-breaker Llama invocado (2 OK divergentes, sem groq-llama)." >&2
+            fi
+        fi
+    fi
+} || true
+set -eo pipefail
+
 # Log
 LOG_DIR=".deepseek/council-log"
 mkdir -p "$LOG_DIR"
@@ -428,7 +460,9 @@ RESULT=$(jq -n \
     --argjson has_ctx "$HAS_CODE_CONTEXT" \
     --argjson cc_files "$CC_FILES_JSON" \
     --arg pv_consensus "$PREMISE_CONSENSUS" \
-    '{mode:$mode, timestamp:$ts, prompt:$prompt, system_prompt:$sys, providers_called:$wanted, responses:$responses, total_latency_ms:$total_lat, cross_claude_pending:$cross_pending, truncated:$truncated, original_token_count:$orig_tok, has_code_context:$has_ctx, code_context_files:$cc_files, premise_validity_consensus:$pv_consensus}')
+    --argjson tb_invoked "${TIE_BREAKER_INVOKED:-false}" \
+    --argjson tb "${TIE_BREAKER_JSON:-null}" \
+    '{mode:$mode, timestamp:$ts, prompt:$prompt, system_prompt:$sys, providers_called:$wanted, responses:$responses, total_latency_ms:$total_lat, cross_claude_pending:$cross_pending, truncated:$truncated, original_token_count:$orig_tok, has_code_context:$has_ctx, code_context_files:$cc_files, premise_validity_consensus:$pv_consensus, tie_breaker_invoked:$tb_invoked, tie_breaker:$tb}')
 
 echo "$RESULT" > "$LOG_FILE"
 echo "$RESULT"

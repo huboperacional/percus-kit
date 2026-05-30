@@ -101,7 +101,9 @@ findings_raw = sys.argv[1] if len(sys.argv) > 1 else ""
 api_key = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("ANTHROPIC_API_KEY", "")
 
 # Parse findings [SEV: risco|bug]
-pattern = r'(\[SEV:\s*(risco|bug)\][^\[]*?)(?=\[SEV:|$)'
+# v6.14.0: bloco vai ate o proximo [SEV: risco|bug] ou fim (\Z), com .*? sob
+# re.DOTALL — nao trunca em '[' interno (ex: refs a [R7]). Paridade com fact-check.ps1.
+pattern = r'(\[SEV:\s*(risco|bug)\].*?)(?=\[SEV:\s*(?:risco|bug)\]|\Z)'
 raw_matches = re.findall(pattern, findings_raw, re.DOTALL)
 
 findings = []

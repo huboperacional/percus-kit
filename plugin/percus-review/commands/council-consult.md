@@ -87,6 +87,7 @@ Aguarda resposta explícita antes de chamar `council-orchestrator.ps1`.
    - **3/3 concordam** → execute sem perguntar, registre no commit log que conselho foi consultado.
    - **2/3 concordam** → execute a posicao majoritaria + cite a divergencia minoritaria no commit.
    - **1/1/1 ou divergencia grave** → `AskUserQuestion` ao operador com **contexto consolidado** das 3 perspectivas.
+   - **`tie_breaker_invoked: true` no log (Vetor D, v6.14.0):** a Llama foi chamada como desempate porque 2 providers OK divergiram em `premise_validity` e o groq-llama nao estava entre eles. Trate o resultado (`tie_breaker.content`) como **"2/3 informal — tie-breaker fraco"**, NUNCA como consenso forte. Em duvida, prefira `AskUserQuestion` ao operador.
 
 ## Output esperado pro operador
 
