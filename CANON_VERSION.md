@@ -1,8 +1,24 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.15.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.16.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.16.0 — 2026-05-30
+
+**Integra o Padrão Auth Percus v2 (5 pilares) no canon como direção vigente com status de rollout.**
+
+O time do auth-service entregou (supplement 2026-05-30, pós conselho 3/3) o **Padrão Auth Percus v2** — 5 pilares cross-projeto. Integrado nos docs permanentes do canon como **lei que os projetos DEVEM seguir**, com **status de rollout real por pilar** (a maioria ainda não em prod) e **janelas de breaking change** preservadas. Sem mudança de comportamento de tooling.
+
+- **`PADRAO_AUTH_SERVICE.md` — nova Seção L:** tabela-mestra de rollout + L.1-L.5 (P1 magic+OTP combinado, P2 Painel vira consumer, P3 lib `@percus/auth-ui`, P4 enforcement contract-tests+catálogo, P5 telemetria OTel) + sequência de sprints + sprint hardening encerrado + deps cross-repo read-only. Baseline Seções A-K (contrato congelado) **intacto**. Add **B.1.v2** (signup `name+phone+email` required via `/internal/identities/v2` — breaking, ≥60d, major bump `percus-auth`) sem mexer no V1. Seção G nota Pilar 1 preservando TTLs e mitigações.
+- **`01_REGRAS_INEGOCIAVEIS.md`:** notas de pilar com status em R7/R14/R15/R17/R19 (sem regra numerada nova).
+- **Contracts + infra sync:** `error-codes.md` (nota `/v2`, sem error_code novo), `02_INFRA` (dual-verifier 7d genérico + 3-4 sem Painel; nota Pilar 1), `approved-evolution-instances.yaml` (fix ref morta `..._INTEGRATION_V2`), `CHECKLIST_AUTH_NOVO_PROJETO.md` (signup name+phone+email).
+- **`05_FEATURE_TRACKING.md`:** registra 5 slugs dos pilares (em rollout, sem claim de `adopted`). ADR nasce no `auth-service` (não no canon, por convenção).
+- Housekeeping: deletado o supplement temp `PADRAO_AUTH_PERCUS_2026-05-30.md` após integração.
+
+**Honestidade factual:** Painel NÃO migrou, lib `@percus/auth-ui` NÃO publicada, OTel/SigNoz NÃO subiu — documentado como status de rollout, não como fato consumado. **Review 3-membros adiado** (`council-orchestrator` com bug de prompt stale, registrado pra avaliação).
 
 ---
 

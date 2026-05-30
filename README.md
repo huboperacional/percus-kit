@@ -2,7 +2,7 @@
 
 > Conjunto canônico de regras, templates, comandos e tooling para projetos de software Percus (FastAPI + React + PostgreSQL + JWT cookie httpOnly).
 
-**Estado atual:** Fase 7 — **versão canônica autoritativa em `CANON_VERSION.md`** (atualmente **v6.15.0**). Releases recentes: v6.15.0 (governança: R11 sem exceção pro kit + refresh de docs), v6.14.0 (otimização Groq no conselho: triagem de fact-check + tie-breaker), v6.12.0 (enforcement do tracking `[5-T]` via hooks `crud-evidence-warn` + `state-drift-check`), v6.11.0 (limpa cosmética + template `settings.json`), v6.10.0 (R22 alocação central de portas), v6.9.x (sync Painel), Sprint v6.8 (canonização do padrão auth), v6.7.x (hardening anti-hallucination). Fase 6 (conselho 3-membros) e Fase 4 (review cross-provider sem Codex/OpenAI) estáveis.
+**Estado atual:** Fase 7 — **versão canônica autoritativa em `CANON_VERSION.md`** (atualmente **v6.16.0**). Releases recentes: v6.16.0 (integra Padrão Auth Percus v2 — 5 pilares — no canon com status de rollout), v6.15.0 (governança: R11 sem exceção pro kit + refresh de docs), v6.14.0 (otimização Groq no conselho: triagem de fact-check + tie-breaker), v6.12.0 (enforcement do tracking `[5-T]` via hooks `crud-evidence-warn` + `state-drift-check`), v6.11.0 (limpa cosmética + template `settings.json`), v6.10.0 (R22 alocação central de portas), v6.9.x (sync Painel), Sprint v6.8 (canonização do padrão auth), v6.7.x (hardening anti-hallucination). Fase 6 (conselho 3-membros) e Fase 4 (review cross-provider sem Codex/OpenAI) estáveis.
 
 ---
 
