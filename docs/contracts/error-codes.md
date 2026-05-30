@@ -80,6 +80,8 @@ Content-Type: application/json
 | `invalid_internal_auth` | 401 | — | `"Invalid internal auth"` | `X-Internal-Auth` faltando ou inválido |
 | `invalid_payload` | 422 | — | `"Invalid payload"` | Pydantic detail extra em `fields[]` |
 
+> **Pilar 1 (Padrão Auth Percus v2):** `POST /internal/identities/v2` torna `name + phone + email` **required**; ausência cai em **`invalid_payload`** (acima) com `fields[]`. **Não introduz `error_code` novo → sem bump por isso.** Ver `PADRAO_AUTH_SERVICE.md` B.1.v2 / Seção L. Status: 🔶 Sprint A (não em prod).
+
 ### `/internal/resolve-org` (Sessão 8)
 
 | `error_code` | HTTP | `Retry-After` | `detail` (constante EN) | Quando |
@@ -172,4 +174,4 @@ try {
 ---
 
 **Mantenedor:** auth-service team.
-**Última atualização:** 2026-05-15 (V1 cravado).
+**Última atualização:** 2026-05-30 (nota Pilar 1 / `/internal/identities/v2` — sem mudança de enum; V1 cravado 2026-05-15).

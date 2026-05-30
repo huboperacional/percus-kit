@@ -5,7 +5,7 @@
 #
 # Adicionar nova instance = PR no percus-kit + 1 approval auth-team.
 #
-# Referência: PADRAO_AUTH_SERVICE_INTEGRATION_V2.md Seção D
+# Referência: PADRAO_AUTH_SERVICE.md Seção D
 # Última atualização: 2026-05-15
 
 instances:

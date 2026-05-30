@@ -139,6 +139,8 @@ Cenário: você quer adicionar uma pessoa a uma org no seu produto. Email/phone 
            Manda welcome com magic-link (first-login).
 ```
 
+> **Pilar 1 (Padrão Auth Percus v2 — em rollout):** o signup passa a coletar **`name + phone + email`** obrigatórios; quando o `/internal/identities/v2` estiver em prod, esses 3 campos são *required* (hoje optional — ver `PADRAO_AUTH_SERVICE.md` B.1.v2). 🔶 Sprint A.
+
 **Referência real (em construção, Etapa 2 do Strangler):** `D:\Claud Automations\Plexco Tasks\backend\app\api\v1\invitations.py`.
 
 **Anti-padrão proibido:** criar `users` com password local + mandar email "sua senha é XYZ123". Sem auth-service, sem credencial.

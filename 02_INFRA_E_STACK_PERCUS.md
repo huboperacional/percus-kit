@@ -91,7 +91,7 @@ A arquitetura final é **um auth-service Percus único** consumido por todos os 
 | **Transição (sidecar interino)** | Projeto greenfield iniciado antes de auth-service v1 | Sidecar FastAPI próprio (forma B na Seção 2.5) com OTP+JWT HS256, schema `otp.codes` compatível. Migra pra `percus-auth` quando v1 sair, sem refazer fluxo. |
 | **Legado** | Projetos pré-Fase 5 com Supabase/GoTrue/NextAuth/senha pura | Seguem `comandos/MIGRAR_AUTH.md` (V1-V4). Migram diretamente pro estado Final quando auth-service v1 sair, ou pra Transição como ponte. |
 
-**Cutover do estado Transição → Final** é dual-verifier rolling 7 dias (auth-service emite EdDSA, projeto valida ambos algoritmos durante janela do TTL do cookie antigo). Detalhes em runbook do auth-service.
+**Cutover do estado Transição → Final** é dual-verifier rolling **7 dias** (janela genérica — auth-service emite EdDSA, projeto valida ambos algoritmos durante o TTL do cookie antigo). Detalhes em runbook do auth-service. **Caso Painel (Pilar 2 do Padrão Auth Percus v2):** o dual-verifier do Painel é **3-4 semanas** (não 7d), pelo volume de afiliados + o script de migração `old_user_id→identity_id` — ver `PADRAO_AUTH_SERVICE.md` Seção L.2.
 
 ### 2.1. Métodos suportados
 
@@ -103,6 +103,8 @@ A arquitetura final é **um auth-service Percus único** consumido por todos os 
 | **TOTP step-up** | Obrigatório pra role admin | Enrollment no primeiro login da role admin; valida em ações privilegiadas |
 | **Senha** | Vetado em projetos novos | Dívida de phishing/credential-stuffing sem ganho |
 | OAuth (Google/etc.) | Caso especial | Integrações com Google APIs (Drive, Calendar) no perfil — não pra login de produto |
+
+> **Pilar 1 (Padrão Auth Percus v2 — `PADRAO_AUTH_SERVICE.md` Seção L.1):** `/otp/request` passa a emitir OTP **e** magic juntos na mesma mensagem (sem opt-in); TTLs por canal inalterados. 🔶 rollout Sprint A — não em prod.
 
 ### 2.2. Tokens — JWT EdDSA + refresh opaco em Redis
 
