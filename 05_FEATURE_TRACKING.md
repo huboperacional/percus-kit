@@ -4,7 +4,7 @@ prevalece-sobre: comandos/* (quando há conflito sobre como rastrear feature)
 prevalecido-por: [01_REGRAS_INEGOCIAVEIS, CLAUDE.md do projeto]
 quando-usar: ao aplicar feature global (auth v3, lead form, tracking, etc.) em projeto Percus
 leitura: 6 min
-ultima-atualizacao: 2026-05-15
+ultima-atualizacao: 2026-05-30
 fase-introducao: Fase 6
 ---
 
@@ -127,6 +127,14 @@ Lista canônica das features globais conhecidas em 2026-05-15:
 - `types-check-pre-commit` (R5, Fase 6)
 - `migration-check-pre-commit` (R6, Fase 6)
 - `conselho-3-membros` (Fase 6, DeepSeek + Cross-Claude + Llama)
+
+Padrão Auth Percus v2 (5 pilares, cravado 2026-05-30 — **em rollout**, status real por projeto no `catalog-info.yaml`; ver `PADRAO_AUTH_SERVICE.md` Seção L; ADR nasce no `auth-service`, não no canon):
+
+- `auth-magic-otp-combinado` (Pilar 1 — `/otp/request` emite OTP + magic juntos; signup name+phone+email)
+- `painel-auth-consumer` (Pilar 2 — Painel descontinua auth próprio, vira consumer do auth-service)
+- `percus-auth-ui` (Pilar 3 — lib React `@percus/auth-ui`, branding data-driven)
+- `auth-contract-tests-ci` (Pilar 4 — enforcement: contract tests CI + catálogo vivo no Painel)
+- `auth-otel-telemetria` (Pilar 5 — métricas OTel cross-product → SigNoz)
 
 Mais virão. O crawler descobre features novas pelo `catalog-info.yaml` dos projetos.
 
