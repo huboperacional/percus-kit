@@ -52,6 +52,18 @@ FLUXO GREENFIELD:
    - `.gitignore` (de `.gitignore.example`, com `.deepseek/` e `.codex/`)
    - `.percus-version` (de `.percus-version.template`, copia versao canonica atual)
    - `catalog-info.yaml` (de `catalog-info.yaml.template`)
+   - `docs/legal/TERMS_PRIVACY.md` (ver passo 2.6 — gerado do LEGAL_MASTER.md)
+
+2.6. Gerar `docs/legal/TERMS_PRIVACY.md` (documentação legal obrigatória do projeto):
+   - Leia `${env:PERCUS_CANON_DIR}/docs/legal/LEGAL_MASTER.md`
+   - Crie `docs/legal/TERMS_PRIVACY.md` para este projeto:
+     1. Mantenha as 19 cláusulas dos Termos e a Política de Privacidade intactos (PT + EN)
+     2. No Apêndice A: remova todos os outros projetos; deixe APENAS a linha deste produto
+     3. No Apêndice B: remova sub-processadores que este projeto não utiliza
+     4. Remova o Apêndice C inteiro (é específico do Micro Investors)
+     5. Atualize o nome do produto na introdução e o campo "Last updated"
+   - Não reescreva, não invente cláusulas, não resuma. Só filtre o que não pertence a este projeto.
+   - Se o projeto ainda não consta no Apêndice A do LEGAL_MASTER.md, adicionar lá primeiro antes de gerar a versão filtrada.
 
 2.5. Alocar PERCUS_PORT_BASE (R22 — registro central de portas locais):
    - Roda 1x: `python "${env:PERCUS_CANON_DIR}/plugin/percus-review/scripts/port_allocate.py" --slug <slug> --name "<Nome Bonito>"`
