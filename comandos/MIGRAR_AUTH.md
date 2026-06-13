@@ -8,11 +8,7 @@ ultima-atualizacao: 2026-05-05
 
 # Migrar Auth de um projeto existente para o Padrão Percus
 
-> ⚠️ **Estado deste documento (2026-05-05):** as variantes V1-V4 abaixo descrevem migração pro **estado Transição** (sidecar FastAPI próprio com OTP+JWT HS256, anti-bot Evolution, schema `otp.codes`). Quando o **auth-service Percus v1** publicar (cronograma de 8 semanas em `D:/Claud Automations/.claude-home/plans/analise-para-validar-generic-garden.md`), este documento ganha **V5** (legado → estado Final direto, consumindo auth-service via lib `percus-auth`). Até lá, V1-V4 valem como ponte.
->
-> Estado Final consome auth-service centralizado (JWT EdDSA + JWKS local + refresh com family invalidation). Sidecar V1-V4 migra pro Final via dual-verifier rolling 7d.
->
-> **Quando usar este documento:** você tem um projeto Percus já em operação (qualquer estágio) que ainda usa um sistema de auth legado — Supabase/GoTrue, NextAuth, magic-link próprio, senha pura, OAuth-only, ou nenhum auth — e quer alinhar ao **estado Transição** do canon Percus: OTP via WhatsApp + JWT HS256 em sidecar FastAPI (definido em `02_INFRA_E_STACK_PERCUS.md`, Seção 2.0 e 2.10).
+> ⚠️ **Estado deste documento (atualizado 2026-06-13):** o **auth-service Percus v1 está em produção**. **V5 abaixo é o caminho padrão** para projetos novos ou migrações — consumir o auth-service centralizado diretamente (lib `percus-auth`, JWT EdDSA via JWKS local, endpoints `/otp/request` early-202 + `/otp/validate`). As variantes **V1-V4 são ponte histórica** — descrevem migração pro estado Transição (sidecar FastAPI próprio com OTP+JWT HS256, schema `otp.codes`). Use V1-V4 apenas se houver impedimento técnico comprovado para consumir o auth-service central. As referências a Evolution/GoWA nas variantes V1-V4 são de infra — transparentes pro consumidor (o auth-service central entrega o canal; a migração evo→gowa é infra-side).
 >
 > **Escopo deste documento:** **só auth.** Não toca outros módulos do backend, não reescreve frontend além da tela de login, não muda banco de dados além das tabelas de auth/OTP. Se você precisa migrar mais coisa (ex: substituir PostgREST por endpoints FastAPI, trocar `@supabase/supabase-js` por fetch tipado), use docs separados quando existirem ou faça em outra rodada.
 >
@@ -230,6 +226,110 @@ A migração tem 4 variantes dependendo do estado atual. Identifique a sua na au
 7. Gere magic links pros usuários existentes (Seção 7).
 8. Cutover: trocar tela de login pra OTP, enviar magic links em batch.
 9. Após N dias com >90% dos usuários ativos logados via novo fluxo, descomissione GoTrue.
+
+### Variante V5 — Consumir auth-service centralizado (padrão atual)
+
+**Quando usar:** todo projeto novo OU projeto existente que puder migrar. **Este é o caminho preferencial.** V1-V4 só se houver impedimento técnico comprovado para consumir o auth-service central.
+
+**Esforço:** ~1-2d (sem infra própria de auth).
+
+**O que muda vs V1-V4:** você **não** implementa OTP, não gera JWT, não roda sidecar. O auth-service central entrega tudo. Sua responsabilidade é chamar os endpoints e validar o JWT localmente.
+
+#### V5.1 — Registrar audience (1x por produto)
+
+PR no auth-service repo com migration Alembic adicionando row em `auth.audiences` (`slug`, `display_name`, `default_redirect_uri`, `origins`). Ver `PADRAO_AUTH_SERVICE.md` Seção D + `checklists/CHECKLIST_AUDIENCE_NOVA.md`.
+
+#### V5.2 — Per-consumer secret
+
+Solicitar ao auth-service team o `internal_key_<consumer>` Docker Secret (para chamar `/internal/*`). Configurar via Pydantic `secrets_dir` (`/run/secrets/internal_key`).
+
+#### V5.3 — Backend — login + JWT local
+
+```python
+# Login: POST /otp/request (early-202 — responde 202 imediato, envio em background)
+# Sempre 202; ofereça canal alternativo proativamente ("não recebeu? tente e-mail")
+await auth_client.post("/otp/request", json={
+    "channel": "whatsapp", "destination": phone, "audience": AUDIENCE
+})
+
+# Validate: POST /otp/validate
+result = await auth_client.post("/otp/validate", json={
+    "channel": "whatsapp", "destination": phone, "code": code, "audience": AUDIENCE
+})
+# result: {access_token, refresh_token, expires_in, refresh_expires_in}
+```
+
+Validação JWT local via lib `percus-auth` (singleton — JWKS cacheado, sem RTT no hot path):
+
+```python
+from percus_auth import PercusAuthVerifier
+verifier = PercusAuthVerifier(AUTH_SERVICE_URL, audience=AUDIENCE)
+
+async def get_current_user(token: str = Depends(bearer)) -> UserLocal:
+    claims = verifier.verify(token)  # valida EdDSA localmente
+    return await resolve_user_local(claims)
+```
+
+#### V5.4 — Regra de identidade (padrão único)
+
+```python
+async def resolve_user_local(claims: dict) -> UserLocal:
+    iid = claims.get("iid")
+    sub = claims["sub"]  # "canal:handle"
+
+    if iid:
+        # Case contra a coluna CANÔNICA do produto, nunca id per-org
+        user = await db.get_user_by_identity_id(iid)
+        if user:
+            return user
+    # Fallback pro sub — resiliente a drift/race entre signup e login
+    channel, handle = sub.split(":", 1)
+    user = await db.get_user_by_handle(channel, handle)
+    if not user:
+        raise HTTPException(401)  # NUNCA 404 para user legítimo
+    return user
+```
+
+#### V5.5 — Signup: provisionar identidade canônica
+
+```python
+# Antes do 1º login: provisionar via /internal/identities/v2
+result = await auth_client.post(
+    "/internal/identities/v2",
+    headers={"X-Internal-Auth": INTERNAL_KEY},
+    json={"email": email, "phone": phone, "display_name": name}
+)
+identity_id = result["id"]
+```
+
+#### V5.6 — Frontend — bridge `#at=`
+
+```ts
+// Rota /open: consome o token do fragmento após OTP ou magic-link
+const hash = location.hash.replace(/^#/, '')
+const frag = new URLSearchParams(hash)
+const accessToken = frag.get('at')
+const refreshToken = frag.get('rt')
+history.replaceState(null, '', location.pathname + location.search)
+// persistir tokens + redirecionar pro app
+```
+
+#### V5.7 — Pré-requisitos
+
+- [ ] Auth-service em prod: `https://auth.huboperacional.com.br` ✅
+- [ ] Audience registrada (PR no auth-service repo)
+- [ ] `internal_key_<consumer>` provisionado pelo auth-service team
+- [ ] `percus-auth` no `requirements.txt`
+
+#### V5.8 — Verificação `[5-T]` adaptada
+
+- [ ] **T1:** `POST /otp/request` → `202`.
+- [ ] **T2:** código + link chegam no WhatsApp em <30s (envio em background — provider gerenciado pelo auth-service central).
+- [ ] **T3:** `POST /otp/validate` → `{access_token, refresh_token}`. Decodar: claims `sub`, `aud`, `iid` (se provisionado).
+- [ ] **T4:** `GET /me` com `Authorization: Bearer <jwt>` → user. Sem token: 401.
+- [ ] **T5:** ciclo completo login → dashboard → logout → login de novo.
+
+---
 
 ### Variante V4 — OAuth-only (Google/etc., sem usuários por phone)
 
@@ -541,10 +641,11 @@ Foque este doc em **só auth**. Outros docs de migração devem ser criados sepa
 
 ## 12. Referências
 
-- **Padrão completo:** `02_INFRA_E_STACK_PERCUS.md` (Seção 2 — Auth).
-- **Implementação canônica:** `D:\Claud Automations\Claude Financas NEW\familia-api\app\modules\auth\`.
-- **Caso real de migração:** `D:\Claud Automations\Micro Investors\docs\superpowers\specs\2026-04-25-onda-minus-1-fastapi-pivot-design.md` (variante V3 + frontend complete + cutover).
-- **Infra do VPS:** `02_INFRA_E_STACK_PERCUS.md`.
+- **Padrão V5 (auth-service central):** `PADRAO_AUTH_SERVICE.md` + `CONSUMIR_AUTH_SERVICE.md` + `checklists/CHECKLIST_AUDIENCE_NOVA.md`.
+- **Consumer Quickstart (manual completo):** `auth-service/docs/CONSUMER_QUICKSTART.md` (read-only, cross-repo).
+- **Padrão infra geral:** `02_INFRA_E_STACK_PERCUS.md` (Seção 2 — Auth).
+- **Implementação canônica V1-V4 (ponte histórica):** `D:\Claud Automations\Claude Financas NEW\familia-api\app\modules\auth\`.
+- **Caso real de migração V3:** `D:\Claud Automations\Micro Investors\docs\superpowers\specs\2026-04-25-onda-minus-1-fastapi-pivot-design.md`.
 
 ---
 

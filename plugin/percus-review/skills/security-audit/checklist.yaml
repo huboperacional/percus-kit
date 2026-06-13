@@ -75,13 +75,13 @@
 # ── R17: Magic links — primitiva centralizada ────────────────────────────────
 - id: R17-magic-link-endpoint
   eixo: R17
-  desc: "Magic link request/verify usa endpoint canonico do auth-service"
+  desc: "Magic link usa endpoints canonicos do auth-service (nao implementacao local)"
   check:
     type: grep
-    pattern: 'auth\.huboperacional\.com\.br|/auth/magic|magic_link.*request'
+    pattern: 'auth\.huboperacional\.com\.br|/auth/magic/issue|/auth/magic/consume|/otp/request'
     paths: ["**/auth/**/*.py", "**/auth/**/*.ts", "**/services/**/*.py"]
   fail_msg: "Magic link possivelmente reimplementado localmente. Use auth-service central."
-  fix_hint: "Substitua por POST https://auth.huboperacional.com.br/auth/magic/request + /auth/magic/verify."
+  fix_hint: "Para login: /otp/request (combinado — manda codigo + magic juntos, 202 imediato). Para magic per-contexto: /auth/magic/issue + /auth/magic/consume. NUNCA /auth/magic/request ou /auth/magic/verify (nao existem)."
   severity: high
 
 - id: R17-no-local-token
@@ -93,7 +93,7 @@
     paths: ["**/auth/**/*.py", "**/services/**/*.py"]
     expect: absent
   fail_msg: "Geracao local de magic token detectada (vetado R17). Use endpoint central."
-  fix_hint: "Remova geracao local + chame auth-service /auth/magic/request que retorna o link pronto."
+  fix_hint: "Remova geracao local. Para login: /otp/request (combinado) ja manda o magic. Para magic per-contexto: /auth/magic/issue + /auth/magic/consume."
   severity: high
 
 # ── R18: Tracking separado de auth ────────────────────────────────────────────

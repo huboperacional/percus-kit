@@ -454,6 +454,8 @@ A lista completa por produto está no **Apêndice A**. Em geral, coletamos:
 | **Logs técnicos** | Timestamps, IPs, erros, status de entrega | Segurança, debug, auditoria |
 | **Cookies essenciais** | Sessão, autenticação | Funcionamento da plataforma |
 
+**Dados técnicos de cadastro:** no momento do cadastro, registramos o endereço IP e o user-agent do dispositivo, junto com a data/hora e a versão dos termos aceitos. Esses dados servem como prova do aceite destes termos e para prevenção a fraude (base legal: legítimo interesse — LGPD Art. 7º, IX).
+
 ---
 
 ### 3. O que NÃO fazemos
@@ -601,6 +603,8 @@ Full per-product detail is in **Appendix A**. Generally we collect:
 | **Marketing data** | UTMs, fbclid, gclid, landing_url | Campaign attribution (ADS4PROS) |
 | **Technical logs** | Timestamps, IPs, errors, delivery status | Security, debugging, audit |
 | **Essential cookies** | Session, authentication | Platform functionality |
+
+**Technical signup data:** at signup we record the device IP address and user-agent, together with the timestamp and the version of the terms accepted. This data serves as proof of acceptance of these terms and for fraud prevention (legal basis: legitimate interest — LGPD Art. 7, IX).
 
 ---
 

@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""security_audit.py — Runner declarativo do checklist YAML R14-R19 (Percus Fase 6 v6.2.0).
+"""security_audit.py — Runner declarativo de checklist YAML (Percus Fase 6 v6.2.0+).
 
-Skill: security-audit. Decisao de formato (Opcao D) validada por conselho 3-membros
+Skills: security-audit (R14-R19), auth-consumer (IDENTITY/MAGIC/BRIDGE/EARLY202).
+Decisao de formato (Opcao D) validada por conselho 3-membros
 (Painel/.deepseek/council-log/20260516-175328-consult.jsonl).
 
 Schema: cada item = {id, eixo, desc, check{type,pattern,paths}, fail_msg, fix_hint, severity}
 Suporta apenas check.type=grep no v1.
 
 Uso:
-    python security_audit.py                          # checklist default + human output
-    python security_audit.py --json                   # JSON pra CI
-    python security_audit.py --min-severity high      # filtra por severidade
-    python security_audit.py --eixo R15               # filtra por eixo
-    python security_audit.py --checklist path.yaml    # checklist custom
+    python security_audit.py                                   # checklist default + human output
+    python security_audit.py --json                            # JSON pra CI
+    python security_audit.py --min-severity high               # filtra por severidade
+    python security_audit.py --eixo R15                        # filtra por eixo
+    python security_audit.py --checklist path.yaml             # checklist custom
+    python security_audit.py --checklist path.yaml --label foo # label customizado no output
 """
 from __future__ import annotations
 
@@ -43,8 +45,8 @@ ITEM_SCHEMA = {
     "type": "object",
     "required": ["id", "eixo", "desc", "check", "fail_msg", "severity"],
     "properties": {
-        "id":        {"type": "string", "pattern": r"^R\d+-[a-z0-9-]+$"},
-        "eixo":      {"type": "string", "pattern": r"^R\d+$"},
+        "id":        {"type": "string", "pattern": r"^[A-Z0-9][-A-Za-z0-9]+$"},
+        "eixo":      {"type": "string", "pattern": r"^[A-Z][A-Z0-9]*$"},
         "desc":      {"type": "string", "minLength": 5},
         "check": {
             "type": "object",
@@ -87,6 +89,12 @@ def _validateItem(item: dict, index: int) -> Optional[str]:
             return f"item[{index}].check.type='{check['type']}' nao suportado (allowed: {ALLOWED_CHECK_TYPES})"
         if item["severity"] not in SEVERITY_ORDER:
             return f"item[{index}].severity='{item['severity']}' invalido"
+        # Valida formato id e eixo manualmente
+        import re as _re
+        if not _re.match(r'^[A-Z0-9][-A-Za-z0-9]+$', item["id"]):
+            return f"item[{index}].id='{item['id']}' invalido (esperado: ^[A-Z0-9][-A-Za-z0-9]+$)"
+        if not _re.match(r'^[A-Z][A-Z0-9]*$', item["eixo"]):
+            return f"item[{index}].eixo='{item['eixo']}' invalido (esperado: ^[A-Z][A-Z0-9]*$)"
         # Detecta chaves desconhecidas (schema drift)
         knownKeys = {"id", "eixo", "desc", "check", "fail_msg", "fix_hint", "severity"}
         unknown = set(item.keys()) - knownKeys
@@ -145,11 +153,13 @@ if hasattr(sys.stdout, "reconfigure"):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--checklist", type=Path, help="Path do checklist.yaml (default: bundled)")
+    parser.add_argument("--label", help="Label no output (default: 'security-audit')")
     parser.add_argument("--json", action="store_true", help="Output JSON")
     parser.add_argument("--min-severity", choices=list(SEVERITY_ORDER.keys()), help="Filtra items >= severity")
-    parser.add_argument("--eixo", help="Filtra so este eixo (ex: R15)")
+    parser.add_argument("--eixo", help="Filtra so este eixo (ex: R15, IDENTITY)")
     args = parser.parse_args()
 
+    runLabel = args.label or "security-audit"
     checklistPath = args.checklist or _findDefaultChecklist()
     if not checklistPath.exists():
         print(f"[security-audit] ERROR: checklist nao encontrado: {checklistPath}", file=sys.stderr)
@@ -216,6 +226,7 @@ def main() -> int:
     if args.json:
         out = {
             "version":        1,
+            "label":          runLabel,
             "checklist_path": str(checklistPath),
             "project_cwd":    str(projectRoot),
             "summary":        summary,
@@ -223,7 +234,7 @@ def main() -> int:
         }
         print(json.dumps(out, indent=2, ensure_ascii=False))
     else:
-        print(f"[security-audit] checklist v1, {summary['total']} items, projeto: {projectRoot.name}\n")
+        print(f"[{runLabel}] checklist v1, {summary['total']} items, projeto: {projectRoot.name}\n")
         currentEixo = None
         for r in results:
             if r["eixo"] != currentEixo:
@@ -239,7 +250,7 @@ def main() -> int:
 
         sevCount = summary["by_severity"]
         sevStr = ", ".join(f"{n} {s}" for s, n in sevCount.items() if n > 0) or "0"
-        print(f"\nRESUMO: {summary['total']} items, {summary['pass']} PASS, {summary['fail']} FAIL ({sevStr})")
+        print(f"\n[{runLabel}] RESUMO: {summary['total']} items, {summary['pass']} PASS, {summary['fail']} FAIL ({sevStr})")
 
     return 0 if summary["fail"] == 0 else 1
 

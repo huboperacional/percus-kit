@@ -23,6 +23,8 @@ V2 absorve aprendizados de 5 sessões em prod do Plexco Tasks + 4 Critical do co
   - B.1 `POST /internal/identities`
   - B.2 `POST /otp/request` e `POST /otp/validate` — error contract
   - B.3 SSO cross-product e resolução de `org_id`
+  - B.4 Regra de identidade (padrão único)
+  - B.5 `POST /internal/whatsapp/check`
 - **Seção C** — Auth service-to-service (per-consumer secrets)
 - **Seção D** — Registro de audience (PR + CODEOWNERS)
 - **Seção E** — Compose secrets e Docker patterns
@@ -121,7 +123,7 @@ HTTP/1.1 422 Unprocessable Entity
 
 **Estabilidade do contract:** V1 **congelado**. Mudanças exigem `/internal/identities/v2` em paralelo + 60d window + announcement via Slack `#auth-service` e email pra tech-leads.
 
-**B.1.v2 — signup required `name + phone + email` (Pilar 1, em janela):** o Padrão Auth Percus v2 (Seção L) torna **`name + phone + email` obrigatórios** no signup. Como é *breaking* sobre o contract V1 congelado acima, entra como endpoint paralelo **`POST /internal/identities/v2`** (os 3 required; ausência → `invalid_payload` com `fields[]`), com o V1 (optional, AND-match) válido por **≥60d** + announcement, e **major bump da lib `percus-auth`** (≥v1.0.0). **Status de rollout:** 🔶 Sprint A — **ainda não em prod**; até o deploy do `/v2`, o contract vigente é o V1 acima.
+**B.1.v2 — signup required `name + phone + email` (Pilar 1, em janela):** o Padrão Auth Percus v2 (Seção L) torna **`name + phone + email` obrigatórios** no signup. Como é *breaking* sobre o contract V1 congelado acima, entra como endpoint paralelo **`POST /internal/identities/v2`** (os 3 required; ausência → `invalid_payload` com `fields[]`), com o V1 (optional, AND-match) válido por **≥60d** + announcement, e **major bump da lib `percus-auth`** (≥v1.0.0). **Status de rollout:** ✅ em prod desde 2026-06-08 (`deploy-1780934677`) — janela de 60d em curso. Projetos novos usam `/v2`; existentes migram na janela.
 
 ---
 
@@ -158,17 +160,16 @@ Content-Type: application/json
 | `/otp/validate` | `otp_wrong` | 422 | `0` | Dígito errado, ainda tem tentativa |
 | `/otp/validate` | `otp_expired` | 422 | `300` | TTL estourou ou nunca existiu |
 | `/otp/validate` | `otp_locked` | 429 | breaker remaining | 5+ erradas — counter persiste no `(destination, audience)` mesmo se novo `/request` chegar |
-| `/otp/request` | `dispatched` | 202 | — | **Sempre 202** mesmo se destination não existe (silent drop anti-enumeration) |
+| `/otp/request` | `dispatched` | 202 | — | **Sempre 202** — envio em background (early-202, desde 2026-06-11). Inclui destino sem conta (anti-enumeração) + cooldown 60s/(audience,canal,destino). Falha de provider **não volta síncrono**. |
 | `/otp/request` | `rate_limited` | 429 | breaker+1s | 5/destination/h ou 20/IP/min |
 | `/otp/request` | `invalid_audience` | 422 | — | Audience desconhecida (E1 strict) |
 | `/otp/request` | `audience_not_allowed` | 403 | — | Audience existe mas chamador não pode usar |
-| `/otp/request` | `whatsapp_circuit_open` | 503 | breaker remaining | Evolution breaker aberto |
-| `/otp/request` | `whatsapp_transient` | 503 | `5` | Evolution timeout/5xx |
-| `/otp/request` | `whatsapp_permanent` | 502 | — | Número inválido — sugira outro canal |
 | `/internal/identities` | `identity_conflict` | 409 | — | Match parcial com divergência |
 | `/auth/magic/consume` | `magic_consumed` | 401 | — | Single-use já usado |
 | `/auth/magic/consume` | `magic_expired` | 401 | — | TTL estourou (24h email / 10min whatsapp) |
 | `/auth/magic/consume` | `magic_context_mismatch` | 401 | — | Device fingerprint divergente (IP/16 ou UA hash) |
+
+> **Removidos (early-202, 2026-06-11):** `whatsapp_circuit_open 503`, `whatsapp_transient 503`, `whatsapp_permanent 502` — não existem mais. `/otp/request` responde `202` imediato em todos os casos de envio; falha de provider não volta síncrona. UX que dependia desses erros deve oferecer canal alternativo **proativamente** ("não recebeu? tente e-mail") em vez de reagir a erro síncrono.
 
 **Status codes V2 (revisados):**
 - `otp_wrong`/`otp_expired` agora **422** (precondição de payload), não 401. 401 fica pra credencial de auth inválida (JWT).
@@ -202,6 +203,49 @@ X-Internal-Auth: <secret>
 ```
 
 Consumer cacheia (TTL 5min) pra não bater por request. Endpoint implementado em Sessão 8 do plano operacional.
+
+---
+
+### B.4 — Regra de identidade (padrão único)
+
+**Decisão canônica (2026-06-12):** `iid` é **atalho**, NUNCA requisito. O token traz `iid` **só quando a identidade já está provisionada** (login é lookup-only — quem provisiona é o signup via `POST /internal/identities[/v2]`).
+
+**Regra dura: NUNCA quebre um user legítimo autenticado por falta de `iid`.** Padrão único vigente:
+
+> **Fallback-pro-`sub` (Tasks-style, recomendado):** quando `iid` ausente no token, resolver por `sub` (`canal:handle` → email/phone); user inexistente local → **401** (não 404). Mais resiliente a drift/race entre signup e login. **Este é o padrão esperado em C2 do `auth-consumer`.**
+
+**Coach = exceção documentada (nominal):** exige `iid`, MAS garante provisionamento de todo user + backfill de legados (invariante `iid` presente). Converte pro fallback quando conveniente; vira defesa em profundidade. **Não é um segundo caminho aberto para novos projetos.**
+
+**Resolver contra a coluna CANÔNICA:** ao buscar user por `iid`, case contra a coluna de identidade canônica do produto (ex.: `tasks_identity_id`), **nunca** contra um id per-org (`user_id`) — senão 404a todo user mesmo COM `iid` válido, mascarado por smoke numa conta onde os dois ids coincidem por coincidência.
+
+---
+
+### B.5 — `POST /internal/whatsapp/check`
+
+**Quando usar:** signup ou alteração de número — pré-flight para orientar o user se o número tem WhatsApp antes do 1º OTP. Com o contrato early-202 (Seção B.2), `/otp/request` não devolve mais erro síncrono de provider; sem esse check, o user descobre que o número não tem WhatsApp só quando não recebe o código.
+
+**Authorization:** `X-Internal-Auth: <consumer secret>` (per-consumer, Seção C). **NUNCA expor publicamente** (oracle de enumeração de números).
+
+**Request/Response:**
+```http
+POST /internal/whatsapp/check HTTP/1.1
+X-Internal-Auth: <internal_key_<consumer>>
+Content-Type: application/json
+
+{ "phone": "+5567933009440" }
+```
+
+```json
+{ "phone": "+5567933009440", "has_whatsapp": true }
+```
+
+| `has_whatsapp` | Significado |
+|---|---|
+| `true` | Número ativo no WhatsApp |
+| `false` | Número não registrado no WhatsApp |
+| `null` | Provider indisponível — **fail-open: NUNCA bloqueie o cadastro por `null`** |
+
+**Rate limit:** 120/h por consumer (não por destino). **Status:** ✅ em prod (`[2-E]`).
 
 ---
 
@@ -546,6 +590,8 @@ Registry completo em [docs/contracts/redirect-reasons.md](docs/contracts/redirec
 | `internal_key` global compartilhado entre todos consumers | Per-consumer secret obrigatório (Seção C). |
 | UUIDv4 como magic-link code | `secrets.token_urlsafe(32)` (128-bit entropy). |
 | Device fingerprint opcional no magic 24h | Mandatory bind a IP/16 + UA hash (Seção G). |
+| `iid` ausente → 404 user legítimo | Fallback-pro-`sub` (B.4): quando `iid` não vem no token, resolver por `sub` (`canal:handle`). User inexistente → **401**, nunca 404. |
+| Resolver user por id per-org (`user_id`) no lookup por `iid` | Case contra a coluna canônica da identidade (ex.: `tasks_identity_id`), nunca um id per-org. Id per-org coincide em alguns casos e mascara o bug. (B.4) |
 
 ---
 
@@ -559,8 +605,8 @@ Registry completo em [docs/contracts/redirect-reasons.md](docs/contracts/redirec
 
 | Pilar | Regra (projetos DEVEM) | Status real (2026-05-30) | Breaking / janela |
 |---|---|---|---|
-| **P1** Magic+OTP combinado | `/otp/request` emite código **e** magic na mesma msg (sem opt-in); signup coleta **`name+phone+email`** | 🔶 Sprint A — magic IP-bind já deployado (`fb7943e`); resto **não em prod** | SIM → `/internal/identities/v2`, ≥60d, major bump `percus-auth` |
-| **P2** Painel vira consumer | Painel descontinua OTP+HS256 próprio, persiste `identity_id`, ativa `internal_key_painel` | ⬜ Sprint B — Painel **ainda roda auth próprio**; bloqueado por script de migração `old_user_id→identity_id` | dual-verifier **3-4 semanas** (Painel) — ver L.2 |
+| **P1** Magic+OTP combinado | `/otp/request` emite código **e** magic na mesma msg (sem opt-in); signup coleta **`name+phone+email`** | 🔶 Sprint A — A2 (combinado early-202) ✅ prod 2026-06-07 (`deploy-1781205331`); `/v2` ✅ prod 2026-06-08 (`deploy-1780934677`); janela 60d em curso; P5 telemetria pendente | SIM → `/internal/identities/v2`, ≥60d, major bump `percus-auth` |
+| **P2** Painel vira consumer | Painel descontinua OTP+HS256 próprio, persiste `identity_id`, ativa `internal_key_painel` | 🔶 Sprint B — B0+B1 ✅ feitos 2026-06-12 (consumer `painel` ativo, backfill 17/17); B2 (login consumer + dual-verifier) em andamento | dual-verifier **3-4 semanas** (Painel) — ver L.2 |
 | **P3** Lib `@percus/auth-ui` | Componentes React versionados; branding data-driven via `getTenantConfig()`; divergir = versão velha no audit | ⬜ Sprint C — lib **não publicada**; `templates/login-ui/` é a referência até lá | n/a (gate visual antes de codar) |
 | **P4** Enforcement 2 camadas | Contract tests CI (owner = time auth-service) + catálogo vivo no Painel (`catalog-info.yaml` + skill `percus-review:catalog-publish`) | ⬜ Sprint D — **não implementado** | smoke E2E cross-product **removido do escopo** |
 | **P5** Telemetria OTel | Counters + latências de magic/otp/signup/identity → SigNoz | ⬜ Sprint A base — **SigNoz não subiu** | n/a |
@@ -568,10 +614,10 @@ Registry completo em [docs/contracts/redirect-reasons.md](docs/contracts/redirec
 **Legenda:** ✅ em prod · 🔶 em rollout/janela · ⬜ planejado.
 
 ### L.1 — Pilar 1: Magic+OTP combinado + signup `name+phone+email`
-`/otp/request` passa a emitir OTP **e** magic-link juntos, na mesma mensagem (sem opt-in — uniformidade > flexibilidade, override do operador sobre o conselho). TTLs por canal **inalterados** (Seção G); muda só que os dois saem juntos. Signup obrigatório coleta `name+phone+email` → contract `/internal/identities/v2` required (ver **B.1.v2**), breaking, ≥60d, major bump `percus-auth`. **Status:** 🔶 Sprint A.
+`/otp/request` emite OTP **e** magic-link juntos, na mesma mensagem (sem opt-in). TTLs por canal **inalterados** (Seção G). Signup obrigatório coleta `name+phone+email` → contract `/internal/identities/v2` (ver **B.1.v2**), breaking, ≥60d, major bump `percus-auth`. **Status:** 🔶 Sprint A — A2 (combinado, early-202) ✅ prod 2026-06-07 (`deploy-1781205331`); `/internal/identities/v2` ✅ prod 2026-06-08 (`deploy-1780934677`); P5 (telemetria) pendente.
 
 ### L.2 — Pilar 2: Painel vira consumer do auth-service
-O Painel Gestão **ainda roda auth próprio** (OTP+HS256 em `execution/api/authOtp/`) — **não migrou**. O alvo: descontinuar o próprio, chamar `/internal/identities`, persistir `identity_id` nos afiliados, ativar o slot `internal_key_painel` (já provisionado). **Dual-verifier 3-4 semanas** (específico do Painel, pelo volume de afiliados — distinto da janela genérica de cutover de 7d do `02_INFRA_E_STACK_PERCUS.md`). **Bloqueador:** script de migração `old_user_id→identity_id` — proposta com 3 abordagens em `auth-service/docs/proposals/2026-05-30-painel-identity-migration.md` (read-only, cross-repo). **Status:** ⬜ Sprint B.
+**Status:** 🔶 Sprint B em andamento. **B0** (consumer `painel` ativo) + **B1** (backfill `affiliates.identity_id` rodado+validado 2026-06-12, 17/17 afiliados) ✅ feitos. Bloqueador original (script de migração `old_user_id→identity_id`) **concluído** (`auth-service/docs/proposals/2026-05-30-painel-identity-migration.md`). Próximo: **B2** = login consumer + dual-verifier 3-4 semanas (específico do Painel pelo volume de afiliados). Alvo final: descontinuar auth próprio (OTP+HS256 em `execution/api/authOtp/`), chamar `/internal/identities`, persistir `identity_id`, ativar `internal_key_painel` (já provisionado).
 
 ### L.3 — Pilar 3: lib `@percus/auth-ui`
 Componentes React versionados (`<LoginForm/>`, `<SignupForm/>`, `<CountrySelector/>`, `<PhoneInput/>`), branding por-tenant data-driven via `getTenantConfig()`. Cada projeto importa; divergir = versão velha aparece no audit do catálogo (P4). Reference canônica = 9 arquivos do Plexco Tasks (cross-repo, read-only). **Gate visual** (claude.ai/design) antes de codar o componente novo. **Status:** ⬜ Sprint C — lib **não publicada**; até lá `templates/login-ui/` é a referência.
@@ -587,8 +633,8 @@ Métricas mínimas (counters + latências): `auth.magic.issued/delivered/consume
 | Sprint | Quando | O quê |
 |---|---|---|
 | **0** | ✅ 2026-05-30 | Deploy `fb7943e` (magic IP-bind → UA-bind) |
-| **A** | Sem 1-2 | P1 (magic+OTP combinado) + P5 (telemetria base) |
-| **B** | Sem 3-6 | P2 (Painel migra) — bloqueado por migration script |
+| **A** | 🔶 em andamento | A2 (combinado early-202) ✅ 2026-06-07; `/v2` ✅ 2026-06-08; P5 (telemetria) pendente |
+| **B** | 🔶 em andamento | B0+B1 ✅ 2026-06-12; B2 (login consumer + dual-verifier) em andamento |
 | **C** | Sem 4-6 (∥ B) | P3 (lib `@percus/auth-ui`) — gate visual antes de codar |
 | **D** | Sem 7-10 | P4 (enforcement 2 camadas) |
 
@@ -653,5 +699,5 @@ R: Auth-service ignora seu payload e grava `origin=plexco-tasks`. `origin_contex
 ---
 
 **Mantenedor:** estúdio Percus, time core. Mudanças via PR no `huboperacional/percus-kit`.
-**Última atualização:** 2026-05-30 (v6.16.0 — Seção L absorve o Padrão Auth Percus v2, 5 pilares, com status de rollout). Baseline Seções A–K: V2 cravado 2026-05-15 pós-conselho rodada 2.
+**Última atualização:** 2026-06-13 (decisões auth 2026-06-12: early-202 B.2, regra de identidade B.4, `/internal/whatsapp/check` B.5, rollout status E4; v6.16.0 — Seção L absorve o Padrão Auth Percus v2). Baseline Seções A–K: V2 cravado 2026-05-15 pós-conselho rodada 2.
 **Histórico:** V1 (`PADRAO_AUTH_CROSS_PROJETO.md`) arquivado em `.archive/` — substituído por este V2.

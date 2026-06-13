@@ -1,0 +1,71 @@
+# Checklist auth-consumer — conformidade de integração de login (consumer-side).
+# Schema idêntico ao security-audit/checklist.yaml; eixos NOMEADOS (runner --label auth-consumer).
+# Runner: scripts/security_audit.py --checklist <este> --label auth-consumer
+#
+# ESCOPO: só os checks de ALTA CONFIANÇA automatáveis por grep. O resto da conformidade
+# (resolução por coluna canônica, contrato iid/fallback, UX early-202, dual-call, storage)
+# é SEMÂNTICO e fica na auditoria guiada C1-C8 do SKILL.md.
+# (Ex.: NÃO checamos "JWT em localStorage" por grep: o consumidor de referência (Tasks) usa
+#  localStorage com chave namespaced legitimamente; é decisão de produto, não FAIL universal.)
+
+# ── IDENTITY: validação local via JWKS (não RTT /me, não chave fixa) ──────────────
+- id: IDENTITY-jwt-jwks-local
+  eixo: IDENTITY
+  desc: "JWT validado localmente via JWKS do auth-service (lib percus-auth), sem RTT em /me"
+  check:
+    type: grep
+    pattern: 'percus[-_]auth|PercusAuth|PercusAuthVerifier|PyJWKClient|jwks_uri|/\.well-known/jwks'
+    paths: ["**/auth/**/*.py", "**/deps*.py", "**/middleware/**/*.py", "**/api/**/*.py", "**/lib/**/*.ts", "**/api/**/*.ts", "**/services/**/*.py"]
+  fail_msg: "Sem validação JWT via JWKS detectada. Risco: validação por RTT em /me (lento, acopla) ou chave local fixa (sem rotation)."
+  fix_hint: "Use a lib percus-auth/@percus/auth (JWKS cacheado) — valida EdDSA localmente. Nunca chame /me pra validar no hot path."
+  severity: high
+
+# ── MAGIC: endpoints inexistentes (stale) ────────────────────────────────────────
+- id: MAGIC-no-stale-endpoints
+  eixo: MAGIC
+  desc: "Não chama endpoints de magic inexistentes no auth-service"
+  check:
+    type: grep
+    pattern: '/auth/magic/request|/auth/magic/verify'
+    paths: ["**/*.py", "**/*.ts", "**/*.tsx", "**/*.js"]
+    expect: absent
+  fail_msg: "Chama /auth/magic/request ou /auth/magic/verify — esses endpoints NÃO existem (login quebra com 404/405)."
+  fix_hint: "Os endpoints reais são /auth/magic/issue + /auth/magic/consume. Login normal nem precisa — o combinado (/otp/request) já manda o magic."
+  severity: high
+
+# ── BRIDGE: consome o token no fragmento (#at=), não na query ─────────────────────
+- id: BRIDGE-fragment-consume
+  eixo: BRIDGE
+  desc: "Rota bridge consome o token via fragment (#at=), nunca query string"
+  check:
+    type: grep
+    pattern: 'location\.hash|#at=|#access_token'
+    paths: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+  fail_msg: "Bridge de consumo do token (#at=) não encontrada. O token chega no FRAGMENTO — sem rota lendo location.hash, a sessão se perde."
+  fix_hint: "Rota fixa (ex.: /open) lê location.hash (at/rt), persiste, history.replaceState pra limpar, e redireciona. Ref: CONSUMIR_AUTH_SERVICE.md §3."
+  severity: medium
+
+# ── EARLY-202: UX stale que depende de erro síncrono de provider ─────────────────
+- id: EARLY202-no-whatsapp-sync-error
+  eixo: EARLY202
+  desc: "Sem tratamento de erro síncrono de WhatsApp no /otp/request (whatsapp_circuit_open/transient/permanent)"
+  check:
+    type: grep
+    pattern: 'whatsapp_circuit_open|whatsapp_transient|whatsapp_permanent'
+    paths: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.py"]
+    expect: absent
+  fail_msg: "UX referencia error_codes whatsapp_* que não existem mais via /otp/request (early-202, 2026-06-11). Esses 502/503 foram removidos."
+  fix_hint: "Remova o mapeamento desses codes. Ofereça canal alternativo PROATIVAMENTE ('não recebeu? tente e-mail') em vez de reagir a erro síncrono de provider."
+  severity: medium
+
+# ── IDENTITY-PROVISIONING: signup chama /internal/identities ─────────────────────
+- id: IDENTITY-internal-provisioning
+  eixo: IDENTITY
+  desc: "Signup provisiona identidade via /internal/identities (não via login)"
+  check:
+    type: grep
+    pattern: '/internal/identities'
+    paths: ["**/*.py", "**/*.ts", "**/*.tsx", "**/*.js"]
+  fail_msg: "Sem chamada a /internal/identities detectada. Login é lookup-only — usuário novo precisa ser provisionado via signup antes do 1º login."
+  fix_hint: "No signup/convite: POST /internal/identities[/v2] com X-Internal-Auth. O /otp/request não cria identidade — só autentica quem já existe."
+  severity: high
