@@ -45,6 +45,18 @@
   fix_hint: "Rota fixa (ex.: /open) lê location.hash (at/rt), persiste, history.replaceState pra limpar, e redireciona. Ref: CONSUMIR_AUTH_SERVICE.md §3."
   severity: medium
 
+# ── BRIDGE: refresh token consumido (sessão durável) ────────────────────────────
+- id: BRIDGE-refresh-token-consumed
+  eixo: BRIDGE
+  desc: "Bridge lê e persiste o refresh token (#rt=) do fragmento, não só o access token"
+  check:
+    type: grep
+    pattern: 'frag\.get\(.rt.\)|\.get\(.rt.\)|refreshToken|refresh_token.*hash|#rt='
+    paths: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+  fail_msg: "Bridge consome só #at= e ignora #rt=. Sem refresh, sessão expira no TTL do access token (~15 min) — gap confirmado Coach 2026-06-16. Ver PADRAO B.6."
+  fix_hint: "No bridge (/open): const rt = frag.get('rt'); persist e chame /otp/refresh antes do at expirar. Serialize (1 request por vez). Ref: CONSUMIR_AUTH_SERVICE.md §3."
+  severity: high
+
 # ── EARLY-202: UX stale que depende de erro síncrono de provider ─────────────────
 - id: EARLY202-no-whatsapp-sync-error
   eixo: EARLY202

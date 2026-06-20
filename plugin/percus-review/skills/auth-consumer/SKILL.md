@@ -114,6 +114,7 @@ Inspecione o repo (frontend + backend) e reporte **PASS/GAP** com `arquivo:linha
   (`/otp/request` + `/auth/magic/issue` em paralelo)?
 - **C8. Estado** — algo quebrado/404 inesperado hoje? Domínios de frontend reais em prod (allowlist
   `origins`)? UX depende de erro síncrono de WhatsApp que não existe mais (early-202)?
+  **Bridge consome `#rt=`?** (não só `#at=`) — sem isso, re-OTP a cada ~15 min (PADRAO B.6).
 
 **Relatório:** `Cn ... PASS/GAP — evidência` + `GAPS A CORRIGIR (prioridade)` + `VEREDITO`.
 
@@ -155,6 +156,10 @@ Wiring canônico (ref: `CONSUMIR_AUTH_SERVICE.md` no canon + `CONSUMER_QUICKSTAR
 - ❌ Magic **per-contexto** (`?task=`/`?invite=`) via combinado/`default_redirect_uri` fixo — emita
   com `/auth/magic/issue` + `redirect_uri` explícito, propagando `X-Forwarded-For`+`User-Agent`.
 - ❌ `POST /internal/whatsapp/check` retornou `null` (provider down) → bloquear cadastro. Fail-open sempre.
+- ❌ **Bridge que lê só `#at=` e ignora `#rt=`** — sem refresh, a sessão dura só o TTL do
+  access token (~15 min) e o usuário refaz OTP. Gap confirmado no Coach (2026-06-16). Leia
+  **ambos** os tokens do fragmento e chame `/otp/refresh` antes do `at` expirar. Serialize.
+  Ver PADRAO B.6 e `CONSUMIR_AUTH_SERVICE.md` §3.
 
 ## Referências
 

@@ -1,8 +1,21 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.16.1`
+**Versão canônica em `huboperacional/percus-kit`:** `6.17.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.17.0 — 2026-06-20
+
+**Propagação auth-service 2026-06-16 — itens faltantes no canon.**
+
+- `PADRAO_AUTH_SERVICE.md` **B.6** — sessão durável: `#rt=` + `/otp/refresh` obrigatórios (consumer-side). Gap confirmado Coach: bridge sem `#rt=` → re-OTP a cada TTL do access token.
+- `PADRAO_AUTH_SERVICE.md` **Seção K** — nova linha anti-padrão: bridge que lê só `#at=` e ignora `#rt=`.
+- `auth-consumer/checklist.yaml` — novo check `BRIDGE-refresh-token-consumed` (high severity).
+- `auth-consumer/SKILL.md` — novo anti-padrão `#rt=` + nota em C8.
+
+_Nota:_ `02_INFRA §2.4.1` (JID/9º dígito) e `PADRAO §2.8` (branded magic abandonado) já foram absorvidos numa atualização anterior de 2026-06-20 — não duplicados aqui.
 
 ---
 

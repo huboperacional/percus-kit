@@ -25,6 +25,7 @@ V2 absorve aprendizados de 5 sessões em prod do Plexco Tasks + 4 Critical do co
   - B.3 SSO cross-product e resolução de `org_id`
   - B.4 Regra de identidade (padrão único)
   - B.5 `POST /internal/whatsapp/check`
+  - B.6 Sessão durável — `#rt=` e `/otp/refresh` obrigatórios (consumer-side)
 - **Seção C** — Auth service-to-service (per-consumer secrets)
 - **Seção D** — Registro de audience (PR + CODEOWNERS)
 - **Seção E** — Compose secrets e Docker patterns
@@ -246,6 +247,32 @@ Content-Type: application/json
 | `null` | Provider indisponível — **fail-open: NUNCA bloqueie o cadastro por `null`** |
 
 **Rate limit:** 120/h por consumer (não por destino). **Status:** ✅ em prod (`[2-E]`).
+
+---
+
+### B.6 — Sessão durável — `#rt=` e `/otp/refresh` obrigatórios (consumer-side)
+
+> **Gap confirmado (2026-06-16, Plexco Coach):** o bridge lia só `#at=` do fragmento e ignorava
+> `#rt=` → usuários precisavam refazer OTP a cada expiração do access token (~15 min).
+
+**Regra:** ao consumir o fragmento `#at=<JWT>&rt=<refresh>` (magic-link OU redirect pós-OTP
+validate), o frontend **DEVE** ler e persistir **ambos**:
+
+- `at` = access token JWT EdDSA (validade 15 min) — Bearer em todas as chamadas API.
+- `rt` = refresh token opaco (validade 30 d, rotation RFC 6749 §10.4) — **obrigatório** para
+  renovar o `at` sem forçar novo OTP. **Sem `#rt=`, sessão dura só o TTL do access token.**
+
+**Refresh canônico:**
+```
+POST /otp/refresh { "refresh_token": rt, "audience": AUDIENCE }
+→ { access_token, refresh_token, expires_in, refresh_expires_in }
+```
+
+Rotation single-use: o `rt` usado é **invalidado**. Serialize no cliente — 2 requests
+concorrentes com o mesmo `rt` invalidam toda a família (anti-theft RFC 6749 §10.4).
+
+**O auth-service sempre inclui `rt` no fragmento** quando há `default_redirect_uri` configurada.
+A responsabilidade de lê-lo é do consumer (bridge frontend). Ver `CONSUMIR_AUTH_SERVICE.md` §3.
 
 ---
 
@@ -592,6 +619,7 @@ Registry completo em [docs/contracts/redirect-reasons.md](docs/contracts/redirec
 | Device fingerprint opcional no magic 24h | Mandatory bind a IP/16 + UA hash (Seção G). |
 | `iid` ausente → 404 user legítimo | Fallback-pro-`sub` (B.4): quando `iid` não vem no token, resolver por `sub` (`canal:handle`). User inexistente → **401**, nunca 404. |
 | Resolver user por id per-org (`user_id`) no lookup por `iid` | Case contra a coluna canônica da identidade (ex.: `tasks_identity_id`), nunca um id per-org. Id per-org coincide em alguns casos e mascara o bug. (B.4) |
+| Bridge frontend que lê só `#at=` e ignora `#rt=` do fragmento | Leia **ambos** — sem `#rt=` a sessão dura só o TTL do access token (~15 min). Serialize o refresh (`POST /otp/refresh`). Ver B.6. |
 
 ---
 
