@@ -1,8 +1,41 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.17.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.18.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.18.0 — 2026-06-20
+
+**Skills/Recipes/Personas por projeto — padrão gmp-cli adaptado (v6.18.0).**
+
+Adoção da arquitetura de conhecimento local de [gmp-cli](https://github.com/lucianfialho/gmp-cli)
+(`skills/` + `recipe-*` + `persona-*`) como padrão para todos os projetos Percus novos e existentes.
+
+- **3 templates novos** em `templates/`:
+  - `project-skill.template.md` — skill de domínio (capacidade específica do projeto)
+  - `project-recipe.template.md` — workflow composto com critério de avanço + abort protocol
+  - `project-persona.template.md` — agente especializado com leitura obrigatória + escaladas
+- **`comandos/SETUP_PROJECT_SKILLS.md`** — comando completo com "cole no chat" + referência
+  detalhada por tipo (skill vs recipe vs persona) + tabela de integração com percus-review.
+- **`comandos/UPGRADE_ADICIONAR_SKILLS.md`** — guia dedicado para projetos existentes
+  (Passo 0 diagnóstico → criação → registro no CLAUDE.md → review → commit).
+- **`comandos/COMANDO_PROJETO_NOVO.md`** — novo passo 2.7 (skills locais) no fluxo greenfield.
+- **`comandos/UPGRADE_PARA_FASE7.md`** — nova seção §8 com skills locais no upgrade de auth.
+- **`comandos/UPGRADE_PARA_FASE6.md`** — forward reference para skills como próximo passo.
+
+**Estrutura alvo em cada projeto:**
+```
+skills/
+├── {domain}/SKILL.md
+├── recipes/recipe-{workflow}/RECIPE.md
+└── personas/persona-{role}/PERSONA.md
+```
+
+Skills locais complementam (nunca duplicam) o plugin `percus-review`:
+plugin cobre cross-projeto (auth-consumer, security-audit, feature-flow);
+skills locais cobrem conhecimento específico do produto (paths, convenções, integrações externas).
 
 ---
 

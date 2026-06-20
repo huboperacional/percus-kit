@@ -197,6 +197,14 @@ Próximos passos:
 - ❌ "Vou colocar GROQ_API_KEY depois" — sem ela, conselho fica 2 membros (degrada pra Fase 5).
 - ❌ Esquecer de bump `_Novo_Projeto` git tag pra `v6.0.0` ao concluir adoção em projetos suficientes.
 
+## Próximo passo após Fase 6
+
+Após estabilizar Fase 6, aplicar (em qualquer ordem, são ortogonais):
+
+- **Fase 7 (auth hardening):** `${env:PERCUS_CANON_DIR}/comandos/UPGRADE_PARA_FASE7.md`
+- **Skills locais (padrão gmp-cli):** `${env:PERCUS_CANON_DIR}/comandos/UPGRADE_ADICIONAR_SKILLS.md`
+  — adiciona `skills/`, `skills/recipes/`, `skills/personas/` com conhecimento local do projeto.
+
 ---
 
 ## Referências

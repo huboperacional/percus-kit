@@ -71,8 +71,35 @@ Se o projeto usa `HANDOFF.md` (R2), adicionar entry:
 - [x] Smoke E2E ok
 ```
 
+### 8. Inicializar skills locais do projeto (v6.18.0+ — padrão gmp-cli)
+
+> **Por que agora:** após a migração de auth estar estabilizada, é o momento certo para
+> codificar o conhecimento acumulado sobre este projeto (paths, convenções, gotchas, workflows
+> compostos) em skills invocáveis pelo agente.
+
+Seguir `${env:PERCUS_CANON_DIR}/comandos/UPGRADE_ADICIONAR_SKILLS.md` (guia dedicado).
+
+Resumo dos artefatos criados:
+
+```
+skills/
+├── {domain}/SKILL.md           ← convenções locais, integrações externas, paths críticos
+├── recipes/recipe-{X}/RECIPE.md ← workflows compostos com critério de avanço + abort
+└── personas/persona-{role}/PERSONA.md ← papéis especializados com escaladas definidas
+```
+
+- [ ] `skills/` criado com ao menos 1 skill + 1 recipe + 1 persona
+- [ ] `CLAUDE.md` atualizado com seção "Skills locais"
+- [ ] `HANDOFF.md` atualizado com entrada de inicialização
+
+**Referência completa:** `D:\Claud Automations\_Novo_Projeto\comandos\SETUP_PROJECT_SKILLS.md`
+
+---
+
 ## Refs
 
-- Spec da v6.8: [_Novo_Projeto/docs/superpowers/specs/2026-05-19-sprint-v6.8-auth-canonization-design.md](../docs/superpowers/specs/2026-05-19-sprint-v6.8-auth-canonization-design.md)
-- Changelog: [_Novo_Projeto/CANON_VERSION.md](../CANON_VERSION.md)
-- Templates: [_Novo_Projeto/templates/login-ui/README.md](../templates/login-ui/README.md)
+- Spec da v6.8: `D:\Claud Automations\_Novo_Projeto\docs\superpowers\specs\2026-05-19-sprint-v6.8-auth-canonization-design.md`
+- Changelog: `D:\Claud Automations\_Novo_Projeto\CANON_VERSION.md`
+- Templates: `D:\Claud Automations\_Novo_Projeto\templates\login-ui\README.md`
+- Skills locais: `D:\Claud Automations\_Novo_Projeto\comandos\SETUP_PROJECT_SKILLS.md`
+- Upgrade skills: `D:\Claud Automations\_Novo_Projeto\comandos\UPGRADE_ADICIONAR_SKILLS.md`

@@ -72,6 +72,15 @@ FLUXO GREENFIELD:
    - Convencao de offsets (frontend +0, backend +1, etc): ver 02_INFRA secao 5.5 ou skill `percus-review:port-allocate`.
    - Se Painel offline: fallback deterministico entra automatico; reconciliar quando voltar.
 
+2.7. Inicializar estrutura de skills, recipes e personas do projeto (padrão gmp-cli):
+   - Ler `${env:PERCUS_CANON_DIR}/comandos/SETUP_PROJECT_SKILLS.md` pra entender a estrutura.
+   - Rodar Passo 0 (diagnóstico): identificar domínios, workflows compostos e papéis de agente.
+   - Criar `skills/`, `skills/recipes/`, `skills/personas/` com ao menos 1 de cada tipo.
+   - Templates em: `${env:PERCUS_CANON_DIR}/templates/project-skill.template.md`, `project-recipe.template.md`, `project-persona.template.md`
+   - Registrar no `CLAUDE.md` do projeto (seção "Skills locais").
+   - Mínimo viável: 1 skill de domínio + 1 recipe (ex: recipe-nova-feature) + 1 persona (ex: persona-feature-implementor).
+   - PULA somente se projeto é trivial (<2 semanas de trabalho) OU ainda não tem domínio técnico definido.
+
 3. Apos templates criados, rodar `${env:PERCUS_CANON_DIR}/comandos/SCOPE_COUNCIL.md` (gate de scope dia 1):
    - 3 etapas: Claude principal solo -> conselho 3-membros pre-mortem paralelo -> sintese humana
    - ~25 min, ~$0.005
