@@ -244,6 +244,61 @@ Auth-service ao mandar OTP olha `auth.audiences.whatsapp_provider` da audience a
 
 **Por que audience-based (não tenant-based):** descoberta operacional durante Fase 3 do auth-service (2026-05-06). Audiences batem 1:1 com produtos Percus (painel, familia, paid-media, plexco-coach, plexco-tasks) — modelo mais alinhado com a realidade do estúdio do que "tenant" genérico. Audience também serve como `aud` claim do JWT.
 
+#### 2.4.1. Entregabilidade BR — resolução do 9º dígito (egress)
+
+**Problema (causa-raiz, provado em prod 2026-06-16):** número BR provisionado **com** o 9 (ex.:
+`+5567991376939`) pode ter o WhatsApp registrado na forma **sem** o 9 (conta antiga de DDD ≤ 28 ou
+número migrado). O envio então **ganha `message_id` mas não tem aparelho destino → some sem erro**.
+O check leniente de existência (GOWA `/user/check`, Evolution `whatsappNumbers.exists`) responde
+`true` pros **dois** formatos → **todas as camadas reportam SUCESSO e nada chega** (falso-positivo
+silencioso). `code:"SUCCESS"`/`message_id` **não** garante entrega.
+
+**Regra canônica:**
+1. **Sinal de entregabilidade = resolução de aparelho**, nunca o check leniente. GOWA: `GET
+   /user/info` → `results.data[].devices` (vazio = não entrega). Evolution: equivalente de
+   resolução de device, não `whatsappNumbers.exists`.
+2. **Toggle do 9º dígito baseado em resolução** (alterna 12↔13 dígitos e re-checa) — **NUNCA strip
+   cego**. A maioria dos números BR PRECISA do 9; o 9 foi prefixado em 2016 → um nº de produção
+   sem-9 hoje é FIXED_LINE, não "móvel sem 9". (Por isso canonização-na-escrita por heurística é
+   inválida — só a resolução real diz a forma entregável.)
+3. **Aprender + persistir** a forma entregável por usuário/contato (coluna durável; `NULL` = não
+   aprendido) e reusar sem re-probar.
+4. Ambas as formas sem device → **falha real** (não reportar "enviado") + cair no canal alternativo.
+5. **Fail-open:** se a resolução cair/der timeout, enviar como-está.
+6. **Escopo: só `+55` (celular BR).** Outros países: enviar como-está.
+
+> **Login/OTP via auth-service central já tem isso embutido** (ingress + egress, device-agnóstico):
+> o consumidor não faz nada. Esta regra é pra quem **envia WhatsApp por conta própria** (bot,
+> notificação, campanha, lembrete) FORA do OTP central.
+
+##### 2.4.1.a — Matriz de device GOWA (qual conta WhatsApp envia)
+
+GOWA Basic Auth é **server-wide** (mesma credencial pra todos); só muda o `device id` (= conta
+remetente).
+
+| Opção | Quando | Prereq de infra |
+|---|---|---|
+| **Reusar `Auth`** (device do auth-service, já pareado) | Notificação / volume baixo; ok sair da mesma conta dos OTPs | **Nenhum** — plug & play. **Default pra começar.** |
+| **Device próprio que o projeto JÁ tem** (envia OTP do próprio número — ex.: Família=`Familia_Milionaria`, Plexco Tasks=`plexco`) | Já existe device pareado | Reusar ESSE, não o `Auth` |
+| **Device dedicado novo** | Branding/volume próprio, conta separada | **Parear QR no painel GOWA ANTES** (ação da infra; o agente não pareia) |
+| **`whatsapp_de_testes`** | Smoke `[5-T]` sem tocar conta de prod | Nenhum (device de teste já existe) |
+
+**Regra:** mande do device que você já tem pareado; `Auth` é o default só pra quem ainda não tem.
+Quem usa **Evolution** (não GOWA) usa a própria instância — esta matriz de device não se aplica.
+
+##### 2.4.1.b — Escopo da resolução (por nº de destinatários)
+
+| Caso | O que fazer no 9º dígito | Por quê |
+|---|---|---|
+| **Um número fixo controlado** (ex.: notificar o WhatsApp do gestor) | **Envio simples fail-open:** descobrir a forma entregável **uma vez**, gravar no config/env, enviar. Sem probe+toggle por envio. | O número não muda; 1-2 calls extras por envio não se justificam |
+| **Muitos números arbitrários** (campanha, bot de leads, lembretes pra usuários variados) | **Resolução canônica completa** (passos 1-6 acima) | Você não controla cada número; cada um pode estar numa variante diferente |
+
+Robustez é escolha: dá pra usar a canônica até no número fixo (pesa só 1-2 calls extras num número
+que quase nunca muda).
+
+**Origem:** fix central do auth-service (deploys 2026-06-16; ingress + egress + costura 9-variant
+`[5-T]` provado E2E em prod). Spec portável (Parte 4): `auth-service/docs/superpowers/specs/2026-06-16-whatsapp-jid-resolution-design.md`.
+
 ### 2.5. Anti-bot WhatsApp (defesa em profundidade, ambos backends)
 
 Necessário em ambos:
@@ -295,6 +350,13 @@ POST /auth/magic/consume { code }
 ```
 
 Projetos consomem (não reimplementam). Surface crítico de bugs (replay, TTL bypass, single-use race) tem **uma** implementação.
+
+**Decisão registrada (anti-reproposta) — magic-link "branded" ABANDONADO:** o magic-link fica
+sempre no domínio do auth-service (`auth.huboperacional.com.br`), **não** num domínio por projeto.
+A ideia de uma página `/l` de forward por projeto (pra "embelezar" o link) foi reprovada:
+fragilidade em in-app browser do WhatsApp, que quebra o repasse do fragmento `#at=`/`#rt=`. Se algum
+dia reabrir, a única forma aceita é **subdomínio → auth** (CNAME + cert apontando pro auth-service),
+**nunca** página de forward por projeto. Racional completo: `auth-service/docs/superpowers/specs/2026-06-16-branded-magic-link-design.md`.
 
 ### 2.9. Observabilidade (R14 aplicado a auth)
 
@@ -984,6 +1046,7 @@ await fetch(PU + '/api/endpoints/1/docker/services/' + svc.ID + '/update?version
 - Mudanças aqui afetam **todos os projetos futuros**. Discutir com o time antes de mexer.
 - Cada decisão nova (ou reversão) precisa de **data + justificativa** no commit.
 - Histórico:
+  - **2026-06-20** — Absorção do padrão **9-variant / entregabilidade BR** (frente do auth-service deployada 2026-06-16, `[5-T]` E2E provado). Nova subseção **2.4.1** (resolução do 9º dígito no egress: sinal = resolução de aparelho `/user/info devices`, nunca check leniente; toggle baseado em resolução, nunca strip cego; aprender+persistir; fail-open; escopo `+55`) + **2.4.1.a** matriz de device GOWA (default = reusar `Auth`; quem tem device próprio reusa ESSE; dedicado novo exige QR; Evolution usa instância própria) + **2.4.1.b** escopo por nº de destinatários (1 fixo → envio simples fail-open; muitos arbitrários → resolução canônica). **2.8** ganha decisão anti-reproposta: magic-link "branded" ABANDONADO (fica no domínio do auth; página `/l` por projeto reprovada por in-app browser do WhatsApp). `#rt=` obrigatório já estava coberto no `CONSUMIR_AUTH_SERVICE.md` (não duplicado); este ganhou o pré-check de conformidade C1–C8 (Item 0) no checklist + referência.
   - **2026-05-06** — Aprendizados Fase 1-3 do auth-service em produção (`https://auth.huboperacional.com.br`, 124/124 testes verde + smoke E2E real). Atualizações: (a) Seção 2.4 reescrita — `tenants.whatsapp_provider` virou `auth.audiences` per-audience override (modelo alinhado com produtos Percus); (b) novas subseções 2.13 (`/dist/` mount self-hosted pra libs cliente), 2.14 (webhooks stub-first), 2.15 (CORS env-driven), 2.16 (outbound HTTP resilience pre-bake — Fase 3.5 pattern); (c) 5 gotchas operacionais novos na Seção 14 (Dockerfile `--no-build-isolation`, `_REPO_ROOT` fallback, senha Redis env-sync, `AuthlibDeprecationWarning`, wrapper `pwsh` fallback). R7 ganha 3 cláusulas (auth gate `sub == subject`, lazy upsert identity em `/me`, lib self-hosted via `/dist/`). R14 ganha bullet 6 (webhooks como insumo de audit). R15 ganha bullet 5 (bcrypt(10) + `FOR UPDATE` lock). Wrapper `scripts/percus-review-auto.ps1` corrigido com fallback `pwsh → powershell.exe`. Template `MIGRATION_KIT_AUTH.template.md` criado. Issue tracker: `huboperacional/percus-kit#1`.
   - **2026-05-05** — Reescrita da Seção 2 (Auth) pra refletir auth-service Percus centralizado: 3 estados de adoção (Final/Transição/Legado), JWT EdDSA + JWKS, refresh opaco com family invalidation, modelo Identity → Org → Product, adapter WhatsApp Evolution+Cloud API per-tenant, anti-bot 9 componentes, magic-link como primitiva centralizada (R17), tracking separado (R18), SSO multi-domínio (R16), observabilidade obrigatória (R14), rate limit canon (R15). Princípio 3 ganha exceção formal pra infra-tier (auth-service pode fugir do FastAPI). Princípio 5 atualizado pra "auth centralizado, validação local".
   - **2026-04-25** — Fusão de `INICIO_2_STACK_PADRAO_PERCUS.md` + `INICIO_3_RUNBOOK_VPS.md` em arquivo único. Eliminada redundância. Estrutura agora é decisão + como executar + vetado por seção.

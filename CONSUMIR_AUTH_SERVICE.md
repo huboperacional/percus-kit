@@ -220,6 +220,10 @@ location.replace(redirectPath || '/dashboard')
 
 ## 5. Checklist de integração
 
+- [ ] **Conformidade C1–C8 auto-auditada** (consumo canônico: login/OTP via central — NÃO auth
+      próprio; JWT validado local via JWKS; identidade resolvida tolerante, não match exato). Item 0:
+      **não-conforme = melhorias server-side centrais NÃO chegam automáticas** (ex.: resolução do 9º
+      dígito, ingress 9-variant). Já vimos projeto com auth paralelo que ficou de fora — não assuma.
 - [ ] Audience registrada (`display_name` + `default_redirect_uri` + `origins`).
 - [ ] Per-consumer `X-Internal-Auth` secret provisionado.
 - [ ] Backend: `/otp/request` (login) + `/otp/validate` (verify) + `percus-auth` JWT local.
@@ -239,7 +243,10 @@ location.replace(redirectPath || '/dashboard')
 - **Consumer de referência (em produção):** `Plexco Tasks` — `backend/app/services/auth_service_client.py`, `backend/app/api/deps.py`, `frontend/src/app/open/`, `frontend/src/lib/auth.ts`.
 - **Migração de projeto com auth legado:** `comandos/MIGRAR_AUTH.md` (V5 = path atual).
 - **Auditoria de integração existente:** skill `percus-review:auth-consumer`.
+- **Pré-check de conformidade (C1–C8, Item 0):** `auth-service/docs/padrao-login-percus-conformidade.md` — rode antes de assumir que melhorias server-side chegam automáticas.
 
 ---
 
 _Criado em 2026-06-13 (decisões auth 2026-06-12: E0 doc novo restrito, derivado do CONSUMER_QUICKSTART.md). Fonte cross-repo verificada in-repo em 2026-06-12._
+
+_Atualizado 2026-06-20: pré-check de conformidade C1–C8 (Item 0) no checklist + referência — não-conforme não recebe melhorias server-side automáticas (origem: padrão 9-variant, ver `02_INFRA` 2.4.1)._
