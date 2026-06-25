@@ -30,8 +30,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$MODE" in
-    consult|review|pre-mortem) ;;
-    *) echo "[cross-claude-provider] Mode invalido: '$MODE'. Use: consult|review|pre-mortem" >&2; exit 1;;
+    consult|review|pre-mortem|analyze) ;;
+    *) echo "[cross-claude-provider] Mode invalido: '$MODE'. Use: consult|review|pre-mortem|analyze" >&2; exit 1;;
 esac
 
 # Load .env (best-effort)

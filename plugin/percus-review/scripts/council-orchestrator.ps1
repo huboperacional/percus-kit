@@ -51,7 +51,7 @@ param(
     [string]$SystemPrompt,
     [string]$Providers = "deepseek,groq-llama",
     [string]$CrossClaudeFile,
-    [ValidateSet("consult","pre-mortem","review")]
+    [ValidateSet("consult","pre-mortem","review","analyze")]
     [string]$Mode = "consult"
     ,[int]$MaxInputTokens = 8000
     ,[string]$DeepSeekModel = "deepseek-chat"
@@ -281,6 +281,7 @@ if (-not $SystemPrompt) {
         "consult"    { "Voce e consultor cross-provider Percus. Responda em <=150 palavras: 1) sua escolha/posicao, 2) razao principal, 3) maior risco da alternativa. Sem floreio." }
         "pre-mortem" { "Voce e consultor de pre-mortem Percus. Leia o plano e responda: SE este plano falhar em 30 dias, por que? Liste exatamente 3 motivos concretos em ordem de probabilidade decrescente, com 1 frase cada." }
         "review"     { "Voce e revisor cross-provider Percus (R11). Aponte bugs, regressoes, violacoes R1-R19, mocks escondidos, JWT em localStorage, imports vetados. Se nada relevante: 'Sem findings criticos'." }
+        "analyze"    { "Voce e um dos 3 membros do conselho Percus fazendo ANALYZE de uma spec de feature (estilo /analyze do spec-kit): detecte defeitos da spec, nao opine sobre merito. Passes: (1) todo FR testavel e todo SC mensuravel? (2) termo vago/ambiguo? (3) terminologia consistente? (4) edge case sem FR? (5) viola constituicao R1-R23 ou 02_INFRA (CRITICAL)? (6) assumption/dependencia nao declarada? (7) vazamento WHAT->HOW (stack/tabela/endpoint na spec = MEDIUM). Output: 1 linha por finding no formato 'SEVERIDADE ref - defeito concreto - correcao em 1 frase'; severidade CRITICAL|HIGH|MEDIUM|LOW. Termine com 'VEREDITO: PRONTA' (zero critical/high), 'VEREDITO: AJUSTAR (N high)' ou 'VEREDITO: BLOQUEADA (N critical)'. Sem floreio." }
     }
 }
 
@@ -298,6 +299,7 @@ if (-not $CrossClaudeModel) {
         "consult"    { "claude-haiku-4-5" }
         "review"     { "claude-sonnet-4-6" }
         "pre-mortem" { "claude-opus-4-7" }
+        "analyze"    { "claude-sonnet-4-6" }
         default      { "claude-sonnet-4-6" }
     }
 }

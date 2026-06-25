@@ -2,7 +2,7 @@
 tipo: checklist-imperativo
 quando-usar: ao iniciar implementação de qualquer feature nova (não bug fix isolado)
 leitura: 2 min
-ultima-atualizacao: 2026-04-25
+ultima-atualizacao: 2026-06-25
 ---
 
 # CHECKLIST — Feature Nova
@@ -42,9 +42,21 @@ Obrigatório se a feature:
 
 Plano escrito ≠ plano mental. Reduz drift no meio da execução.
 
+### 3.5 Gate [S] — spec + analyze antes do `[0]` (feature não-trivial, v6.19.0)
+
+Feature **não-trivial** (toca schema + endpoint + UI, ou pasta sensível) passa por spec antes de virar `[0]`:
+
+1. Escreva `spec.md` do template `${env:PERCUS_CANON_DIR}/templates/spec.template.md` (WHAT/WHY, tech-agnóstico).
+2. Auto-valide com `templates/spec-checklist.template.md`.
+3. `/clarify` — ≤5 perguntas de alto impacto via AskUserQuestion.
+4. `/percus-review:spec-analyze <spec.md>` (conselho Modo 5; 2 providers default, 3 se sensível/`--deep`).
+5. **VEREDITO PRONTA** → cole na §8 da spec, segue pro passo 4. **BLOQUEADA** → corrige e re-roda.
+
+**Feature trivial** pula este gate: declare mini-spec de 3 linhas no PLANO (o quê / por quê / critério de pronto).
+
 ### 4. Adicionar ao `docs/PLANO.md`
 
-Adicione a feature na frente correta, status `[0]`. Marcação visual:
+Adicione a feature na frente correta, status `[0]` (precedido por `[S]` se passou pelo gate 3.5). Marcação visual:
 - `🎨` se tem mockup aprovado
 - `🎨?` se feature visual sem mockup ainda (não pode sair de `[0]` — bloqueio R10)
 - (sem ícone) se backend-only

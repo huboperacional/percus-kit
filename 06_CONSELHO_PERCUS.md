@@ -4,13 +4,13 @@ prevalece-sobre: comandos/SETUP_REVIEW_ROUTING (Fase 6 supersede)
 prevalecido-por: [01_REGRAS_INEGOCIAVEIS, CLAUDE.md do projeto]
 quando-usar: ao configurar review/consult/pre-mortem/brainstorm com perspectivas múltiplas
 leitura: 7 min
-ultima-atualizacao: 2026-05-15
+ultima-atualizacao: 2026-06-25
 fase-introducao: Fase 6
 ---
 
 # 06 — Conselho Percus (DeepSeek + Cross-Claude + Llama)
 
-> **O que é:** sistema de 3 modelos consultivos operando em 4 modos. Substitui o esquema Fase 5 (2 modelos, 1 modo).
+> **O que é:** sistema de 3 modelos consultivos operando em 5 modos. Substitui o esquema Fase 5 (2 modelos, 1 modo).
 >
 > **Não é mágica:** o conselho não decide negócio nem stack. Ele revisa, opina, sintetiza, sinaliza divergência. Decisões finais são do operador.
 
@@ -30,7 +30,7 @@ fase-introducao: Fase 6
 
 ---
 
-## 4 modos operacionais
+## 5 modos operacionais
 
 ### Modo 1 — Review cross-provider (pre-commit + marco)
 
@@ -127,6 +127,50 @@ Duas otimizações isoladas exploram latência (~3×) e custo (~10×) do Groq-Ll
 **Descartados (consenso 2/2 do conselho):** Vetor A (brainstorm via Llama — Sonnet é melhor pra criatividade) e Vetor C (geração de código via Llama — DeepSeek é mais preciso na sintaxe).
 
 Diferença pra Modo 2: Modo 2 reduz perguntas (consenso → não pergunta); Modo 4 enriquece perguntas (sempre pergunta, mas com 3 perspectivas anexadas).
+
+### Modo 5 — Spec Analyze (validação de spec, pré-`[0]`)
+
+**Quando:** depois de escrever a `spec.md` de uma feature **não-trivial** (template `templates/spec.template.md`)
+e antes dela virar `[0]` no `PLANO.md`. Preenche o gap entre "escopo do projeto" (SCOPE_COUNCIL, dia 1)
+e "review do código" (Modo 1, pré-commit) — onde antes cada feature entrava em implementação sem o
+conselho olhar a spec dela.
+
+**Quem aciona:** comando `/percus-review:spec-analyze <spec.md>` (gate `[S]` do `feature-flow`).
+
+**Como funciona:** o conselho roda em **modo analyze** — não opina sobre mérito, faz **detecção
+estruturada** (estilo `/analyze` do spec-kit): FR testável? SC mensurável? ambiguidade? terminologia
+consistente? edge case sem FR? **violação de constituição R1-R23/02_INFRA (CRITICAL)?** vazamento
+WHAT→HOW? Saída = findings com severidade + `VEREDITO: PRONTA | AJUSTAR | BLOQUEADA`.
+
+- **Custo proporcional:** 2 providers default (`deepseek,groq-llama`, ~$0.002); 3 (+cross-claude) só em
+  domínio sensível (auth/pagamento/identidade/migrations) ou `--deep`.
+- **Guardrail (R20):** findings CRITICAL passam pelo fact-check F3 antes de bloquear — o conselho não
+  ratifica alegação não-verificada (anti-padrão Plexco Tasks 2026-05-18).
+- **BLOQUEADA** → corrige a spec e re-roda; **PRONTA** → cola na §8 da spec e marca `[0]`.
+
+Diferença pro Modo 1: Modo 1 revisa **diff de código** (pré-commit); Modo 5 revisa **spec** (pré-`[0]`,
+antes de existir código).
+
+---
+
+## Mapeamento spec-kit ↔ Percus (adoção seletiva)
+
+O método **Spec-Driven Development** do [spec-kit](https://github.com/github/spec-kit) tem 7 fases. O
+canon adota **seletivamente** o front-end (specify/clarify/analyze) e mantém o back-end próprio
+(`[0]→[5-T]`), que é mais granular que o `implement` deles:
+
+| spec-kit | Percus (equivalente) | Status |
+|---|---|---|
+| `/constitution` | `01_REGRAS_INEGOCIAVEIS` + `02_INFRA_E_STACK_PERCUS` | Já temos (mais forte) |
+| `/specify` | `templates/spec.template.md` (gate `[S]`) | **Novo (v6.19.0)** |
+| `/clarify` | `/clarify` ≤5 perguntas via AskUserQuestion no `feature-flow` | **Novo (v6.19.0)** |
+| `/analyze` | Conselho Modo 5 (`/percus-review:spec-analyze`) | **Novo (v6.19.0)** |
+| `/plan` | `docs/PLANO.md` (o COMO; stack vive aqui, não na spec) | Já temos |
+| `/tasks` | Quebra em features/frentes no PLANO | Já temos |
+| `/implement` | Pipeline `[0]→[1-S]→[2-E]→[3-H]→[4-C]→[5-T]` | Já temos (mais granular) |
+| `/analyze` (pós-impl) | Review Modo 1 (R11) + `state-drift-check` | Já temos |
+
+**Não adotamos:** a estrutura `.specify/` nem os 7 comandos como CLI. Só o que preenche gap real.
 
 ---
 

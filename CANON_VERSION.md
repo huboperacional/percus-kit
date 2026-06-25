@@ -1,8 +1,37 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.18.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.19.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.19.0 — 2026-06-25
+
+**Spec-driven front-end + base de conhecimento + checkpoint de contexto.**
+
+Três frentes ortogonais, validadas por pre-mortem do conselho (3 riscos de consenso mitigados antes de implementar). Adoção **seletiva** do spec-kit (github/spec-kit): aparafusa o front-end (spec+clarify+analyze) no back-end `[0]→[5-T]` existente, sem adotar as 7 fases nem a estrutura `.specify/`.
+
+**Workstream A — Spec front-end + conselho Modo 5 (analyze):**
+- `templates/spec.template.md` — spec por feature, WHAT/WHY tech-agnóstico (User Scenarios P1/P2/P3, FR-###, SC-###, edge cases, ≤3 NEEDS-CLARIFICATION).
+- `templates/spec-checklist.template.md` — auto-validação de qualidade da spec.
+- `providers/system-prompt-analyze.md` — detecção estruturada (cobertura FR/SC, ambiguidade, violação constituição, terminology drift, vazamento WHAT→HOW) com veredito PRONTA/AJUSTAR/BLOQUEADA.
+- `commands/spec-analyze.md` — `/percus-review:spec-analyze`; 2 providers default, 3 se sensível/`--deep`; CRITICAL passa por fact-check F3 (R20).
+- `council-orchestrator.{ps1,sh}` + `cross-claude.{ps1,sh}` — novo `-Mode analyze`.
+- `feature-flow/SKILL.md` + `CHECKLIST_FEATURE_NOVA.md` — gate `[S]` **proporcional** (só feature não-trivial; trivial usa mini-spec) antes do `[0]`.
+- `06_CONSELHO_PERCUS.md` — Modo 5 documentado + tabela de mapeamento spec-kit↔Percus (5 modos agora).
+
+**Workstream B — Base de conhecimento cross-projeto:**
+- `conhecimento/COMO_FAZER.md` (procedimentos-base) + `conhecimento/COMO_RESOLVER.md` (problema→solução, busca por classe de sintoma via `tags:`, semeado com incidentes conhecidos).
+- `skills/consult-knowledge/SKILL.md` — lookup **semântico** (lê o arquivo + casa por classe, não grep literal).
+- `01_REGRAS_INEGOCIAVEIS.md` **R23** — consultar antes de resolver, registrar depois. Ligado a `CHECKLIST_ENCERRAR_SESSAO.md` (passo 3.5) e ao `/checkpoint`.
+
+**Workstream C — Checkpoint de contexto:**
+- `skills/checkpoint/SKILL.md` (PRIMÁRIO) — sincroniza PLANO+HANDOFF+mock-audit, commita com review, emite prompt de retomada.
+- `templates/RESUME_PROMPT.template.md`.
+- `hooks/pre-compact-checkpoint.{ps1,sh,cmd}` — hook `PreCompact` backstop (contrato confirmado na doc oficial); loga fail-loud + `systemMessage`, não bloqueia. Registrado em `hooks.json`.
+
+**Pre-mortem (riscos de consenso DeepSeek+Cross-Claude, mitigados):** (1) PreCompact falha silenciosa → `/checkpoint` primário + log fail-loud + contrato confirmado; (2) gate `[S]` vira drift → proporcional + custo escalonado; (3) COMO_RESOLVER grep falso-negativo → lookup semântico por classe.
 
 ---
 

@@ -44,7 +44,7 @@ param(
     [int]$MaxTokens = 1024,
     [string]$Model = "claude-sonnet-4-6",
     [string]$Endpoint = "https://api.anthropic.com/v1/messages",
-    [ValidateSet("consult","review","pre-mortem")]
+    [ValidateSet("consult","review","pre-mortem","analyze")]
     [string]$Mode = "consult"
 )
 $ErrorActionPreference = "Stop"

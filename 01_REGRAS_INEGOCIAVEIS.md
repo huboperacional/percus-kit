@@ -763,6 +763,37 @@ Convenção é **sugestão**, não trava: projetos full-stack (FastAPI + Next) p
 
 ---
 
+## R23. Base de conhecimento — consultar antes de resolver, registrar depois (v6.19.0)
+
+**Regra:** antes de gastar tempo debugando um problema que **parece conhecido**, consulte
+`conhecimento/COMO_RESOLVER.md` (via skill `percus-review:consult-knowledge`). Se houver entrada que
+case com a **classe** do sintoma, tente a solução de lá **primeiro**. Depois de resolver um problema
+**novo** (não trivial, que custou tempo), **registre** uma entrada nova em `COMO_RESOLVER.md`. Padrões
+de procedimento recorrentes vão pra `conhecimento/COMO_FAZER.md`.
+
+**Forbidden:**
+- Reabrir do zero um problema já catalogado em `COMO_RESOLVER.md` sem ter consultado (retrabalho).
+- Resolver um incidente não-trivial e **encerrar a sessão sem registrar** a solução (conhecimento se perde, próximo projeto redescobre).
+- Inventar procedimento de infra (deploy, VPS) divergente do `COMO_FAZER.md` sem atualizar o doc.
+
+**Why:** o conhecimento de incidente ficava espalhado em ADRs + memory isolado por projeto — cada
+projeto redescobria os mesmos bugs (prompt stale do council, hooks `.ps1` não-ASCII, etc.). Base única
+versionada no git, consultável por **classe de sintoma** (lookup semântico, não grep literal — sintomas
+variam em wording/stack/locale), sincroniza pra todas as máquinas via `git pull`.
+
+**Gate de verificação:**
+1. `conhecimento/COMO_RESOLVER.md` e `conhecimento/COMO_FAZER.md` existem no canon (sincronizados via git).
+2. Ao bater num erro conhecido, há evidência de consulta antes do debug (a skill loga / o agente declara).
+3. `CHECKLIST_ENCERRAR_SESSAO.md` tem o passo "problema novo resolvido foi pra COMO_RESOLVER?"; o
+   `/checkpoint` reforça (a captura não depende de memória — fica num gate que já roda).
+
+**Refs:**
+- Skill: `percus-review:consult-knowledge` (`plugin/percus-review/skills/consult-knowledge/SKILL.md`)
+- Base: `conhecimento/COMO_RESOLVER.md`, `conhecimento/COMO_FAZER.md`
+- Gate: `checklists/CHECKLIST_ENCERRAR_SESSAO.md`, skill `percus-review:checkpoint`
+
+---
+
 ## Resumo dos anti-padrões mais comuns
 
 1. ❌ Marcar `[5-T]` sem rodar ciclo CRUD
@@ -795,3 +826,5 @@ Convenção é **sugestão**, não trava: projetos full-stack (FastAPI + Next) p
 28. ❌ Catch genérico `except IntegrityError` como "race-resolved" sem distinguir UNIQUE viol vs FK viol (R21) — silencia bug por dias
 29. ❌ Hardcode de porta literal em `vite.config`/`next.config`/`docker-compose` depois de alocar `port_base` (R22) — gera colisão silenciosa quando outro projeto pegar a mesma porta
 30. ❌ Rodar projeto Percus sem ter alocado `PERCUS_PORT_BASE` via skill `port-allocate` (R22) — primeira vez que dois projetos rodam juntos, conflito de porta
+31. ❌ Debugar do zero um problema já catalogado em `COMO_RESOLVER.md` sem consultar antes (R23) — retrabalho evitável
+32. ❌ Resolver incidente não-trivial e encerrar sessão sem registrar a solução em `COMO_RESOLVER.md` (R23) — conhecimento se perde, próximo projeto redescobre

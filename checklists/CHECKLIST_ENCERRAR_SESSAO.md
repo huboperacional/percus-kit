@@ -2,7 +2,7 @@
 tipo: checklist-imperativo
 quando-usar: SEMPRE ao encerrar qualquer sessão (mesmo curta, mesmo parcial)
 leitura: 1 min
-ultima-atualizacao: 2026-04-25
+ultima-atualizacao: 2026-06-25
 ---
 
 # CHECKLIST — Encerrar Sessão
@@ -38,6 +38,15 @@ Para cada tela tocada:
 - Tela virou ✅ real? Mova de ⚠️/❌ para ✅
 - Tela continua mock mas você adicionou banner MODO DEMO? Anote.
 - Tela nova foi criada como ❌ só UI? Adicione com esforço estimado.
+
+## Passo 3.5 — Capturar conhecimento novo (R23)
+
+Resolveu algum problema **não-trivial** nesta sessão (custou tempo, root cause não-óbvio)?
+- ✅ Adicione uma entrada em `${env:PERCUS_CANON_DIR}/conhecimento/COMO_RESOLVER.md` (sintoma · contexto ·
+  causa raiz · solução · ref + linha `tags:`). Próximo projeto não redescobre.
+- ✅ Estabeleceu/ajustou um procedimento-base recorrente (deploy, git, migration)? Atualize
+  `conhecimento/COMO_FAZER.md`.
+- Nada não-trivial resolvido? Pule (declare "sem conhecimento novo a registrar").
 
 ## Passo 4 — Mensagem de gate para si mesmo
 

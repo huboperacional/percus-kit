@@ -30,8 +30,27 @@ Invoque `superpowers:writing-plans`. Output: `docs/plans/<topic>.md` com tasks n
 ### 4. TDD pra endpoint novo (R9)
 Invoque `superpowers:test-driven-development`. Vitest/pytest antes do código.
 
+### 4.5 Gate [S] — spec + analyze ANTES de [0] (v6.19.0, proporcional)
+
+Feature **não-trivial** (toca schema + endpoint + UI, ou pasta sensível) passa por um gate de spec
+antes de virar `[0]`:
+
+1. Escreva a `spec.md` da feature do template `${env:PERCUS_CANON_DIR}/templates/spec.template.md`
+   (WHAT/WHY tech-agnóstico — stack fica no PLANO, não na spec).
+2. Auto-valide com `${env:PERCUS_CANON_DIR}/templates/spec-checklist.template.md`.
+3. `/clarify` — resolva ambiguidades com **≤5 perguntas** de alto impacto via AskUserQuestion.
+4. `/percus-review:spec-analyze <spec.md>` — conselho Modo 5 (detecção estruturada). Default 2
+   providers; 3 se pasta sensível ou `--deep`. CRITICAL passa por fact-check F3.
+5. **VEREDITO PRONTA** → cole na §8 da spec e marque a feature `[0]`. **BLOQUEADA** → corrija e re-rode.
+
+**Feature trivial** (cópia, 1 campo, fix isolado) **pula o gate**: declare uma **mini-spec de 3 linhas**
+no `PLANO.md` (o quê / por quê / critério de pronto) e siga direto pro `[0]`. Mesmo critério de "pula se
+trivial" do SCOPE_COUNCIL — o gate vale quando dispara, não vira cerimônia.
+
+Ref: `06_CONSELHO_PERCUS.md` Modo 5 + mapeamento spec-kit↔Percus.
+
 ### 5. Pipeline R2: [0]→[1-S]→[2-E]→[3-H]→[4-C]→[5-T]
-Avança SÓ com verificação. Não arredondar.
+Avança SÓ com verificação. Não arredondar. (`[S]` do passo 4.5 precede `[0]` em feature não-trivial.)
 
 ### 6. Review pre-commit (R11) — IMPORTANTE
 **Auto-trigger via wrapper kit-level (v5.1.0+):** antes de cada `git commit` que você for executar via Bash tool, rode:
