@@ -3,8 +3,8 @@ tipo: comando-pronto-para-colar
 quando-usar: começar projeto Percus greenfield do zero
 nao-toca-codigo: true
 leitura: 1 min · execução típica: 30-45 min
-ultima-atualizacao: 2026-05-18
-fase-destino: 7 (v6.7.0+ — versão atual em CANON_VERSION.md)
+ultima-atualizacao: 2026-06-25
+fase-destino: 7+ (versão canônica atual em CANON_VERSION.md)
 ---
 
 # Comando — Começar Projeto Novo Percus (greenfield)

@@ -3,6 +3,7 @@ tipo: runbook de setup
 audiência: operador (Rodrigo) configurando projeto Percus novo ou padronizando projeto existente
 quando-usar: ao criar projeto novo, ao migrar projeto legado pra padrão Percus, ao detectar drift no `.claude/settings.json` de algum projeto
 leitura: 3 min
+ultima-atualizacao: 2026-06-25
 ---
 
 # SETUP — `.claude/settings.json` canônico Percus

@@ -794,6 +794,43 @@ variam em wording/stack/locale), sincroniza pra todas as máquinas via `git pull
 
 ---
 
+## R24. Cadência de deploy — milestone / fim do dia / sob demanda, NÃO a cada processo (v6.20.0)
+
+**Regra:** o deploy **não** é feito ao fim de cada feature/processo. O **padrão** é deployar em um de
+três gatilhos:
+1. **Fim de um milestone** (fase/épico fechado e aprovado no `milestone-review`).
+2. **Fim do dia de trabalho** (consolidar o que avançou e está `[5-T]`).
+3. **Sob solicitação direta do operador** ("deploya agora").
+
+Durante o dia, o trabalho fica em commits locais + ambiente de dev; a produção só recebe nos gatilhos
+acima. Deploy continua sujeito ao **R5** (confirmação antes de operação irreversível) e a um **smoke
+test pós-deploy** + **rollback pronto** (ver `comandos/DEPLOY.md`).
+
+**Forbidden:**
+- Deployar automaticamente ao fim de **cada** feature/commit (desperdiça tempo e recursos — foi a dor
+  que originou esta regra).
+- Deployar código que não está `[5-T]` (ciclo CRUD testado) sem o operador autorizar o risco em voz alta.
+- Deployar sem smoke test pós-deploy (`curl -I` + `docker service logs`) nem plano de rollback.
+- Acumular dias de mudança sem deployar **e** sem registrar no HANDOFF o que está pendente de produção.
+
+**Why:** deploy a cada processo consome tempo (build + push + rollout + smoke a cada micro-mudança) e
+recursos (CI/Actions, banda, janelas de risco repetidas). Agrupar por milestone/EOD reduz o overhead e
+concentra o risco numa janela controlada com smoke + rollback. Sob demanda continua disponível pra
+hotfix.
+
+**Gate de verificação:**
+1. Deploy aconteceu num dos 3 gatilhos (não per-feature) — rastreável no HANDOFF/commits.
+2. Smoke test pós-deploy registrado; rollback documentado e testável (`docker service rollback`).
+3. `comandos/DEPLOY.md` é o playbook canônico (quando + como + smoke + rollback).
+
+**Refs:**
+- Playbook: `comandos/DEPLOY.md`
+- Infra/como: `02_INFRA_E_STACK_PERCUS.md` §6 (VPS), §7 (acesso), §8 (Traefik), §9-10 (deploy/update via Portainer)
+- Procedimento: `conhecimento/COMO_FAZER.md#deploy-vps`
+- Confirmação irreversível: R5 · Marco: R11 (`milestone-review`)
+
+---
+
 ## Resumo dos anti-padrões mais comuns
 
 1. ❌ Marcar `[5-T]` sem rodar ciclo CRUD
@@ -828,3 +865,5 @@ variam em wording/stack/locale), sincroniza pra todas as máquinas via `git pull
 30. ❌ Rodar projeto Percus sem ter alocado `PERCUS_PORT_BASE` via skill `port-allocate` (R22) — primeira vez que dois projetos rodam juntos, conflito de porta
 31. ❌ Debugar do zero um problema já catalogado em `COMO_RESOLVER.md` sem consultar antes (R23) — retrabalho evitável
 32. ❌ Resolver incidente não-trivial e encerrar sessão sem registrar a solução em `COMO_RESOLVER.md` (R23) — conhecimento se perde, próximo projeto redescobre
+33. ❌ Deployar a cada feature/commit em vez de agrupar por milestone/fim-do-dia/sob-demanda (R24) — desperdiça tempo e recursos
+34. ❌ Deployar sem smoke test pós-deploy nem rollback pronto (R24) — janela de risco sem rede de segurança

@@ -1,6 +1,14 @@
+---
+tipo: comando-pronto-para-colar
+quando-usar: levar um projeto Percus de v6.7.x/Fase 6 para Fase 7 (auth canonizado v6.8.0+) + skills locais
+leitura: 3 min
+ultima-atualizacao: 2026-06-25
+---
+
 # Upgrade pra Fase 7 (canon v6.7→v6.8)
 
 > Sucessor de `UPGRADE_PARA_FASE6.md`. Use este se o projeto está em v6.7.x ou anterior e quer migrar pra v6.8.0+.
+> (Hop da chain de upgrade; a versão canônica atual está em `CANON_VERSION.md`.)
 
 ## Pré-requisitos
 

@@ -90,17 +90,30 @@ rastreável; rodar em pasta sensível (`migrations/`) escala o review pra duplo/
 
 ## Deploy na VPS Percus {#deploy-vps}
 
-`tags: deploy, vps, traefik, docker, swarm, compose, upload, rsync, producao`
+`tags: deploy, vps, traefik, docker, swarm, portainer, stack, rollback, producao, cadencia`
 
-> ⚠️ **STUB — preencher com o fluxo real do operador.** Sei que a stack roda na VPS Percus via Docker
-> (Swarm + Traefik / Compose), mas os comandos exatos de upload/deploy não estão verificados aqui. Não
-> inventar. Preencher quando a onda de **Política de Deploy** (ponto 8 do plano v6.19.0) entrar, com:
-> - forma canônica de upload pra VPS (rsync? git pull na VPS? registry?);
-> - comando de deploy/rollout + healthcheck pós-deploy;
-> - política de frequência (fim do dia / milestone / sob demanda — **não a cada processo**);
-> - rollback.
+**Quando:** **fim de milestone**, **fim do dia**, ou **sob demanda** do operador — **nunca a cada
+feature** (R24). Sempre com confirmação (R5) + smoke + rollback pronto.
 
-**Ref (a confirmar):** `02_INFRA_E_STACK_PERCUS.md` seção VPS/Traefik.
+**Passos (resumo — playbook completo em `comandos/DEPLOY.md`):**
+1. Gate pré-deploy: o que vai está `[5-T]`; milestone passou no `milestone-review`; HANDOFF reflete; confirmação R5; sei a versão atual (rollback).
+2. Atualizar a stack via **Portainer** (`https://painel.huboperacional.com.br`): `PUT /api/stacks/{ID}?endpointId=1`
+   com `stackFileContent` + `prune:true` (+ `pullImage:true` se imagem nova). Detalhe CSRF/swarmId em `02_INFRA` §10.
+   - Só mudou config/secret? `ForceUpdate++` no serviço (restart sem rebuild).
+3. **Smoke:** `curl -I https://<sub>.huboperacional.com.br` (não 5xx/520) + `docker service logs <stack>_<svc> --tail 50` + rota crítica.
+4. Registrar no HANDOFF "deployado {data} — {o quê}".
+
+**Comando (rollback Swarm — tenha pronto antes):**
+```bash
+docker service rollback <stack>_<servico>    # reverte pro spec anterior
+# migration envolvida? testar `alembic downgrade -1` em dev ANTES de deployar.
+```
+
+**Armadilhas:** deploy per-feature (R24); 520 no curl = DNS "Proxied" no Cloudflare (tem que ser **DNS
+only**, `02_INFRA` §8); pular smoke; migration sem `downgrade` testado; deployar o que não é `[5-T]` sem o
+operador autorizar o risco.
+
+**Ref:** `comandos/DEPLOY.md` (playbook), `02_INFRA_E_STACK_PERCUS.md` §6-10, R24.
 
 ---
 

@@ -1,8 +1,27 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.19.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.20.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.20.0 — 2026-06-25
+
+**Ondas seguintes: política de deploy + frentes paralelas + limpeza. (Canon-only — plugin inalterado vs 6.19.0.)**
+
+**Onda 8 — Política de deploy (ponto 8):**
+- `01_REGRAS_INEGOCIAVEIS.md` **R24** — cadência de deploy: **milestone / fim do dia / sob demanda**, NÃO a cada processo. Resolve a dor "deploy a cada processo consome tempo e recursos". Inclui smoke test pós-deploy + rollback obrigatórios.
+- `comandos/DEPLOY.md` — playbook: quando deployar + como (ref `02_INFRA` §6-10 Portainer/Swarm) + smoke (`curl -I` + `docker service logs`) + rollback (`docker service rollback`).
+- `conhecimento/COMO_FAZER.md#deploy-vps` — stub preenchido com procedimento fundamentado.
+
+**Onda 9 — Frentes paralelas + orquestrador (ponto 9):**
+- `comandos/COMANDO_FRENTES_PARALELAS.md` — design canônico (a pilotar): worktrees + aba-diretora, ancorado em **foundational-first + tasks `[P]`** do spec-kit. Writer-unique protocol (cada arquivo um escritor), decomposition gate via conselho, merge serial ordenado pela diretora, pré-requisito de fundação `[5-T]` merged.
+
+**Limpeza mínima (canon saudável — auditoria confirmou zero órfãos):**
+- Drift de versão corrigido em `COMANDO_PROJETO_NOVO.md` (frontmatter aponta CANON_VERSION em vez de hardcode v6.7.0+).
+- Datas de `ultima-atualizacao` adicionadas em `SETUP_CLAUDE_SETTINGS.md` e `UPGRADE_PARA_FASE7.md`.
+- `SETUP_CODEX_REVIEWER.md` (DEPRECATED) **mantido** — referenciado por 4 arquivos; header DEPRECATED já sinaliza.
 
 ---
 
