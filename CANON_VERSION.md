@@ -1,8 +1,25 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.20.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.21.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.21.0 — 2026-06-25
+
+**Navegabilidade dos docs históricos (fecha a onda de limpeza). Canon-only.**
+
+A auditoria de bloat apontou que docs históricos (sprints Fase 5 / v6.8, handoffs v6.10) sentam no
+working tree sem marcação de "isto é história". Decisão: **não mover** (são referenciados por changelog
+histórico + docs ativos como `01_REGRAS`/`UPGRADE_PARA_FASE7`, e `docs/superpowers/specs/` é o home ativo
+de specs por convenção — mover quebraria links e reescreveria registro histórico). Em vez disso, marcadores:
+
+- `docs/superpowers/README.md` — marca specs/plans como registro point-in-time + tabela das sprints concluídas + por que não foram movidos.
+- `docs/handoffs/README.md` — marca handoffs de release como histórico aplicado.
+
+Resultado: quem cai nesses diretórios vê na hora "isto é história, o estado atual é `CANON_VERSION.md`".
+Risco zero, sem cirurgia de refs. Encerra a onda de limpeza (canon confirmado saudável: zero órfãos).
 
 ---
 
