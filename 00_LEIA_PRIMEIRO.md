@@ -3,7 +3,7 @@ tipo: indice-mestre
 prevalece-sobre: [todos os outros arquivos desta pasta em caso de conflito de roteamento]
 quando-usar: SEMPRE ao abrir qualquer projeto Percus (novo ou existente)
 leitura: 3 min
-ultima-atualizacao: 2026-04-29
+ultima-atualizacao: 2026-06-25
 ---
 
 # 00 — LEIA PRIMEIRO
@@ -32,6 +32,7 @@ ultima-atualizacao: 2026-04-29
 | **Configurar `.claude/settings.json` canônico (permissions + hooks SessionStart/Stop)** | `comandos/SETUP_CLAUDE_SETTINGS.md` (template em `templates/settings.template.json`, padronizado em v6.11.0) |
 | **Integrar com `auth-service` (login, OTP, magic-link, identidade)** | `PADRAO_AUTH_SERVICE.md` (spec executivo cross-projeto, antes era `PADRAO_AUTH_SERVICE_INTEGRATION_V2.md`) |
 | **Atualizar projeto legado pra Fase 4 (review+DeepSeek+design, migra Codex→Percus)** | `comandos/UPGRADE_PROJETO_FASE2.md` (consolidador) |
+| **Sincronizar projeto com o canon ATUAL + adotar diretivas vigentes (gate [S], R23, R24, checkpoint, skills)** | `comandos/UPGRADE_CANON_ATUAL.md` (version-agnostic — o "cole no chat" que se envia aos projetos) |
 | **Auditar se Fase 4 está sendo usada (não só configurada)** | `comandos/HEALTHCHECK_FASE2.md` (3 níveis: config + uso histórico + teste comportamental) |
 
 ---

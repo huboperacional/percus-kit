@@ -1,8 +1,28 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.21.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.22.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.22.0 — 2026-06-25
+
+**Caminho de adoção: como projetos existentes recebem as diretivas novas. Canon-only.**
+
+Faltava o "cole no chat" que sincroniza um projeto existente com a versão canônica atual (as diretivas
+v6.17-v6.21 não tinham um comando consolidado de adoção — só `UPGRADE_ADICIONAR_SKILLS` cobria a v6.18).
+
+- `comandos/UPGRADE_CANON_ATUAL.md` — **version-agnostic**: o operador cola o bloco no chat de cada
+  projeto; ele lê `.percus-version` vs `CANON_VERSION.md`, adota as diretivas vigentes (gate `[S]`,
+  R23, R24, checkpoint, skills locais, `#rt=` auth, frentes paralelas), bumpa `.percus-version` e
+  verifica. Pré-requisitos de máquina: `git pull` no canon (docs lidos ao vivo via `PERCUS_CANON_DIR`)
+  + update do plugin (tooling). Reforça: diretiva mora no canon, projeto referencia — nunca copia (cross-repo).
+- `00_LEIA_PRIMEIRO.md` — nova linha de roteamento "Sincronizar projeto com o canon ATUAL" + data atualizada.
+
+> Nota: o tooling novo (spec-analyze, consult-knowledge, checkpoint, PreCompact) só chega aos projetos
+> após o **plugin ser republicado no marketplace** (o instalado é 6.16.1; o repo está à frente). Os
+> docs/diretivas independem disso (chegam pelo `git pull` do canon).
 
 ---
 
