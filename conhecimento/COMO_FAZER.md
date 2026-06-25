@@ -14,7 +14,7 @@
 - [Commitar no canon / projeto (com review obrigatório R11)](#commit-com-review)
 - [Consultar o conselho (consult / pre-mortem / analyze)](#rodar-conselho)
 - [Subir uma migration Alembic](#migration-alembic)
-- [Deploy na VPS Percus](#deploy-vps) — _stub, preencher com o fluxo real_
+- [Deploy na VPS Percus](#deploy-vps) — cadência R24 + playbook `comandos/DEPLOY.md`
 
 ---
 
