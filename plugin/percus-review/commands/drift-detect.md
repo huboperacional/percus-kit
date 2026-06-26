@@ -140,4 +140,3 @@ Roda mensalmente, custo agregado < $0.20/projeto/ano.
 
 - Canon: `${env:PERCUS_CANON_DIR}\01_REGRAS_INEGOCIAVEIS.md`
 - ADR pattern: `_Novo_Projeto/templates/adr-0000-template.md`
-- Auditoria similar: `_Novo_Projeto/_AUDIT_2026-05-15.md` (formato de tabela drift por regra)

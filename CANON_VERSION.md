@@ -1,8 +1,24 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.23.1`
+**Versão canônica em `huboperacional/percus-kit`:** `6.23.2`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.23.2 — 2026-06-26
+
+**Completa o fix de refs `_AUDIT` (a v6.23.1 foi parcial — varredura canon-wide pegou o resto).**
+
+A v6.23.1 corrigiu só as refs que eu estava olhando; a varredura ampla achou o mesmo `_AUDIT_2026-05-15.md`
+(deletado na v6.11) ainda referenciado em mais 3 lugares vivos:
+- `06_CONSELHO_PERCUS.md` (refs: audit + plano transient) — removidos.
+- `01_REGRAS_INEGOCIAVEIS.md` (linha "Auditoria completa em…") — removida, mantém ref do conselho.
+- `plugin/percus-review/commands/drift-detect.md` (refs: "Auditoria similar") — removida.
+
+Agora `_AUDIT_2026-*` só aparece no changelog histórico (correto). **Pendente de decisão** (não mecânico):
+(1) `04_MODEL_ROUTING` cita `model-router.ps1` inexistente; (2) ~10 refs a planos transient em
+`.claude-home/plans/` espalhadas pelo canon (smell arquitetural — canon citando arquivo externo efêmero).
 
 ---
 

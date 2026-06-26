@@ -242,5 +242,3 @@ Esperado: 3 outputs (DeepSeek + Cross-Claude + Llama) com síntese final. Custo 
 - Comandos: `commands/council-consult.md`, `commands/council-pre-mortem.md`, `commands/drift-detect.md`
 - Hooks: `hooks/pre-plan-exit.{ps1,sh}`
 - Log: `.deepseek/council-log/<data>.jsonl`
-- Audit Fase 5 → Fase 6: `_AUDIT_2026-05-15.md`
-- Plano: `D:\Claud Automations\.claude-home\plans\criei-a-pasta-d-claud-warm-patterson.md` (Eixo C)

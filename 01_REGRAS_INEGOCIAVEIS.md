@@ -47,7 +47,7 @@ Tabela rápida — quem usa o quê:
 | R19 (identidade canônica) | 📖 | `OWNERSHIP.md` |
 | R20 (ação externa pública — gate operador) | 📖 + 🤖 (v6.7.0+) | hook `external-action-guard.ps1` (NOVO v6.7.0) |
 
-Auditoria completa em `_AUDIT_2026-05-15.md`. Conselho expandido em `06_CONSELHO_PERCUS.md`.
+Conselho expandido em `06_CONSELHO_PERCUS.md`.
 
 ---
 
