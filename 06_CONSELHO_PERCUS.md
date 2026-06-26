@@ -237,7 +237,7 @@ Esperado: 3 outputs (DeepSeek + Cross-Claude + Llama) com síntese final. Custo 
 
 ## Referências
 
-- Plugin: `D:\Claud Automations\.claude-home\plugins\cache\percus-tools\percus-review\6.0.0\`
+- Plugin: `${env:PERCUS_CANON_DIR}\plugin\percus-review\` (fonte canônica; runtime usa o cache instalado, resolvido dinamicamente)
 - Registry: `providers/_registry.json`
 - Comandos: `commands/council-consult.md`, `commands/council-pre-mortem.md`, `commands/drift-detect.md`
 - Hooks: `hooks/pre-plan-exit.{ps1,sh}`

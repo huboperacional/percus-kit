@@ -132,7 +132,7 @@ Este projeto adota Fase 6 do canon Percus:
 Detalhes em:
 - `${env:PERCUS_CANON_DIR}\05_FEATURE_TRACKING.md`
 - `${env:PERCUS_CANON_DIR}\06_CONSELHO_PERCUS.md`
-- `${env:PERCUS_CANON_DIR}\_AUDIT_2026-05-15.md`
+- `${env:PERCUS_CANON_DIR}\CANON_VERSION.md` (changelog)
 ```
 
 ### Passo 6 — Validação
@@ -169,7 +169,7 @@ git commit -m "feat(percus): upgrade para Fase 6 do canon Percus (vX.Y.Z)
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-### Passo 8 — Reportar
+### Passo 9 — Reportar
 
 ```
 [Upgrade Fase 6] CONCLUÍDO
@@ -212,9 +212,7 @@ Após estabilizar Fase 6, aplicar (em qualquer ordem, são ortogonais):
 
 ## Referências
 
-- Auditoria base: `_AUDIT_2026-05-15.md`
 - Feature tracking: `05_FEATURE_TRACKING.md`
 - Conselho: `06_CONSELHO_PERCUS.md`
 - Ambiente local: `AMBIENTE_LOCAL_OPERADOR.md`
 - Setup catalog: `comandos/SETUP_CATALOG.md`
-- Plano: `D:\Claud Automations\.claude-home\plans\criei-a-pasta-d-claud-warm-patterson.md`

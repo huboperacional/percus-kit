@@ -197,6 +197,6 @@ Saída: lista de divergências (ex: "Plexco usa OAuth v3.1 mas Familia ainda v2.
 - Schema completo: `templates/catalog-info.yaml.template`
 - Template ADR: `templates/adr-0000-template.md`
 - Setup em projeto existente: `comandos/SETUP_CATALOG.md`
-- Skill `catalog-publish`: `D:\Claud Automations\.claude-home\plugins\cache\percus-tools\percus-review\6.0.0\skills\catalog-publish\SKILL.md`
+- Skill `catalog-publish`: `${env:PERCUS_CANON_DIR}\plugin\percus-review\skills\catalog-publish\SKILL.md`
 - Skill `pages-scan`: idem `skills/pages-scan/SKILL.md`
 - Conselho `/council:drift-detect`: `06_CONSELHO_PERCUS.md`

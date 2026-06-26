@@ -1,8 +1,22 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.23.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.23.1`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.23.1 — 2026-06-26
+
+**Fix de rot nas sub-rotas + docs raiz (refs mortas + bug estrutural). Auditoria a pedido do operador.**
+
+Ao reconferir o conteúdo das sub-rotas (não só os headers), achei rot acumulada:
+- `UPGRADE_PARA_FASE6.md`: ref morta `_AUDIT_2026-05-15.md` (2×, arquivo deletado na v6.11) → repointada/removida; **"Passo 8" duplicado** → 2º vira Passo 9; ref a plano transient morto removida.
+- `SCOPE_COUNCIL.md`: ref morta `_AUDIT_2026-05-17_eixo-f...` removida (inline).
+- `SETUP_CATALOG.md`: path do cache do plugin fixado em `6.0.0` → fonte canônica; ref a plano transient removida.
+- `06_CONSELHO_PERCUS.md` + `05_FEATURE_TRACKING.md`: paths `…/percus-review/6.0.0/…` fixados → `${PERCUS_CANON_DIR}/plugin/…` (fonte canônica, version-agnostic).
+
+**NÃO corrigido (precisa de decisão, não é mecânico):** `04_MODEL_ROUTING.md` §"Wrapper unificado" descreve `model-router.ps1` que **não existe** no canon (só `review-router.ps1`, que faz outra coisa) — doc-vs-realidade drift; repointar enganaria. Registrado pra decisão.
 
 ---
 

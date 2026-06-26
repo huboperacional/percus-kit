@@ -157,7 +157,7 @@ Outputs em `docs/scope-council/`. Decisões adotadas:
 
 2. **Trilha de auditoria opcional.** `docs/scope-council/` pode ser .gitignored se você não quiser comitar análises iniciais. Default: comitar (vira parte da história do projeto).
 
-3. **Cross-Claude via marker quando wrapper direto desabilitado.** Se `ANTHROPIC_API_KEY` não estiver no .env, o orchestrator emite `__PERCUS_NEEDS_CROSS_CLAUDE__` em stderr e o agente Claude tem que dispatchar Sonnet subagent via Agent tool, salvar resposta em arquivo, e re-invocar com `-CrossClaudeFile`. Funcional, só adiciona ~30s de latência humana de copy-paste do agente. Pra rodar 100% paralelo (mais rápido + cache hits potenciais quando SystemPrompt enriquecido — ver `_AUDIT_2026-05-17_eixo-f-pos-entrega.md` finding F.1), adicionar `ANTHROPIC_API_KEY`.
+3. **Cross-Claude via marker quando wrapper direto desabilitado.** Se `ANTHROPIC_API_KEY` não estiver no .env, o orchestrator emite `__PERCUS_NEEDS_CROSS_CLAUDE__` em stderr e o agente Claude tem que dispatchar Sonnet subagent via Agent tool, salvar resposta em arquivo, e re-invocar com `-CrossClaudeFile`. Funcional, só adiciona ~30s de latência humana de copy-paste do agente. Pra rodar 100% paralelo (mais rápido + cache hits potenciais quando SystemPrompt enriquecido), adicionar `ANTHROPIC_API_KEY`.
 
 ## Histórico
 

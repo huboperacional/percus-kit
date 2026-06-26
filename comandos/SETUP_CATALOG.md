@@ -148,5 +148,4 @@ Próximos passos:
 - Convenção completa: `05_FEATURE_TRACKING.md`
 - Template yaml: `templates/catalog-info.yaml.template`
 - Template ADR: `templates/adr-0000-template.md`
-- Skill: `D:\Claud Automations\.claude-home\plugins\cache\percus-tools\percus-review\6.0.0\skills\catalog-publish\SKILL.md`
-- Plano: `D:\Claud Automations\.claude-home\plans\criei-a-pasta-d-claud-warm-patterson.md` (Eixo A)
+- Skill: `${env:PERCUS_CANON_DIR}/plugin/percus-review/skills/catalog-publish/SKILL.md`
