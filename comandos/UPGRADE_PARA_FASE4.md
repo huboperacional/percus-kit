@@ -8,6 +8,9 @@ ultima-atualizacao: 2026-05-03
 
 # Upgrade — Projeto em andamento → Fase 4
 
+> ℹ️ **Rota específica por fase (→ Fase 4).** Ponto de entrada geral pra atualizar projeto pro canon
+> atual = `comandos/REORGANIZAR_PROJETO.md` (umbrella). Use este se o gap é especificamente chegar à Fase 4.
+
 > **Cole o prompt abaixo no chat do Claude Code do projeto que você quer atualizar.**
 >
 > O agente vai **detectar automaticamente** qual estado o projeto está e seguir o caminho certo:

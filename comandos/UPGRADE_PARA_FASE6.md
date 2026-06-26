@@ -7,7 +7,10 @@ leitura: 3 min (uso) · execução típica 30-90 min
 ultima-atualizacao: 2026-05-17
 ---
 
-# Comando — Upgrade de Projeto pra Fase 6 (versão canônica atual)
+# Comando — Upgrade de Projeto pra Fase 6
+
+> ℹ️ **Rota específica por fase (→ Fase 6).** Fase 6 **não** é mais a versão corrente (ver `CANON_VERSION.md`).
+> Ponto de entrada geral pra atualizar projeto pro canon atual = `comandos/REORGANIZAR_PROJETO.md` (umbrella).
 
 > **Objetivo:** levar um projeto Percus existente (Fase 4 estável, Fase 5 em adopção, ou Fase 6 antiga v6.x < 6.4.0) pra versão canônica atual: feature tracking + conselho expandido + hooks/skills novas + ambiente local + `.percus-version`.
 >

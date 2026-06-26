@@ -8,6 +8,10 @@ ultima-atualizacao: 2026-05-03
 
 # Upgrade — Projeto legado para Fase 4
 
+> ℹ️ **Rota específica (baseline Fase 4).** Para atualizar um projeto pro canon ATUAL de forma geral,
+> o ponto de entrada é `comandos/REORGANIZAR_PROJETO.md` (umbrella) — ele roteia pra cá quando o
+> projeto ainda não tem plugin/review/DeepSeek. Use este doc direto se você já sabe que o gap é só o baseline Fase 4.
+
 > Cole este prompt no agente Claude Code do projeto legado. Ele aplica **todas** as mudanças da Fase 4 numa passada: plugin `@percus/review` como revisor cross-provider (DeepSeek + Cross-Claude, sem Codex), DeepSeek como implementador, design via v0.dev + shadcn, regras R10/R11/R13 mescladas em `CLAUDE.md`/`AGENTS.md`.
 >
 > **Substitui rodar separadamente:** `SETUP_REVIEW_ROUTING.md` + `SETUP_DEEPSEEK.md` + edição manual do `CLAUDE.md`/`AGENTS.md`.

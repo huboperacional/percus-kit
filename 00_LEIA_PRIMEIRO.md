@@ -19,7 +19,7 @@ ultima-atualizacao: 2026-06-25
 |---|---|
 | **Projeto NOVO greenfield** | `01_REGRAS_INEGOCIAVEIS.md` → `02_INFRA_E_STACK_PERCUS.md` → `checklists/CHECKLIST_INICIO_SESSAO.md` → criar templates → **`comandos/SCOPE_COUNCIL.md`** (gate de scope dia 1, ~30 min, ~$0.05) → `comandos/SETUP_REVIEW_ROUTING.md` + `comandos/SETUP_DEEPSEEK.md` |
 | **Sessão NOVA em projeto existente** | `checklists/CHECKLIST_INICIO_SESSAO.md` (literalmente os 5 passos) → ler `HANDOFF.md` do projeto → ler `docs/PLANO.md` do projeto |
-| **Reorganizar/auditar projeto existente** | `comandos/REORGANIZAR_PROJETO.md` |
+| **Atualizar/organizar projeto existente pro canon ATUAL (umbrella — tracking files + diretivas vigentes + versão)** | `comandos/REORGANIZAR_PROJETO.md` (ponto de entrada único; roteia pros setups focados) |
 | **Migrar auth de projeto legado** | `comandos/MIGRAR_AUTH.md` |
 | **Criar tela / componente / fluxo visual novo** | `comandos/DESIGN_WORKFLOW.md` (v0.dev + shadcn MCP — substitui Claude artifacts) |
 | **Revisão visual de telas existentes** | `comandos/REVISAO_VISUAL.md` |
@@ -31,8 +31,7 @@ ultima-atualizacao: 2026-06-25
 | **Configurar DeepSeek como implementador (1ª vez no projeto)** | `comandos/SETUP_DEEPSEEK.md` (valida `.env`, smoke test) |
 | **Configurar `.claude/settings.json` canônico (permissions + hooks SessionStart/Stop)** | `comandos/SETUP_CLAUDE_SETTINGS.md` (template em `templates/settings.template.json`, padronizado em v6.11.0) |
 | **Integrar com `auth-service` (login, OTP, magic-link, identidade)** | `PADRAO_AUTH_SERVICE.md` (spec executivo cross-projeto, antes era `PADRAO_AUTH_SERVICE_INTEGRATION_V2.md`) |
-| **Atualizar projeto legado pra Fase 4 (review+DeepSeek+design, migra Codex→Percus)** | `comandos/UPGRADE_PROJETO_FASE2.md` (consolidador) |
-| **Sincronizar projeto com o canon ATUAL + adotar diretivas vigentes (gate [S], R23, R24, checkpoint, skills)** | `comandos/UPGRADE_CANON_ATUAL.md` (version-agnostic — o "cole no chat" que se envia aos projetos) |
+| **Atualizar projeto legado pra Fase 4 (rota específica: review+DeepSeek+design, migra Codex→Percus)** | `comandos/UPGRADE_PROJETO_FASE2.md` (sub-rota; o umbrella `REORGANIZAR_PROJETO` roteia pra cá) |
 | **Auditar se Fase 4 está sendo usada (não só configurada)** | `comandos/HEALTHCHECK_FASE2.md` (3 níveis: config + uso histórico + teste comportamental) |
 
 ---

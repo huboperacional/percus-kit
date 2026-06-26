@@ -1,247 +1,113 @@
 ---
-tipo: comando-pronto
-quando-usar: projeto  existente mas ainda não tem CLAUDE.md / HANDOFF.md / docs/PLANO.md no padrão atual
+tipo: comando-pronto-para-colar
+quando-usar: PONTO DE ENTRADA para atualizar/organizar um projeto Percus existente pro canon ATUAL — tracking files + diretivas vigentes + versão
 nao-toca-codigo: true
-leitura: 5 min
-ultima-atualizacao: 2026-04-25
+leitura: 4 min · execução típica: 15-40 min
+ultima-atualizacao: 2026-06-26
+version-agnostic: true (sempre alinha pra versão corrente em CANON_VERSION.md)
 ---
 
-# Reorganizar Projeto — Atualização de Arquivos de Acompanhamento
+# Reorganizar / Atualizar Projeto Existente (umbrella)
 
-> Cole este prompt no projeto atual. O agente vai ler o projeto como ele está hoje
-> e criar/atualizar os arquivos de acompanhamento sem tocar em nenhum código.
+> **Este é o ÚNICO ponto de entrada** para trazer um projeto Percus existente ao estado canônico atual.
+> Ele diagnostica o que falta e **roteia** para os docs focados — não duplica `SETUP_*`/`MIGRAR_AUTH`/skills.
+> É **version-agnostic**: alinha sempre pra versão que estiver em `CANON_VERSION.md` na hora.
 >
-> **Templates de referência:** `${env:PERCUS_CANON_DIR}\templates\` (CLAUDE / HANDOFF / PLANO / mock-audit).
+> **Mecanismo cross-repo:** o operador **cola o bloco abaixo** no chat do projeto. O canon nunca escreve
+> em outro repo; as diretivas moram no canon e o projeto as referencia via `${env:PERCUS_CANON_DIR}`.
 
 ---
 
-## O que você vai fazer
+## Pré-requisitos na máquina (1x, vale pra todos os projetos da máquina)
 
-Você vai ler o projeto atual e criar ou atualizar apenas estes arquivos:
-
-1. `CLAUDE.md` — contexto do projeto para o agente
-2. `HANDOFF.md` — estado atual + status de cada feature
-3. `docs/PLANO.md` — lista de features com status `[0]→[5-T]`
-4. `docs/mock-audit.md` — quais telas usam dados reais vs mock
-
-**Não toque em código de negócio. Não mova arquivos. Não reescreva nada que já funciona.**
+1. **Atualizar o clone do canon** (os projetos leem os docs ao vivo): `cd "$env:PERCUS_CANON_DIR"; git pull`.
+   Isso já entrega as diretivas-doc (regras, políticas, base de conhecimento) a todos os projetos.
+2. **Atualizar o plugin `percus-review`** (pra receber o tooling: `spec-analyze`, `consult-knowledge`,
+   `checkpoint`, hook `PreCompact`): UI "Manage plugins" → Update `percus-tools` → Reinstall → Reload.
+   > Se o marketplace ainda não publicou a versão do `plugin.json` atual, o tooling novo só aparece após
+   > a republicação. Os docs/diretivas (passo 1) independem disso.
 
 ---
 
-## Passo 1 — Leia o projeto como ele está
+## Cole isto no chat do Claude Code do projeto-alvo
 
-Antes de criar qualquer arquivo:
+```
+Atualize/organize este projeto pro canon Percus ATUAL seguindo o umbrella REORGANIZAR_PROJETO.
+Não toque em código de negócio. Confirme comigo (R5) antes de qualquer commit.
 
-- Leia a estrutura de diretórios completa
-- Leia os arquivos de rotas do backend (identifique endpoints existentes)
-- Leia os hooks/services do frontend (identifique o que chama API vs o que usa mock)
-- Leia os componentes principais (identifique o que renderiza dado real vs hardcoded)
-- Cheque o banco: quais tabelas/models existem?
+PASSO 0 — Diagnóstico (mostre antes de mudar nada; aguarde confirmação):
+1. Leia `.percus-version` na raiz (versão adotada hoje; ausente = pré-Fase-6).
+2. Leia as 5 primeiras linhas de ${env:PERCUS_CANON_DIR}/CANON_VERSION.md (versão corrente).
+3. Cheque o que existe: CLAUDE.md, AGENTS.md (GEMINI.md se espelho-3), HANDOFF.md, docs/PLANO.md,
+   docs/mock-audit.md, .percus-version, plugin @percus/review instalado, DEEPSEEK_API_KEY no .env,
+   skills/ local, catalog-info.yaml.
+4. Declare a matriz "tem / falta" + o delta de versão + o plano. Aguarde minha confirmação.
 
----
+PASSO 1 — Tracking files no padrão atual (criar/atualizar, NUNCA sobrescrever — mesclar):
+Use os templates do canon como referência (não inline, não invente):
+- CLAUDE.md  ← ${env:PERCUS_CANON_DIR}/templates/CLAUDE.template.md
+- AGENTS.md  ← ${env:PERCUS_CANON_DIR}/templates/AGENTS.template.md  (+ GEMINI.md se Test-Path GEMINI.md)
+- HANDOFF.md ← ${env:PERCUS_CANON_DIR}/templates/HANDOFF.template.md
+- docs/PLANO.md ← ${env:PERCUS_CANON_DIR}/templates/PLANO.template.md  (classifique cada feature [0]→[5-T] pelo estado REAL; não arredonde pra cima)
+- docs/mock-audit.md ← ${env:PERCUS_CANON_DIR}/templates/mock-audit.template.md (grep mocks antes de preencher)
+- .gitignore ← garantir .deepseek/ (base em templates/.gitignore.example)
 
-## Passo 2 — Classifique cada feature com seu status real
+PASSO 2 — Adotar as diretivas vigentes (ler a fonte no canon e aplicar o que faltar):
+- R10/R11/R13 (baseline Fase 4): design v0/shadcn; review cross-provider antes de commit E no marco;
+  routing Claude/DeepSeek/revisores. Ver 01_REGRAS + 04_MODEL_ROUTING.
+- Gate [S]: feature não-trivial → spec.md (template) + /clarify (≤5) + /percus-review:spec-analyze ANTES de [0]. (06_CONSELHO Modo 5)
+- R23: consultar ${env:PERCUS_CANON_DIR}/conhecimento/COMO_RESOLVER.md antes de debugar; registrar após (skill consult-knowledge).
+- R24: deploy ao milestone/fim-do-dia/sob-demanda, NÃO per-feature (comandos/DEPLOY.md, smoke+rollback).
+- Checkpoint: rodar skill percus-review:checkpoint ao fim de milestone (PreCompact é backstop).
+- Auth (se consome auth-service): auditar via percus-review:auth-consumer (bridge lê #rt=, não só #at=).
 
-Para cada tela ou funcionalidade encontrada, atribua um status:
+PASSO 3 — Rotear pros setups focados SÓ no que faltar (não duplicar aqui):
+- Plugin/review ausente OU resíduo Codex → comandos/UPGRADE_PROJETO_FASE2.md (baseline Fase 4 completa)
+  OU comandos/SETUP_REVIEW_ROUTING.md (só o reviewer).
+- DeepSeek implementador ausente → comandos/SETUP_DEEPSEEK.md.
+- .claude/settings.json fora do padrão → comandos/SETUP_CLAUDE_SETTINGS.md.
+- Sem skills/recipes/personas locais → comandos/UPGRADE_ADICIONAR_SKILLS.md.
+- Sem catalog-info.yaml → comandos/SETUP_CATALOG.md.
+- Auth legado (Supabase/GoTrue/NextAuth/senha) → comandos/MIGRAR_AUTH.md.
 
-| Tag | O que significa | Condição obrigatória |
-|-----|-----------------|----------------------|
-| `[0]` | Planejado, não iniciado | — |
-| `[1-S]` | Schema/tabela existe no banco | Migration ou model confirmado |
-| `[2-E]` | Endpoint existe | Rota encontrada no backend |
-| `[3-H]` | Hook chama o endpoint | Frontend conectado ao backend |
-| `[4-C]` | Componente usa dado real | Sem mock-data, sem array hardcoded |
-| `[5-T]` | Ciclo CRUD testado | Só se você testou nesta sessão |
+PASSO 4 — Bump da versão adotada:
+Atualize .percus-version na raiz com a versão corrente do canon (mesma do CANON_VERSION.md).
 
-> Se não testou o ciclo criar → F5 → editar → F5 → deletar → F5 nesta sessão, não marque `[5-T]`. Deixe em `[4-C]` no máximo.
-
----
-
-## Passo 3 — Crie `docs/PLANO.md`
-
-```markdown
-# Plano — {Nome do Projeto}
-_Atualizado em: {data}_
-
-## Frente: {Nome da área}
-
-- [5-T] {Feature com ciclo CRUD confirmado}
-- [4-C] {Feature com componente real, ciclo não testado}
-- [3-H] {Feature com hook conectado, componente incompleto}
-- [2-E] {Feature com endpoint, sem hook}
-- [1-S] {Feature com schema, sem endpoint}
-- [0]   {Feature planejada, não iniciada}
+PASSO 5 — Verificação + report:
+- /percus-review:review num diff de teste retorna findings (plugin ok).
+- Se consome auth: rodar percus-review:auth-consumer (checklist + C1-C8).
+- Reporte: matriz do que foi adotado, o que ficou pendente (com motivo), e o próximo passo.
 ```
 
 ---
 
-## Passo 4 — Crie `docs/mock-audit.md`
+## Rota por estado (o umbrella decide; estes são sub-passos específicos)
 
-Use grep para encontrar mocks antes de preencher:
+| Estado do projeto | Sub-rota |
+|---|---|
+| Sem tracking files (CLAUDE/HANDOFF/PLANO) | Passo 1 acima |
+| Legado sem plugin/review (ou com Codex) | `comandos/UPGRADE_PROJETO_FASE2.md` (baseline Fase 4) |
+| Já Fase 4/5, falta conselho 3-membros + catalog | `comandos/UPGRADE_PARA_FASE6.md` |
+| Fase 6, falta auth canonizado v6.8 | `comandos/UPGRADE_PARA_FASE7.md` |
+| Tem o básico, falta só adotar diretivas novas | Passo 2 acima |
+| Auditar se a Fase 4 está mesmo em uso | `comandos/HEALTHCHECK_FASE2.md` |
 
-```bash
-# Mocks no frontend
-grep -r "mock-data\|mockData\|MOCK_\|fakeData" src --include="*.ts" --include="*.tsx" -l
-
-# Toasts que mentem
-grep -r "toast.success\|toast(" src --include="*.ts" --include="*.tsx" -n | grep -i "salvo\|saved\|sucesso"
-```
-
-```markdown
-# Mock Audit — {projeto}
-_Atualizado em: {data}_
-
-| Tela / Feature | Status | O que falta para conectar ao backend | Esforço |
-|----------------|--------|--------------------------------------|---------|
-| {Tela}         | ✅ real | —                                    | —       |
-| {Tela}         | ⚠️ mock | Endpoint POST + hook                 | {X}h    |
-| {Tela}         | ❌ só UI | Schema + endpoint + hook             | {X}h    |
-```
+> Os `UPGRADE_PARA_FASE*` são **rotas históricas específicas por fase**. Para "trazer ao canon atual"
+> de forma geral, este umbrella (Passos 0-5) é o caminho — ele cobre qualquer ponto de partida.
 
 ---
 
-## Passo 5 — Crie ou atualize `CLAUDE.md`, `AGENTS.md` (e `GEMINI.md` se espelho-3)
+## Anti-padrões
 
-**Antes de mexer:** rode `Test-Path GEMINI.md`. Se retornar true, o projeto mantém convenção de espelhar regras nos 3 arquivos (CLAUDE.md / AGENTS.md / GEMINI.md). Aplique todas as mudanças nos 3 — não quebre invariante interna do projeto, mesmo que o usuário não use Gemini ativamente.
+- ❌ Sobrescrever CLAUDE.md/AGENTS.md em vez de mesclar — perde contexto específico do projeto.
+- ❌ Marcar `[5-T]` no PLANO sem ter testado o ciclo CRUD nesta sessão.
+- ❌ Copiar diretivas pra dentro do projeto — elas moram no canon, o projeto referencia (cross-repo).
+- ❌ Pular o Passo 0 (diagnóstico) — duplica trabalho ou quebra o que já funciona.
+- ❌ Espelho-3 ativo (GEMINI.md presente) e mesclar só em CLAUDE.md/AGENTS.md — quebra invariante do projeto.
 
-Se já existe `CLAUDE.md`, `AGENTS.md` (ou `GEMINI.md` no caso espelho-3), **mescle** os triggers da Fase 2 (não sobrescreva):
+## Referências
 
-- **R10** — design via v0.dev + shadcn MCP (Claude artifacts vetado pra produção). Apontar pra `comandos/DESIGN_WORKFLOW.md`
-- **R11** — review cross-provider obrigatório em **dois** momentos: antes de commit (`/percus-review:review`) E ao concluir cada marco (`/percus-review:milestone-review --base <commit>`). Apontar pra `comandos/SETUP_REVIEW_ROUTING.md` se não estiver configurado
-- **R13** — routing de modelos: Claude=arquiteto, DeepSeek=implementador, DeepSeek+Cross-Claude=revisores. Apontar pra `04_MODEL_ROUTING.md`
-
-Use `templates/CLAUDE.template.md` e `templates/AGENTS.template.md` como referência do estado canônico. Se conflito de seção, mantenha o conteúdo específico do projeto + adicione o trecho da Fase 2 abaixo.
-
-Se não existe nenhum dos dois, crie do zero seguindo o template:
-
-```markdown
-# {Nome do Projeto} — CLAUDE.md
-
-## O que é este projeto
-{2-3 linhas descrevendo o propósito}
-
-## Stack
-- Frontend: {framework}
-- Backend: {framework}
-- Banco: {banco}
-- Serviços externos: {lista}
-
-## Estrutura relevante
-{Onde ficam rotas, componentes, hooks, models}
-
-## Como rodar localmente
-{Comandos}
-
-## Critério de "pronto" para qualquer feature
-Ciclo CRUD testado: criar → F5 → editar → F5 → deletar → F5, tudo persistindo no banco.
-Build passando não conta. Tela abrindo não conta.
-
-## Tracking de features
-Ver `docs/PLANO.md` — atualizar imediatamente após cada etapa concluída.
-Tags: [0] → [1-S] → [2-E] → [3-H] → [4-C] → [5-T]
-
-## Regra de mock
-Tela com dado mock = banner MODO DEMO visível + toast diz "salvo localmente", nunca "salvo".
-
-## Routing de modelos (R13)
-Tasks de implementação mecânica devem ser delegadas ao DeepSeek via `scripts/deepseek-impl.{ps1,sh}` — playbook em `_Novo_Projeto/04_MODEL_ROUTING.md` seção "Como delegar". Saída sempre revisada por Claude e por Codex (R11) antes de commit.
-
-## Design (R10)
-Tela/componente novo: usar v0.dev (telas) ou shadcn MCP (componentes isolados). Detalhes em `_Novo_Projeto/comandos/DESIGN_WORKFLOW.md`. Claude artifacts vetado pra produção.
-
-## Review cross-provider (R11)
-Obrigatório em **dois** momentos: antes de cada commit (`/percus-review:review`) + ao concluir cada marco (`/percus-review:milestone-review --base <commit>`). Setup em `_Novo_Projeto/comandos/SETUP_REVIEW_ROUTING.md`.
-```
-
----
-
-## Passo 6 — Crie ou atualize `HANDOFF.md`
-
-```markdown
-# Handoff — {Nome do Projeto}
-_Atualizado em: {data}_
-
-## Estado atual
-- **Funcionando end-to-end:** [features com [5-T]]
-- **UI pronta mas sem ciclo testado:** [features com [4-C]]
-- **Backend parcial:** [features com [2-E] ou [3-H]]
-- **Não iniciadas:** [features com [0] ou [1-S]]
-- **Próximo passo imediato:** [o que fazer primeiro ao retomar]
-
-## Status de Features
-
-> Fonte da verdade: docs/PLANO.md — se divergir daqui, o plano prevalece.
-> Tags: `[0]` planejado · `[1-S]` schema · `[2-E]` endpoint · `[3-H]` hook · `[4-C]` componente · `[5-T]` ✅ testado
-
-| Frente | Feature | Status | Próxima etapa |
-|--------|---------|--------|---------------|
-| {Frente} | {Feature} | `[5-T]` ✅ | — |
-| {Frente} | {Feature} | `[4-C]` | Testar ciclo CRUD |
-| {Frente} | {Feature} | `[2-E]` | Criar hook + componente |
-
-## Infraestrutura
-- **DB:** `{nome_do_banco}`
-- **Backend rodando em:** `{url ou porta}`
-- **Frontend rodando em:** `{url ou porta}`
-
-## Problemas conhecidos
-- [Problema] → [Workaround em uso]
-```
-
----
-
-## Passo 7 — Adote o workflow de Superpowers nas próximas features
-
-Adicione ao `CLAUDE.md` (na seção de workflow) o fluxo padrão para features novas:
-
-```markdown
-## Workflow obrigatório para features novas
-
-1. `superpowers:brainstorming` — 5-10min antes de qualquer código
-2. `superpowers:writing-plans` — se a feature for multi-step
-3. `superpowers:dispatching-parallel-agents` — backend + frontend em paralelo quando independentes
-4. `superpowers:test-driven-development` — vitest antes do endpoint
-5. `superpowers:requesting-code-review` — em background antes do commit
-6. `superpowers:verification-before-completion` — antes de marcar `[5-T]`
-
-Debug: `superpowers:systematic-debugging` para qualquer bug ou teste quebrado.
-Exploração de código desconhecido: agente `Explore`.
-```
-
-### Playwright MCP (se o projeto tem frontend)
-
-Se ainda não estiver configurado:
-```bash
-claude mcp add playwright npx '@playwright/mcp@latest'
-```
-
-Documentar no `CLAUDE.md` que o Playwright MCP deve ser usado para:
-- Automatizar o ciclo CRUD do critério `[5-T]`
-- Smoke tests pós-deploy
-- Verificação visual de componentes novos
-
----
-
-## Passo 8 — Reporte o que foi feito
-
-Ao terminar, liste:
-
-```
-ARQUIVOS ATUALIZADOS — {Nome do Projeto}
-
-✅ CLAUDE.md        — criado / atualizado
-✅ HANDOFF.md       — criado / atualizado
-✅ docs/PLANO.md    — criado com X features classificadas
-✅ docs/mock-audit.md — X telas reais, X mocks, X só UI
-
-Resumo de status:
-  [5-T] X features
-  [4-C] X features
-  [3-H] X features
-  [2-E] X features
-  [1-S] X features
-  [0]   X features
-
-Próxima ação recomendada:
-  → {Feature mais próxima de [5-T] — o que falta para completá-la}
-```
+- Templates: `${env:PERCUS_CANON_DIR}/templates/` (CLAUDE/AGENTS/HANDOFF/PLANO/mock-audit/spec).
+- Diretivas: `01_REGRAS_INEGOCIAVEIS.md` (R1-R24), `06_CONSELHO_PERCUS.md` (modos), `comandos/DEPLOY.md` (R24).
+- Setups focados: `SETUP_REVIEW_ROUTING`, `SETUP_DEEPSEEK`, `SETUP_CLAUDE_SETTINGS`, `UPGRADE_ADICIONAR_SKILLS`, `SETUP_CATALOG`, `MIGRAR_AUTH`.
+- Roteamento mestre: `00_LEIA_PRIMEIRO.md`.

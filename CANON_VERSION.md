@@ -1,8 +1,35 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.22.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.23.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.23.0 — 2026-06-26
+
+**Consolidação da família "atualizar projeto existente" (corrige sprawl de comandos). Canon-only.**
+
+A pasta `comandos/` tinha 8 docs sobrepostos pra "atualizar projeto existente" (REORGANIZAR stale na
+Fase 2 + chain de fase FASE4/6/7 parada em v6.8 + PROJETO_FASE2 + minhas adições v6.18/v6.22). Sem ponto
+de entrada único. Auto-crítica: a v6.22 (`UPGRADE_CANON_ATUAL`) foi mais um arquivo paralelo numa família
+já inchada, em vez de consolidar.
+
+- **`comandos/REORGANIZAR_PROJETO.md` reescrito como UMBRELLA único** (version-agnostic): diagnóstico de
+  versão → tracking files (referencia `templates/`, não inline — tira bloat) → adoção das diretivas
+  vigentes (R10-R24, gate [S], R23, R24, checkpoint, auth #rt=) → **roteia** pros setups focados
+  (`SETUP_*`/`MIGRAR_AUTH`/`UPGRADE_ADICIONAR_SKILLS`) sem duplicá-los. Atualizado de 2026-04-25 (stale
+  Fase 2) pra corrente.
+- **`comandos/UPGRADE_CANON_ATUAL.md` DELETADO** — conteúdo (adoção de diretivas + bump + pré-req de
+  máquina) fundido no umbrella. (Existia só desde v6.22; ref ativa única era no `00_LEIA_PRIMEIRO`, corrigida.)
+- **Rotas de fase marcadas como sub-rotas** (header de ponteiro pro umbrella, não-destrutivo):
+  `UPGRADE_PARA_FASE4/6/7`, `UPGRADE_PROJETO_FASE2`. Refs ativas (HEALTHCHECK, CHECKLIST_INICIO,
+  CLAUDE.template) **preservadas** — continuam válidas. Corrigido o título enganoso de FASE6 ("versão
+  canônica atual" — não é mais).
+- **`00_LEIA_PRIMEIRO.md`** — roteamento consolidado: 1 linha pro umbrella; removida a do arquivo deletado.
+
+Sem cirurgia de refs arriscada: o umbrella reforça refs que já apontavam pra REORGANIZAR
+(`00_LEIA`, `README`, `CHECKLIST_INICIO_SESSAO`); as rotas de fase seguem funcionando.
 
 ---
 
