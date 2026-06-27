@@ -1,8 +1,19 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.25.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.25.1`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.25.1 — 2026-06-27
+
+**Dogfooding R23: registra o incidente do sed/JSON na base de conhecimento.**
+
+- `conhecimento/COMO_RESOLVER.md` — nova entrada "Editar JSON via sed/CLI quebra a string com aspas"
+  (incidente v6.25.0: `sed` inseriu aspas duplas no valor da `description` do `plugin.json` → JSON
+  inválido; pego na validação `ConvertFrom-Json` antes do commit). Solução: aspas simples/nenhuma em
+  valor JSON, ou Write do arquivo inteiro; sempre validar antes de commitar.
 
 ---
 
