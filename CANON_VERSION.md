@@ -1,8 +1,23 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.26.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.26.1`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.26.1 — 2026-06-27
+
+**Varredura de refs mortas (#4) + housekeeping de branches (#6).**
+
+- **README destralado:** linha de estado listava versão fixa (v6.16.1) + changelog inteiro duplicado
+  (violação R25) → agora aponta pro `CANON_VERSION` (single-source). `R1-R22` → `R1-R25`.
+- **Ref morta removida:** `diagnostico-disco-c-2026-05-15.md` (não existe) em `AMBIENTE_LOCAL_OPERADOR`.
+  Verificado: `OWNERSHIP.md` **existe** (refs preservadas).
+- **Branches locais merged apagadas:** `fase5-superpowers-adoption`, `feat/v6.12.0-enforcement`,
+  `feat/v6.14.0-groq` (todas em `main`). Mantida `canon/auth-service-fase1-3-aprendizados`.
+- Classes de rot já zeradas em releases anteriores: `_AUDIT_*` (v6.23.2), paths `6.0.0` (v6.23.1),
+  planos transient `.claude-home/plans` (v6.24.0).
 
 ---
 
