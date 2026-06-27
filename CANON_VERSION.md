@@ -1,8 +1,23 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.23.2`
+**Versão canônica em `huboperacional/percus-kit`:** `6.24.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.24.0 — 2026-06-27
+
+**Single-source-of-truth (R25) + fix do model-router fantasma. Decidido com o conselho (2/2).**
+
+Após auditoria das sub-rotas, o operador exigiu o princípio single-source. Conselho consultado (DeepSeek+Llama, 2/2): D1=remover refs transient + regra; D2=arquivar a chain de fase. **D1 e o fix do model-router entregues aqui; D2 (arquivar) PAUSADO** — o mapa de refs inbound revelou que a chain contém procedimentos VÁLIDOS (ex.: migração de audience em FASE7 referenciada pela R7.5 ativa) só com framing stale; arquivar orfanaria refs ativas. Levado de volta ao operador.
+
+**D1 — Single-source (R25):**
+- **Nova regra `R25`** em `01_REGRAS`: info tem um dono canônico; reforço = ponteiro pro doc vigente, nunca cópia; canon nunca cita arquivo efêmero/externo (`.claude-home/plans/*`). Gate: grep retorna 0.
+- **9 refs a planos transient** (`.claude-home/plans/*`) removidas de 6 docs (`01_REGRAS`, `PADRAO_AUTH_SERVICE`, `AMBIENTE_LOCAL`, `CHECKLIST_AUTH_NOVO_PROJETO`, `MIGRATION_KIT_AUTH.template`, `MIGRAR_AUTH`). Refs cross-repo a repos reais preservadas.
+
+**Q1 — model-router fantasma:**
+- `04_MODEL_ROUTING.md` §"Wrapper unificado" reescrita: não existe `model-router.ps1`; o roteamento real é em 2 camadas (`review-router` pra review, `council-orchestrator` pro conselho) + matriz de decisão aplicada pelo agente (R13). Tabela task→modelo vira guia, não comando.
 
 ---
 

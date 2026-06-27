@@ -56,19 +56,35 @@ Total estimado: ~$5/mês com volume Percus atual.
 
 **Setup do membro Llama:** obter `GROQ_API_KEY` em https://console.groq.com (gratuito) → adicionar no `.env` do projeto. Sem ela, conselho degrada pra 2 membros (Fase 5).
 
-### Wrapper unificado (Fase 6+)
+### Como o roteamento acontece de fato (não há um "model-router" único)
 
-```powershell
-# Roteamento explícito por tipo de tarefa
-powershell -File "D:/Claud Automations/.claude-home/plugins/cache/percus-tools/percus-review/6.0.0/scripts/model-router.ps1" `
-  -Task <kind>
-```
+> Correção 2026-06-27: não existe um script `model-router.ps1` que despacha por tipo de task — essa
+> era uma descrição de algo que nunca foi construído. O roteamento real acontece em **duas camadas**,
+> cada uma com seu script:
 
-Skills/comandos chamam o router em vez de hardcoded. Tipos válidos:
+1. **Routing de review (R11)** — `plugin/percus-review/scripts/review-router.{ps1,sh}` decide o(s)
+   revisor(es) de um diff (DeepSeek / Cross-Claude / duplo), por pasta sensível e trailer de delegação.
+   Consumido por `/percus-review:review` e pelo wrapper `scripts/percus-review-auto.ps1`.
+2. **Routing do conselho** — `plugin/percus-review/scripts/council-orchestrator.{ps1,sh}` escolhe os
+   providers por **modo** (`consult` / `pre-mortem` / `review` / `analyze`) — ver `06_CONSELHO_PERCUS.md`.
 
-`handoff` (Haiku) · `lint` (Haiku) · `summarize` (Haiku) · `review-rotineiro` (DeepSeek+Llama) · `review-sensivel` (3-mem) · `design-decision` (Sonnet) · `brainstorm` (Opus+conselho) · `drift` (Llama+DeepSeek) · `pre-mortem` (3-mem) · `consult` (3-mem).
+A escolha de **quem implementa** (Claude arquiteta vs DeepSeek implementa) é decisão do agente via a
+matriz de delegação desta doc (R13) + a skill `feature-flow` — **não** um dispatcher central. A tabela
+abaixo é **guia de decisão** (qual modelo pra qual tipo de tarefa), aplicada pelo agente/skills, não um
+comando a rodar:
 
-Detalhes do conselho expandido + 4 modos operacionais: `06_CONSELHO_PERCUS.md`.
+| Tipo de tarefa | Modelo / rota |
+|---|---|
+| handoff · lint · summarize | Haiku (barato, mecânico) |
+| implementação mecânica | DeepSeek (R13, via wrapper) |
+| review rotineiro | DeepSeek + Llama (`review-router`) |
+| review sensível / marco | 3 membros (`review-router` duplo + Llama) |
+| design-decision | Cross-Claude (Sonnet) |
+| brainstorm | Opus + conselho |
+| drift-detect | Llama + DeepSeek |
+| pre-mortem · consult · analyze | conselho 3 membros (`council-orchestrator`) |
+
+Detalhes do conselho expandido + 5 modos operacionais: `06_CONSELHO_PERCUS.md`.
 
 ---
 

@@ -218,4 +218,3 @@ Se algum item falhar, rodar setup desta doc antes de qualquer trabalho.
 ## Referências
 
 - Diagnóstico inicial: `diagnostico-disco-c-2026-05-15.md`
-- Plano: `D:\Claud Automations\.claude-home\plans\criei-a-pasta-d-claud-warm-patterson.md` (Eixo E)

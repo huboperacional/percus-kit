@@ -4,7 +4,6 @@ audiência: tech leads de cada projeto Percus + revisores de PR no auth-service
 quando-usar: ao integrar qualquer projeto Percus com `auth-service`, ou ao revisar PR que toca contrato cross-produto
 leitura: 8 min
 status: vigente desde 2026-05-15 — substitui `PADRAO_AUTH_CROSS_PROJETO.md` (V1, em `.archive/`). Em v6.11.0 absorveu também `AUTH_SERVICE_PATTERNS_LEARNED_2026-05-15.md` (já refletido em Seção I) e `REVIEW_AUTH_INTEGRATION_2026-05-15.md` (review de momento — git history preserva). Em v6.16.0 absorve o **Padrão Auth Percus v2** (5 pilares, supplement 2026-05-30) como direção canônica vigente — ver **Seção L** (cada pilar com status de rollout real; nem tudo em prod).
-plano-operacional: `D:\Claud Automations\.claude-home\plans\bora-resolver-o-que-fancy-hopper.md`
 docs-relacionados: `docs/contracts/error-codes.md`, `docs/contracts/redirect-reasons.md`, `docs/contracts/MIGRATION_V1_TO_V2.md`, `checklists/CHECKLIST_AUDIENCE_NOVA.md`, `infra/approved-evolution-instances.yaml`, `auth-service/docs/superpowers/specs/2026-05-30-padrao-auth-percus-design.md` (read-only, cross-repo), `auth-service/docs/proposals/2026-05-30-painel-identity-migration.md` (read-only, cross-repo)
 ---
 
@@ -714,7 +713,6 @@ R: Auth-service ignora seu payload e grava `origin=plexco-tasks`. `origin_contex
 ## Onde aprofundar
 
 - **Decisão arquitetural completa** (premissas, alternativas, why-not big-bang): `D:\Claud Automations\OWNERSHIP.md`
-- **Plano operacional V2 com 8 sessões**: `D:\Claud Automations\.claude-home\plans\bora-resolver-o-que-fancy-hopper.md`
 - **Padrão Auth Percus v2 (5 pilares):** Seção L acima + spec consolidada `auth-service/docs/superpowers/specs/2026-05-30-padrao-auth-percus-design.md` (read-only, cross-repo)
 - **Receita passo-a-passo projeto novo**: `checklists/CHECKLIST_AUTH_NOVO_PROJETO.md`
 - **Registry de error_codes**: [docs/contracts/error-codes.md](docs/contracts/error-codes.md)

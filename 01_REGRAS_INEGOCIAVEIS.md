@@ -702,8 +702,6 @@ R20 escape hatch é "operador validou síntese do council + fact-check".
 
 **Refs:**
 - Post-mortem completo: `huboperacional/plexco-coach/docs/post-mortems/2026-05-22-fk-not-deferrable-bug.md` (canary do problema).
-- Plano de fix Coach: `D:\Claud Automations\.claude-home\plans\gleaming-wondering-rossum.md`.
-- Review Tasks-side: `D:\Claud Automations\.claude-home\plans\ok-vamos-aguardar-o-hazy-squirrel.md`.
 
 ---
 
@@ -759,7 +757,6 @@ Convenção é **sugestão**, não trava: projetos full-stack (FastAPI + Next) p
 - Endpoint Painel (VIVO em prod): `POST https://api.ads4pros.com/admin/projects/port-allocate` (X-Internal-Auth)
 - Manual operacional Painel-side: `Painel Gestao e Afiliados/docs/PORT_ALLOCATION_CONSUMER_GUIDE.md`
 - Migration aplicada: `Painel Gestao e Afiliados/execution/database/migration_port_base.sql`
-- Plano original: `D:\Claud Automations\.claude-home\plans\analisa-essa-devolutiva-e-floofy-candy.md`
 
 ---
 
@@ -831,6 +828,36 @@ hotfix.
 
 ---
 
+## R25. Single-source-of-truth — não duplicar info; reforço = ponteiro pro único local vigente (v6.24.0)
+
+**Regra:** uma informação tem **um único dono canônico**. Quando ela precisar ser reforçada em outro
+lugar, **aponte para o doc canônico vigente** ("ver `X`") — **nunca copie o conteúdo**. O canon
+**nunca cita arquivo efêmero/externo não-sincronizado** (planos de trabalho em `.claude-home/plans/*`,
+diagnósticos transient, working files) — ref a algo fora do repo sincronizado quebra em qualquer outra
+máquina.
+
+**Forbidden:**
+- **Duplicar** conteúdo entre docs do canon (a cópia diverge da fonte e gera erro silencioso).
+- Citar `.claude-home/plans/*` ou qualquer arquivo de trabalho efêmero como referência (não existe pra quem clona).
+- Criar um doc paralelo pra uma função que já tem dono — **edite/aponte o existente** (ver [[feedback_revisar_pasta_antes_de_criar]]: revisar a pasta antes de criar).
+- Espalhar a mesma diretiva por vários docs — uma vez no dono canônico, ponteiro nos demais.
+
+**Why:** info espalhada/duplicada diverge com o tempo → o leitor segue a cópia stale e erra. Ref a
+arquivo efêmero externo é link morto fora da máquina de origem. Auditoria 2026-06-27 achou ~10 refs a
+planos transient + uma família de docs duplicando framing stale ("atualizar projeto") — consolidados
+num umbrella único. Princípio declarado pelo operador: "reforço = apontamento pro único local correto".
+
+**Gate de verificação:**
+1. Refs a **arquivo real** — `grep -rnE "\.claude-home[/\\\\]plans[/\\\\].+\.md" <canon>` — retornam **0** fora de `CANON_VERSION.md` (changelog histórico) e `.archive/`. (A definição desta R25 menciona o padrão `.claude-home/plans/*` de propósito — menção do padrão ≠ ref a arquivo, não conta.)
+2. Nenhuma diretiva nova é **copiada** em 2+ docs — vive no dono canônico, os demais apontam.
+3. Antes de criar doc novo numa pasta, confirmar que não há dono existente (revisar a pasta — incidente 2026-06-26).
+
+**Refs:**
+- Umbrella de exemplo: `comandos/REORGANIZAR_PROJETO.md` (consolidou a família "atualizar projeto").
+- Roteamento mestre (aponta, não duplica): `00_LEIA_PRIMEIRO.md`.
+
+---
+
 ## Resumo dos anti-padrões mais comuns
 
 1. ❌ Marcar `[5-T]` sem rodar ciclo CRUD
@@ -867,3 +894,5 @@ hotfix.
 32. ❌ Resolver incidente não-trivial e encerrar sessão sem registrar a solução em `COMO_RESOLVER.md` (R23) — conhecimento se perde, próximo projeto redescobre
 33. ❌ Deployar a cada feature/commit em vez de agrupar por milestone/fim-do-dia/sob-demanda (R24) — desperdiça tempo e recursos
 34. ❌ Deployar sem smoke test pós-deploy nem rollback pronto (R24) — janela de risco sem rede de segurança
+35. ❌ Duplicar conteúdo entre docs do canon em vez de apontar pro dono canônico (R25) — cópia diverge e vira erro stale
+36. ❌ Citar arquivo efêmero/externo (`.claude-home/plans/*`, working file) como referência no canon (R25) — link morto fora da máquina de origem

@@ -649,5 +649,5 @@ Foque este doc em **só auth**. Outros docs de migração devem ser criados sepa
 
 ---
 
-_Última atualização: 2026-04-24 — promovidos pra padrão nativo: (a) cutover big-bang+magic-link como default em V1/V2 (Seção 4); (b) `JWT_SECRET` dedicado obrigatório (Seção 3.3 + pegadinha #11); (c) padrão sidecar FastAPI com Traefik PathPrefix (nova Seção 5.5); (d) pegadinhas #12 e #13. Aplicado primeiro em Paid Media Automation (plano em `.claude-home/plans/estamos-unificando-a-forma-partitioned-gosling.md`)._
+_Última atualização: 2026-04-24 — promovidos pra padrão nativo: (a) cutover big-bang+magic-link como default em V1/V2 (Seção 4); (b) `JWT_SECRET` dedicado obrigatório (Seção 3.3 + pegadinha #11); (c) padrão sidecar FastAPI com Traefik PathPrefix (nova Seção 5.5); (d) pegadinhas #12 e #13. Aplicado primeiro em Paid Media Automation._
 _Versão original: 2026-04-25 (criação)._

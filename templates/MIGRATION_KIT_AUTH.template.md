@@ -280,7 +280,6 @@ Variantes V1-V4 cobrem cenários comuns. **V5** (legado → estado Final auth-se
 
 ## Referências
 
-- Plano original aprovado: `D:/Claud Automations/.claude-home/plans/analise-para-validar-generic-garden.md`
 - Canon Percus: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` R7 + R14-R18
 - Stack/auth: `${env:PERCUS_CANON_DIR}/02_INFRA_E_STACK_PERCUS.md` Seção 2
 - Lib Python: `https://auth.huboperacional.com.br/dist/percus_auth-<ver>-py3-none-any.whl`
