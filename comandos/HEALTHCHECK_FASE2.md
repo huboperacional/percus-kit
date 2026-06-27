@@ -6,8 +6,12 @@ leitura: 3 min (execução: ~2 min auto + opcional ~30s teste comportamental)
 ultima-atualizacao: 2026-05-03
 ---
 
-# Healthcheck — Fase 4 está sendo usada de verdade?
+# Healthcheck — a stack de tooling (review + DeepSeek) está sendo usada de verdade?
 
+> ℹ️ **Auditoria de adoção de tooling** (função distinta da chain de upgrade — não atualiza nada, só audita).
+> Para *atualizar* um projeto pro canon atual, use `comandos/REORGANIZAR_PROJETO.md` (umbrella). O nome "Fase 4"
+> é histórico; o que se audita aqui é se o plugin de review + o DeepSeek estão de fato em uso.
+>
 > Cole o prompt abaixo no chat do Claude Code do projeto que você quer auditar.
 >
 > **Configuração ≠ Adoção.** Esse comando verifica os 2: arquivos no lugar certo (Nível 1 + 2) E comportamento do agente (Nível 3 opcional).

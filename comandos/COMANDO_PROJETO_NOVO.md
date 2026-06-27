@@ -159,6 +159,6 @@ Abrir `CHECKLIST_AUTH.md` no projeto (gerado pelo script) e completar:
 ## Referências relacionadas
 
 - Roteamento completo: `${env:PERCUS_CANON_DIR}/00_LEIA_PRIMEIRO.md`
-- Upgrade de projeto existente (não greenfield): `${env:PERCUS_CANON_DIR}/comandos/UPGRADE_PARA_FASE6.md`
+- Upgrade de projeto existente (não greenfield): `${env:PERCUS_CANON_DIR}/comandos/REORGANIZAR_PROJETO.md`
 - Bootstrap de máquina nova: `${env:PERCUS_CANON_DIR}/comandos/SETUP_NOVA_MAQUINA.md`
 - Versão atual do canon: `${env:PERCUS_CANON_DIR}/CANON_VERSION.md`

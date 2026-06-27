@@ -28,11 +28,11 @@ Este repositório é a **fonte da verdade** das convenções Percus aplicadas em
 3. Aplique `checklists/CHECKLIST_INICIO_SESSAO.md` (5 passos obrigatórios)
 
 ### Quero atualizar um projeto em andamento
-Cole no chat do Claude Code do projeto-alvo (use o `UPGRADE_PARA_FASE<N>` mais recente — hoje `UPGRADE_PARA_FASE7.md`; projetos muito antigos encadeiam a partir de `UPGRADE_PARA_FASE4.md`):
+Cole no chat do Claude Code do projeto-alvo (ponto de entrada único — o umbrella diagnostica a versão e roteia pras sub-rotas certas):
 ```
-Aplique o upgrade do canon neste projeto seguindo `${env:PERCUS_CANON_DIR}\comandos\UPGRADE_PARA_FASE7.md`.
+Atualize/organize este projeto pro canon Percus ATUAL seguindo `${env:PERCUS_CANON_DIR}\comandos\REORGANIZAR_PROJETO.md`.
 
-Comece pelo diagnóstico de estado. NÃO execute as mudanças ainda — só me mostre o resultado do diagnóstico e qual caminho será seguido. Aguarde minha confirmação antes de prosseguir.
+Comece pelo diagnóstico de estado. NÃO execute as mudanças ainda — só me mostre o diagnóstico e o plano. Aguarde minha confirmação antes de prosseguir.
 ```
 
 ### Quero iniciar projeto novo greenfield

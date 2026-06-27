@@ -60,7 +60,7 @@ Se essa sessão pode envolver delegação de implementação mecânica ao DeepSe
    ```
    Select-String -Path AGENTS.md -Pattern 'R13|MODEL_ROUTING' -Quiet
    ```
-   Se ausente, ofereça rodar `comandos/UPGRADE_PROJETO_FASE2.md`.
+   Se ausente, ofereça rodar `comandos/REORGANIZAR_PROJETO.md` (umbrella; roteia pro baseline se preciso).
 
 Para escopo e critérios de delegação, leitura sob demanda em `04_MODEL_ROUTING.md` (não obrigatório no início — só quando aparecer task elegível).
 

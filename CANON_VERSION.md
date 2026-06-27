@@ -1,8 +1,25 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.24.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.25.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.25.0 — 2026-06-27
+
+**D2 resolvido: refrescar framing da chain (NÃO arquivar). Re-consulta ao conselho 3/3 flipou B→C.**
+
+A chain de fase foi levada de volta ao conselho **com o mapa de refs completo** (~13 refs ativas em 9 arquivos + procedimentos válidos referenciados por regras ativas). Os 3 membros (DeepSeek, Llama, Cross-Claude) **FLIPARAM de B (arquivar) → C (refrescar)**: arquivar conteúdo válido por causa do nome violaria o single-source (tira o procedimento de onde as regras ativas o esperam). 1ª rodada (2 membros, sem mapa) tinha votado B.
+
+- **Pontos de entrada "atualizar projeto" repontados pro umbrella `REORGANIZAR_PROJETO`:** `README`, `CLAUDE.template` (×2), `SETUP_NOVA_MAQUINA` (×2), `COMANDO_PROJETO_NOVO`, `CHECKLIST_INICIO_SESSAO`. Agora há **uma entrada única de verdade** (antes mandavam direto pra FASE6/FASE7/PROJETO_FASE2).
+- **`HEALTHCHECK_FASE2` reenquadrado:** é auditoria de adoção de tooling (review+DeepSeek), função distinta da chain; nome "Fase 4" é histórico. Para *atualizar*, umbrella.
+- **Refs a PROCEDIMENTOS específicos preservadas no lugar** (R7.5→FASE7 §2 migração de audience; `UPGRADE_ADICIONAR_SKILLS`→FASE7 §8) — single-source: o procedimento fica onde a regra o espera.
+- Chain mantida (pointer headers v6.23 + framing corrigido); **R25** previne drift de nome futuro.
+
+- **`plugin.json` description encolhida** — duplicava o changelog inteiro do `CANON_VERSION` (violação da própria R25 recém-criada). Agora: 1 linha da versão atual + ponteiro pro single-source.
+
+Encerra a frente de consolidação da família "atualizar projeto" (umbrella REORGANIZAR_PROJETO + chain como sub-rotas específicas).
 
 ---
 

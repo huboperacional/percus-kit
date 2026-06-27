@@ -13,7 +13,7 @@ Esse arquivo (uma linha com semver, ex: `6.3.0`) declara qual versão do canon P
 1. Rodar `Get-Content .percus-version` (ou `cat .percus-version` em bash) — capturar versão do projeto.
 2. Rodar `Get-Content "${env:PERCUS_CANON_DIR}\CANON_VERSION.md" -TotalCount 5` — capturar versão canônica atual.
 3. Declarar em voz alta no primeiro turno: "Projeto na versão X.Y.Z, canônica atual A.B.C — alinhado/divergente."
-4. Se divergente, sugerir ao usuário rodar `comandos/UPGRADE_PARA_FASE6.md` (ou mais recente) antes de qualquer trabalho não-trivial.
+4. Se divergente, sugerir ao usuário rodar `comandos/REORGANIZAR_PROJETO.md` (umbrella — atualiza o projeto pro canon atual) antes de qualquer trabalho não-trivial.
 
 Sem essa declaração no primeiro turno, agente pode aplicar regras erradas (ex: tentar usar `/council:pre-mortem` num projeto v5.0.x onde nem existe).
 
@@ -232,5 +232,5 @@ Ver `checklists/CHECKLIST_ENCERRAR_SESSAO.md`. HANDOFF + PLANO + mock-audit atua
 - **Setup DeepSeek (R13):** `${env:PERCUS_CANON_DIR}\comandos\SETUP_DEEPSEEK.md`
 - **Routing de modelos:** `${env:PERCUS_CANON_DIR}\04_MODEL_ROUTING.md`
 - **Design workflow (R10):** `${env:PERCUS_CANON_DIR}\comandos\DESIGN_WORKFLOW.md`
-- **Upgrade consolidador Fase 4:** `${env:PERCUS_CANON_DIR}\comandos\UPGRADE_PROJETO_FASE2.md`
+- **Atualizar projeto pro canon atual (umbrella):** `${env:PERCUS_CANON_DIR}\comandos\REORGANIZAR_PROJETO.md`
 - **AGENTS.md (irmão deste arquivo):** regras espelhadas para o revisor cross-provider — manter sincronizado com este CLAUDE.md

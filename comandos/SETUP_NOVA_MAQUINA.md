@@ -111,7 +111,7 @@ Se alguma estiver `MISSING`, volte ao passo correspondente do bootstrap.
 
 ## Próximos passos depois do bootstrap
 
-1. **Atualizar projetos existentes** (se houver): em cada projeto Percus, cole o comando de `comandos/UPGRADE_PARA_FASE6.md`.
+1. **Atualizar projetos existentes** (se houver): em cada projeto Percus, cole o comando de `comandos/REORGANIZAR_PROJETO.md` (umbrella).
 2. **Criar projeto novo (greenfield)**: cole o comando de `00_LEIA_PRIMEIRO.md` (roteamento "Projeto NOVO greenfield").
 3. **Manutenção mensal**: `cd $env:PERCUS_CANON_DIR; git pull origin main` pra puxar releases novos do canon.
 
@@ -139,5 +139,5 @@ Se alguma estiver `MISSING`, volte ao passo correspondente do bootstrap.
 
 - API keys: `${env:PERCUS_CANON_DIR}/AMBIENTE_LOCAL_OPERADOR.md` seção "API keys do kit Percus"
 - Versão atual: `${env:PERCUS_CANON_DIR}/CANON_VERSION.md`
-- Upgrade de projeto existente: `${env:PERCUS_CANON_DIR}/comandos/UPGRADE_PARA_FASE6.md`
+- Upgrade de projeto existente: `${env:PERCUS_CANON_DIR}/comandos/REORGANIZAR_PROJETO.md`
 - Greenfield: `${env:PERCUS_CANON_DIR}/00_LEIA_PRIMEIRO.md`
