@@ -90,7 +90,7 @@ Detalhes do conselho expandido + 5 modos operacionais: `06_CONSELHO_PERCUS.md`.
 
 ## Roteamento de revisores (R11)
 
-Revisor não é mais um único modelo (Codex foi descontinuado em 2026-05-03 por custo). Hoje é **multi-modelo com router automático**:
+Revisor é **multi-modelo com router automático** (não um único modelo):
 
 | Cenário | Reviewer | Custo/call |
 |---|---|---|
@@ -101,7 +101,7 @@ Revisor não é mais um único modelo (Codex foi descontinuado em 2026-05-03 por
 
 Canal: plugin `@percus/review` (instalar via `/plugin install percus-review`). Setup completo em `${env:PERCUS_CANON_DIR}/comandos/SETUP_REVIEW_ROUTING.md`.
 
-**Por que sem Codex/OpenAI:** custo era ~$1.25/M input + reasoning effort não controlável + escopo de leitura amplo decidido pelo modelo. Em ritmo de uso real, projetava $200-400/mês. DeepSeek + Cross-Claude duplo cobre cross-provider (DeepSeek Inc ≠ Anthropic) com custo agregado $2-5/mês.
+**Por que multi-modelo barato:** DeepSeek + Cross-Claude duplo cobre cross-provider (DeepSeek Inc ≠ Anthropic) com custo agregado $2-5/mês — vs ~$200-400/mês de um revisor comercial single-provider.
 
 ---
 

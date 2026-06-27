@@ -56,7 +56,7 @@ Se essa sessão pode envolver delegação de implementação mecânica ao DeepSe
    ```
    Se ausente, avise o usuário — sem a chave o wrapper não roda. Aponte pra `comandos/SETUP_DEEPSEEK.md` para configurar.
 
-2. **`AGENTS.md` do projeto reflete R13?** (Codex precisa saber das regras de routing antes de revisar saída do DeepSeek)
+2. **`AGENTS.md` do projeto reflete R13?** (o revisor cross-provider precisa saber das regras de routing antes de revisar saída do DeepSeek)
    ```
    Select-String -Path AGENTS.md -Pattern 'R13|MODEL_ROUTING' -Quiet
    ```

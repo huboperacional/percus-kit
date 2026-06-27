@@ -1,6 +1,6 @@
 ---
 tipo: comando-pronto
-quando-usar: 1ª vez configurando review cross-provider Percus (DeepSeek + Cross-Claude) num projeto — substitui SETUP_CODEX_REVIEWER
+quando-usar: 1ª vez configurando review cross-provider Percus (DeepSeek + Cross-Claude) num projeto
 nao-toca-codigo: true
 leitura: 4 min (execução: ~5 min se faltar tudo, ~1 min se só falta o plugin)
 ultima-atualizacao: 2026-05-03
@@ -16,9 +16,9 @@ ultima-atualizacao: 2026-05-03
 
 ## Objetivo
 
-Habilitar **review cross-provider** (DeepSeek API + Cross-Claude subagent) antes de cada commit e em cada marco. Substitui Codex CLI (descontinuado em 2026-05-03 por custo).
+Habilitar **review cross-provider** (DeepSeek API + Cross-Claude subagent) antes de cada commit e em cada marco.
 
-**Estimativa de custo após setup:** $2-5/mês total em uso normal (vs $200-400/mês com Codex).
+**Estimativa de custo após setup:** $2-5/mês total em uso normal.
 
 **Cobertura cross-provider mantida:** DeepSeek Inc + Anthropic = 2 organizações independentes auditando o mesmo diff.
 
@@ -52,10 +52,6 @@ Test-Path AGENTS.md
 
 # .gitignore tem .deepseek/?
 Select-String -Path .gitignore -Pattern '^\.deepseek/' -Quiet
-
-# Resíduo Codex (precisa ser limpo se Fase 2 anterior foi aplicada)?
-Test-Path .codex
-Select-String -Path CLAUDE.md, AGENTS.md -Pattern '/codex:review|codex CLI|gpt-5' -Quiet
 ```
 
 Reportar matriz e pedir confirmação.
@@ -89,7 +85,7 @@ No chat:
 
 `/plu` → Manage plugins → aba Plugins → "Install from local" → cola o path acima.
 
-Após instalar: `/codex:status`-equivalente não existe ainda, validar com `/percus-review:review` no smoke do Passo 5.
+Após instalar: validar com `/percus-review:review` no smoke do Passo 5.
 
 ---
 
@@ -108,7 +104,7 @@ Não criar placeholder. Aguardar confirmação.
 
 Usar template slim em `${env:PERCUS_CANON_DIR}/templates/AGENTS.template.md` (~4.4 KB).
 
-Substitui qualquer `AGENTS.md` Codex-era no projeto (que era ~7.3 KB). Se já existe AGENTS.md, mesclar — preservar seções "O que é este projeto" e "Stack" se já preenchidas.
+Substitui qualquer `AGENTS.md` antigo/maior no projeto. Se já existe AGENTS.md, mesclar — preservar seções "O que é este projeto" e "Stack" se já preenchidas.
 
 **Se projeto tem `GEMINI.md` (espelho-3):** aplicar mesma reescrita lá.
 
@@ -173,39 +169,7 @@ Smoke do bypass (opcional, autoriza usuário antes — custo ~$0.01):
 
 ---
 
-### Passo 7 — Migração de projeto Fase 2 anterior (se aplicável)
-
-Se diagnóstico do Passo 1 detectou resíduo Codex:
-
-```powershell
-# Remover .codex/ (config local Codex, não rastreada por git)
-Remove-Item -Recurse -Force .codex -ErrorAction SilentlyContinue
-
-# Remover linha .codex/ do .gitignore (opcional — não dá problema deixar)
-# Não obrigatório
-```
-
-Atualizar `CLAUDE.md` do projeto: substituir qualquer seção "Code review cross-provider (R11)" antiga (que mencionava `/codex:review`) pela nova:
-
-```markdown
-## Code review cross-provider (R11)
-
-`/percus-review:review` é obrigatório em DOIS momentos:
-1. Antes de cada commit que muda código
-2. Ao concluir cada marco de plano
-
-Em commit pré-commit: router auto decide DeepSeek / Cross-Claude / duplo (matriz em `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` R11).
-Em marco: `/percus-review:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo).
-
-Sem review nos últimos 5min antes do commit → não pode commitar.
-Plugin Codex (`codex@openai-codex`) descontinuado em 2026-05-03 por custo.
-```
-
-Aplicar mesma substituição em `AGENTS.md` e `GEMINI.md` (se espelho-3 ativo).
-
----
-
-### Passo 8 — Reportar ao usuário
+### Passo 7 — Reportar ao usuário
 
 ```
 SETUP REVIEW ROUTING CONCLUÍDO — {Nome do Projeto}
@@ -216,12 +180,11 @@ SETUP REVIEW ROUTING CONCLUÍDO — {Nome do Projeto}
 ✅ .gitignore com .deepseek/
 ✅ Smoke /percus-review:review respondeu OK
 ✅ Git hook nativo (.git/hooks/pre-commit, v5.0.8+) instalado
-✅ Resíduo Codex limpo (se aplicável)
 
 Próximo commit obrigatoriamente passa por /percus-review:review.
 Próximo marco obrigatoriamente passa por /percus-review:milestone-review --base <commit>.
 
-Custo estimado mensal: $2-5 total (vs $200-400 com Codex anterior).
+Custo estimado mensal: $2-5 total.
 ```
 
 ---
@@ -229,9 +192,7 @@ Custo estimado mensal: $2-5 total (vs $200-400 com Codex anterior).
 ## Anti-padrões durante o setup
 
 - ❌ Pular Passo 3 (DEEPSEEK_API_KEY) e tentar smoke — vai falhar com 401
-- ❌ Não migrar `.codex/` em projeto Fase 2 anterior — fica config morto no repo
 - ❌ Esquecer `.deepseek/` no `.gitignore` — vaza logs de review pro repo
-- ❌ Manter referências a `/codex:review` no `CLAUDE.md` após migração — gera ruído de "comando não encontrado"
 
 ---
 
@@ -254,7 +215,6 @@ Custo estimado mensal: $2-5 total (vs $200-400 com Codex anterior).
 - [ ] `.deepseek/` no `.gitignore`
 - [ ] Smoke `/percus-review:review` respondeu
 - [ ] Git hook nativo instalado: `/percus-review:install-git-hooks` (1× por projeto)
-- [ ] (Se Fase 2 anterior) `.codex/` removido + referências `/codex:review` substituídas
 
 ---
 

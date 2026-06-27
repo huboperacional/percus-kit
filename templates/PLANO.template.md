@@ -48,7 +48,7 @@ Decisões mantidas (críticas ignoradas):
 
 ## Frente: {Nome da Frente 1}
 
-- `[5-T]` ✓ ✅ {Feature completa, marco aprovado pelo Codex} — {data}
+- `[5-T]` ✓ ✅ {Feature completa, marco aprovado pelo revisor cross-provider} — {data}
 - `[4-C]` 🎨 🤖 {Feature componente pronto, implementada via DeepSeek, falta CRUD}
 - `[3-H]` 🎨 {Feature backend conectado} — próxima: terminar componente
 - `[2-E]` 🤖 {Feature backend-only com endpoint, scaffolding via DeepSeek} — próxima: hook

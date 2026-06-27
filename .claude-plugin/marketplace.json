@@ -1,12 +1,12 @@
 {
   "name": "percus-tools",
-  "description": "Percus internal tooling — kit Percus completo (review cross-provider plugin + futuras extensões)",
+  "description": "Percus internal tooling — kit Percus completo (plugin de review cross-provider + extensoes). Changelog e historico de versoes: CANON_VERSION.md (single-source, R25).",
   "owner": { "name": "Percus" },
   "plugins": [
     {
       "name": "percus-review",
-      "description": "Review cross-provider Percus (DeepSeek + Groq-Llama + Cross-Claude) — Fase 7 v6.16.1 (fix council caminho fixo->prompt stale; mantem integracao Padrao Auth Percus v2 da v6.16.0, governanca da v6.15.0, Groq da v6.14.0)",
-      "version": "6.16.1",
+      "description": "Review cross-provider Percus (DeepSeek + Groq-Llama + Cross-Claude), conselho, hooks de enforcement e skills — Fase 7. Versao atual e changelog completo: CANON_VERSION.md (single-source).",
+      "version": "6.26.0",
       "source": "./plugin/percus-review"
     }
   ]

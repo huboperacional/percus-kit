@@ -2,7 +2,7 @@
 
 > Conjunto canônico de regras, templates, comandos e tooling para projetos de software Percus (FastAPI + React + PostgreSQL + JWT cookie httpOnly).
 
-**Estado atual:** Fase 7 — **versão canônica autoritativa em `CANON_VERSION.md`** (atualmente **v6.16.1**). Releases recentes: v6.16.1 (fix: council usava caminho fixo → prompt stale; agora temp único por invocação), v6.16.0 (integra Padrão Auth Percus v2 — 5 pilares — no canon com status de rollout), v6.15.0 (governança: R11 sem exceção pro kit + refresh de docs), v6.14.0 (otimização Groq no conselho: triagem de fact-check + tie-breaker), v6.12.0 (enforcement do tracking `[5-T]` via hooks `crud-evidence-warn` + `state-drift-check`), v6.11.0 (limpa cosmética + template `settings.json`), v6.10.0 (R22 alocação central de portas), v6.9.x (sync Painel), Sprint v6.8 (canonização do padrão auth), v6.7.x (hardening anti-hallucination). Fase 6 (conselho 3-membros) e Fase 4 (review cross-provider sem Codex/OpenAI) estáveis.
+**Estado atual:** Fase 7 — **versão canônica autoritativa em `CANON_VERSION.md`** (atualmente **v6.16.1**). Releases recentes: v6.16.1 (fix: council usava caminho fixo → prompt stale; agora temp único por invocação), v6.16.0 (integra Padrão Auth Percus v2 — 5 pilares — no canon com status de rollout), v6.15.0 (governança: R11 sem exceção pro kit + refresh de docs), v6.14.0 (otimização Groq no conselho: triagem de fact-check + tie-breaker), v6.12.0 (enforcement do tracking `[5-T]` via hooks `crud-evidence-warn` + `state-drift-check`), v6.11.0 (limpa cosmética + template `settings.json`), v6.10.0 (R22 alocação central de portas), v6.9.x (sync Painel), Sprint v6.8 (canonização do padrão auth), v6.7.x (hardening anti-hallucination). Fase 6 (conselho 3-membros) e Fase 4 (review cross-provider) estáveis.
 
 ---
 
@@ -13,7 +13,7 @@ Este repositório é a **fonte da verdade** das convenções Percus aplicadas em
 - **Regras inegociáveis** (R1-R22) que valem em qualquer projeto Percus
 - **Templates** prontos para `CLAUDE.md`, `AGENTS.md`, `HANDOFF.md`, `PLANO.md`, `mock-audit.md`
 - **Comandos prontos** para colar no chat do Claude Code (setup, upgrade, healthcheck, design, refactor)
-- **Plugin `@percus/review`** — conselho 3-membros (DeepSeek + Cross-Claude + Llama via Groq) para review/consult/pre-mortem/brainstorm + hooks de enforcement (substitui Codex CLI desde 2026-05-03)
+- **Plugin `@percus/review`** — conselho 3-membros (DeepSeek + Cross-Claude + Llama via Groq) para review/consult/pre-mortem/brainstorm + hooks de enforcement
 - **Scripts** auxiliares (wrapper DeepSeek para implementação delegada R13, automações de review/conselho)
 
 **Filosofia:** disciplina mecânica via regras + plugin + hooks. Não confiar em memória humana ou disciplina do agente.
@@ -73,8 +73,7 @@ _Novo_Projeto/                       ← raiz do canon (canon + plugin = "percus
 │   ├── UPGRADE_PARA_FASE{4,6,7}.md  ← upgrade encadeado de projetos em andamento
 │   ├── SETUP_*.md                   ← review-routing · deepseek · catalog · claude-settings · nova-maquina
 │   ├── DESIGN_WORKFLOW.md / REVISAO_VISUAL.md   ← UI (R10)
-│   ├── MIGRAR_AUTH.md / REORGANIZAR_PROJETO.md
-│   └── SETUP_CODEX_REVIEWER.md      ← DEPRECATED desde 2026-05-03
+│   └── MIGRAR_AUTH.md / REORGANIZAR_PROJETO.md
 │
 ├── templates/                       ← scaffolding canônico
 │   ├── CLAUDE / AGENTS / HANDOFF / PLANO / mock-audit / adr-0000 (.template.md)
@@ -116,10 +115,10 @@ _Novo_Projeto/                       ← raiz do canon (canon + plugin = "percus
 
 | Fase | Data | Estado | Marco |
 |---|---|---|---|
-| Fase 1 | 2026-04 | DEPRECATED | Codex como revisor |
-| Fase 2 | 2026-05-02 | Histórico | DeepSeek implementador + Codex revisor |
+| Fase 1 | 2026-04 | Histórico | Revisor cross-provider inicial (descontinuado por custo) |
+| Fase 2 | 2026-05-02 | Histórico | DeepSeek implementador + revisor inicial |
 | Fase 3 | 2026-05-02 | Histórico | Harmonização do kit + tooling |
-| Fase 4 | 2026-05-03 | ESTÁVEL (main) | Plugin `@percus/review` (DeepSeek + Cross-Claude), Codex eliminado |
+| Fase 4 | 2026-05-03 | ESTÁVEL (main) | Plugin `@percus/review` (DeepSeek + Cross-Claude) |
 | Fase 5 | 2026-05-03 | Absorvida em main | Skills + hooks de adoção de superpowers — hoje integrados no plugin (`skills/` + `hooks/`) via Fase 6/7 |
 | Fase 6 | 2026-05-15 | Histórico | Feature tracking cross-projeto + conselho 3-membros (DeepSeek + Cross-Claude + Llama via Groq) + ambiente local sanitizado |
 | **Fase 7** | **2026-05-18 →** | **ATIVA — v6.14.0** (ver `CANON_VERSION.md`) | **v6.14.0 Groq (triagem fact-check + tie-breaker) · v6.12.0 enforcement `[5-T]` (hooks) · v6.11.0 limpa + `settings.json` · v6.10.0 R22 portas · v6.9.x Painel · Sprint v6.8 canonização auth · v6.7.x hardening anti-hallucination** |
@@ -142,7 +141,7 @@ Conselho 3-membros obrigatório (R11) — 3 providers distintos reduzem viés si
 
 Opera em **4 modos**: review (pre-commit/marco), consult, pre-mortem, brainstorm. Pasta sensível ou marco escala pra duplo/triplo. Arquitetura completa em `06_CONSELHO_PERCUS.md`.
 
-**Custo agregado estimado:** ~$5/mês em uso normal (vs $200-400/mês com Codex anterior).
+**Custo agregado estimado:** ~$5/mês em uso normal (vs $200-400/mês do esquema anterior).
 
 Setup: ver `comandos/SETUP_REVIEW_ROUTING.md`.
 

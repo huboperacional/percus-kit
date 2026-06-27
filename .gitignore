@@ -47,6 +47,3 @@ venv/
 # Node (caso projetos auxiliares apareçam aqui)
 node_modules/
 .pnpm-store/
-
-# Codex residual (Fase 2 antiga, não deve mais aparecer)
-.codex/

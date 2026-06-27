@@ -1,6 +1,6 @@
 ---
 tipo: comando-pronto
-quando-usar: aplicar Fase 4 num projeto em andamento — detecta automaticamente se é projeto legado (sem nada), Fase 2/3 (com Codex) ou já Fase 4
+quando-usar: aplicar Fase 4 num projeto em andamento — detecta automaticamente se é projeto legado (sem nada) ou já Fase 4
 nao-toca-codigo: true
 leitura: 3 min (execução: 3-15 min dependendo do estado detectado)
 ultima-atualizacao: 2026-05-03
@@ -15,7 +15,6 @@ ultima-atualizacao: 2026-05-03
 >
 > O agente vai **detectar automaticamente** qual estado o projeto está e seguir o caminho certo:
 > - **Já em Fase 4** → reporta e encerra (nada pra fazer)
-> - **Fase 2/3 (com Codex)** → migração (remove Codex, instala plugin novo, atualiza refs)
 > - **Fase 0 (legado sem nada)** → upgrade completo (review + DeepSeek + design + regras)
 
 ---
@@ -68,15 +67,6 @@ $fase4_agents_slim = (Test-Path AGENTS.md) -and `
 $fase4_claude = (Test-Path CLAUDE.md) -and `
     (Select-String -Path CLAUDE.md -Pattern '/percus-review:review' -Quiet -ErrorAction SilentlyContinue)
 
-# === FASE 2/3 — Codex configurado? (legado a migrar) ===
-$fase2_codex_dir = Test-Path .codex
-$fase2_codex_plugin = Test-PluginEnabled 'codex@openai|codex-plugin-cc'
-$fase2_codex_refs = @(
-    Test-Path AGENTS.md,
-    Test-Path CLAUDE.md
-) -contains $true -and `
-    (Select-String -Path CLAUDE.md, AGENTS.md -Pattern '/codex:review|gpt-5\.4|SETUP_CODEX' -Quiet -ErrorAction SilentlyContinue)
-
 # === FASE 0 — projeto legado sem nada? ===
 $tem_qualquer_regra = (Test-Path AGENTS.md) -or `
     ((Test-Path CLAUDE.md) -and (Select-String -Path CLAUDE.md -Pattern 'R11|R13|01_REGRAS_INEGOCIAVEIS' -Quiet -ErrorAction SilentlyContinue))
@@ -113,8 +103,7 @@ if ($git_hook_percus -and (Select-String -Path $hookFile -Pattern 'PERCUS-MERGED
 | Sinais detectados | Estado | Caminho |
 |---|---|---|
 | `$fase4_plugin` AND `$fase4_agents_slim` AND `$fase4_claude` | **Já em Fase 4** | **Caminho A** (reportar e encerrar) |
-| `$fase2_codex_dir` OR `$fase2_codex_plugin` OR `$fase2_codex_refs` (e NÃO Fase 4 completa) | **Fase 2/3 com Codex** | **Caminho B** (migração) |
-| Nenhum sinal de Fase 4, nenhum sinal de Fase 2/3 | **Fase 0 (legado)** | **Caminho C** (upgrade completo) |
+| Nenhum sinal de Fase 4 | **Fase 0 (legado)** | **Caminho C** (upgrade completo) |
 | Sinais mistos / parcial | **Inconsistente** | Reportar matriz e perguntar usuário |
 
 ### Reportar matriz ao usuário
@@ -126,11 +115,6 @@ Fase 4 (estado alvo):
   Plugin @percus/review instalado     | ✅/❌
   AGENTS.md slim (cross-provider)     | ✅/❌
   CLAUDE.md menciona /percus-review:review   | ✅/❌
-
-Fase 2/3 (legado a migrar):
-  .codex/ no repo                     | ⚠️/—
-  Plugin codex@openai-codex instalado | ⚠️/—
-  Refs /codex:review em CLAUDE/AGENTS | ⚠️/—
 
 Componentes Percus:
   DEEPSEEK_API_KEY no .env            | ✅/❌
@@ -191,150 +175,6 @@ Para validar saúde de uso (não só configuração), rode:
 
 ---
 
-## Caminho B — Migração Fase 2/3 → Fase 4
-
-Projeto tem Codex configurado. Migrar pra plugin `@percus/review`.
-
-### B.1 — Limpar resíduo Codex
-
-```powershell
-# Remover .codex/ do repo (config local Codex)
-Remove-Item -Recurse -Force .codex -ErrorAction SilentlyContinue
-
-# Sugerir desinstalação do plugin Codex global (1× por máquina, opcional)
-# No chat claude no terminal:
-#   /plugin uninstall codex@openai-codex
-```
-
-### B.2 — Instalar plugin `@percus/review`
-
-Se não estiver instalado a nível de usuário, seguir [`SETUP_REVIEW_ROUTING.md`](SETUP_REVIEW_ROUTING.md) Passo 2.
-
-Caminho rápido (CLI standalone):
-```
-/plugin marketplace add huboperacional/percus-kit
-/plugin install percus-review
-```
-
-**Alternativo (kit local):** `/plugin marketplace add ${env:PERCUS_CANON_DIR}` + `/plugin install percus-review`
-
-### B.3 — Validar `DEEPSEEK_API_KEY`
-
-Se ausente do `.env`: PARAR. Instruir usuário a obter chave em https://platform.deepseek.com.
-
-### B.4 — Substituir `AGENTS.md` (versão Codex-era → slim)
-
-Recriar a partir de [`templates/AGENTS.template.md`](../templates/AGENTS.template.md) (~4.4 KB). Preservar seções "O que é este projeto" e "Stack" se já estavam preenchidas.
-
-Se espelho-3 ativo (`GEMINI.md` presente): aplicar mesma reescrita lá.
-
-### B.5 — Atualizar `CLAUDE.md` (refs Codex → Percus)
-
-Substituir qualquer seção tipo:
-
-```markdown
-## Code review cross-provider (R11)
-
-`/codex:review` é obrigatório em DOIS momentos:
-...
-```
-
-Por:
-
-```markdown
-## Review cross-provider (R11)
-
-`/percus-review:review` é obrigatório em DOIS momentos:
-1. Antes de cada commit (router auto: DeepSeek/Cross-Claude/duplo)
-2. Ao concluir cada marco: `/percus-review:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo)
-
-Matriz de routing detalhada: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` R11.
-Plugin Codex (`codex@openai-codex`) descontinuado em 2026-05-03 por custo.
-
-## Routing de modelos (R13) — marker obrigatório
-
-Ao aplicar saída DeepSeek via wrapper, commit message deve terminar com:
-
-\`\`\`
-Co-implemented-by: deepseek-v4
-\`\`\`
-
-O router de R11 detecta esse trailer e roteia revisão pra Cross-Claude (anti auto-revisão).
-```
-
-Aplicar em `CLAUDE.md`, `AGENTS.md` e `GEMINI.md` (se espelho-3).
-
-### B.6 — `.gitignore`
-
-Adicionar `.deepseek/` se ausente. Linha `.codex/` pode permanecer ou ser removida (não atrapalha).
-
-### B.7 — Smoke test
-
-```
-git add -A  # se há mudanças no AGENTS.md/CLAUDE.md
-/percus-review:review
-```
-
-Esperado: router decide DeepSeek (default), retorna findings em < 5s, custo ~$0.001-0.01.
-
-### B.7.1 — Instalar git hook nativo (Layer 2 anti-bypass, v5.0.8+)
-
-Pedir ao usuário pra rodar no chat:
-
-```
-/percus-review:install-git-hooks
-```
-
-(Slash command precisa ser disparado pelo usuário, não pelo agente.)
-
-Esperado: cria `.git/hooks/pre-commit` self-contained POSIX sh. Defesa em profundidade: PreToolUse cobre UX dentro do Claude Code, git hook nativo cobre bypass via `rm && commit` encadeado e commits do terminal direto.
-
-### B.8 — HANDOFF.md
-
-Adicionar nota:
-
-```markdown
-## Migração Fase 2/3 → Fase 4 aplicada em {data}
-
-Removido:
-- .codex/ (config local Codex)
-- Plugin codex@openai-codex (uninstall opcional, fica órfão se mantido)
-- Refs /codex:review em CLAUDE.md/AGENTS.md/GEMINI.md
-
-Instalado:
-- Plugin @percus/review (DeepSeek + Cross-Claude)
-- AGENTS.md slim (~4.4 KB)
-- CLAUDE.md com R11 nova + R13 trailer
-
-Custo mensal estimado: $2-5 (vs $200-400 com Codex anterior).
-```
-
-### B.9 — Reportar
-
-```
-✅ MIGRAÇÃO FASE 2/3 → FASE 4 CONCLUÍDA — {Nome}
-
-Removido:
-✅ .codex/ apagado
-✅ Refs /codex:review substituídas em CLAUDE/AGENTS/GEMINI
-ℹ️ Plugin codex@openai-codex pode ser desinstalado manualmente: /plugin uninstall codex@openai-codex
-
-Instalado:
-✅ Plugin @percus/review
-✅ AGENTS.md slim (~4.4 KB)
-✅ CLAUDE.md com R11 nova
-✅ /percus-review:review smoke test passou
-✅ HANDOFF.md atualizado
-
-Tempo total: ~5-8 min
-Custo do upgrade: ~$0.01
-
-Próximo commit: usar /percus-review:review (router auto).
-Próximo marco: /percus-review:milestone-review --base <commit>.
-```
-
----
-
 ## Caminho C — Upgrade completo (Fase 0 legado → Fase 4)
 
 Projeto não tem nada do kit Percus. Aplicar tudo de uma vez.
@@ -342,8 +182,7 @@ Projeto não tem nada do kit Percus. Aplicar tudo de uma vez.
 Delegar pro fluxo completo de [`UPGRADE_PROJETO_FASE2.md`](UPGRADE_PROJETO_FASE2.md) (apesar do nome legado, o conteúdo já é Fase 4):
 
 1. **Passo 1** — Plugin `@percus/review` (R11)
-2. **Passo 1.5** — Pular (não tem Codex pra migrar nesse caminho)
-3. **Passo 2** — DeepSeek implementador (R13)
+2. **Passo 2** — DeepSeek implementador (R13)
 4. **Passo 3** — Design workflow (R10) — só atualizar referências
 5. **Passo 4** — Mesclar R10/R11/R13 em `CLAUDE.md` + `AGENTS.md` (+ `GEMINI.md` se espelho-3)
 6. **Passo 5** — `.gitignore` com `.deepseek/`
@@ -365,8 +204,6 @@ Reportar ao final:
 ## Anti-padrões
 
 - ❌ Pular Passo 0 (diagnóstico) e tentar adivinhar o estado — vai duplicar trabalho ou quebrar config existente
-- ❌ Executar Caminho B em projeto Fase 0 legado — vai falhar porque não tem Codex pra remover
-- ❌ Executar Caminho C em projeto que tem Codex configurado — sobrescreve sem migrar; gera resíduo
 - ❌ Não ler `GEMINI.md` (espelho-3) — quebra invariante interna do projeto silenciosamente
 - ❌ Tocar em código de negócio — esse upgrade é só ferramentas/configs/regras
 

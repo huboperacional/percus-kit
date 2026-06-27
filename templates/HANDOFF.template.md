@@ -34,7 +34,7 @@ _Sessão: {breve título da sessão atual}_
 > Tags: `[0]` planejado · `[1-S]` schema · `[2-E]` endpoint · `[3-H]` hook · `[4-C]` componente · `[5-T]` ✅ ciclo testado
 > Marcações (acumulam, ortogonais à tag):
 > - `🎨` draft aprovado (v0.dev/shadcn) · `🎨?` precisa draft antes de `[1-S]`
-> - `🤖` implementado via DeepSeek (R13) · `✓` Codex aprovou no marco (R11)
+> - `🤖` implementado via DeepSeek (R13) · `✓` revisor cross-provider aprovou no marco (R11)
 
 | Frente | Feature | Status | Próxima etapa |
 |--------|---------|--------|---------------|

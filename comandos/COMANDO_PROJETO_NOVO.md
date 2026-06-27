@@ -49,21 +49,29 @@ FLUXO GREENFIELD:
    - `HANDOFF.md` (de `HANDOFF.template.md`)
    - `docs/PLANO.md` (de `PLANO.template.md`)
    - `docs/mock-audit.md` (de `mock-audit.template.md`)
-   - `.gitignore` (de `.gitignore.example`, com `.deepseek/` e `.codex/`)
+   - `.gitignore` (de `.gitignore.example`, com `.deepseek/`)
    - `.percus-version` (de `.percus-version.template`, copia versao canonica atual)
    - `catalog-info.yaml` (de `catalog-info.yaml.template`)
-   - `docs/legal/TERMS_PRIVACY.md` (ver passo 2.6 — gerado do LEGAL_MASTER.md)
+   - `docs/legal/termos-de-uso.md` + `docs/legal/politica-de-privacidade.md` (ver passo 2.6 — DUAS páginas separadas, geradas do LEGAL_MASTER.md)
 
-2.6. Gerar `docs/legal/TERMS_PRIVACY.md` (documentação legal obrigatória do projeto):
-   - Leia `${env:PERCUS_CANON_DIR}/docs/legal/LEGAL_MASTER.md`
-   - Crie `docs/legal/TERMS_PRIVACY.md` para este projeto:
-     1. Mantenha as 19 cláusulas dos Termos e a Política de Privacidade intactos (PT + EN)
-     2. No Apêndice A: remova todos os outros projetos; deixe APENAS a linha deste produto
-     3. No Apêndice B: remova sub-processadores que este projeto não utiliza
-     4. Remova o Apêndice C inteiro (é específico do Micro Investors)
-     5. Atualize o nome do produto na introdução e o campo "Last updated"
-   - Não reescreva, não invente cláusulas, não resuma. Só filtre o que não pertence a este projeto.
-   - Se o projeto ainda não consta no Apêndice A do LEGAL_MASTER.md, adicionar lá primeiro antes de gerar a versão filtrada.
+2.6. Gerar as DUAS páginas legais do projeto — **Termos de Uso** e **Política de Privacidade** (separadas):
+   - Leia `${env:PERCUS_CANON_DIR}/docs/legal/LEGAL_MASTER.md` (documento-mestre bilíngue PT+EN).
+   - Gere **dois arquivos SEPARADOS** com nomes padrão (NÃO um combinado `TERMS_PRIVACY.md` — são duas
+     páginas distintas no produto):
+     - `docs/legal/termos-de-uso.md` — as cláusulas dos **Termos de Uso** (PT + EN).
+     - `docs/legal/politica-de-privacidade.md` — a **Política de Privacidade** (PT + EN).
+   - Em CADA página, **só filtre** o que não pertence a este projeto (não reescreva, não invente, não resuma):
+     1. Mantenha as cláusulas intactas (PT + EN).
+     2. Apêndice A: remova todos os outros projetos; deixe APENAS a linha deste produto.
+     3. Apêndice B: remova sub-processadores que este projeto não utiliza.
+     4. Remova o Apêndice C inteiro (é específico do Micro Investors).
+     5. Atualize o nome do produto na introdução e o campo "Last updated".
+     6. **E-mail de contato segue o DOMÍNIO do projeto** (não o do grupo): troque **todas** as ocorrências de
+        `legal@huboperacional.com.br` (DPO/Encarregado, exclusão de dados, contato EU/DPA, seção Contato) por
+        `legal@<domínio-do-projeto>` — ex.: projeto em `meuapp.com.br` → `legal@meuapp.com.br`. Idem qualquer
+        URL/e-mail institucional que deva refletir o domínio do produto. WhatsApp/telefone do grupo permanece,
+        salvo o projeto ter canal próprio.
+   - Se o projeto ainda não consta no Apêndice A do LEGAL_MASTER.md, adicione lá primeiro antes de filtrar.
 
 2.5. Alocar PERCUS_PORT_BASE (R22 — registro central de portas locais):
    - Roda 1x: `python "${env:PERCUS_CANON_DIR}/plugin/percus-review/scripts/port_allocate.py" --slug <slug> --name "<Nome Bonito>"`

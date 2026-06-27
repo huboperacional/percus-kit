@@ -32,7 +32,7 @@ Verifique e reporte status (✅ OK / ❌ FALTA) pra cada item:
 **Plugin @percus/review:**
 - Plugin habilitado em `enabledPlugins` do settings.json do Claude Code? **Detecte o config dir real primeiro:** `$claudeHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { "$env:USERPROFILE\.claude" }`. Procure `percus-review|@percus` em `$claudeHome\settings.json` (campo `enabledPlugins`) E como pasta em `$claudeHome\plugins\`. **Não use `~/.claude/` direto** — em máquinas Percus `CLAUDE_CONFIG_DIR` aponta pra `D:\Claud Automations\.claude-home\` e ler o path default dá falso-negativo.
 - AGENTS.md existe na raiz?
-- AGENTS.md tem versão slim (~4-5 KB) e menciona "revisor cross-provider" (não "Codex")?
+- AGENTS.md tem versão slim (~4-5 KB) e menciona "revisor cross-provider"?
 
 **DeepSeek:**
 - `.env` contém `DEEPSEEK_API_KEY=...`?
@@ -41,13 +41,8 @@ Verifique e reporte status (✅ OK / ❌ FALTA) pra cada item:
 
 **CLAUDE.md (regras):**
 - Menciona R10 (design v0/shadcn, NÃO Claude artifacts)?
-- Menciona R11 nova (`/percus-review:review` cross-provider, NÃO `/codex:review`)?
+- Menciona R11 (`/percus-review:review` cross-provider)?
 - Menciona R13 (DeepSeek routing + trailer `Co-implemented-by: deepseek-v4`)?
-
-**Resíduo Codex (Fase 2 anterior — deve estar AUSENTE em projeto Fase 4):**
-- `.codex/` ausente do repo? (deve estar limpo)
-- Plugin `codex@openai-codex` ausente do `$claudeHome\plugins\` E ausente de `enabledPlugins` em `$claudeHome\settings.json` (use o `$claudeHome` definido acima — `CLAUDE_CONFIG_DIR` ou fallback)?
-- Zero matches em `Select-String -Path CLAUDE.md, AGENTS.md -Pattern '/codex:review|codex CLI|gpt-5'`?
 
 **HANDOFF.md:**
 - Existe?
@@ -106,9 +101,8 @@ Data: {YYYY-MM-DD HH:MM}
 Plugin @percus/review:    X/3 OK
 DeepSeek (impl):          X/3 OK
 CLAUDE.md regras:         X/3 OK
-Limpeza Codex:            X/3 OK
 HANDOFF:                  X/2 OK
-TOTAL CONFIG:             X/14
+TOTAL CONFIG:             X/11
 
 [Nível 2 — Uso histórico]
 .deepseek/runs/      — N chamadas, M tokens (~$Y) implementação
@@ -121,11 +115,10 @@ PLANO ✓ (marco aprovado) — N features
 {Status: executado OK | pulado pelo usuário | falhou (motivo)}
 
 [Diagnóstico]
-{1-2 frases honestas: "configuração OK e ativo" | "configurado mas zero uso" | "config quebrada em X" | "migração Fase 2→4 incompleta"}
+{1-2 frases honestas: "configuração OK e ativo" | "configurado mas zero uso" | "config quebrada em X"}
 
 [Ações sugeridas]
 - {se nivel 1 falhou} → rodar UPGRADE_PROJETO_FASE2.md de novo
-- {se resíduo Codex detectado} → completar Passo 1.5 do UPGRADE
 - {se nivel 2 zero} → reforçar G-DELEGA / G-REVIEW na próxima sessão
 - {se nivel 3 falhou} → diagnosticar wrapper (.env, PowerShell version)
 ```
@@ -150,11 +143,6 @@ Config 14/14, mas `.deepseek/` vazio e PLANO sem 🤖/✓ semanas após upgrade.
 Config X/14 com X < 11.
 **Causa:** upgrade não foi aplicado completo, ou alguém removeu manualmente.
 **Ação:** rodar `UPGRADE_PROJETO_FASE2.md` de novo — ele detecta o que falta e completa.
-
-### Cenário D — "Resíduo Codex detectado (migração incompleta)"
-"Limpeza Codex" < 3/3. `.codex/` ainda no repo, plugin `codex@openai-codex` ainda instalado, ou refs `/codex:review` em arquivos do projeto.
-**Causa:** UPGRADE rodou mas Passo 1.5 (migração Fase 2→4) foi pulado.
-**Ação:** rodar Passo 1.5 do UPGRADE manualmente — limpar `.codex/`, desinstalar plugin Codex, substituir refs.
 
 ### Cenário E — "Nível 3 falhou"
 Wrapper retornou erro mesmo com config OK.
@@ -182,7 +170,6 @@ Review por marco está sendo pulado (R11 ampliada).
 - ❌ Tratar "Nível 1 OK" como sucesso — configuração não prova uso
 - ❌ Não autorizar Nível 3 e depois reclamar que "não tem como saber se DeepSeek funciona"
 - ❌ Rodar todo dia — desperdício; semanal/mensal já cobre
-- ❌ Ignorar resíduo Codex (Cenário D) — gera ruído de "command not found" e configurações órfãs
 
 ---
 

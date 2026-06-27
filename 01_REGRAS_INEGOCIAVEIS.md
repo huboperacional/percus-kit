@@ -58,7 +58,7 @@ Paths citados nas regras seguem duas formas:
 - **Path absoluto** (`${env:PERCUS_CANON_DIR}/...`): aponta para arquivo do **kit Percus** (regras, templates, comandos, scripts auxiliares). NÃO existe no repo do projeto que está sendo revisado — é referência cross-projeto. Vale para toda regra que entra em `AGENTS.md` via transclusão (R10, R11, R13).
 - **Path relativo** (`docs/...`, `HANDOFF.md`, `CLAUDE.md`): aponta para arquivo **dentro do repo do projeto atual**. É criado pelos templates do kit no setup inicial.
 
-**Para revisores não-Claude (Codex, etc.):** se um path absoluto começando com `${env:PERCUS_CANON_DIR}/` for citado, **NÃO** trate como referência morta no repo do projeto — é arquivo do kit, fora do repo, propositalmente externo.
+**Para revisores não-Claude (DeepSeek, etc.):** se um path absoluto começando com `${env:PERCUS_CANON_DIR}/` for citado, **NÃO** trate como referência morta no repo do projeto — é arquivo do kit, fora do repo, propositalmente externo.
 
 ### Config dir do Claude Code (`CLAUDE_CONFIG_DIR`)
 
@@ -139,7 +139,7 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 - [0] 🎨? Página de erro 404 — bloqueada (precisa draft v0/shadcn)
 ```
 
-**Por que marcações em vez de novas tags `[6-R]`/`[7-D]`:** R2 é um pipeline linear (técnico). Codex review é gate cross-cutting (commit + marco), DeepSeek é mecanismo de execução. Ambos ortogonais ao pipeline — viram metadata, não fase.
+**Por que marcações em vez de novas tags `[6-R]`/`[7-D]`:** R2 é um pipeline linear (técnico). Review cross-provider é gate cross-cutting (commit + marco), DeepSeek é mecanismo de execução. Ambos ortogonais ao pipeline — viram metadata, não fase.
 
 ---
 
@@ -578,9 +578,9 @@ As exceções gerais declaráveis em voz alta (acima — docs-only, hot fix, Dee
 
 ---
 
-## R13. Roteamento de modelos — DeepSeek implementa, Claude arquiteta, Codex revisa
+## R13. Roteamento de modelos — DeepSeek implementa, Claude arquiteta, conselho cross-provider revisa
 
-**Regra:** Tarefas de implementação **mecânica** devem ser delegadas ao DeepSeek V4 via wrapper `${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.{ps1,sh}`, seguindo o playbook em `${env:PERCUS_CANON_DIR}/04_MODEL_ROUTING.md` seção "Como delegar". Saída do DeepSeek é tratada como **rascunho** — sempre revisada por Claude (validação contra R1–R12) e por Codex (R11) antes de virar commit. **Decisões arquiteturais permanecem com Claude.**
+**Regra:** Tarefas de implementação **mecânica** devem ser delegadas ao DeepSeek V4 via wrapper `${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.{ps1,sh}`, seguindo o playbook em `${env:PERCUS_CANON_DIR}/04_MODEL_ROUTING.md` seção "Como delegar". Saída do DeepSeek é tratada como **rascunho** — sempre revisada por Claude (validação contra R1–R12) e pelo revisor cross-provider (R11 — DeepSeek + Cross-Claude) antes de virar commit. **Decisões arquiteturais permanecem com Claude.**
 
 **Marker obrigatório no commit:** ao aplicar saída DeepSeek via wrapper (`-Apply`), o commit message **deve** terminar com o trailer Git:
 
@@ -608,7 +608,7 @@ O router de review (R11) detecta esse trailer e roteia revisão pra Cross-Claude
 3. Validação contra R1–R12 antes de aceitar
 4. `/percus-review:review` (R11) sobre o resultado antes de marco/commit — router detecta trailer `Co-implemented-by: deepseek-v4` e roteia pra Cross-Claude
 
-**Anti-padrão proibido:** rodar DeepSeek em `--apply` direto sem dry-run; ou aceitar saída sem validação Claude + Codex.
+**Anti-padrão proibido:** rodar DeepSeek em `--apply` direto sem dry-run; ou aceitar saída sem validação Claude + revisor cross-provider.
 
 **Exceções declaráveis em voz alta:**
 - Task tão pequena que delegação tem mais overhead que ganho (ex.: trocar 1 string)

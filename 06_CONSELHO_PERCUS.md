@@ -24,7 +24,7 @@ fase-introducao: Fase 6
 | **Cross-Claude** | Anthropic (subagent Sonnet) | `claude-sonnet-4-6` | incluso na assinatura Claude Code | Análise de design, raciocínio profundo |
 | **Llama** | Groq API | `llama-3.3-70b-versatile` | Free 30 req/min, depois $0.59 / $0.79 | Resposta rápida (~500 tok/s), consultor inline |
 
-**Custo agregado estimado:** $5/mês com volume Percus atual (vs $200-400/mês de Codex pré-2026-05-03).
+**Custo agregado estimado:** $5/mês com volume Percus atual (vs $200-400/mês do esquema single-provider anterior).
 
 **Diversidade de provider:** DeepSeek Inc + Anthropic + Meta (via Groq) — 3 origens diferentes, reduz viés single-provider.
 

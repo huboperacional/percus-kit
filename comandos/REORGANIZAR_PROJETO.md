@@ -62,7 +62,7 @@ PASSO 2 — Adotar as diretivas vigentes (ler a fonte no canon e aplicar o que f
 - Auth (se consome auth-service): auditar via percus-review:auth-consumer (bridge lê #rt=, não só #at=).
 
 PASSO 3 — Rotear pros setups focados SÓ no que faltar (não duplicar aqui):
-- Plugin/review ausente OU resíduo Codex → comandos/UPGRADE_PROJETO_FASE2.md (baseline Fase 4 completa)
+- Plugin/review ausente → comandos/UPGRADE_PROJETO_FASE2.md (baseline Fase 4 completa)
   OU comandos/SETUP_REVIEW_ROUTING.md (só o reviewer).
 - DeepSeek implementador ausente → comandos/SETUP_DEEPSEEK.md.
 - .claude/settings.json fora do padrão → comandos/SETUP_CLAUDE_SETTINGS.md.
@@ -86,7 +86,7 @@ PASSO 5 — Verificação + report:
 | Estado do projeto | Sub-rota |
 |---|---|
 | Sem tracking files (CLAUDE/HANDOFF/PLANO) | Passo 1 acima |
-| Legado sem plugin/review (ou com Codex) | `comandos/UPGRADE_PROJETO_FASE2.md` (baseline Fase 4) |
+| Legado sem plugin/review | `comandos/UPGRADE_PROJETO_FASE2.md` (baseline Fase 4) |
 | Já Fase 4/5, falta conselho 3-membros + catalog | `comandos/UPGRADE_PARA_FASE6.md` |
 | Fase 6, falta auth canonizado v6.8 | `comandos/UPGRADE_PARA_FASE7.md` |
 | Tem o básico, falta só adotar diretivas novas | Passo 2 acima |

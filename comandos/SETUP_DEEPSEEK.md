@@ -16,7 +16,7 @@ ultima-atualizacao: 2026-05-02
 
 ## Objetivo
 
-Habilitar o **DeepSeek V4** como **implementador delegado** para tarefas de implementação mecânica (scaffolding, refactor, boilerplate). Saída do DeepSeek é sempre revisada por Claude e por Codex (R11) antes de virar commit. Detalhes em `_Novo_Projeto/04_MODEL_ROUTING.md`.
+Habilitar o **DeepSeek V4** como **implementador delegado** para tarefas de implementação mecânica (scaffolding, refactor, boilerplate). Saída do DeepSeek é sempre revisada por Claude e pelo revisor cross-provider (R11) antes de virar commit. Detalhes em `_Novo_Projeto/04_MODEL_ROUTING.md`.
 
 **Escopo da Fase 2:** DeepSeek **NÃO** decide arquitetura, **NÃO** entra em pasta sensível (auth/payment/migrations). Só executa plano explícito em arquivos nomeados.
 
@@ -122,7 +122,7 @@ Tasks de implementação mecânica devem ser delegadas ao DeepSeek V4 via wrappe
 Playbook completo: `${env:PERCUS_CANON_DIR}/04_MODEL_ROUTING.md` seção "Como delegar".
 ```
 
-E em `AGENTS.md` (Codex precisa saber pra revisar saída do DeepSeek com critério):
+E em `AGENTS.md` (o revisor cross-provider precisa saber pra revisar saída do DeepSeek com critério):
 
 ```markdown
 ## R13 — Routing de modelos
@@ -161,7 +161,7 @@ Próximos passos:
 
 - ❌ Pular Passo 1 e tentar rodar smoke test "no escuro" — sem chave o wrapper falha em exit 2
 - ❌ Continuar após erro em qualquer passo "achando que dá certo no próximo"
-- ❌ Não criar `AGENTS.md` antes — Codex revisa saída do DeepSeek sem conhecer R13
+- ❌ Não criar `AGENTS.md` antes — o revisor cross-provider revisa saída do DeepSeek sem conhecer R13
 - ❌ Esquecer `.deepseek/` no `.gitignore` — vaza logs com prompts/respostas pro repo
 - ❌ Aplicar smoke test (`-Apply`) em vez de só dry-run — polui o repo com `_smoke-deepseek.py` que tem que apagar depois
 

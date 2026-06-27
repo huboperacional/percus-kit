@@ -1,8 +1,27 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.25.1`
+**Versão canônica em `huboperacional/percus-kit`:** `6.26.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.26.0 — 2026-06-27
+
+**Legal em 2 páginas + e-mail por domínio · marketplace.json destravado · Codex 100% removido.**
+
+- **Legal (passo 2.6 do `COMANDO_PROJETO_NOVO`):** projeto novo agora gera **DUAS páginas separadas** —
+  `docs/legal/termos-de-uso.md` + `docs/legal/politica-de-privacidade.md` (nomes padrão), não mais o
+  combinado `TERMS_PRIVACY.md`. **Regra nova:** o e-mail de contato segue o **domínio do projeto**
+  (`legal@huboperacional.com.br` → `legal@<domínio-do-projeto>`).
+- **`marketplace.json`:** estava travado em **6.16.1** (versão + description stale — parte do porquê o
+  plugin instalado não atualiza) → **6.26.0** + description concisa apontando pro `CANON_VERSION` (R25).
+- **Codex 100% removido** (operador: "não usamos e não pretendemos voltar"): deletado
+  `comandos/SETUP_CODEX_REVIEWER.md`; removido **Caminho B** (migração Codex) do `UPGRADE_PARA_FASE4`;
+  removidos **Passo 1.5** + detecção/resíduo Codex do `UPGRADE_PROJETO_FASE2` e do `HEALTHCHECK`; `.codex/`
+  fora dos `.gitignore`; ~20 docs/templates/checklists neutralizados ("Codex revisa" → "revisor
+  cross-provider"). Permanece **só** menção histórica neste changelog.
+- `plugin.json` description encolhida (parou de duplicar o changelog — R25).
 
 ---
 

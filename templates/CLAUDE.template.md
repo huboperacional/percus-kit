@@ -92,7 +92,7 @@ Tags: `[0]` planejado · `[1-S]` schema · `[2-E]` endpoint · `[3-H]` hook · `
 Marcações visuais (acumulam, ortogonais à tag):
 - `🎨` draft de design aprovado (v0.dev/shadcn) · `🎨?` precisa draft antes de sair de `[0]`
 - `🤖` implementação delegada ao DeepSeek (R13)
-- `✓` Codex aprovou no marco (R11) — adicionar quando review de marco passou
+- `✓` revisor cross-provider aprovou no marco (R11) — adicionar quando review de marco passou
 
 ## Regra de mock
 
@@ -168,8 +168,6 @@ Marco é SEMPRE dual — wrapper sempre emite marker `__PERCUS_NEEDS_CROSS_CLAUD
 
 Setup primeira vez: `${env:PERCUS_CANON_DIR}\comandos\SETUP_REVIEW_ROUTING.md`.
 Regras que o revisor usa: `AGENTS.md` (irmão deste arquivo, na raiz do projeto).
-
-Plugin Codex (`codex@openai-codex`) descontinuado em 2026-05-03 por custo. Não usar.
 
 ## Routing de modelos (R13)
 

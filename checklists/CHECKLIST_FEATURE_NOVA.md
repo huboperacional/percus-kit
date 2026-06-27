@@ -175,7 +175,7 @@ Primeira vez no projeto sem plugin `@percus/review` configurado? → rodar `coma
 
 ### G1b. Code review extra (opcional) — `superpowers:requesting-code-review`
 
-Se diff > 500 linhas ou mexeu em auth/permissões/segurança, vale rodar code-review do Claude Code também (em paralelo ao Codex). Cobertura redundante para mudanças sensíveis.
+Se diff > 500 linhas ou mexeu em auth/permissões/segurança, vale rodar code-review do Claude Code também (em paralelo ao review cross-provider). Cobertura redundante para mudanças sensíveis.
 
 ### G2. Verification — `superpowers:verification-before-completion`
 

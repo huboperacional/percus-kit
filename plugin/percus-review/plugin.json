@@ -1,6 +1,6 @@
 {
   "name": "percus-review",
-  "version": "6.25.1",
+  "version": "6.26.0",
   "description": "Percus kit Fase 7 — canon de regras (_Novo_Projeto/) + plugin de review cross-provider (DeepSeek + Cross-Claude + Llama). Versao atual: 6.25.0. Changelog completo e historico de versoes vivem em CANON_VERSION.md (single-source, R25 — esta description NAO duplica o changelog). Destaque 6.25.0: D2 resolvido (re-consulta ao conselho 3/3 flipou B->C) — chain de upgrade por fase NAO arquivada (procedimentos validos referenciados por regras ativas); pontos de entrada de atualizacao de projeto repontados pro umbrella REORGANIZAR_PROJETO; HEALTHCHECK reenquadrado como auditoria de tooling.",
   "author": { "name": "Percus" },
   "commands": "./commands",

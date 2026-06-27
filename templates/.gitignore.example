@@ -3,8 +3,7 @@
 # Copie pra raiz do seu projeto e adicione regras específicas.
 # ============================================================
 
-# --- Tooling cross-provider (Fase 1 + Fase 2) ---
-.codex/                 # Configs locais do Codex CLI (R11 — reviewer)
+# --- Tooling cross-provider ---
 .deepseek/              # Logs de execução do worker DeepSeek (R13 — implementador)
 
 # --- Secrets ---
