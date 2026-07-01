@@ -1,8 +1,35 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.27.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.28.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.28.0 — 2026-07-01
+
+**Fechar soaks órfãos + parity `.sh` (gap aceito + guard fail-closed).** Follow-up do Bloco 4 da v6.27.0;
+decisões via conselho (`.deepseek/council-log`) + escolha do operador.
+
+- **2 soaks FECHADOS formalmente** (conselho 2-1 — DeepSeek+Cross-Claude vs Llama). Ambos venceram no
+  papel mas **nunca coletaram dado** (instrumentação zerada: `factcheck-triage.jsonl` nunca criado, shadow
+  nunca ligou; `crud-warn.log` inexistente): (1) **enforcement de tracking** (v6.12.0) fica **warn-only
+  permanente** — sem promoção warn→block; (2) **factcheck-triage** (v6.14.0) fica **shadow-off, sem gate**.
+  Motivo: operador solo, 1 runtime, plugin nem republicado — montar coleta não se paga, e amostra minúscula
+  daria falsa confiança (block prematuro trava o próprio push; gate errado pula o Sonnet e deixa passar
+  factcheck ruim). Deixam de ser pendência. Reabrir só sob pedido explícito (setup: shadow em 2 projetos,
+  janela por ≥30 eventos).
+- **Parity `.sh` — gap aceito + exceção de segurança** (conselho 3/3). Nova nota "Runtime suportado &
+  paridade `.sh`" no `01_REGRAS_INEGOCIAVEIS.md` (R20): **Windows/PowerShell = runtime suportado; `.sh` =
+  best-effort**, não portar até surgir consumidor Unix (porta divergente sem teste = falsa paridade). Gaps
+  aceitos: `fact-check-triage.sh` (sem shadow/gate), `council-tiebreaker` (lib `.ps1` vs inline no `.sh`).
+- **`external-action-guard.sh` criado — stub FAIL-CLOSED.** A ausência do `.sh` não era gap de paridade,
+  era **bypass silencioso** do gate R20 no Unix (push/PR-comment passavam sem enforcement). O stub bloqueia
+  ação externa pública (git push / gh pr|issue / slack-cli / mailto:) sem `PERCUS_EXTERNAL_OVERRIDE=1`,
+  com fallback que **falha fechado mesmo sem `python3`** (casa os padrões no stdin cru). Não reimplementa o
+  check de `premise_validity` do `.ps1` (esse segue Windows-completo). Validado: bloqueia/permite/override ok.
+- Versões alinhadas: `.percus-version` = `plugin.json` = `marketplace.json` = `CANON_VERSION` = **6.28.0**.
+  Segue **repo-only** até o republish (instalado 6.16.1).
 
 ---
 

@@ -679,6 +679,20 @@ R20 escape hatch é "operador validou síntese do council + fact-check".
 - Comment em PR DO PRÓPRIO operador (não em PR de terceiros)
 - Resposta a comando explícito do operador ("posta esse comment exato")
 
+### Runtime suportado & paridade `.sh` (nota de tooling — decisão v6.28.0, conselho 3/3)
+
+**Runtime suportado do kit = Windows/PowerShell.** Os hooks/scripts têm as três faces (`.ps1` lógica ·
+`.cmd` entrada Windows · `.sh` Unix), mas o `.sh` é **best-effort**: mantido/testado só sob demanda.
+Gaps `.sh` conhecidos e **aceitos** — não portar até surgir consumidor Unix real (porta divergente sem
+teste dá falsa paridade, pior que gap declarado):
+
+1. `fact-check-triage.sh` — só o core; os modos `shadow`/`gate` (opt-in) não foram portados.
+2. `council-tiebreaker` — lib `.ps1` dot-sourcável; no Unix a lógica está inline no `council-orchestrator.sh`.
+3. `external-action-guard.sh` — **exceção de segurança:** a ausência não é gap de paridade, é **bypass
+   silencioso** do gate R20 no Unix. Por isso existe um **stub fail-closed** que **bloqueia** ação externa
+   pública sem `PERCUS_EXTERNAL_OVERRIDE=1` — não reimplementa o check de `premise_validity` do `.ps1`,
+   só garante que o Unix **falha fechado** em vez de silencioso.
+
 ---
 
 ## R21. FK invariant pattern — parent INSERT upfront, não confiar em ordering implícito de TX
