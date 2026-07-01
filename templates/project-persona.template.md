@@ -91,7 +91,7 @@ Leia nesta ordem — não pule etapas:
 
 ## Referências
 
-- Regras: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` (R1-R22 completos)
+- Regras: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` (constituição completa)
 - Skills locais relevantes: `skills/{skill}/SKILL.md`
 - Plugin: `percus-review:feature-flow`, `percus-review:auth-consumer`, etc.
 - Guia geral: `${env:PERCUS_CANON_DIR}/comandos/SETUP_PROJECT_SKILLS.md`

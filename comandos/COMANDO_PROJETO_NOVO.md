@@ -39,7 +39,7 @@ Premissas (confirme antes de comecar):
 FLUXO GREENFIELD:
 
 1. Le `${env:PERCUS_CANON_DIR}/00_LEIA_PRIMEIRO.md` e segue roteamento "Projeto NOVO greenfield":
-   - Ler `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` (R1-R19, kit Fase 6).
+   - Ler `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` (constituição Percus).
    - Ler `${env:PERCUS_CANON_DIR}/02_INFRA_E_STACK_PERCUS.md` (stack, VPS, auth, DB).
    - Rodar `${env:PERCUS_CANON_DIR}/checklists/CHECKLIST_INICIO_SESSAO.md` (5 passos).
 

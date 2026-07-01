@@ -6,7 +6,7 @@
     {
       "name": "percus-review",
       "description": "Review cross-provider Percus (DeepSeek + Groq-Llama + Cross-Claude), conselho, hooks de enforcement e skills — Fase 7. Versao atual e changelog completo: CANON_VERSION.md (single-source).",
-      "version": "6.26.0",
+      "version": "6.27.0",
       "source": "./plugin/percus-review"
     }
   ]

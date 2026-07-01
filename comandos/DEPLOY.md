@@ -90,6 +90,9 @@ Após rollback: registrar no HANDOFF o que falhou + abrir entrada no `conhecimen
 - ❌ Pular o smoke test ("subiu, deve estar ok") — 520/5xx passam despercebidos.
 - ❌ Deploy de migration sem `downgrade` testado em dev.
 - ❌ Acumular dias sem deployar e sem registrar o pendente no HANDOFF.
+- ❌ **`next/font/google` no build Docker de app Next** — baixa a fonte via rede AO BUILDAR, quebra o cache
+  do BuildKit (e o DNS da bridge). Use `next/font/local` com woff2 self-hosted + cache BuildKit no Dockerfile.
+  Recipe opt-in (build frio ~7-8min → ~1-3min): `conhecimento/COMO_FAZER.md#deploy-build-cache`.
 
 ## Referências
 

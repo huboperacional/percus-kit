@@ -10,7 +10,7 @@
 
 Este repositório é a **fonte da verdade** das convenções Percus aplicadas em todos os projetos. Inclui:
 
-- **Regras inegociáveis** (R1-R25) que valem em qualquer projeto Percus
+- **Regras inegociáveis** que valem em qualquer projeto Percus
 - **Templates** prontos para `CLAUDE.md`, `AGENTS.md`, `HANDOFF.md`, `PLANO.md`, `mock-audit.md`
 - **Comandos prontos** para colar no chat do Claude Code (setup, upgrade, healthcheck, design, refactor)
 - **Plugin `@percus/review`** — conselho 3-membros (DeepSeek + Cross-Claude + Llama via Groq) para review/consult/pre-mortem/brainstorm + hooks de enforcement
@@ -55,7 +55,7 @@ Faça healthcheck deste projeto, conforme `${env:PERCUS_CANON_DIR}\comandos\HEAL
 _Novo_Projeto/                       ← raiz do canon (canon + plugin = "percus-kit", versionados juntos)
 │
 ├── 00_LEIA_PRIMEIRO.md              ← roteamento e índice mestre
-├── 01_REGRAS_INEGOCIAVEIS.md        ← regras universais R1-R22
+├── 01_REGRAS_INEGOCIAVEIS.md        ← regras universais (constituição Percus)
 ├── 02_INFRA_E_STACK_PERCUS.md       ← stack + VPS + auth + DB
 ├── 03_TRACKING_ATTRIBUITION.md      ← UTMs/click IDs em forms (R3)
 ├── 04_MODEL_ROUTING.md              ← Claude=arquiteto, DeepSeek=implementador, conselho revisor

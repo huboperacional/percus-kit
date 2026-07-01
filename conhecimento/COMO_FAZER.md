@@ -15,6 +15,8 @@
 - [Consultar o conselho (consult / pre-mortem / analyze)](#rodar-conselho)
 - [Subir uma migration Alembic](#migration-alembic)
 - [Deploy na VPS Percus](#deploy-vps) — cadência R24 + playbook `comandos/DEPLOY.md`
+- [Decompor trabalho grande em frentes](#decompor-frentes) — retomada barata + paralelismo real
+- [Build Docker frio/lento (Next.js): cache incremental + fontes self-hosted](#deploy-build-cache) — opt-in, pilotar antes de adotar
 
 ---
 
@@ -114,6 +116,66 @@ only**, `02_INFRA` §8); pular smoke; migration sem `downgrade` testado; deploya
 operador autorizar o risco.
 
 **Ref:** `comandos/DEPLOY.md` (playbook), `02_INFRA_E_STACK_PERCUS.md` §6-10, R24.
+
+---
+
+## Decompor trabalho grande em frentes {#decompor-frentes}
+
+`tags: frentes, decompor, cascata, retomada, contexto, checkpoint, paralelismo, worktree, plano`
+
+**Quando:** um milestone/épico grande demais pra tocar numa aba só, ou que gargala na retomada de sessão.
+
+**Passos:**
+1. **Precisa só retomar barato** (perder menos contexto entre sessões)? Já é nativo: escreva o estado em
+   frentes no `templates/PLANO.template.md` (frente é conceito de 1ª classe lá) + use `/checkpoint` e o
+   hook PreCompact (v6.19). Não crie estrutura de arquivos nova.
+2. **As frentes são genuinamente independentes e você quer rodá-las em paralelo** (2-4 abas, wall-clock)?
+   Use `comandos/COMANDO_FRENTES_PARALELAS.md` (worktrees + aba-diretora + writer-unique). Requer fundação
+   `[5-T]` merged antes.
+3. **Nenhum dos dois** (é serial e cabe numa aba)? Fluxo normal (`feature-flow`), sem cerimônia.
+
+**Armadilhas:** **não** invente um mecanismo "cascata" separado (arquivos aninhados
+`docs/plans/<milestone>/<frente>.md` com métrica de retomada) — foi avaliado e **aposentado na v6.27.0**:
+o eixo retomada já é checkpoint/PreCompact, o eixo decomposição já é o `PLANO.template`, e o paralelismo
+é o `COMANDO_FRENTES_PARALELAS`. Reintroduzir seria duplicar (viola R25).
+
+**Ref:** `CANON_VERSION.md` changelog v6.27.0; `comandos/COMANDO_FRENTES_PARALELAS.md`; skill `checkpoint`.
+
+---
+
+## Build Docker frio/lento (Next.js): cache incremental + fontes self-hosted {#deploy-build-cache}
+
+`tags: deploy, docker, buildkit, cache, next, nextjs, next/font, fonte, build lento, build frio, ci`
+
+> **Status: opt-in — pilotar antes de adotar como padrão.** Recipe comprovado em produção fora do canon;
+> ainda não rodado dentro de um projeto Percus canônico. É **melhoria aditiva**, não muda a base/convenção.
+
+**Quando:** app Next.js deployado como imagem Docker cujo `next build` refaz do zero (~7-8 min) a cada
+deploy. Duas causas atacáveis: fetch de fonte no build + ausência de cache incremental.
+
+**Passos:**
+1. **Fontes self-hosted** (elimina fetch de rede no build, que quebra o cache/DNS do BuildKit): para cada
+   fonte usada via `next/font/google`, baixe o woff2 **variável** (latin) pra `app/fonts/` (ou `src/fonts/`)
+   de `https://cdn.jsdelivr.net/fontsource/fonts/<FONTE>:vf@latest/latin-wght-normal.woff2`. Troque os
+   imports `next/font/google` → `next/font/local`, mantendo os **mesmos** `variable: '--...'`,
+   `display:'swap'` e um `weight` em range (ex.: `'300 700'`).
+2. **Cache incremental no Dockerfile** (BuildKit): `# syntax=docker/dockerfile:1` na 1ª linha; no estágio
+   de deps `RUN --mount=type=cache,target=/root/.npm npm ci`; no estágio de build
+   `RUN --mount=type=cache,target=/app/.next/cache npm run build` (ajuste `/app` ao WORKDIR).
+3. **Build com BuildKit:** `DOCKER_BUILDKIT=1` no comando de build; `--network=host` se o DNS da bridge
+   Docker estiver quebrado na VPS.
+4. **Validar:** `npm run typecheck` (se existir) + `npm run build` local passam; fontes renderizam iguais.
+
+**Comando (verificar o woff2 baixado):**
+```bash
+file app/fonts/*.woff2    # deve dizer "Web Open Font Format"
+```
+
+**Armadilhas:** pré-requisito é **BuildKit habilitado** (Docker ≥23 é default; a VPS Percus roda 28.5.2 —
+confirmar). O **1º build ainda é frio** (popula o cache); a queda pra ~1-3 min vem do **2º** em diante.
+Não altere lógica de página, só fontes + Dockerfile. Não canonize num projeto sem rodar o passo 4 primeiro.
+
+**Ref:** recipe do operador (deploy em produção real); `comandos/DEPLOY.md` (anti-padrão `next/font/google`).
 
 ---
 

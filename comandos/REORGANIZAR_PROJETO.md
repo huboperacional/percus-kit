@@ -108,6 +108,6 @@ PASSO 5 — Verificação + report:
 ## Referências
 
 - Templates: `${env:PERCUS_CANON_DIR}/templates/` (CLAUDE/AGENTS/HANDOFF/PLANO/mock-audit/spec).
-- Diretivas: `01_REGRAS_INEGOCIAVEIS.md` (R1-R24), `06_CONSELHO_PERCUS.md` (modos), `comandos/DEPLOY.md` (R24).
+- Diretivas: `01_REGRAS_INEGOCIAVEIS.md`, `06_CONSELHO_PERCUS.md` (modos), `comandos/DEPLOY.md` (R24).
 - Setups focados: `SETUP_REVIEW_ROUTING`, `SETUP_DEEPSEEK`, `SETUP_CLAUDE_SETTINGS`, `UPGRADE_ADICIONAR_SKILLS`, `SETUP_CATALOG`, `MIGRAR_AUTH`.
 - Roteamento mestre: `00_LEIA_PRIMEIRO.md`.

@@ -1,8 +1,40 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.26.1`
+**Versão canônica em `huboperacional/percus-kit`:** `6.27.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.27.0 — 2026-07-01
+
+**Aposentar cascata + higiene R25 (R-count) + otimização de deploy aditiva.** Release vetada pelo
+conselho 3/3 (pre-mortem + consult) — log `.deepseek/council-log/20260701-082640-pre-mortem.jsonl`.
+
+- **Cascata v6.13.0-alpha formalmente APOSENTADA/absorvida.** Reconciliação: o eixo *retomada barata* já é
+  checkpoint/RESUME_PROMPT/PreCompact (v6.19); *decompor-em-frentes* já é nativo do `PLANO.template`;
+  *paralelismo real* é o `COMANDO_FRENTES_PARALELAS` (v6.20). A versão `6.13.0` segue **pulada de
+  propósito**; não havia doc de design a deletar (só existia como versão reservada). Registrado como guia
+  de decisão em `conhecimento/COMO_FAZER.md#decompor-frentes` — não reintroduzir mecanismo cascata
+  separado (seria duplicar = viola R25).
+- **Higiene R25 — R-count vira ponteiro sem número** (mata a classe de drift na raiz, veredito 3/3 do
+  conselho). Refs de **total** de regras deixaram de cravar "R1-Rn" (que defasava a cada regra nova):
+  `README.md` (×2), `templates/project-persona.template.md`, `comandos/COMANDO_PROJETO_NOVO.md`
+  (estava em **R1-R19**), `comandos/REORGANIZAR_PROJETO.md` (estava em **R1-R24**). Os **subsets**
+  intencionais dos prompts de review/consult/analyze (R1-R13/R19/R23 — o revisor foca um subconjunto)
+  foram **preservados** de propósito.
+- **`plugin.json` description → ponteiro puro** (parou de cravar "Versao atual: 6.25.0" + destaques —
+  violava o próprio R25). `marketplace.json` 6.26.0 → 6.27.0 (estava um patch atrás). Versões alinhadas:
+  `.percus-version` = `plugin.json` = `marketplace.json` = `CANON_VERSION` = **6.27.0**.
+- **Otimização de deploy (ADITIVA / opt-in)** — recipe comprovado em produção (build Docker Next.js frio
+  ~7-8min → ~1-3min): fontes self-hosted (`next/font/local`) + cache incremental BuildKit
+  (`--mount=type=cache`). Entrou como **melhoria opt-in** ("pilotar antes de adotar"), **sem mudar a base**
+  (decisão explícita do operador + conselho 3/3): nova entrada `conhecimento/COMO_FAZER.md#deploy-build-cache`
+  + 1 anti-padrão em `comandos/DEPLOY.md`. **Não** se criou exemplo Next dedicado nem se tocou o Dockerfile
+  do auth-service (`02_INFRA`) ou o scaffolding de projeto — o conselho vetou fabricar base não-validada.
+- **Nota honesta (repo-only):** o fix de versão/description corrige o **repo**, mas o plugin **instalado**
+  segue **6.16.1**; o tooling novo só chega aos projetos após o **republish** (operador-gated). O drift
+  plugin↔repo persiste até lá.
 
 ---
 
