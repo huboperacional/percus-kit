@@ -2,8 +2,8 @@
 tipo: comando-pronto-para-colar
 quando-usar: PONTO DE ENTRADA para atualizar/organizar um projeto Percus existente pro canon ATUAL — tracking files + diretivas vigentes + versão
 nao-toca-codigo: true
-leitura: 4 min · execução típica: 15-40 min
-ultima-atualizacao: 2026-06-26
+leitura: 4 min · execução típica: 15-40 min (adoção incremental de diretivas: ~5 min, ver seção Delta)
+ultima-atualizacao: 2026-07-10
 version-agnostic: true (sempre alinha pra versão corrente em CANON_VERSION.md)
 ---
 
@@ -81,6 +81,56 @@ PASSO 5 — Verificação + report:
 
 ---
 
+## Atualização incremental de diretivas (delta) {#delta-diretivas}
+
+> Para projeto **já no canon** que só precisa **adotar as diretivas-doc que mudaram** desde a última
+> atualização — **sem** rerodar o diagnóstico completo (Passos 0-5). É a caixa **leve** (~5 min).
+>
+> **Só diretiva/doc, nunca plugin.** O republish do tooling foi descartado: os projetos seguem lendo o
+> plugin instalado. Esta caixa entrega **DIRETIVAS/docs** (que moram no canon e o projeto **referencia**
+> via `${env:PERCUS_CANON_DIR}`), jamais tooling executável novo. Diretiva nova = **opt-in por definição**:
+> o projeto avalia e adota se fizer sentido; não é obrigatória.
+
+**Pré-requisito (1x na máquina):** `cd "$env:PERCUS_CANON_DIR"; git pull` — entrega os docs ao vivo a todos os projetos.
+
+### Cole isto no chat do Claude Code do projeto-alvo
+
+```
+Adote as diretivas-doc que mudaram no canon Percus desde a minha última atualização.
+Não toque em código de negócio. É opt-in: só DIRETIVA/doc, sem plugin novo. Confirme comigo (R5) antes de qualquer commit.
+
+PASSO A — Delta de versão (mostre antes de mudar nada):
+1. Leia `.percus-version` na raiz (versão adotada hoje; ausente = pré-Fase-6).
+2. Leia as 5 primeiras linhas de ${env:PERCUS_CANON_DIR}/CANON_VERSION.md (versão corrente).
+3. Reporte o delta. Se estiver muito atrás (sem plugin/tracking files), PARE e use o umbrella completo
+   (Passos 0-5) — esta caixa é só pra adotar o delta de diretivas, não pra reorganizar do zero.
+
+PASSO B — Diretiva project-facing nova: deploy opt-in (build Docker frio/lento em Next.js):
+- Aplica SE este projeto é Next.js deployado como imagem Docker cujo `next build` refaz do zero a cada deploy.
+- Se aplica: leia ${env:PERCUS_CANON_DIR}/conhecimento/COMO_FAZER.md#deploy-build-cache e avalie adotar —
+  fontes self-hosted (`next/font/google` → `next/font/local`, mesmos `variable`/`display`) + cache
+  incremental BuildKit no Dockerfile. É ADITIVO, não muda a base/convenção. **Pilote antes de canonizar:**
+  rode o passo 4 de validação (typecheck + build local passam, fontes renderizam iguais) NESTE projeto
+  antes de tratar como padrão. Não altere lógica de página — só fontes + Dockerfile.
+- Se NÃO aplica (não é Next.js, ou não é Docker, ou o build já é rápido): registre "N/A — motivo" e siga.
+
+PASSO C — Higiene interna do canon (informativo — NADA a adotar no projeto):
+- cascata aposentada, R-count vira ponteiro (R25), soaks fechados, parity .sh como gap aceito: são mudanças
+  INTERNAS do canon/tooling, não diretivas que o projeto "adota". Só fique ciente; nenhuma ação no projeto.
+
+PASSO D — Bump da versão adotada:
+- Se adotou/pilotou a diretiva do Passo B: atualize `.percus-version` pra versão corrente do CANON_VERSION.md.
+- Se tudo ficou N/A (nada aplicável a este projeto): NÃO bumpe — registre no HANDOFF "diretivas revisadas
+  {data}, delta N/A pra este projeto".
+
+PASSO E — Report: o que foi adotado, o que ficou N/A (com motivo), próximo passo. Sem commit sem meu OK explícito.
+```
+
+> **Quando usar esta caixa vs. o umbrella completo:** projeto já no canon e você só quer propagar o que
+> mudou → esta caixa (Delta). Projeto sem tracking files / sem plugin / muitas versões atrás → Passos 0-5.
+
+---
+
 ## Rota por estado (o umbrella decide; estes são sub-passos específicos)
 
 | Estado do projeto | Sub-rota |
@@ -89,7 +139,7 @@ PASSO 5 — Verificação + report:
 | Legado sem plugin/review | `comandos/UPGRADE_PROJETO_FASE2.md` (baseline Fase 4) |
 | Já Fase 4/5, falta conselho 3-membros + catalog | `comandos/UPGRADE_PARA_FASE6.md` |
 | Fase 6, falta auth canonizado v6.8 | `comandos/UPGRADE_PARA_FASE7.md` |
-| Tem o básico, falta só adotar diretivas novas | Passo 2 acima |
+| Tem o básico, falta só adotar diretivas novas | Seção **Delta** (`#delta-diretivas`) — caixa leve incremental |
 | Auditar se a Fase 4 está mesmo em uso | `comandos/HEALTHCHECK_FASE2.md` |
 
 > Os `UPGRADE_PARA_FASE*` são **rotas históricas específicas por fase**. Para "trazer ao canon atual"
