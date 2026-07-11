@@ -40,7 +40,6 @@
 param(
     [string]$PromptFile,
     [string]$SystemPrompt,
-    [double]$Temperature = 0.2,
     [int]$MaxTokens = 1024,
     [string]$Model = "claude-sonnet-4-6",
     [string]$Endpoint = "https://api.anthropic.com/v1/messages",
@@ -104,10 +103,12 @@ if (-not $userPrompt -or $userPrompt.Trim().Length -eq 0) {
 
 # IMPORTANTE: system deve ser array de blocks com cache_control — NAO string simples.
 # Anthropic API rejeita cache_control se system for string.
+# NAO enviar temperature/top_p/top_k: a familia Opus 4.7+ / Sonnet 5 / Fable 5 removeu os
+# sampling params e retorna 400 se recebidos. O pre-mortem usa claude-opus-4-7, entao enviar
+# temperature quebrava o cross-claude do conselho toda vez. Steering vai por prompt, nao por sampling.
 $body = @{
     model      = $Model
     max_tokens = $MaxTokens
-    temperature = $Temperature
     system     = @(
         @{
             type          = "text"
@@ -148,11 +149,16 @@ try {
     } | ConvertTo-Json -Depth 10 -Compress
     exit 0
 } catch {
+    # Invoke-RestMethod poe o CORPO da resposta de erro da API em $_.ErrorDetails.Message
+    # (ex.: '{"error":{"message":"temperature: Extra inputs are not permitted"}}'); sozinho,
+    # $_.Exception.Message e' so o generico "(400) Bad Request". Preferir o corpo quando existir.
+    $apiBody = if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $_.ErrorDetails.Message } else { $null }
+    $errMsg = if ($apiBody) { "$($_.Exception.Message) :: $apiBody" } else { $_.Exception.Message }
     @{
         provider   = "cross-claude"
         model      = $Model
         status     = "error"
-        error      = $_.Exception.Message
+        error      = $errMsg
         latency_ms = [int]((Get-Date) - $start).TotalMilliseconds
     } | ConvertTo-Json -Depth 10 -Compress
     exit 1
