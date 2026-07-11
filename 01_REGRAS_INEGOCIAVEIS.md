@@ -796,12 +796,12 @@ variam em wording/stack/locale), sincroniza pra todas as máquinas via `git pull
 1. `conhecimento/COMO_RESOLVER.md` e `conhecimento/COMO_FAZER.md` existem no canon (sincronizados via git).
 2. Ao bater num erro conhecido, há evidência de consulta antes do debug (a skill loga / o agente declara).
 3. `CHECKLIST_ENCERRAR_SESSAO.md` tem o passo "problema novo resolvido foi pra COMO_RESOLVER?"; o
-   `/checkpoint` reforça (a captura não depende de memória — fica num gate que já roda).
+   a skill `checkpoint` reforça (a captura não depende de memória — fica num gate que já roda).
 
 **Refs:**
-- Skill: `percus-review:consult-knowledge` (`plugin/percus-review/skills/consult-knowledge/SKILL.md`)
+- Skill: `consult-knowledge` (`plugin/percus-review/skills/consult-knowledge/SKILL.md`) — invoca-se por linguagem natural, não por slash (ver `comandos/SKILLS_VS_COMMANDS.md`)
 - Base: `conhecimento/COMO_RESOLVER.md`, `conhecimento/COMO_FAZER.md`
-- Gate: `checklists/CHECKLIST_ENCERRAR_SESSAO.md`, skill `percus-review:checkpoint`
+- Gate: `checklists/CHECKLIST_ENCERRAR_SESSAO.md`, skill `checkpoint`
 
 ---
 

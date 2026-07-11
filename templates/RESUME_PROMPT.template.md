@@ -1,6 +1,6 @@
 # Prompt de Retomada — {Nome do Projeto}
 
-> Gerado pelo `/checkpoint` ao fim de um milestone (ou antes de `/clear`/`/compact`). Cole o **bloco
+> Gerado pela skill `checkpoint` ao fim de um milestone (ou antes de `/clear`/`/compact`). Cole o **bloco
 > abaixo** numa sessão nova para retomar sem perder contexto. Mantém só o essencial — o detalhe completo
 > está no `HANDOFF.md` e `docs/PLANO.md`.
 

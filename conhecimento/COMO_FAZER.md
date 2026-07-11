@@ -127,7 +127,7 @@ operador autorizar o risco.
 
 **Passos:**
 1. **Precisa só retomar barato** (perder menos contexto entre sessões)? Já é nativo: escreva o estado em
-   frentes no `templates/PLANO.template.md` (frente é conceito de 1ª classe lá) + use `/checkpoint` e o
+   frentes no `templates/PLANO.template.md` (frente é conceito de 1ª classe lá) + use a skill `checkpoint` e o
    hook PreCompact (v6.19). Não crie estrutura de arquivos nova.
 2. **As frentes são genuinamente independentes e você quer rodá-las em paralelo** (2-4 abas, wall-clock)?
    Use `comandos/COMANDO_FRENTES_PARALELAS.md` (worktrees + aba-diretora + writer-unique). Requer fundação

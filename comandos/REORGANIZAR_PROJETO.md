@@ -58,7 +58,7 @@ PASSO 2 — Adotar as diretivas vigentes (ler a fonte no canon e aplicar o que f
 - Gate [S]: feature não-trivial → spec.md (template) + /clarify (≤5) + /percus-review:spec-analyze ANTES de [0]. (06_CONSELHO Modo 5)
 - R23: consultar ${env:PERCUS_CANON_DIR}/conhecimento/COMO_RESOLVER.md antes de debugar; registrar após (skill consult-knowledge).
 - R24: deploy ao milestone/fim-do-dia/sob-demanda, NÃO per-feature (comandos/DEPLOY.md, smoke+rollback).
-- Checkpoint: rodar skill percus-review:checkpoint ao fim de milestone (PreCompact é backstop).
+- Checkpoint: rodar a skill `checkpoint` (linguagem natural, não slash) ao fim de milestone (PreCompact é backstop).
 - Auth (se consome auth-service): auditar via percus-review:auth-consumer (bridge lê #rt=, não só #at=).
 
 PASSO 3 — Rotear pros setups focados SÓ no que faltar (não duplicar aqui):
