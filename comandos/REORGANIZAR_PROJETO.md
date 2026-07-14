@@ -114,6 +114,15 @@ PASSO B — Diretiva project-facing nova: deploy opt-in (build Docker frio/lento
   antes de tratar como padrão. Não altere lógica de página — só fontes + Dockerfile.
 - Se NÃO aplica (não é Next.js, ou não é Docker, ou o build já é rápido): registre "N/A — motivo" e siga.
 
+PASSO B2 — Diretivas de AUTONOMIA (v6.29.0) — aplica a TODO projeto:
+- O canon agora manda o agente RESOLVER O MÁXIMO SEM PERGUNTAR (menos confirmação boba): review/conselho/
+  testes/build rodam sozinhos; conselho automático ao finalizar spec/plano; paralelismo é o default;
+  lixo AUTO-CRIADO limpa sem perguntar; deploy/mutação-de-prod é autônomo (autorização durável); confirmar
+  só destruição irreversível de dados, e como pergunta BINÁRIA (nunca menu a/b/c).
+- Adotar: copie a seção "## Autonomia" de ${env:PERCUS_CANON_DIR}/templates/CLAUDE.template.md pro CLAUDE.md
+  DESTE projeto (MESCLE, não sobrescreva). As regras-fonte vivem em 01_REGRAS (R5/R9/R11) + 06_CONSELHO — o
+  projeto já as referencia via ${env:PERCUS_CANON_DIR}; esta adoção só reflete a diretiva no CLAUDE.md local.
+
 PASSO C — Higiene interna do canon (informativo — NADA a adotar no projeto):
 - cascata aposentada, R-count vira ponteiro (R25), soaks fechados, parity .sh como gap aceito: são mudanças
   INTERNAS do canon/tooling, não diretivas que o projeto "adota". Só fique ciente; nenhuma ação no projeto.

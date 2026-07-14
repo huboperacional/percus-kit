@@ -1,8 +1,31 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.28.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.29.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.29.0 — 2026-07-14
+
+**Autonomia — "menos confirmação boba, IA resolve o máximo" (pedido do operador).** Diretivas de comportamento
+elevadas de opt-in/permissivo pra imperativo, **todas doc** (chegam aos projetos via `git pull`):
+
+- **R11 auto-review OBRIGATÓRIO** (não mais só "autorizado"): o agente sempre dispara o review sozinho antes de
+  commit. Pedir "`/percus-review:review`" ao operador = ERRO (anti-padrão explícito em `01_REGRAS §295`).
+- **Conselho automático** (`06_CONSELHO` Modo 3/5): ao finalizar spec → `spec-analyze` sozinho; ao finalizar
+  plano → `council-pre-mortem` sozinho. Sempre, sem perguntar. Hook `pre-plan-exit` (>500 linhas) vira backstop.
+- **Paralelismo = DEFAULT ativo** (`R9`): subagents / frentes disjuntas / tool-calls concorrentes buscados
+  ativamente, não só "quando cabe". Deixar de paralelizar quando cabia = anti-padrão.
+- **R5 reescrito:** confirmação é EXCEÇÃO. Resolve sozinho review/testes/build/checkpoint e limpa **LIXO
+  AUTO-CRIADO** sem perguntar. **Autorização durável de deploy/mutação-de-prod** (env-add, restart, redeploy,
+  rollback, migration com `downgrade` testado) → executa direto. Confirma só destruição irreversível de dados
+  (`DELETE`/`DROP` em prod, force-push que apaga história), e como **pergunta binária — nunca menu (a)/(b)/(c)**.
+- `templates/CLAUDE.template.md` ganha seção "Autonomia" espelhando isso pros projetos; caixa-de-delta em
+  `comandos/REORGANIZAR_PROJETO.md` (Passo B2) instrui a adoção.
+- **Fronteira honesta:** destruição irreversível de dados e ações proibidas do harness (credencial em tela de
+  login) seguem com gate — limite do harness, não do canon.
+- Versões alinhadas: `.percus-version` = `plugin.json` = `marketplace.json` = `CANON_VERSION` = **6.29.0**.
 
 ---
 
