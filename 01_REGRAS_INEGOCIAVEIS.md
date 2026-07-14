@@ -176,7 +176,25 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 - Force push em main/master
 - Re-run de operação cara que já rodou
 
-**Sempre confirme com o usuário antes**, mesmo em modo auto-approve.
+**Sempre confirme com o usuário antes**, mesmo em modo auto-approve — **EXCETO** onde houver autorização
+durável (abaixo). E quando confirmar: **uma pergunta binária ("confirmo X? sim/não") com o caminho padrão
+já decidido — NUNCA um menu "(a)/(b)/(c) quem faz o quê".**
+
+**Filosofia (resolver o máximo sem perguntar):** confirmação é EXCEÇÃO, não default. **Resolva sozinho — NÃO
+peça permissão pra:**
+- Rodar review / conselho / testes / lint / build / checkpoint (passos internos; auto-trigger, ver R11).
+- Limpar **lixo que VOCÊ criou nesta sessão**: scratchpad, worktrees temporários, arquivos efêmeros de
+  plano/review, branches locais que você mesmo abriu. R5 **não se aplica a lixo auto-criado**.
+- Ler segredo do `.env` e usá-lo num deploy/`--env-add` **sem imprimi-lo** (operação de infra normal).
+
+**Autorização durável de deploy/prod (padrão Percus, vigente por default):** o operador **autoriza execução
+autônoma de deploy e mutação de prod** — troca de env, `--env-add`, restart/redeploy de serviço, rollback,
+migration com `downgrade` testado. Com ela, o agente **executa direto, sem confirmar caso a caso**, escolhendo
+o caminho padrão (faz tudo ele mesmo, ex.: via SSH). Revogável dizendo "volte a confirmar deploys".
+
+**Fronteira que a autorização NÃO dispensa (confirme 1x mesmo assim):** destruição irreversível de dados —
+`DELETE`/`DROP`/hard-delete de dados de produção, drop de database com dados, force-push que apaga história
+remota. "Deploy autônomo" ≠ "apagar dado sem volta".
 
 ---
 
@@ -275,13 +293,22 @@ Spec completa: [`PADRAO_AUTH_SERVICE.md`](PADRAO_AUTH_SERVICE.md) + [`docs/super
 | Brainstorming | `superpowers:brainstorming` | Feature não-trivial, antes de qualquer código |
 | Exploração | `Explore` (subagent) | Código desconhecido em projeto grande |
 | Plano | `superpowers:writing-plans` | Multi-step com 3+ arquivos a tocar |
-| Execução paralela | `superpowers:subagent-driven-development` | **Plano com 3+ tasks independentes — OBRIGATÓRIO** (corta contexto principal em ~60%) |
-| Paralelização B/F | `superpowers:dispatching-parallel-agents` | Backend + Frontend independentes |
+| Execução paralela | `superpowers:subagent-driven-development` | **DEFAULT — busque ativamente. Plano com 2+ tasks independentes → paralelize** (corta contexto principal ~60%) |
+| Paralelização B/F | `superpowers:dispatching-parallel-agents` | Backend + Frontend, ou quaisquer frentes disjuntas |
 | Testes | `superpowers:test-driven-development` | **Todo endpoint novo** — vitest antes do código |
 | Debug | `superpowers:systematic-debugging` | Qualquer bug ou teste quebrado |
 | Revisão | `superpowers:requesting-code-review` | Em background antes do commit |
 | Finalização | `superpowers:verification-before-completion` | Antes de marcar `[5-T]` |
 | Marco | `percus-review:close-milestone` | Antes de marcar `✓` no PLANO (fechar fase/feature/épico) |
+
+**Paralelismo é o DEFAULT — sempre busque maximizar trabalho em paralelo:** subagents pra tasks
+independentes, frentes disjuntas, e **múltiplos tool calls concorrentes numa só mensagem** quando não há
+dependência entre eles. Serial só quando há dependência real (B precisa do output de A). **Deixar de
+paralelizar quando cabia = anti-padrão** — custa tempo e contexto do operador.
+
+**Conselho automático (não pede permissão):** ao finalizar uma **spec** → o agente roda `spec-analyze`
+sozinho (Modo 5); ao finalizar um **plano** (antes de implementar) → roda `council-pre-mortem` sozinho
+(Modo 3). Sempre, sem perguntar. Detalhe em `06_CONSELHO_PERCUS.md`.
 
 **Cobertura mecânica (defesa em profundidade — dois layers):**
 
@@ -294,7 +321,10 @@ Não confiar em disciplina — os hooks são gate. Escape declarável em voz alt
 
 **Antes**: agente pedia ao usuário "rode `/percus-review:review` no chat" antes de cada commit. Fricção real (5-20 commits/dia × 1 paste manual).
 
-**Agora**: agente Claude Code AUTORIZADO a auto-disparar review via wrapper kit-level antes de qualquer `git commit` que ele mesmo for executar via Bash tool. Wrapper:
+**Agora (OBRIGATÓRIO, não opcional)**: agente Claude Code **SEMPRE auto-dispara** o review via wrapper
+kit-level antes de qualquer `git commit` que ele mesmo for executar via Bash tool — sem exceção, sem pedir
+nada ao operador. **❌ Anti-padrão proibido: pedir "rode `/percus-review:review` no chat" ou "pode rodar o
+review?" — isso é ERRO.** O agente roda o wrapper ele mesmo, sempre. Wrapper:
 
 - Pre-commit: `pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-review-auto.ps1"` (ou `.sh` em Unix)
 - Marco: `pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-milestone-review-auto.ps1" -Base <commit-inicio-marco>`

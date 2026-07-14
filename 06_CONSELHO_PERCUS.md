@@ -80,9 +80,12 @@ Comando manual: `/council:consult <pergunta>`.
 
 ### Modo 3 — Pre-mortem (plano)
 
-**Quando:** antes de `ExitPlanMode` em planos > 500 linhas.
+**Quando:** **SEMPRE que um plano fica pronto** (antes de `ExitPlanMode` / antes de começar a implementar),
+independente do tamanho. O operador quer conselho em todo plano.
 
-**Quem aciona:** hook `pre-plan-exit.{ps1,sh}` (instalado por plugin v6.0.0).
+**Quem aciona:** o **próprio agente** roda `council-pre-mortem` sozinho ao finalizar o plano — sem pedir
+permissão, sem depender de threshold. O hook `pre-plan-exit.{ps1,sh}` (>500 linhas) continua como **backstop**
+(pega o caso do agente esquecer), mas o comportamento primário é o agente disparar **sempre**.
 
 **Como funciona:**
 
@@ -130,12 +133,12 @@ Diferença pra Modo 2: Modo 2 reduz perguntas (consenso → não pergunta); Modo
 
 ### Modo 5 — Spec Analyze (validação de spec, pré-`[0]`)
 
-**Quando:** depois de escrever a `spec.md` de uma feature **não-trivial** (template `templates/spec.template.md`)
-e antes dela virar `[0]` no `PLANO.md`. Preenche o gap entre "escopo do projeto" (SCOPE_COUNCIL, dia 1)
-e "review do código" (Modo 1, pré-commit) — onde antes cada feature entrava em implementação sem o
-conselho olhar a spec dela.
+**Quando:** **SEMPRE que uma `spec.md` fica pronta** (template `templates/spec.template.md`), antes dela
+virar `[0]` no `PLANO.md`. O operador quer conselho em **toda** spec — não só nas "não-triviais". Preenche o
+gap entre "escopo do projeto" (SCOPE_COUNCIL, dia 1) e "review do código" (Modo 1, pré-commit).
 
-**Quem aciona:** comando `/percus-review:spec-analyze <spec.md>` (gate `[S]` do `feature-flow`).
+**Quem aciona:** o **próprio agente** roda `spec-analyze` sozinho ao finalizar a spec — sem pedir permissão.
+(Gate `[S]` do `feature-flow`; comando manual equivalente: `/percus-review:spec-analyze <spec.md>`.)
 
 **Como funciona:** o conselho roda em **modo analyze** — não opina sobre mérito, faz **detecção
 estruturada** (estilo `/analyze` do spec-kit): FR testável? SC mensurável? ambiguidade? terminologia
