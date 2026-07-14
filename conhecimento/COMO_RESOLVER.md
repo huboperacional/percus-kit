@@ -31,6 +31,8 @@
 - [Imagem local em Docker Swarm crash-loopa com "pull access denied" (sem registry)](#swarm-local-image-resolve)
 - [Hook pre-commit (R11) é PreToolUse: "review && commit" numa chamada só sempre bloqueia](#pretooluse-review-commit)
 - [`importlib.reload(config)` num teste polui a suite inteira (quebra testes que rodam depois)](#reload-config-polui-suite)
+- [Deploy: `docker build ... | tail && service update` mascara build falho → outage 404](#deploy-pipe-mascara-exit)
+- [`NEXT_PUBLIC_*` não aparece no bundle client em prod (setei só no compose runtime)](#next-public-baked-build)
 
 ---
 
@@ -383,3 +385,107 @@ def test_flag(monkeypatch):
 `monkeypatch` reverte o env no teardown; zero estado compartilhado mutado. **Triagem:** teste isolado passa + suite falha em arquivo alheio ⇒ suspeite de poluição (reload / `dependency_overrides` não limpo / cache mutada), não do produto.
 
 **Ref:** sessão Session Resume auth-service 2026-07-12 (11 falhas fantasma em webhook tests); fix commit `603759e`.
+
+## Fix editado DEPOIS do `add` fica fora do commit — review revisa versão limpa, commit embarca a buggy {#staging-pos-review-drift}
+
+**Sintoma:** você roda a review (R11), ela aponta um bug, você corrige o arquivo, mas o commit embarca a versão SEM o fix. O `git status` mostra o arquivo como `MM` (staged + working-tree divergem): o stage capturou o estado ANTES da correção; as edições pós-stage ficaram só no working tree.
+
+**Como pegou (2026-07-12, tiatendo billing):** o Cross-Claude comparou `git diff --cached` (staged) vs `git diff` (working) e viu que o guard de refund/chargeback (não regride `canceled` terminal) existia no working tree mas NÃO no índice → o commit ali embarcaria o bug. O DeepSeek, que só olhou o staged, apontou o mesmo bug como "não corrigido" — porque de fato o fix não estava staged.
+
+**Resolução:** depois de QUALQUER edição pós-review (fixes de findings, ajustes), **re-adicione ao índice todos os arquivos tocados ANTES de fechar o commit**. Confirme com `git status --short`: nenhum `MM`/` M` nos arquivos do escopo; tudo `M `/`A ` (staged limpo). Regra: o gate de review roda sobre o MESMO conteúdo que vai pro commit — editou depois, re-stage.
+
+**Generaliza:** vale pra qualquer gate que inspeciona staged (mock-scan, types-check). Editar após o gate e fechar o commit sem re-stage fura o gate silenciosamente. Um 2º revisor (Cross-Claude) que compara staged vs working é o que pega — peça a comparação explícita quando o diff for sensível (pagamento/migrations).
+
+---
+
+## Side-effect flag-gated não dispara: cred provavelmente já existe self-hosted no VPS
+
+**Contexto:** huboperacional-site `/new-client` (2026-07-12). Endpoint no Painel tem 3 side-effects best-effort (GOWA WhatsApp, Google Sheets, GHL) gated pela presença da cred no `.env`. Operador reportou "nada veio". Nada estava quebrado — os clientes logam skip por design quando a cred falta.
+
+**Resolução — procure a cred nos containers do VPS antes de pedir ao operador:**
+- Listar serviços/containers: `docker service ls`, `docker ps` — procure o serviço da integração (ex: `gowa_whatsapp`, `ghlgowa_adapter`, `evolution_*`).
+- Puxar a cred de um serviço-irmão que já usa a integração: `docker exec <adapter> printenv | grep -iE "gowa|ghl|google|token|auth"`. O adapter que já fala com o serviço tem a URL base + auth + o formato exato do request.
+- **GOWA aqui é self-hosted:** serviço `gowa_whatsapp` (`gowa-operator`, **multi-device**) em `https://gowa.huboperacional.com.br`. Enviar: `POST /send/message` JSON `{phone, message}` + Basic auth + **header `X-Device-Id: <device>`** (device "Notificador"). Descobrir devices: `GET /devices`. Confirmar formato lendo o código do adapter (`ghlgowa_adapter` → `dist/gowa/gowa.service.js`).
+- **Normalização de telefone BR:** GOWA/WhatsApp exige E.164 com país; se o form salvou sem 55, prepend `55` quando `len(digits) in (10,11)`.
+- **Setar a cred no service sem stack file:** `docker service update --env-add "VAR=valor" <service>`. **Pega**: sobrevive a `service update --image`, mas **um `docker stack deploy` do Portainer sem a var no compose apaga** — adicionar ao stack canônico depois.
+
+**Google Sheets — armadilha "API disabled":** reusar um service-account de outro projeto (ex: `plexco-backend` `GCP_SA_KEY_JSON`) falha com `403 Sheets API has not been used in project N or it is disabled` se o **projeto do SA não tem a Sheets API habilitada**. Testar acesso ANTES de escrever na planilha de produção: `spreadsheets().get(spreadsheetId=...)` (read-only). Blindagem: SA precisa (1) Sheets API habilitada no projeto dele; (2) a planilha compartilhada como Editor com o `client_email`.
+
+**Persistir a env var no stack (2026-07-13, fecha o gap do `--env-add`):**
+- Descobrir se o stack é Portainer ou CLI: `grep -rl "<namespace-ou-host>" /var/lib/docker/volumes/portainer_data/_data/compose`. **Vazio ⇒ CLI-managed** — o arquivo autoritativo é o compose em `/opt/<svc>/docker-compose*.yml` (deploy via `docker stack deploy -c ...`). Se casar, é Portainer e você edita a cópia dele.
+- O compose do `ads4pros-api` usa `environment:` **inline** (sem `env_file`) e o container **não tem `.env`** — então `.env` no host ou no repo NÃO chega no app. Persistir = adicionar a linha ao bloco `environment:`.
+- **JSON grande (service-account) em YAML:** compacte pra uma linha (`json.dumps(json.loads(x), separators=(',',':'))`) e embrulhe em **single-quote YAML** (`- 'GOOGLE_SA_JSON={...}'`) — JSON só tem aspas duplas, então single-quote é seguro sem escape. Valide sem deployar: `docker stack config -c <compose>` (parseia YAML+schema) + round-trip `json.loads`. NÃO redeploy só pra isso (o service vivo já tem via `--env-add`).
+
+**GHL (LeadConnector) — NÃO existe token estático reusável nos adapters (2026-07-13):** os adapters do marketplace (`ghlgowa_adapter`/`ghlevo_adapter`) são apps **OAuth** — access tokens **por-location que expiram e rotacionam**, guardados no DB do adapter (`whatsapp_ghl.GhlInstallation`). ⚠️ **NÃO refrescar** o token OAuth do adapter pra reusar: o refresh rotaciona e **quebra o próprio adapter em prod** pra aquela location. Um backend que consome a API GHL v2 (`services.leadconnectorhq.com`, `Authorization: Bearer`, `Version: 2021-07-28`) precisa de um **Private Integration Token** estático (`pit-…`) criado pelo operador na sub-account (Settings → Private Integrations, scopes `contacts.write`+`opportunities.write`). Validar + mapear em um passo: `GET /opportunities/pipelines?locationId=<loc>` com o PIT (HTTP 200 confirma token+location e devolve `pipelineId`/`pipelineStageId`; escolher o stage inicial real, ex. "New Lead", não "Desconsiderar").
+
+**Env var setada mas `settings.X` continua vazio → nome errado engolido pelo pydantic:** `SettingsConfigDict(extra="ignore")` faz o pydantic **descartar em silêncio** env vars com nome que não casa com um campo (ex.: operador pôs `GHL_PRIVATE_TOKEN`/`GHL_SUBACCOUNT_ID`, config espera `GHL_TOKEN`/`GHL_LOCATION_ID`). Sem erro, sem log. Diagnóstico definitivo: `docker exec <cid> python3 -c "from execution.core.config import settings as s; print(len(s.ghl_token or ''))"` — se 0 apesar da var "existir", confira (a) o **nome exato** do campo no `config.py`, (b) se o arquivo/env realmente chega no container (`printenv` dentro do container é a verdade, não o `.env` do host).
+
+---
+
+## Falha na suite completa fora do teu diff → triar pollution/pré-existente ANTES de assumir culpa
+
+**Contexto:** auth-service /sso hardening (2026-07-14). A suite full deu `830 passed, 2 failed`, mas as 2 falhas eram em módulos que eu NÃO toquei (`tests/contracts/test_magic_v2.py` TTL + `test_resolve_org_v2.py` audit). Meu diff só mexeu em `redirect.py`/`sso`/`session` + testes deles. Assumir "quebrei algo" teria feito eu perseguir fantasma.
+
+**Resolução — 2 checagens baratas, nesta ordem, antes de tocar em qualquer coisa:**
+1. **Rodar as falhas ISOLADAS** (só elas, `pytest path::Class::test`). Se **passa isolada mas falha na suite** → é **ordering-pollution** (estado de DB/singleton deixado por outro teste no mesmo processo), não regressão tua. (Foi o caso do `test_resolve_org_v2` audit.)
+2. **Rodar a falha que persiste isolada em `main` LIMPO** (tudo commitado → `git checkout <base>` detached, roda o único teste, `git checkout <branch>` de volta). Se **falha igual em main sem o teu diff** → é **pré-existente**, não tua. (Foi o `test_magic_v2` TTL: `MultipleResultsFound` = linhas duplicadas no DB de teste `percus_auth_test`, presente em `main`.)
+
+**Regra:** `N passed, M failed` numa suite grande NÃO é "quebrei M" — é "M falham NESTE estado de DB/ordering". `MultipleResultsFound`/`.one()`/`scalar_one()` estourando é quase sempre **dado sujo acumulado no DB de teste compartilhado** (INSERTs de testes sem cleanup ao longo do tempo), não código. Um `UPDATE`-only seed (como o meu `_seed_sso_origins`) NUNCA cria duplicata — descarta essa hipótese de cara.
+
+**Blindagem do próprio teste (pre-mortem pegou):** teste DB-gated que depende de estado de linha (origins, ttl) num DB compartilhado é frágil. Semeie o estado que ele assume com um **fixture autouse idempotente (UPDATE)** — remove o acoplamento oculto e evita false-pass/false-fail por drift do DB. Cross-ref feedback_subagent_db_tests_env.
+
+---
+
+## Deploy: `docker build ... | tail && service update` mascara build falho → outage {#deploy-pipe-mascara-exit}
+
+`tags: deploy, docker build, pipe, exit code, tail, swarm, service update, outage, 404, rollback, ci`
+
+**Contexto:** deploy num VPS Docker Swarm encadeando `docker build ... | tail -25 && docker service update --image X --force`. O `npm install` do build falhou (blip de rede), mas o `service update` rodou mesmo assim → Swarm parou a task antiga pra subir uma imagem inexistente → **404 em prod (~1min)**.
+
+**Causa raiz:** o exit code de um **pipeline** é o do ÚLTIMO comando (`tail`, sempre 0). O `&&` viu "sucesso" e seguiu pro update, apesar do `docker build` ter falhado.
+
+**Solução:** build e `service update` em passos **SEPARADOS**. Capturar `docker build ...; echo BUILD_EXIT=$?` e só atualizar o service se `BUILD_EXIT=0` (nunca `build | tail && update`). Ter o **rollback declarado** antes de deployar (`docker service update --image <versao-anterior> --force <service>` converge ~5s; as imagens antigas ficam no host — `docker image ls`). Blip de npm no build é transitório → retry do build isolado resolve.
+
+**Ref:** huboperacional-site deploy v0.3.4 (2026-07-14); memória de projeto `deploy-vps-gotchas`.
+
+---
+
+## `NEXT_PUBLIC_*` não aparece no bundle client em prod {#next-public-baked-build}
+
+`tags: next.js, next_public, env, build arg, dockerfile, inline, bundle, client, ga4, gtag, compose runtime`
+
+**Contexto:** setei `NEXT_PUBLIC_GA_ID` no bloco `environment:` do docker-compose (runtime) e a feature (banner/GA) ficou **inerte em prod** — o componente client leu `undefined`. (Falha *safe*, mas a feature não funciona.)
+
+**Causa raiz:** `NEXT_PUBLIC_*` é **inlined no bundle em BUILD time** (`next build`), não lido em runtime. Uma env var só presente no compose/runtime nunca chega ao bundle client já compilado.
+
+**Solução:** passar a var no **build** — no `Dockerfile`, `ARG NEXT_PUBLIC_FOO` + `ENV NEXT_PUBLIC_FOO=$NEXT_PUBLIC_FOO` ANTES do `RUN npm run build` (default no ARG pra valores públicos como um GA Measurement ID; `--build-arg NEXT_PUBLIC_FOO=` vazio pra desabilitar em staging). Sintoma de detecção: `curl <chunk _next/static>.js | grep <valor>` — se não achar, não foi baked.
+
+**Ref:** huboperacional-site GA4 (2026-07-14); achado de code-review; memória `deploy-vps-gotchas`.
+
+---
+
+## "Erro de conexão" no front que é, na verdade, um 500 do backend {#erro-de-conexao-e-500-sem-cors}
+
+`tags: cors, fastapi, starlette, 500, fetch, failed to fetch, network error, erro de conexao, unhandled exception, asyncpg, UndefinedColumnError, middleware`
+
+**Contexto:** login (OTP) do painel mostrava "Erro de conexão. Verifique sua internet" com código válido, mas só nesse caminho. `curl` do endpoint com payload dummy dava 401 **com** headers CORS (normal). A tela mentia: não era rede.
+
+**Causa raiz:** o `catch` de um `fetch` cross-origin dispara "Erro de conexão" quando o browser **bloqueia a resposta por falta de CORS** — não só em rede caída. No FastAPI/Starlette, `HTTPException` tratada volta pelo `ExceptionMiddleware` → passa pelo `CORSMiddleware` → **ganha** os headers CORS (fetch lê o status). Mas uma **exceção não-tratada** sobe até o `ServerErrorMiddleware` (o mais externo, acima do CORS) → 500 **sem** headers CORS → o browser rejeita como erro de rede → `fetch` **lança** → cai no `catch`. No caso real: `asyncpg.UndefinedColumnError` (coluna faltando após migration não-aplicada) só no caminho de código válido.
+
+**Solução:** (1) diagnóstico — se o front diz "erro de conexão" mas o endpoint responde via `curl`, cheque o **status + headers CORS** da resposta real do fluxo que falha (dummy vs válido divergem quando o crash é depois da validação). 500-sem-`Access-Control-Allow-Origin` = crash não-tratado. (2) fix na raiz (a exceção). (3) defesa: envolver o trecho arriscado e converter em `HTTPException` (que ganha CORS) pra o erro chegar legível no front, nunca como "erro de conexão".
+
+**Ref:** Painel Gestão admin login B3 (2026-07-14); `execution/api/adminAuth/adminVerifier.py` + `migration008`.
+
+---
+
+## Consumir `/internal/identities/v2` do auth-service: `name`, não `display_name` {#identities-v2-exige-name}
+
+`tags: auth-service, identities, v2, IdentityCreateV2, name, display_name, origin, extra forbid, 422, provisionamento, identity_id`
+
+**Contexto:** provisionamento de identidade no signup falhava **422** silencioso (`{"type":"missing","loc":["body","name"]}`) → `identity_id` ficava NULL → usuário sem login. O cliente mandava `{email, phone, display_name, origin}`.
+
+**Causa raiz:** `IdentityCreateV2` (`app/modules/identity/schemas.py`) exige **`name`** (mapeia pra coluna `display_name`), `email` e `phone` — e tem **`extra="forbid"`**. Então `display_name` e `origin` no corpo geram DOIS erros: `missing name` + `extra_forbidden`. O `origin` é **derivado server-side** do `consumer_id` (anti-impersonation) e não deve ser enviado (use `origin_context` se precisar de sub-contexto).
+
+**Solução:** payload correto do V2 = `{"name": <display>, "email": <e>, "phone": <p>}` (só isso; nada de `display_name`/`origin`). Verificar rápido: `curl` com o payload novo → 200; com o antigo → 422 com os 3 erros. Resposta ainda traz `display_name`/`origin` (só a ESCRITA que mudou).
+
+**Ref:** Painel Gestão affiliate-signup (2026-07-14); `execution/integrations/authServiceClient.py:createOrGetIdentity`.
