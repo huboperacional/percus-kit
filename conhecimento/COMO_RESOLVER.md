@@ -34,6 +34,9 @@
 - [Deploy: `docker build ... | tail && service update` mascara build falho → outage 404](#deploy-pipe-mascara-exit)
 - [`NEXT_PUBLIC_*` não aparece no bundle client em prod (setei só no compose runtime)](#next-public-baked-build)
 - [Preciso verificar que uma página admin/dashboard renderiza, mas o MCP de browser caiu / precisa login](#render-smoke-in-container)
+- [Migração de UI+API pra novo domínio: cookie dinâmico por Host não basta, a base da API também](#migracao-dominio-cookie-e-api-dinamicos)
+- [Mudar rota/Host do Traefik (label) não pega com `service update --image`](#traefik-label-precisa-stack-deploy)
+- [[5-T] de mudança no loader/script client-side na página real do cliente sem poluir prod](#loader-5t-sem-poluir-prod)
 
 ---
 
@@ -542,3 +545,47 @@ tags: render smoke, dashboard, admin page, browser mcp down, playwright, chrome-
 **Gotchas:** (a) precisa de `session` com `role`/`tenantId` que o `resolveTenantId` da app aceite (super_admin resolve por `?tenant_id`>cookie>session.tenantId); (b) rota com query params (`request.query_params.getlist(...)`) exige `query_string` no scope (use `b""`); (c) para tela que só aparece com um pré-requisito (caixa aberto), OU semeia o pré-requisito OU monkeypatcha o provider como no passo 4; (d) NÃO é substituto de eyeball de pixel — valida render/estrutura/dados, não CSS visual (deixar o eyeball pro operador).
 
 **Ref:** tiatendo F4 "Fechamento do dia" — render smoke de `/admin/caixa`, `/admin/orders`, `/admin/fechamento` (2026-07-15); [[project-f4-fechamento-do-dia-2026-07-15]].
+
+---
+
+## Migração de UI+API pra novo domínio: cookie dinâmico por Host não basta, a base da API também {#migracao-dominio-cookie-e-api-dinamicos}
+
+tags: migração domínio, cutover, cookie domain, cross-site, SameSite lax, registrable domain, const API, coexistência, dual-host, huboperacional, ads4pros, 302 vs 301
+
+**Contexto:** migrar uma UI static (`gestao.ads4pros.com`) + sua API (`api.ads4pros.com`) pra outro domínio registrável (`*.huboperacional.com.br`), mantendo o domínio antigo vivo durante a transição (coexistência + rollback barato). O cookie foi feito dinâmico por Host, mas no host NOVO o login "entrava" e os dados davam 401.
+
+**Causa raiz:** cookie dinâmico por Host resolve só METADE. O front tinha `const API` **hardcoded** pro domínio antigo. Como o MESMO bundle serve os dois hosts, o host novo chamava a API antiga **cross-site** (registrable domain diferente) → com `SameSite=lax` o cookie não vai em fetch/XHR cross-site → 401. E hardcodar (`sed`) pro domínio novo quebraria o host ANTIGO pelo mesmo motivo, invertido.
+
+**Solução:** a base da API no front também tem que ser **dinâmica por Host** (espelho do cookie): `const API = location.hostname.endsWith('novo.com') ? 'https://api.novo.com' : 'https://api.antigo.com'`. Cada host chama a API do seu próprio domínio registrável → cookie same-site → os dois convivem. **Regra geral: num cutover de domínio, cookie-domain E api-base precisam ser dinâmicos por Host, juntos.** Além disso: expor a MESMA API também no domínio novo (Host extra no Traefik, não segundo deploy); cutover final com **302, não 301** (301 é cacheado permanente pelo browser → "remover o redirect" não pega quem já cacheou; 302 mantém rollback real).
+
+**Ref:** migração Painel Gestão 2026-07-14; `docs/superpowers/specs/2026-07-14-migracao-gestao-huboperacional-design.md` §5 (furo-1, achado na review do Painel que o conselho tinha perdido).
+
+---
+
+## Mudar rota/Host do Traefik (label) não pega com `service update --image` {#traefik-label-precisa-stack-deploy}
+
+tags: traefik, swarm, label, router rule, Host, docker service update, stack deploy, label-add, rota não aplica, env drop, rollout transiente
+
+**Contexto:** adicionei um `Host()` novo na regra do router Traefik (label no compose) e rodei o deploy padrão (`docker service update --force --image`), mas a rota nova não apareceu.
+
+**Causa raiz:** labels do Traefik vivem no **service spec**, setados no `docker stack deploy`. `docker service update --image` troca só a imagem — **não reaplica labels**. A regra fica a antiga.
+
+**Solução:** pra mudar label/rota: **(a)** `docker service update --label-add "traefik.http.routers.X.rule=..." SERVICE` — cirúrgico, **não mexe em env/secrets** (ideal quando o compose tem token/senha); OU **(b)** editar o compose + `docker stack deploy --resolve-image never -c compose.yml STACK` — ⚠️ o stack deploy **reaplica todo o env do compose**, dropando variáveis que só foram `--env-add` (não escritas no compose). Backtick na regra via SSH: passar por variável single-quoted no remote (`RULE='Host(\`x\`)...'`; expansão de `$VAR` em aspas duplas não reinterpreta backtick). Após `service update`, **esperar convergir** antes de curlar (curl no meio do rollout pega a task velha → 404/conteúdo stale).
+
+**Ref:** migração Painel Gestão Fases 1/4 2026-07-14.
+
+## [5-T] de mudança no loader/script client-side na página real do cliente sem poluir prod {#loader-5t-sem-poluir-prod}
+
+tags: loader, tracking, pixel, fbq, gtag, ttq, CAPI, pmaTrack, [5-T] client-side, Playwright, GTM não carrega headless, injetar script, CNAME first-party, stub fetch, disparo real polui conversão, dispatchEvent submit, capture-phase
+
+**Contexto:** preciso verificar ([5-T]) uma mudança num loader de tracking (script client-side servido pelo tracking service) rodando na página real do cliente. Dois obstáculos: (a) o loader é injetado via **GTM**, que **não dispara em Playwright headless** (consent/Cloudflare/anti-bot) → `window.__pma_loaded`/`pmaTrack` ausentes; (b) disparar um evento real (Lead) dispara a conversão de verdade — **pior ainda pós-go-live** (após remover o `meta_test_event_code`, cai no stream de PRODUÇÃO e polui os dados do cliente).
+
+**Causa raiz:** GTM gated não carrega o loader; e o caminho de conversão (client-side `fbq`/`gtag`/`ttq` + server-side `/tracker`→CAPI) manda pra prod quando exercido de verdade.
+
+**Solução:**
+1. **Injeta o loader deployado direto do CNAME first-party** do cliente (`https://track.<cliente>/scripts/loader.js?t=<tenant_id>`) via `<script>` — o CNAME é first-party (CSP aceita; `tracking.ads4pros.com` como third-party pode ser bloqueado). Espera `__pma_loaded===true` + `typeof pmaTrack==='function'`.
+2. **Stuba TODAS as vias de envio** antes de exercer: `window.fetch` (captura o body do `/tracker` e retorna `Response('{}',{status:200})` — nada sai), `window.fbq`, `window.gtag`, `window.ttq.track`. Assim você **captura o payload que o loader MANDARIA** (ex.: `custom_data.value`) sem enviar. **Pré-stuba `window.fbq` ANTES de injetar** → o loader pula o próprio init (`if(f.fbq)return`) e não dispara PageView. O loader sobrescreve `gtag`/`ttq` no init → re-stuba DEPOIS da injeção.
+3. **Dispara o evento** com `form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))` num form sintético **anexado ao body** (pro handler em capture-phase no `document` pegar via bubbling; `dispatchEvent` sintético **não navega/submete** — `isTrusted=false`). Entre casos (ex.: venda vs locação), limpa a chave de dedup no `sessionStorage` (`pma_lead_<method>`).
+4. Pra provar o caminho servidor completo (event_log + CAPI) **quando ainda é seguro** (test stream ativo), NÃO stuba — deixa o `/tracker` passar e faz probe no `event_log` (payload_value, `sent_to_meta`/`meta_response_ok`, e `meta_payload_sent ? 'test_event_code'` pra confirmar que foi no stream de teste). Ordena o teste completo ANTES do go-live (remover test_event_code) pra não poluir prod.
+
+**Ref:** [[project_uni_tracking_conversoes]]; Paid Media cont.103 (loader property_value + gate venda/locação).
