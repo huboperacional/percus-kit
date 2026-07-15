@@ -37,6 +37,11 @@
 - [Migração de UI+API pra novo domínio: cookie dinâmico por Host não basta, a base da API também](#migracao-dominio-cookie-e-api-dinamicos)
 - [Mudar rota/Host do Traefik (label) não pega com `service update --image`](#traefik-label-precisa-stack-deploy)
 - [[5-T] de mudança no loader/script client-side na página real do cliente sem poluir prod](#loader-5t-sem-poluir-prod)
+- [Guard anti-dupla-cobrança com idempotency do Stripe não dispara (a key REPLICA a resposta cacheada)](#stripe-idempotency-replay)
+- [Raspando email de contato: JSON-LD é onde mora, e o MX "válido" aceita registro A](#scrape-email-jsonld-mx)
+- [Guard de segurança checa a INTENÇÃO e não o ALVO (ex.: `APP_ENV=test` não protege banco nenhum)](#guard-checa-intencao-nao-alvo)
+- [Migração de schema vai subir e o entrypoint roda `alembic upgrade || continuing` (fail-open)](#migracao-entrypoint-fail-open)
+- [Reviewer cross-provider (R11/conselho) acusa "migration ausente"/"campo morto" que JÁ existe — ele só vê o diff staged](#reviewer-so-ve-diff-staged)
 
 ---
 
@@ -609,3 +614,167 @@ tags: loader, tracking, pixel, fbq, gtag, ttq, CAPI, pmaTrack, [5-T] client-side
 **Gotchas:** (a) blast-radius alto (fluxo `[5-T]`) → TDD por peça, uma info de cada vez; (b) o consume adiciona 1 read de sessão no gate → atualizar os testes existentes do gate pra mockar `getOrCreateSession` (senão `TypeError`/DB real); (c) `_matchPaymentMethod` etc. devem casar só TOKENS ("dinheiro"/"cartão"), nunca frases genéricas, pra não estacionar lixo.
 
 **Ref:** tiatendo prints 2026-07-15 B3 (`restaurantOrderFlow._parkPaymentIfMentioned`/`_consumeParkedPayment`); devolutiva `docs/devolutivas/2026-07-15-smoke-conversa-loja-prints.md`. Continuação B4/B6 = mesmo padrão pra endereço/entrega.
+
+---
+
+## Migração de schema vai subir e o entrypoint roda `alembic upgrade || continuing` (fail-open) {#migracao-entrypoint-fail-open}
+
+**Sintoma / risco:** o entrypoint do container roda a migração no start, mas **fail-open**:
+
+```sh
+alembic upgrade head || echo "[entrypoint] WARNING: alembic upgrade failed (continuing)"
+exec "$@"
+```
+
+A ordem dentro do container está certa (migração antes do app). O problema é o `||`: se a migração
+falhar (permissão, lock, DDL inválido), o container **sobe assim mesmo** — e o ORM da imagem nova
+mapeia colunas que não existem → `select(Model)` estoura → **derruba TODO o tráfego**, não só a
+feature nova. Um WARNING no log é a única pista.
+
+**Não resolve:** "rodar a migração manualmente antes do deploy" — o arquivo da migração só existe
+**na imagem nova**; o container velho não a tem. E `docker service update` não te dá um hook entre
+"pull" e "start".
+
+**Resolve — prove o DDL ANTES, contra o banco real, sem persistir:** rode o DDL de verdade dentro de
+uma transação e faça `ROLLBACK`. Se faltar permissão/o SQL for inválido, você descobre agora e não
+no fail-open.
+
+```python
+tx = conn.transaction(); await tx.start()
+try:
+    await conn.execute("ALTER TABLE t ADD COLUMN IF NOT EXISTS c BOOLEAN NOT NULL DEFAULT false")
+    await conn.execute("UPDATE t SET c = (...)")          # o backfill real
+    print(await conn.fetchval("SELECT count(*) FROM t WHERE c"))   # confere o resultado
+finally:
+    await tx.rollback()                                    # nada persistido
+```
+
+Cheque junto: `SELECT current_user`, `SELECT tableowner FROM pg_tables WHERE tablename='...'`
+(o erro clássico é "must be owner of table"), `SELECT version_num FROM alembic_version`, e se o env
+que gateia a migração (ex.: `DATABASE_URL_SYNC`) está setado — **se não estiver, a migração nem roda**
+e o app sobe com ORM quebrado do mesmo jeito.
+
+**Depois do deploy, verifique o efeito, não o "convergiu":** `docker service logs | grep 'Running upgrade'`
++ probe do `alembic_version` + probe do backfill (a invariante que ele deveria preservar).
+
+**Corolário:** o fail-open é **pré-existente e sobrevive** ao seu deploy. Provar o DDL protege ESTA
+migração, não a próxima. Registre como follow-up (trocar por `set -e`/healthcheck) em vez de dar por
+resolvido.
+
+**Ref:** Paid Media `services/tracking/entrypoint.sh:22`, migração 0020 (cont.104 2026-07-15).
+Achado pelo Cross-Claude no milestone-review — o DeepSeek não pegou.
+
+---
+
+## Reviewer cross-provider (R11/conselho) acusa "migration ausente"/"campo morto" que JÁ existe — ele só vê o diff staged {#reviewer-so-ve-diff-staged}
+
+**Sintoma:** num fluxo de commits pequenos (subagent-driven, TDD task-a-task), o reviewer do R11
+solta `[SEV: risco]` do tipo:
+- *"coluna adicionada no modelo sem migration correspondente no diff"* → a migration existe, foi
+  commitada na task anterior;
+- *"campo adicionado ao schema mas nada no backend consome — pode ser campo morto"* → o consumo foi
+  commitado 2 tasks atrás;
+- *"comentário cita `send_to_meta` mas essa função não está no diff"* → é forward-reference
+  intencional, sequenciada no plano.
+
+**Causa:** o reviewer recebe **só o `git diff` staged**, não o repo nem o histórico. Toda mudança
+sequenciada em commits atômicos "parece" incompleta pra ele. O bônus ruim: ele às vezes **inventa a
+regra violada** (citou "R6 banco novo por projeto" e "R3 zero mock escondido" pra um TypeError
+hipotético) e **aponta o caminho errado** (mandou criar a migration em `worker/migrations/` quando o
+serviço usa `services/tracking/alembic/versions/`).
+
+**Resolve:** triar CADA finding contra o repo antes de agir OU descartar — as duas coisas são erro:
+1. `git log --oneline <base>..HEAD` / `git show <sha> --stat` → aquilo já foi commitado?
+2. `grep` o consumidor do campo no repo (não no diff).
+3. Se a regra citada não bate com o problema descrito, é sinal forte de alucinação — mas **verifique
+   o problema mesmo assim** (a regra pode estar errada e o bug certo).
+4. **Registre a triagem no commit message.** Senão o próximo (ou você em 2 semanas) "re-descobre" o
+   mesmo falso-positivo e infla o código guardando contra fantasma.
+
+**Não faça:** adicionar `getattr(x, 'campo', default)`/`?? ""` defensivo só pra calar o reviewer —
+isso mascara atributo ausente de verdade e troca uma falha alta e óbvia por um bug silencioso.
+
+**Contraponto (não vire cínico):** no MESMO marco, o Cross-Claude — que teve acesso ao repo e rodou
+os testes — achou 2 bugs reais que a spec e eu tínhamos perdido. A diferença não é o modelo, é o
+**contexto que ele recebe**. Reviewer com repo > reviewer com diff. Quando o finding importa, dê
+acesso ao repo e peça prova empírica ("rode o teste", "quebre o guard e veja se pega").
+
+**Ref:** Paid Media cont.104 (2026-07-15), tasks 2 e 5 do toggle Modo teste.
+Ver também [Devolutiva cross-time escrita da MEMÓRIA acusa o bug errado](#devolutiva-reverificar-no-codigo).
+
+---
+
+## Guard anti-dupla-cobrança com idempotency do Stripe não dispara (a key REPLICA a resposta cacheada) {#stripe-idempotency-replay}
+
+`tags: stripe, idempotency, idempotencyKey, checkout session, dupla cobranca, double charge, webhook lag, replay, retrieve, url null, expired, complete, 409`
+
+**Sintoma:** você guarda contra dupla cobrança fazendo `sessions.create(params, { idempotencyKey })` e depois `if (!session.url) return 409 /* já pagou */`. O ramo do 409 **nunca dispara** — e o teste dele passa, porque mocka `url: null` (mocka a conclusão).
+
+**Causa-raiz:** **idempotency do Stripe é cache de resposta, não re-avaliação.** A doc é explícita: ele **salva o status+body da 1ª requisição** e devolve **o mesmo resultado** nas seguintes. Como a Checkout Session **nasce ativa**, o body cacheado tem `url` preenchida — então o replay devolve essa **`url` velha e não-nula mesmo depois do cliente pagar**. O `url: null` vale pro **`retrieve` ao vivo** (o SDK documenta: *"This value is only present when the session is active"*), **não pro replay do `create`**.
+
+**O que a key resolve de fato:** o replay devolve **a mesma sessão**, e **Checkout Session é de uso único** — o Stripe não deixa pagar duas vezes a mesma sessão. **É isso** que barra a 2ª cobrança, não o `url`.
+
+**Solução:** usar o `create` idempotente só pra obter a mesma sessão, e perguntar o status **ao vivo**:
+
+    const session = await stripe.checkout.sessions.create(params, { idempotencyKey });
+    const live = await stripe.checkout.sessions.retrieve(session.id);
+    if (live.status === 'complete') return 409;                    // pagou de verdade
+    if (live.url) return { url: live.url };                        // aberta
+    const fresh = await stripe.checkout.sessions.create(params);   // expirada = NINGUÉM pagou
+    return { url: fresh.url };
+
+**Gotchas:**
+- ⚠️ **`expired` NÃO é `complete`.** 409 numa sessão expirada **bloqueia um comprador disposto** — erro tão caro quanto cobrar 2×. Trate os dois status separadamente.
+- **Params entram na key:** replay com a mesma key e **params diferentes** faz o Stripe **rejeitar a requisição**. Se o preço muda, a key tem que mudar → embutir os price ids na key.
+- **Key derivada de input opcional colide:** montar a key com `niche ?? ''` / `slug ?? ''` faz um body vazio virar `offer:::…` — **key compartilhada entre requisições distintas** → o Stripe entrega a sessão de um comprador a outro. **Validar a entrada (400) antes de compor a key.**
+- **Duas chamadas concorrentes** com a mesma key → erro de *concurrent idempotent request* (não duplicata). Sem `try/catch` vira 500.
+- **O 409 do guard precisa de UI própria.** Se o cliente cair no `catch` genérico, quem **acabou de pagar** lê "Something went wrong, please try again" — o convite exato pra 2ª cobrança. E não trate **qualquer** 409 como "já pagou": um 409 de WAF/rate-limit diria "tudo certo" a quem não pagou. Gate no **seu próprio marcador** (`error === 'already_paid'`).
+
+**Ref:** ads4agencies-site `app/api/checkout/route.ts`, commit `ad1c0ef` (2026-07-15); memória `reference_stripe_idempotency_replica_resposta_cacheada`. Achado pelo review Cross-Claude **depois** de a 1ª versão do fix ir pro tree apoiada na premissa errada.
+
+---
+
+## Raspando email de contato: JSON-LD é onde mora, e o MX "válido" aceita registro A {#scrape-email-jsonld-mx}
+
+`tags: scrape, scraping, email, contato, bs4, BeautifulSoup, get_text, script, json-ld, ld+json, schema.org, LocalBusiness, mx, email-validator, check_deliverability, dnspython, bounce, prospeccao`
+
+**Sintoma:** (a) o scrape acha bem menos email do que o site realmente publica; (b) emails "validados" quicam mesmo assim.
+
+**Causa-raiz (a):** `BeautifulSoup.get_text()` **exclui `<script>`** — comportamento correto dele, e por isso passa batido em review ("script não vaza pro get_text, tá certo"). Só que negócio local publica o email em **`<script type="application/ld+json">`** (`schema.org/LocalBusiness`), que é **onde o negócio declara os próprios dados** — a fonte mais confiável que existe. Um scan de `mailto:` + texto é **100% cego** a ela.
+
+**Causa-raiz (b):** `email_validator.validate_email(addr, check_deliverability=True)` **não exige MX** — cai pro **registro A/AAAA** (RFC 5321 "implicit MX"). Em scrape isso vira **no-op**: o email vencedor é quase sempre `@` o domínio do próprio site, e você só chegou ali **porque acabou de baixar HTML daquele host** → o A **provadamente existe** → passa sempre. Site de template que imprime `info@ownsite.com` sem nunca configurar email tem A e não tem MX.
+
+**Solução:**
+1. Ler as 3 fontes em ordem de confiança: **`mailto:` → `ld+json` → texto**. No JSON-LD, **recursar** (schema.org aninha em `@graph`) e **podar subárvores de terceiros** por `@type` (`Person`, `Review`, `Rating`) e por chave (`author`, `review`, `publisher`) — senão você grava o email **do avaliador** como contato do lead, e pior: por ser fonte de alta confiança, ele aborta o crawl antes do mailbox real.
+2. Exigir **MX real**: `dns.resolver.resolve(domain, "MX")` (dnspython já vem com email-validator; DNS é bloqueante → thread + cache por domínio).
+3. **Ranquear e percorrer até um passar no MX** — checar só o melhor e desistir joga fora email bom (loja publica um role sem MX **e** o gmail que funciona).
+4. **Nunca chutar** (`info@<domínio>` inventado) = bounce garantido.
+
+**Gotchas:** filtro de lixo por **substring** derruba lead real (`info@sentrytinting.com` casa "sentry"; `businessname@` casa "name@") → casar **domínio com fronteira de ponto** e **local-part exato**. Bloquear um lixo faz o ranking **cair no próximo, que também pode ser lixo**. O rodapé credita a agência que fez o site e o `info@` dela **vence o mailbox da loja** no ranking role-first → sinal pra auditar: **domínio próprio (não-free) que não bate com o host do site**. Enumeração de blocklist **não fecha** — o backstop é **review humano** do relatório.
+
+**Ref:** Scraper-prospeccao `services/api/app/integrations/email_harvest.py`, commit `7ea8e4f` (2026-07-15): JSON-LD sozinho rendeu **+22 emails (100→122)** em 310 leads. Memórias `reference_jsonld_is_where_business_email_lives`, `reference_email_validator_mx_aceita_registro_A`.
+
+---
+
+## Guard de segurança checa a INTENÇÃO e não o ALVO (ex.: `APP_ENV=test` não protege banco nenhum) {#guard-checa-intencao-nao-alvo}
+
+`tags: guard, seguranca, teste, pytest, conftest, autouse, truncate, APP_ENV, DATABASE_URL, banco live, producao, falsa seguranca, fixture`
+
+**Sintoma:** existe um guard explícito protegendo uma operação destrutiva, o código parece defensivo, e **mesmo assim a operação roda em produção**.
+
+**Causa-raiz — o padrão geral:** o guard verifica **a intenção declarada** em vez do **alvo real**. Caso concreto: `conftest.py` com fixture `autouse` que dá `TRUNCATE` em tabelas antes de cada teste, protegida por `if s.APP_ENV != "test": pytest.fail(...)`. Só que o `pyproject.toml` **sempre** seta `APP_ENV=test` (`[tool.pytest.ini_options] env = [...]`). O guard **nunca dispara** — ele confirma que "estou rodando testes", que é sempre verdade sob pytest. **Ele nunca olha `DATABASE_URL`.** Se a URL aponta pro banco de produção, rodar a suíte **trunca produção**, com o guard aceso e verde.
+
+**Regra:** um guard destrutivo tem que checar **o alvo**, não o contexto. `APP_ENV=test` responde *"é um teste?"*; a pergunta certa é *"esse host/banco pode ser destruído?"*.
+
+**Solução:** assertar sobre o **alvo** — extrair host/database da `DATABASE_URL` e falhar se não for localhost nem terminar em `_test`. Alternativas: apontar o teste pra um DB dedicado; tornar a fixture não-autouse (só quem pede DB paga).
+
+**Sintoma-satélite que denuncia:** se testes **puros** (sem I/O) estão lentos/instáveis, alguém está fazendo I/O por baixo via `autouse`. Escape local, blast-radius zero — **sombrear a fixture pelo nome no módulo**:
+
+    @pytest.fixture(autouse=True)
+    def _truncate_tables():
+        """Override conftest's DB-truncating autouse fixture — this test is pure."""
+        yield
+
+(no Scraper-prospeccao isso levou 83 testes de **240s com erros aleatórios** pra **0.7s**).
+
+**Ref:** Scraper-prospeccao `services/api/tests/conftest.py` (achado 2026-07-15; suíte completa estava `63 failed / 64 errors / 50min` por conta do round-trip remoto por teste). Memória `reference_pytest_trunca_banco_live_scraper`.
