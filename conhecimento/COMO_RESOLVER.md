@@ -862,3 +862,83 @@ exceção ali escapa (o `try/except` costuma cobrir só o `json.loads`) e derrub
 **Ref:** Paid Media Automation — cont.105.2 (2026-07-16). Fix `0f545f7` (threading do `event_id` →
 `transaction_id`, parser dos 2 shapes) + `d0b567b` (guarda contra corpo malformado). Memória
 `project_google_data_manager_migration`.
+
+---
+
+## Feature que depende de LLM ou dado real não fecha [5-T] sem smoke em prod com a FRASE/DADO EXATO do caso original {#smoke-prod-feature-llm}
+
+**Sintoma:** feature "pronta" com testes verdes + review/conselho aprovando, mas que quebra no
+caso real. Aconteceu no D16/tiatendo (2026-07-16): **1128 testes verdes + 3 passadas de conselho
+cross-Claude + GO explícito**, e o smoke da frase exata do print em prod achou **2 defeitos que
+matavam a feature inteira**.
+
+**Por quê teste e review não pegam:** ambos provam o que você IMAGINOU que acontece. Os defeitos
+vivem no que só o ambiente real sabe:
+1. **Por qual guard/branch o texto real passa.** No D16 eu instrumentei o guard errado — a frase
+   caía num TERCEIRO guard de defer (`unknown_item`), não no que eu cobri. Meus testes, montados em
+   cima da minha hipótese, passavam. O conselho leu o mesmo código com a mesma premissa.
+2. **Em que formato o LLM/serviço real devolve os dados.** O LLM mandava `ref='Feijoada [G]'` (com
+   a variante); meu consumo comparava com o nome canônico `'Feijoada'` → **nunca casava**. Toda a
+   lógica estava "certa" contra o formato que EU supus.
+
+**Como resolver:**
+- Feature LLM/integração **não fecha `[5-T]` sem smoke em prod com a FRASE/DADO EXATO do caso
+  original** — não vale phrasing "equivalente" (foi phrasing limpo que passou o tempo todo enquanto
+  o do print quebrava).
+- Conferir o resultado **no destino final** (ex.: `order_items.line_notes` no banco), não na resposta
+  intermediária.
+- Quando achar o defeito, **procure a CLASSE**: achei 1 guard não coberto → varri e achei 4 →
+  virou ponto único (`_deferToFlow`) + **teste estrutural** que reprova se aparecer um defer cru
+  novo. Fix pontual deixaria o próximo guard reabrir o buraco.
+- Casamento de identificador vindo de LLM: **conjunto fechado** de formas aceitas
+  (`name`, `name var`, `name [var]`, `name (var)`), nunca substring (`in`) — "coca" bateria em
+  "Coca-Cola Zero" e colaria no item errado.
+
+**Ref:** tiatendo D16/B7 Fase 2 (2026-07-16→17). Fixes `4dd5bd5` (`_deferToFlow` + guard estrutural),
+`e27834f` (`_refMatchesItem`). Memórias `feedback-smoke-prod-pega-o-que-teste-e-conselho-nao-pegam`,
+`project-4-frentes-e1-i1-reaper-d16-0222-2026-07-16`. Irmão: renderizar template sem DB p/ `[5-T]`
+de tela, e pg efêmero p/ testes de DB que pulam em silêncio.
+
+---
+
+## Um fix commit que não re-roda a suíte de regressão enterra um RED sob "[5-T] local verde"
+
+**Sintoma:** handoff dizia "103 testes verdes / [5-T] local", mas ao retomar, `test_lojaCardE1` estava
+RED. O fix commit anterior (badge no compacto) adicionou um comentário CSS com uma **estrela literal**,
+e um teste PRÉ-EXISTENTE fazia checagem crua `"estrela" not in html` sobre o HTML inteiro (inclui o
+`<style>` sempre renderizado). O commit de fix não re-rodou a suíte daquele arquivo → o RED passou
+despercebido sob o "[5-T]" anterior.
+
+**Como resolver:**
+- Depois do ÚLTIMO commit de uma branch (inclusive fix commits tardios), **re-rode a suíte de
+  regressão do alvo** — não confie no "[5-T]" tirado ANTES do último commit.
+- Antes de deployar branch "pronta de sessão anterior", rode a suíte relevante uma vez — o "verde"
+  do handoff pode estar stale.
+- Asserção de presença/ausência em HTML renderizado: **cheque a marcação** (`class="x"`), NUNCA a
+  substring crua do glifo/emoji — `<style>` sempre contém nomes de classe e comentários podem conter
+  o glifo (foi um comentário CSS com emoji que quebrou o teste sem o produto mudar).
+
+**Ref:** tiatendo E3-E6 loja (2026-07-17). Fix `390cece`. Memória `project-vitrine-e3-e6-loja-2026-07-17`.
+
+---
+
+## Resgatar linhas órfãs de migration aditiva (coluna nova NULL) via backfill + path real do coletor
+
+**Sintoma:** um reaper filtra `WHERE col IS NOT NULL AND col < cutoff` (fail-safe: não age no que não
+sabe datar). Linhas criadas ANTES da migration que adicionou `col` ficam `col=NULL` → nunca são pegas
+(presas pra sempre). Caso tiatendo: conversa pausada antes da mig 100 (`bot_paused_at` NULL) ficava
+muda; o reaper horário exige `IS NOT NULL`.
+
+**Como resolver:**
+- **Backfill** com proxy defensável (`col = updated_at`) SÓ nas linhas-alvo, guardado
+  (`WHERE ... AND col IS NULL AND id = ...`); depois deixe o **loop de produção do próprio serviço**
+  agir — ele traz o efeito colateral (notificação) junto, uma vez.
+- **NÃO** invoque o path do reaper num `docker exec` bare achando que envia: efeitos que dependem do
+  runtime (cliente de canal, tasks com delay) são cortados quando o `asyncio.run` fecha o loop — o
+  UPDATE de estado funciona, o dispatch pode não. Invocar manual + disparar direto = risco de 2 cópias.
+- Gotcha de inspeção via exec: `from mod import _cache` captura o dict ANTES do rebind — use o RETORNO
+  da função de load; rode com cwd/-w correto (relativo a `TENANTS_DIR`/`/app`). E `dispatchResponse`
+  (tiatendo) NÃO grava em `messages` (só no canal) — ausência lá ≠ não-enviado.
+- Depois: **scan cross-tenant** do mesmo padrão órfão pra saber se é sistêmico.
+
+**Ref:** tiatendo Fabiula (2026-07-17). Memória `project-vitrine-e3-e6-loja-2026-07-17`.
