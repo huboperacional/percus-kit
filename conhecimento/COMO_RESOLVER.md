@@ -40,6 +40,7 @@
 - [Guard anti-dupla-cobrança com idempotency do Stripe não dispara (a key REPLICA a resposta cacheada)](#stripe-idempotency-replay)
 - [Raspando email de contato: JSON-LD é onde mora, e o MX "válido" aceita registro A](#scrape-email-jsonld-mx)
 - [Guard de segurança checa a INTENÇÃO e não o ALVO (ex.: `APP_ENV=test` não protege banco nenhum)](#guard-checa-intencao-nao-alvo)
+- [Verifiquei a pré-condição, pedi aprovação (R20/R5), e executei quando o operador respondeu — mas a verificação VENCEU na espera](#verificacao-vence-esperando-r20)
 - [Migração de schema vai subir e o entrypoint roda `alembic upgrade || continuing` (fail-open)](#migracao-entrypoint-fail-open)
 - [Reviewer cross-provider (R11/conselho) acusa "migration ausente"/"campo morto" que JÁ existe — ele só vê o diff staged](#reviewer-so-ve-diff-staged)
 
@@ -756,6 +757,30 @@ Ver também [Devolutiva cross-time escrita da MEMÓRIA acusa o bug errado](#devo
 
 ---
 
+## Verifiquei a pré-condição, pedi aprovação (R20/R5), e executei quando o operador respondeu — mas a verificação VENCEU na espera {#verificacao-vence-esperando-r20}
+
+`tags: R20, R5, aprovacao, gate, quiet hours, TCPA, janela, stale, verificacao vencida, time-of-check, TOCTOU, disparo, compliance`
+
+**Sintoma:** você fez tudo certo — checou a pré-condição, mostrou o número ao operador, esperou o R20, e executou **exatamente o que foi aprovado**. E mesmo assim a execução violou a pré-condição.
+
+**Caso concreto (Scraper-prospeccao, 2026-07-17 — violação real):** verifiquei a janela TCPA às **18:05 ET** ("restam 175 min até as 21:00"), pedi o R20 pro disparo de 51 SMS. **O operador respondeu ~14h depois, às 07:45 da manhã.** Disparei na hora, com a verificação da véspera. **9 SMS saíram entre 07:45 e 07:59 locais — antes das 8h = violação de quiet hours.** A checagem não estava errada quando foi feita; ela **venceu esperando a aprovação**.
+
+**Causa-raiz — TOCTOU com um humano no meio.** Toda pré-condição **temporal** (janela horária, cotação, saldo, token, lock, rate-limit, "o serviço está no ar") tem validade. Um gate de aprovação humana introduz uma espera **de duração desconhecida** entre a verificação e o uso — o operador pode responder em 2 minutos ou dormir e responder de manhã. **A aprovação diz "pode fazer X", não "as condições de X ainda valem".**
+
+**Regra:** o que você verifica **antes** de pedir aprovação serve pra *decidir se vale pedir*. **NUNCA** serve como garantia na hora de executar. Toda pré-condição perecível tem que ser **re-checada no momento do uso** — e, se possível, **dentro do código**, por item.
+
+**Solução:**
+1. **Guard no código, por-item, no instante da ação** — não uma checagem de startup, não uma nota no runbook, não disciplina do agente. `if not is_within_quiet_hours(datetime.now(UTC), lead.state): skip`.
+2. **Falha = pular, não abortar o lote.** E **não marque no ledger** — o item volta no próximo run, dentro da janela dele.
+3. **No fuso/contexto do ALVO, não no seu.** 09:00 ET é 06:00 PT: checar no *seu* fuso libera envio ilegal. Desconhecido → o mais restritivo (ex.: `Pacific/Honolulu`, onde qualquer instante é o mais cedo localmente — só erra pro lado conservador). Isto é o mesmo princípio de [Guard checa o ALVO, não a intenção](#guard-checa-intencao-nao-alvo).
+4. **Se a pré-condição venceu quando o R20 chegou, NÃO execute** — volte ao operador. "Ele já aprovou" não é autorização pra executar em condição diferente da que ele aprovou.
+
+**Sinal de alerta:** se entre a sua verificação e a sua ação existe uma mensagem ao operador, **assuma que passaram horas**. Antes de executar um `--apply` aprovado, releia o relógio/estado. Se a resposta demorou e você não re-checou, você está executando às cegas com a confiança de quem checou.
+
+**Ref:** Scraper-prospeccao — 9 SMS fora da janela; fix = `is_within_quiet_hours`/`timezone_for_state` em `services/api/app/integrations/cohort_dispatch.py`, chamados por-envio em `run_cohort_dispatch.py` (17 testes; provado contra o timestamp REAL da violação). Memória `reference_tcpa_quiet_hours_violation_stale_check`.
+
+---
+
 ## Guard de segurança checa a INTENÇÃO e não o ALVO (ex.: `APP_ENV=test` não protege banco nenhum) {#guard-checa-intencao-nao-alvo}
 
 `tags: guard, seguranca, teste, pytest, conftest, autouse, truncate, APP_ENV, DATABASE_URL, banco live, producao, falsa seguranca, fixture`
@@ -788,3 +813,52 @@ Ver também [Devolutiva cross-time escrita da MEMÓRIA acusa o bug errado](#devo
 (no Scraper-prospeccao isso levou 83 testes de **240s com erros aleatórios** pra **0.7s**).
 
 **Ref:** Scraper-prospeccao — achado 2026-07-15, **RESOLVIDO 2026-07-16**. Implementação: `services/api/tests/db_target.py` (`resolve_test_database_url`/`assert_test_database`/`derive_test_database_url`, 16 testes em 0.06s) + `services/api/tests/conftest.py`. Review R11 Cross-Claude: 0 bugs confirmados; os 2 achados aplicados viraram os pontos 4 e "precedência testável" acima. Memória `reference_pytest_trunca_banco_live_scraper`.
+
+---
+
+## Validar UMA conta numa API multi-tenant e generalizar o resultado {#validar-uma-conta-generalizar}
+
+**Sintoma:** um probe de validação (ex.: `validateOnly`) passa contra a conta do piloto, você conclui
+"o campo X não é obrigatório → sem mudança de código", ship, e no primeiro cliente seguinte o mesmo
+payload é **rejeitado**.
+
+**Caso real (Paid Media, 2026-07-16, migração Google Ads → Data Manager API):** a "Fase 0" rodou
+`validateOnly` com gclid real na conta do piloto (Uni) **sem** `transactionId` → **200**. Conclusão
+registrada: *"transactionId não é exigido quando há gclid → zero mudança no router"*. Ao migrar TODOS
+os tenants, o Moper devolveu `events[0].transaction_id | REQUIRED_FIELD_MISSING` — **o requisito
+depende da conversion action**, não da API. Titanium e Uni passavam; Moper não. O conselho R11
+(DeepSeek + Cross-Claude) tinha marcado exatamente esse campo como **risco de consenso** e o probe de
+uma conta deu um **falso all-clear** que calou o alerta deles.
+
+**Why:** APIs multi-tenant validam contra a configuração do *destino* (tipo da conversion action,
+categoria, política da conta), não só contra o schema do payload. Um 200 prova "válido **para aquele
+destino**", nunca "válido para a API". O viés é forte porque o probe parece autoridade — veio do
+próprio Google.
+
+**How to apply:**
+1. **Probe de contrato roda em N destinos heterogêneos, não em 1.** Escolha destinos que difiram no
+   eixo que importa (aqui: tipo/categoria da conversion action — lead-gen vs ecommerce vs chamada).
+   Um único destino só prova o caminho feliz dele.
+2. **Se um review/conselho marcou o campo como risco e o seu probe "desmentiu", desconfie do probe,
+   não do conselho.** Um all-clear que cancela um risco de consenso merece uma segunda amostra antes
+   de virar decisão de arquitetura.
+3. **Prefira o fix barato ao "não precisa".** Threadar um id estável custava ~5 linhas; a conclusão
+   "não precisa" custou um ciclo de descoberta em produção. Quando o campo é opcional-ou-obrigatório
+   *dependendo do destino*, **mande sempre** (se for inofensivo onde é opcional).
+4. **O id tem que ser ESTÁVEL, nunca `uuid4()` na hora do envio** — `transactionId`/`orderId` são
+   chave de deduplicação: um id novo a cada retry conta a conversão duas vezes. Reuse o id que já
+   deduplica em outro canal (aqui: o `event_id` que o Meta/TikTok CAPI já usava) ou derive
+   deterministicamente (`wa-lead-{conv_id}`).
+5. **Migre em lote cedo, não só o piloto.** Foi o "migra todos" que expôs o erro no mesmo dia; migrar
+   só o piloto teria escondido até o próximo cliente entrar — com o sintoma longe da causa.
+
+**Corolário (mesma sessão):** o erro real ficou escondido atrás de um genérico *"There was a problem
+with the request."* porque o extrator de erro só conhecia o shape da API antiga
+(`error.details[].errors[]`) e a nova usa `google.rpc.BadRequest.fieldViolations`. **Ao trocar de API,
+o parser de erro é parte da migração** — senão o primeiro erro real chega ilegível justo quando você
+mais precisa dele. Guarde `isinstance` em todo `.get()` do extrator: ele roda no caminho de erro, e uma
+exceção ali escapa (o `try/except` costuma cobrir só o `json.loads`) e derruba o request.
+
+**Ref:** Paid Media Automation — cont.105.2 (2026-07-16). Fix `0f545f7` (threading do `event_id` →
+`transaction_id`, parser dos 2 shapes) + `d0b567b` (guarda contra corpo malformado). Memória
+`project_google_data_manager_migration`.
