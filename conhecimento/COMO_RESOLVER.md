@@ -32,6 +32,7 @@
 - [Hook pre-commit (R11) é PreToolUse: "review && commit" numa chamada só sempre bloqueia](#pretooluse-review-commit)
 - [`importlib.reload(config)` num teste polui a suite inteira (quebra testes que rodam depois)](#reload-config-polui-suite)
 - [Deploy: `docker build ... | tail && service update` mascara build falho → outage 404](#deploy-pipe-mascara-exit)
+- [Build no VPS falha puxando imagem PÚBLICA do ghcr.io ("denied") + `${VAR}` do stack deploy é no-op](#ghcr-denied-stale-login)
 - [`NEXT_PUBLIC_*` não aparece no bundle client em prod (setei só no compose runtime)](#next-public-baked-build)
 - [Preciso verificar que uma página admin/dashboard renderiza, mas o MCP de browser caiu / precisa login](#render-smoke-in-container)
 - [Migração de UI+API pra novo domínio: cookie dinâmico por Host não basta, a base da API também](#migracao-dominio-cookie-e-api-dinamicos)
@@ -942,3 +943,247 @@ muda; o reaper horário exige `IS NOT NULL`.
 - Depois: **scan cross-tenant** do mesmo padrão órfão pra saber se é sistêmico.
 
 **Ref:** tiatendo Fabiula (2026-07-17). Memória `project-vitrine-e3-e6-loja-2026-07-17`.
+
+## [2026-07-18] Padronizar componente compartilhado: regra por POSIÇÃO vaza + env Jinja é por-rota (tiatendo I6)
+
+Ao padronizar `.ti-table` (design system, 27 usos) e migrar o Caixa pro componente, dois vazamentos silenciosos:
+
+- **Regra CSS keyed por posição vaza pra todos os usos do componente.** Uma regra `.ti-table td:nth-child(7){display:none}` escrita pro 7º col "No status" do **Orders** (≤1024px) aplicava a TODA `.ti-table`. No Caixa a 7ª `<td>` é o botão de AÇÃO → sumia no tablet/mobile. **Lição:** regra de componente ancorada em `nth-child(N)`/posição assume que toda instância tem o mesmo significado de coluna — quase nunca verdade. Escopar por classe do CONTEXTO (`#pagina .ti-table ...`) ou por classe semântica da célula, nunca por índice global. Fix seguro = override no escopo da página afetada, sem tocar a regra do outro consumidor (blast radius).
+
+- **Cada módulo de rota do dashboard tem seu PRÓPRIO `Jinja2Templates`.** Um global registrado num (`statusLabelPt` em `ordersRoutes.env.globals`) NÃO existe no env de outra rota (caixa) → `{{ statusLabelPt() }}` renderiza vazio em PROD, mesmo com o teste "verde" (o teste registra o global à mão num Environment bare). **Reusar macro/partial que depende de global Jinja → registrar o global no env da rota que renderiza.** Macros importadas via `{% from %}` não sofrem (loader, não env.globals). Memória `feedback-per-route-jinja-env-globals-dont-share`.
+
+**Regra de mock em widget de estoque (I5):** só mostrar "N restantes" onde `stock_qty` é coluna REAL e controlada (NULL = ilimitado, não aparece). Não inventar contagem — mesma decisão do rating-fora do E6.
+
+**Ref:** tiatendo I6/I5 (2026-07-18), PROD `0.224.0`/`0.225.0`. Memória `project-vitrine-e3-e6-loja-2026-07-17`.
+
+## [2026-07-18] Verificar UI: o que "não aparece" no screenshot pode ser artefato da ferramenta, não bug (Micro Investors F2)
+
+Três falsos-negativos numa sessão só, todos do mesmo tipo — **o instrumento mentiu, não o código**:
+
+- **`fullPage: true` do Playwright distorce `position:absolute` + `mask-image`.** Uma foto no hero
+  (absolute, com máscara em gradiente) **sumiu** do screenshot fullPage em prod e quase virou "bug de
+  deploy". A prova real veio do **DOM**: `img.complete=true`, `naturalWidth=669`, `getBoundingClientRect`
+  visível — e o screenshot de **viewport** mostrou a imagem. **Regra:** antes de declarar "não renderiza",
+  cheque o DOM (complete/naturalWidth/rect/display computado); use fullPage pra composição geral, nunca
+  como prova de que um elemento posicionado existe.
+
+- **Tailwind v4 + Turbopack fragmenta o CSS em vários chunks no DEV.** Procurar `.bg-navy` no chunk que
+  o `<link>` aponta e não achar NÃO significa que o utilitário não foi gerado (nem `.bg-primary` estava
+  lá). **Verifique no CSS de PRODUÇÃO** (`.next/static/chunks/*.css` após o build) — é o que vai pro deploy.
+
+- **Classe gerada ≠ classe que pinta.** `.bg-navy{background-color:var(--navy)}` só funciona se `--navy`
+  existir no CSS servido; `var()` de variável indefinida invalida a declaração inteira (IACVT) e a regra
+  vira no-op silencioso — o mesmo mecanismo que já derrubou a fonte pro Times New Roman neste projeto.
+  **Verifique o PAR: a regra E a variável.**
+
+- **Bônus (imagem):** um PNG que "parece ter fundo bege" pode ser recorte com alpha — a prévia compõe
+  sobre fundo claro. Cheque o canal alpha (mapa de opacidade) ANTES de aplicar máscara/`multiply` pra
+  "esconder o fundo": tratar um fundo que não existe só escurece o assunto.
+
+**Ref:** Micro Investors F2 home (portal `v8`, 2026-07-18).
+
+## [2026-07-18] `deepseek-review.sh` morre com "jq: Argument list too long" (diff > ~30KB no Windows)
+
+**Sintoma:** R11 falha em `line 123: jq: Argument list too long`. Não é bug do jq — é o **limite de argv
+do Windows/git-bash (~32KB)**: o script passa `AGENTS.md` + o diff inteiro via `--arg`. Um `package-lock.json`
+no diff (ou ~500 linhas de código novo) já estoura.
+
+**Como resolver:** dividir o trabalho em **lotes menores, cada um com sua própria review** (respeita R11) —
+`git stash push -- <paths do lote 2>`, revisa e fecha o lote 1, `git stash pop`, revisa e fecha o lote 2.
+Lockfile vai isolado (`chore:`, sem lógica). **NÃO** bypasse o hook: o gate continua válido, só o
+transporte é que não cabe.
+
+**Gotcha do hook (PreToolUse):** ele bloqueia o **comando Bash inteiro** antes de executar. Se você
+encadeou `git add X && git ...`, o `git add` **NUNCA roda** — então a correção que você acabou de fazer
+no arquivo continua fora do stage e o hook reclama do mesmo problema em loop. **Rode o `git add` sozinho**,
+confirme com `git show :<arquivo>`, e só então feche. (Idem: o hook casa por TEXTO — escrever a palavra
+num heredoc de documentação já dispara o gate.)
+
+**Ref:** Micro Investors F2 (2026-07-18), plugin percus-review 6.28.0.
+
+## [2026-07-19] Bug de fuso multi-tenant tem 4 camadas — e a mais traiçoeira é o YAML, não o código
+
+**Sintoma:** relatório mostra dado no dia/hora errados pra tenant fora do fuso "padrão" da equipe.
+No caso real (tiatendo, cliente em Dourados/MS = UTC−4): pedido às 20:00 **locais** virava 00:00 UTC
+do dia seguinte → **o jantar inteiro**, pico de faturamento do restaurante, caía no dia da semana errado.
+
+**As 4 camadas — corrigir só uma NÃO resolve:**
+1. **Config (YAML do tenant)** — o fuso declarado está errado, ou mora num bloco que a cadeia de
+   resolução não lê. **É a mais traiçoeira: com o YAML errado, o código corrigido devolve hora errada
+   OBEDIENTEMENTE.** Ninguém desconfia porque o código "está certo".
+2. **Cadeia de fallback** — o resolvedor só olha alguns elos e cai no default **em silêncio**.
+3. **SQL** — `EXTRACT(DOW/WEEK/YEAR/HOUR ...)`, `date_trunc('day', ...)`, `::date` sobre coluna
+   `timestamptz` roda no fuso da SESSÃO do banco (UTC), não do tenant.
+4. **Render** — helper de formatação com fuso cravado (`toBrasilia`, `BRT = -03:00`).
+
+**⚠️ A armadilha que quase me pegou: consertar a cadeia SOZINHA pode PIORAR tenants.**
+Dois tenants declaravam `America/New_York` num bloco que a cadeia quebrada nunca lia — resolviam o
+default (BRT) **por acidente, e por acaso certo**. Consertar a cadeia os faria resolver New_York **de
+verdade**, deslocando 5h. Fix da cadeia e correção dos YAMLs têm que ir no **MESMO commit**.
+
+**Detalhes de SQL que custam caro:**
+- **Round-trip DUPLO** pro "hoje" do tenant:
+  `date_trunc('day', now() AT TIME ZONE $tz) AT TIME ZONE $tz`. A 1ª conversão leva pro relógio local
+  (naive), o `date_trunc` acha a meia-noite local, a 2ª volta pra `timestamptz` comparável com a
+  coluna. **Aplicar só a 1ª produz OUTRO resultado errado, não o certo.**
+- **`AT TIME ZONE` depende do TIPO da coluna**: sobre `timestamptz` devolve naive; sobre `timestamp`
+  naive devolve `timestamptz` — e aí a dupla aplicação **inverte o sinal**. Pré-voo obrigatório em
+  `information_schema.columns` antes de aplicar.
+- **`EXTRACT(EPOCH FROM (a - b))` é IMUNE a fuso** (subtração = intervalo). "Corrigir" quebra a métrica
+  de duração.
+
+**Migração do render: RENAME, não shim.** Trocar `toBrasilia` → `toTenantTime(dt, tz, fmt)` com tz
+obrigatório e **apagando o nome antigo** faz call site esquecido quebrar **no import**, não em produção.
+Um shim com default preserva exatamente o modo silencioso pelo qual o bug sobreviveu.
+
+**⚠️ NUNCA `scp` um YAML de tenant por cima do de produção.** Os arquivos de prod divergem do repo
+(chaves, flags, campos operacionais). Faça `diff` primeiro e edite **só a linha do fuso**, in-place
+(`sed`). No caso real, o arquivo de prod tinha 179 linhas contra 163 do repo.
+
+**Fechar com trava, não com documentação.** O bug reapareceu **3× em um único dia** com a regra já
+escrita na memória do projeto. Um teste-lint que varre o código atrás do padrão errado é o que segura.
+Dois critérios de aceite: (a) tem que pegar as **instâncias históricas reais** — se alguma escapar, o
+desenho está errado e **não se ajusta o corpus pra passar**; (b) **não pode acusar os casos corretos**
+(os `EPOCH` de duração), senão vira ruído e alguém desliga na primeira semana.
+
+**Ref:** tiatendo `0.229.0`→`0.231.0` (2026-07-19), spec `2026-07-18-fuso-do-tenant-sweep-design.md`.
+
+---
+
+## "Concluída" decidida pelo TEXTO do status apodrece em silêncio quando o produto deixa renomear
+
+**Sintoma:** métricas e telas erram só para *algumas* organizações — as que renomearam a situação
+terminal. Barra de progresso da tarefa-mãe em 0% com tudo pronto; aviso de prazo cobrando tarefa já
+entregue; contagem de "concluídas" divergindo entre dois gráficos da mesma tela.
+
+**Causa:** o código compara `status` com uma lista fixa (`IN ('done','completed','concluido')`) ou por
+substring (`ILIKE '%cancel%'`). Funciona no seed padrão e quebra no minuto em que alguém chama a
+situação de "Entregue" ou "ABORTADO". A heurística de substring erra nos **dois** sentidos: deixa
+passar o que devia excluir ("ABORTADO" não casa "cancel") **e** exclui o que devia passar
+("Cancelamento aprovado" é um desfecho concluído).
+
+**Correção:** um marcador booleano/timestamp, nunca o texto. No caso: `completed_at` + `cancelled_at`,
+com predicados centralizados num módulo só (`is_done`, `is_terminal`, `is_open`) em duas formas —
+expressão ORM e fragmento SQL cru — para que query hand-rolled e ORM não divirjam.
+
+**O que torna isto caro:** não é um call-site, são vários, e eles **não aparecem juntos no grep óbvio**
+(um usa `IN`, outro `ILIKE`, outro nem filtra). Num único épico apareceram **5**, e o mais grave
+(progresso da tarefa-mãe) já estava documentado como armadilha conhecida no projeto — o call-site
+simplesmente nunca tinha sido migrado. Documentar não fecha; **grep dirigido antes de tocar em
+qualquer contagem** fecha:
+
+```
+grep -rn "status.in_(\|status NOT IN\|ilike(\"%cancel\|'done', 'completed'" backend/app/
+```
+
+**Achado por teste, não por leitura.** O 5º bug apareceu porque um teste escrito para *outra* coisa
+(progresso da mãe após PATCH via API) falhou com `Decimal('0.00') == 100`. Teste de integração que
+exercita o efeito colateral real encontra o que a revisão de diff não vê.
+
+**Ref:** Plexco Tasks s141 (2026-07-18/19), épico WS-C F3 `/ext` escrita.
+
+## [2026-07-19] Escape que atravessa camadas de transporte pode virar troca de X por X — com "ok" mentiroso
+
+**Sintoma:** script de fix (bash heredoc → python) imprime "ok", assert de `count==1` passa, testes verdes — e o arquivo continua EXATAMENTE igual. Dois reviewers independentes acharam o defeito "corrigido" ainda vivo.
+
+**Causa:** cada camada de transporte pode consumir um nível de backslash. No caso: `new = '") \\u2014 mesmo'` num heredoc chegou no Python como `—` — que É o próprio em-dash. O replace trocou em-dash por em-dash: no-op sintaticamente perfeito, com toda a aparência de sucesso (o assert checava o ANTIGO, que existia mesmo; o write escreveu o mesmo conteúdo).
+
+**Como resolver:**
+1. **Verificação de fix de encoding/escape é SEMPRE em bytes**, nunca em string de alto nível: `open(p,'rb').read().count(b'\xe2\x80\x94')` não mente; `'—' in line` depende de quantas camadas o literal do próprio CHECK atravessou (o meu check tinha o MESMO bug do fix).
+2. Pra editar escape em arquivo, usar ferramenta que NÃO processa escapes (Edit tool / editor direto), não string através de shell.
+3. Assert de fix não é "o padrão antigo existia" — é "o padrão NOVO existe e o antigo NÃO": `assert new in s and old not in s` teria pego na hora.
+
+**Onde mordeu:** Paid Media cont.106.3, em-dash no template do loader (`proxy/router.py`). Só o quality reviewer batendo em bytes revelou.
+
+## [2026-07-19] Deploy delta com base defasada REVERTE feature entregue — e o smoke de feature não pega
+
+**Sintoma:** features marcadas `[5-T]` com smoke em produção NA ÉPOCA simplesmente não estão mais lá semanas/dias depois. No caso: 5 features (widget de estoque, nav, e 3 da vitrine da loja) mortas em produção por ~23h, incluindo **zero ocorrências na página pública que o cliente final vê**.
+
+**Causa:** deploy delta (`FROM <imagem-base>` + `COPY` só dos arquivos mudados) usando uma base ANTERIOR às features já entregues. Tudo que entrou entre a base e a atual não é apagado — é **nunca copiado**. O serviço sobe, `/health` responde 200, e o smoke da feature nova passa.
+
+**Por que fica invisível:** o consumidor da função sumida chamava dentro de um `_safe(..., [])`. O card mostrava "sem alertas", que é *indistinguível* de "está tudo em estoque". O único sintoma era 1 linha de ERROR por minuto num log que ninguém lia.
+
+**Como resolver:**
+1. **Bissecção nas imagens** acha o instante exato, sem adivinhação:
+   `docker run --rm --entrypoint grep <img>:<versao> -c "def minhaFuncao" /app/caminho.py` em cada versão.
+2. **Comparar a ÁRVORE INTEIRA**, não a feature: manifesto de hashes do HEAD × árvore da imagem, rodado **entre `docker build` e `docker service update`**. Smoke de feature prova que a NOVA subiu; só o diff de árvore prova que as ANTIGAS sobreviveram.
+3. **Normalizar fim de linha antes de hashear.** Sem isso, manifesto gerado no Windows (CRLF) contra imagem via `git archive` (LF) acusa TODO arquivo de texto — 158 falsos positivos na 1ª execução real. Falso positivo em massa MATA a trava: na 2ª vez que grita sem motivo, alguém a remove do processo.
+4. Se for usar base rasa/antiga pra evitar `max depth`, o `COPY` tem que levar a árvore inteira, não o diff.
+
+**Regra geral:** `except`/default silencioso transforma bug de deploy em bug invisível. Ao varrer produção atrás de falha engolida, agrupar o log por assinatura (`sed` normalizando ids + `sort | uniq -c`) revela em segundos o que passa despercebido linha a linha.
+
+**Onde mordeu:** tiatendo, imagens `0.226.0`→`0.232.0`. Trava: `scripts/verifyImageMatchesHead.py`.
+
+## [2026-07-19] Conselho responde bem à pergunta errada quando o contexto omite uma restrição
+
+**Sintoma:** conselho 3-membros dá veredito coeso (2/3, 3/3), o agente implementa, e o operador aponta na hora um caminho melhor que o conselho nem considerou.
+
+**Causa:** o prompt do conselho descreveu o problema sem uma restrição decisiva. No caso: perguntei se o bot devia "avisar ou perguntar" quando um item some do pedido, informando que o resumo é ecoado no fim — mas **omiti que o checkout é multi-turno** (o bot ainda faz 1 a 4 perguntas antes de fechar). O argumento central deles ("o cliente quis encerrar, não incomode") desmonta na hora: vamos incomodar de qualquer jeito.
+
+**Como resolver:**
+1. Antes de submeter, listar as **restrições de FLUXO** — o que acontece antes e depois do ponto de decisão, quantos turnos, o que ainda é reversível. Decisão de UX conversacional depende disso mais que do conteúdo da mensagem.
+2. Perguntar-se: **"o que ainda é possível fazer nesse instante?"** No caso, a restrição que decidia era "o rascunho ainda está ABERTO, dá pra incluir o item de verdade" — depois do fechamento, perguntar prometeria o que não se pode cumprir.
+3. Veredito do conselho **não vira autoridade sobre o operador**, que tem contexto de negócio que nenhum provider tem (ali: item omitido = venda perdida + chamado de suporte).
+4. Ao registrar a reversão, dizer QUE o conselho errou **e por quê o input estava incompleto** — senão a próxima sessão relê o veredito antigo e reverte de novo.
+
+**Onde mordeu:** tiatendo D16 (`0.236.0`). O desenho final ficou melhor que as 3 opções submetidas: pergunta 1× com escape + o aviso passivo do conselho como rede.
+
+## [2026-07-19] Scheduler novo sobre tabela velha: dedup por MARCADOR, senão a linha fóssil engole o 1º disparo
+
+**Sintoma:** você troca um job agendado (ex.: relatório semanal domingo 03:00 UTC fixo) por um scheduler por-tenant com dedup persistente numa tabela que o job ANTIGO também escrevia. Na transição, o job antigo já gravou a linha da semana corrente → o scheduler novo vê "já existe" e **pula o 1º envio novo em silêncio**. Ninguém percebe: não há erro, só ausência.
+
+**Como resolver:**
+1. **Linha nova carrega um marcador** (ex.: chave `report_meta` no JSONB de metrics). O dedup checa o MARCADOR, não a existência da linha: linha fóssil (sem marcador) não bloqueia — o 1º disparo novo sobrescreve por cima (upsert).
+2. Dedup em memória (`_lastRun` global) **não sobrevive a restart/redeploy** — se o restart cair no dia do disparo, ou duplica ou engole. Persistir na tabela que já tem unique (tenant, período) sai de graça.
+3. Semântica catch-up ("1× por semana A PARTIR do instante agendado", não "== hora agendada") tolera o processo fora do ar no horário; o dedup persistente é o que impede o duplo envio.
+4. Config de horário vinda de YAML: `report_time: 09:00` SEM aspas é **sexagesimal no YAML 1.1 → int 540** (9×60). O parser tem que aceitar `str "HH:MM"` E `int minutos`, senão o horário configurado é trocado pelo default em silêncio.
+
+**Bônus da mesma sessão (contrato de shape entre caller e helper):** `sendPersonalAlert(config, msg)` lê `config["specialistPhone"]`; um caller passava o `tenantConfig` INTEIRO (onde o campo é `specialist.personal_whatsapp`) → warning logado e **nenhum envio, durante meses**. Helper de envio que "degrada com warning" quando falta campo esconde erro de contrato pra sempre — teste que trava o SHAPE do argumento (`assert config == {"specialistPhone": ...}`) pega na hora.
+
+**Onde mordeu:** tiatendo `0.237.0`, reconstrução do Relatório Semanal (`execution/quality/reportScheduler.py` + `execution/plugins/restaurant/weeklyReport.py`).
+
+## Build no VPS falha puxando imagem PÚBLICA do ghcr.io ("denied") + `${VAR}` do stack deploy é no-op {#ghcr-denied-stale-login}
+
+**Sintomas (2 no mesmo deploy, Scraper-prospeccao 2026-07-19):**
+1. `docker build` falha em `COPY --from=ghcr.io/astral-sh/uv:<tag>` com `failed to fetch oauth token: denied` — parece rate-limit ou imagem privada, mas a imagem é pública e o build já funcionou antes na mesma máquina.
+2. `API_IMAGE=nova-tag docker stack deploy -c stack.yml <stack>` termina "update completed"… com a imagem VELHA. Nem `export` + `echo $API_IMAGE` provando a var setada muda nada.
+
+**Causas:**
+1. **Login VELHO no ghcr.io** em `/root/.docker/config.json` (`auths["ghcr.io"]` com token expirado). Docker manda a credencial podre e o registry NEGA — o pull anônimo teria funcionado.
+2. O `docker stack deploy` do host **não interpola `${VAR:-default}` do ambiente** — reaplica o default do yml. Update "completed" com imagem velha = no-op silencioso.
+
+**Solução:**
+1. `docker logout ghcr.io` → rebuild (pull anônimo).
+2. Não passar tag por env var: **editar o default no `deploy/stack.yml` (repo = fonte da verdade) → `scp` pro VPS → `docker stack deploy`**. SEMPRE conferir depois: `docker service inspect <svc> --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'` — replicas 1/1 não prova imagem nova.
+
+**Onde mordeu:** Scraper-prospeccao, deploy `2026-07-19-nr1` (página niche-review). Memória: `reference_deploy_swarm_local_image_gotchas`.
+
+---
+
+## "O backend já aceita X" — repo ≠ imagem em prod (422 silencioso pós-deploy parcial)
+
+**Sintoma:** feature nova (form do `/investors`) 100% pronta e testada em código; o HANDOFF afirmava "o backend já aceita `source=investors` desde `d3ec75e`". Verdade **no repo** — mas a imagem em prod (`:0.2.40`) foi buildada ANTES desse commit, e o POST levava **422** (`Input should be 'portal' or 'landing'`). Se o portal tivesse subido sozinho, 100% dos leads da página de captação quebrariam com "Algo deu errado" e nada apareceria em log de erro do portal.
+
+**Causa:** afirmação de capacidade baseada em `git log`, não na imagem deployada. Commits de fundação (schema/Literal/notifier) entram no repo semanas antes do deploy que os carrega.
+
+**Solução (2 camadas):**
+1. **Smoke da capacidade direto em prod ANTES do deploy dependente**, sem side-effect: POST com **honeypot preenchido** (`website`) — se o Literal aceita, vem 201 falso sem persistir nada; se não, vem o 422. Custo: 1 curl.
+2. **Milestone review adversarial paga:** foi o revisor cross-contexto (subagente de contexto limpo) que testou ao vivo e derrubou a premissa — o autor do plano (eu) tinha herdado a afirmação do HANDOFF sem re-verificar.
+
+**Padrão do gate no script de deploy:** o deploy dependente começa com `curl /health` e **aborta** se a versão exigida não está em prod (ver `.tmp/deploy_frontend_v76.py` step 0 no Micro Investors).
+
+**Onde mordeu:** Micro Investors, deploy F3 `portal:v9` (2026-07-19). O fix virou a ordem: `:0.2.41` → `v9` → `v76`.
+
+---
+
+## Monitor passivo: o erro que você viu no probe ativo pode NÃO existir no pipe
+
+**Sintoma:** o gabarito do smoke exigia que o `INVALID_CONVERSION_ACTION_TYPE` do Moper (achado da auditoria) aparecesse no `detail` do elo entrega. O monitor devolveu `no_click_id`. Parecia bug do monitor — não era: probe `SELECT ... WHERE google_ads_response_body ILIKE '%INVALID%'` → **0 linhas em 60 tentativas**.
+
+**Causa:** o corpo de um erro só existe onde (a) o request realmente FOI feito e (b) o caminho grava a resposta. Os 60 envios do Moper morrem em `no_click_id` ANTES de chegar na API do Google; o `INVALID_CONVERSION_ACTION_TYPE` da auditoria veio do NOSSO `validateOnly` via service-layer — que **não passa pelo event_log**. Prometer detecção passiva de um erro sem checar onde o corpo mora = gabarito impossível.
+
+**Solução (2 regras):**
+1. Antes de prometer que um monitor passivo detecta o erro X, probe **onde o corpo mora**: `SELECT COUNT(*) FILTER (WHERE body ILIKE '%X%')` na tabela que o monitor lê. Se 0, o X é detectável só por sonda ATIVA — documentar, não forçar o gabarito.
+2. **Skip deliberado ≠ falha, mas o pipe grava igual**: `ga4_sent_by_site` (auto-bridge suprime envio), `no_click_id` (orgânico), `missing_meta_config` — todos ficam com `response_ok=0` e passivamente são indistinguíveis de falha real. A camada que classifica precisa de um vocabulário de skips (espelhar `_CONFIG_SKIPS` do capi_fanout) antes de pintar o elo de vermelho.
+
+**Onde mordeu:** Paid Media Automation, cont.107 (fatia 1 do monitor de saúde, 2026-07-19). O item #4 do gabarito virou "conferir → fatia 2" com prova, em vez de um fix errado na regra. Memória: `project_tracking_health_monitor_fatia1`.
