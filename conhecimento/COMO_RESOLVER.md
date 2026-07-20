@@ -18,6 +18,7 @@
 - [Conselho "revisa a coisa errada" / prompt stale entre runs](#conselho-prompt-stale)
 - [QR code de pareamento "não linka" → suspeite do SEU refresh antes de culpar o provedor](#qr-pareamento-expira)
 - [Dois produtos na MESMA conta Stripe → todo webhook chega nos dois; discrimine por preço](#stripe-cross-talk-dois-adapters)
+- [Hook fica lento e trava os commits: diretorio de estado que so cresce](#estado-append-only-trava-hook)
 - [Tag de plano aberta que já foi entregue sob OUTRO número de migration](#migration-numero-reciclado)
 - [Teste que nunca falhou embarca fóssil: o red importa mais que o green](#red-nunca-visto-embarca-fossil)
 - [Hook `.ps1` quebra com erro de parser / acento vira caractere estranho](#ps51-ascii-hooks)
@@ -1344,3 +1345,22 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 4. Vale também pro caminho inverso: **teste verde pode estar guardando bug**. Um teste chamado `..._still_requires` documentava como correta a regra que o operador reportou como defeito.
 
 **Onde mordeu:** tiatendo, 2026-07-20 — 8 testes de anulação escritos sem red; o pg efêmero achou **3 fósseis** neles. Commit `356aec3`.
+
+---
+
+## Hook fica lento e trava os commitS: diretorio de estado que so cresce {#estado-append-only-trava-hook}
+
+`tags: hook lento, pre-commit trava, pendura, timeout, commit lento, diretorio cresce, append only, marcador por timestamp, TTL, stat em N arquivos, ls -t, git bash windows, O(N), latest fixo, escrita atomica`
+
+**Sintoma:** de repente o commit demora dezenas de segundos ou pendura, e nada no diff mudou de tamanho. Pode travar **todos** os commitS do projeto.
+
+**Causa-raiz:** um hook le o "mais recente" de um diretorio de estado fazendo `stat` em **todos** os arquivos (laco `-nt` ou `ls -t`/`Sort-Object LastWriteTime`). O produtor grava **um arquivo novo por evento** (ex.: `<timestamp>.jsonl`). O diretorio cresce sem limite; no git-bash do Windows cada `stat` e caro, e o custo do hook vira O(N) sobre milhares de arquivos. Os marcadores tinham TTL de minutos e zero valor depois -- puro acumulo.
+
+**Como resolver:**
+1. **O produtor grava sempre no MESMO path fixo** (`latest.jsonl`), sobrescrevendo. O leitor faz `stat` em **um** arquivo conhecido -- O(1), independente do historico. Alinha o custo com a pergunta ("existe estado recente?" e sobre 1 ponto, nao sobre N).
+2. **Escrita atomica:** grave em `.tmp` e `mv -f`/`Move-Item -Force`. Sem isso o leitor pode pegar o arquivo no meio da escrita.
+3. **Auto-poda no produtor:** ao gravar, remova os irmaos antigos. Assim pilhas legadas drenam sozinhas no proximo evento -- sem limpeza manual nem reinstalar N copias de hook.
+4. **Corrija na fonte compartilhada, nao nas N copias.** Se o leitor e gerado por template (1 copia) e o produtor e 1 script, mude ali -- hooks por-projeto sao N lugares pra divergir. Depois da correcao do produtor + poda, as copias antigas ficam O(1) sozinhas (N=1).
+5. **Meca antes de "otimizar".** Trocar o laco por `ls -t` teria economizado 10% (o custo era o `stat` em N, nao o laco) -- a medicao refutou a hipotese obvia.
+
+**Onde mordeu:** canon Percus, hook R11 pre-commit, 2026-07-20. tiatendo chegou a **2026 marcadores** -> commit pendurava **148s** -> travou o projeto. Paid Midia (1399), Plexco Tasks (1123), Plexco Coach (844) estavam no mesmo caminho. Fix: `latest.jsonl` + escrita atomica + auto-poda no wrapper + leitura de path fixo no template/checks. Resultado: 148s -> **1,1s** (127x).

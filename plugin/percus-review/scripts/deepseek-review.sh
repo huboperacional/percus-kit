@@ -145,8 +145,10 @@ fi
 # === LOG ===
 LOG_DIR=".deepseek/reviews"
 mkdir -p "$LOG_DIR"
-TS="$(date +%Y%m%d-%H%M%S)"
-LOG_FILE="${LOG_DIR}/${TS}.jsonl"
+# Path FIXO latest.jsonl (2026-07-20): <timestamp>.jsonl acumulava milhares de
+# marcadores (TTL 5min) e travava o hook R11. Um arquivo sobrescrito => O(1).
+LOG_FILE="${LOG_DIR}/latest.jsonl"
+LOG_TMP="${LOG_DIR}/latest.jsonl.tmp"
 DIFF_LINES="$(echo "$DIFF" | wc -l | tr -d ' ')"
 jq -n \
     --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -154,7 +156,13 @@ jq -n \
     --argjson diff_lines "$DIFF_LINES" \
     --arg findings "$FINDINGS" \
     '{ timestamp: $timestamp, base: $base, diff_lines: $diff_lines, findings: $findings }' \
-    > "$LOG_FILE"
+    > "$LOG_TMP" && mv -f "$LOG_TMP" "$LOG_FILE"
+# Auto-poda: so latest.jsonl fica (mecanismo novo). Marcadores <ts>.jsonl irmaos
+# drenam sozinhos no proximo review -- pilha nunca mais cresce, sem tocar hooks.
+for old in "$LOG_DIR"/*.jsonl; do
+    [ "$old" = "$LOG_FILE" ] && continue
+    [ -e "$old" ] && rm -f "$old"
+done
 
 # === OUTPUT ===
 printf '## Findings DeepSeek (cross-provider review)\n\n'

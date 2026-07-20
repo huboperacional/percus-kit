@@ -58,7 +58,9 @@ if [ ! -d "$REVIEW_DIR" ]; then
   exit 2
 fi
 
-LATEST=$(ls -t "$REVIEW_DIR"/*.jsonl 2>/dev/null | head -1)
+# Path fixo latest.jsonl (2026-07-20) -- O(1); fallback ao glob so se ausente.
+LATEST="$REVIEW_DIR/latest.jsonl"
+[ -f "$LATEST" ] || LATEST=$(ls -t "$REVIEW_DIR"/*.jsonl 2>/dev/null | head -1)
 if [ -z "$LATEST" ]; then
   echo "[percus:hook pre-commit] BLOCK: $REVIEW_DIR vazia" >&2
   block_context "$REVIEW_DIR"

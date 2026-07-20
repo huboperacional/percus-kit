@@ -83,7 +83,14 @@ try {
         exit 2
     }
 
-    $latest = Get-ChildItem $reviewDir -Filter "*.jsonl" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    # Path fixo latest.jsonl (2026-07-20) -- O(1), sem enumerar o dir inteiro.
+    # Fallback ao Sort-Object so se ausente (wrapper antigo ainda em transicao).
+    $latestPath = Join-Path $reviewDir 'latest.jsonl'
+    if (Test-Path $latestPath) {
+        $latest = Get-Item $latestPath
+    } else {
+        $latest = Get-ChildItem $reviewDir -Filter "*.jsonl" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    }
     if (-not $latest) {
         [Console]::Error.WriteLine("[percus:hook pre-commit] BLOCK: .deepseek/reviews/ vazia no repo target")
         Write-BlockContext -searched $reviewDir

@@ -139,13 +139,26 @@ $logDir = Join-Path (Get-Location) '.deepseek\reviews'
 if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 }
-$logFile = Join-Path $logDir "$(Get-Date -Format 'yyyyMMdd-HHmmss').jsonl"
+# Path FIXO latest.jsonl (2026-07-20): antes era <timestamp>.jsonl e o dir
+# acumulava milhares de marcadores (TTL 5min, zero valor) ate o hook R11
+# pendurar ~148s e travar os commits do projeto. Um arquivo sobrescrito =>
+# hook O(1), acumulo inexistente. Escrita atomica (tmp + rename) pro hook
+# nunca ler no meio da escrita.
+$logFile = Join-Path $logDir 'latest.jsonl'
+$logTmp  = Join-Path $logDir 'latest.jsonl.tmp'
 @{
     timestamp  = (Get-Date -Format 'o')
     base       = $Base
     diff_lines = ($diff -split "`n").Count
     findings   = $findings
-} | ConvertTo-Json -Compress | Out-File -FilePath $logFile -Encoding utf8
+} | ConvertTo-Json -Compress | Out-File -FilePath $logTmp -Encoding utf8
+Move-Item -Path $logTmp -Destination $logFile -Force
+# Auto-poda: o mecanismo agora e latest.jsonl unico. Remove marcadores
+# <timestamp>.jsonl irmaos (pilhas antigas drenam sozinhas no proximo review,
+# sem depender de limpeza manual nem de reinstalar os hooks). Produtor-side.
+Get-ChildItem $logDir -Filter '*.jsonl' -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne 'latest.jsonl' } |
+    Remove-Item -Force -ErrorAction SilentlyContinue
 
 # === OUTPUT ===
 Write-Host "## Findings DeepSeek (cross-provider review)`n" -ForegroundColor Cyan

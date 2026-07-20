@@ -34,14 +34,13 @@ else
             exit 1
         fi
 
-        # Mais recente .jsonl
-        LATEST=""
-        for f in "$REVIEW_DIR"/*.jsonl; do
-            [ -e "$f" ] || continue
-            if [ -z "$LATEST" ] || [ "$f" -nt "$LATEST" ]; then
-                LATEST="$f"
-            fi
-        done
+        # Path FIXO latest.jsonl (2026-07-20): o wrapper sobrescreve sempre o
+        # mesmo arquivo, entao o hook le UM path conhecido -- O(1), sem stat em N.
+        # Compat: wrapper antigo deixou <ts>.jsonl -> fallback pega o mais novo.
+        LATEST="$REVIEW_DIR/latest.jsonl"
+        if [ ! -f "$LATEST" ]; then
+            LATEST=$(ls -t "$REVIEW_DIR"/*.jsonl 2>/dev/null | head -1)
+        fi
 
         if [ -z "$LATEST" ]; then
             >&2 echo "[percus:hook pre-commit native] BLOCK: pasta $REVIEW_DIR/ vazia"
