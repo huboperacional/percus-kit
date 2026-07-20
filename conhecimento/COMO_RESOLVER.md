@@ -16,6 +16,10 @@
 ## Índice
 
 - [Conselho "revisa a coisa errada" / prompt stale entre runs](#conselho-prompt-stale)
+- [QR code de pareamento "não linka" → suspeite do SEU refresh antes de culpar o provedor](#qr-pareamento-expira)
+- [Dois produtos na MESMA conta Stripe → todo webhook chega nos dois; discrimine por preço](#stripe-cross-talk-dois-adapters)
+- [Tag de plano aberta que já foi entregue sob OUTRO número de migration](#migration-numero-reciclado)
+- [Teste que nunca falhou embarca fóssil: o red importa mais que o green](#red-nunca-visto-embarca-fossil)
 - [Hook `.ps1` quebra com erro de parser / acento vira caractere estranho](#ps51-ascii-hooks)
 - [Declarei versão errada ao retomar sessão (origin já estava à frente)](#origin-stale-resume)
 - [Fix aplicado não funciona / hipótese de root cause estava errada](#reproduzir-antes-de-fixar)
@@ -1264,3 +1268,79 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 4. O cliente no worker NUNCA levanta exceção (serviço fora ⇒ elo degrada pra `desconhecido`, não aborta a varredura) e retorna `(resultado, motivo_erro)`.
 
 **Onde mordeu:** Paid Media Automation, 2026-07-20, fatia 2 do monitor de saúde (elo credencial). Memória: `project_tracking_health_monitor_fatia2`.
+
+---
+
+## QR code de pareamento "não linka" → suspeite do SEU refresh antes de culpar o provedor {#qr-pareamento-expira}
+
+`tags: qr code, whatsapp, pareamento, linkar dispositivo, nao consigo conectar, qr_duration, codigo expirado, gowa, whatsmeow, baileys, handshake ausente, loop de refresh, aba abandonada, host compartilhado, log flood, polling, visibilitychange, template literal, script inline sem teste`
+
+**Sintoma:** usuário escaneia o QR e o celular diz "não é possível conectar novos dispositivos agora"; nos logs do servidor de WhatsApp **não aparece handshake nenhum**. A ausência de handshake parece provar que a recusa é do provedor — e foi o que nos fez perseguir "conta Business", "bug do iOS" e "versão do servidor" por semanas.
+
+**Causa-raiz real:** o QR expira rápido (GOWA: `qr_duration: 30s`) e só é reemitido na próxima chamada de login. Se a UI busca o código **uma vez** e congela a imagem, quem demora mais que a janela escaneia um código morto — e o WhatsApp recusa isso **do lado dele**, antes de tocar o seu servidor. Daí o log limpo.
+
+**Como resolver:**
+1. **Teste decisivo e barato:** parear direto pela UI nativa do provedor (que auto-renova o QR). Funcionou lá e não no seu painel ⇒ o culpado é seu, não do provedor. Isso encerra a discussão em 2 minutos.
+2. Renove o QR antes de expirar (`qr_duration - 5s`), mas **com teto** (ex.: 5 tentativas ≈ 2min) e um botão "gerar novo". Loop sem teto inunda host compartilhado — se o host é de outro time, isso vira incidente **deles** (nos cegou durante a investigação de uma queda real).
+3. ⚠️ **Não use o status da conexão como sinal de "pareando".** O provedor reporta `is_logged_in:false` para device não pareado, o que normaliza para `disconnected` — que também é o estado ocioso. Parar o loop nesse status mata o refresh ~200ms depois do clique (loop roda **zero** vezes); e quando o poll de status falha, a linha fica `connecting` e o loop roda **para sempre**. Os dois sintomas, opostos, têm a mesma raiz. Use um **orçamento de tentativas explícito**, não o status.
+4. **Trave também no servidor** (429 por instância). É o único mecanismo que alcança **abas já abertas** rodando o JS antigo — um fix só no cliente não chega nelas. Bônus: clientes antigos costumam parar o loop em qualquer resposta não-OK, e se o refresh automático deles é silencioso, o 429 os aposenta sem erro visível.
+5. Não renderize QR persistido em banco numa recarga de página: sem timestamp, ele está sempre vencido.
+
+**Armadilha de processo:** JS de painel dentro de template literal não é lido pelo `tsc` **nem por teste nenhum** — foi assim que o bug subiu com "build verde". Extraia a lógica de decisão para um módulo compilado **pelo mesmo source** que a página e pelo spec, e teste "parar" e "exibir" como complementos exatos (property test) — eles divergiram e um status exibia QR enquanto cancelava o próprio refresh.
+
+**Onde mordeu:** GHL-GOWA-WhatsApp, 2026-07-16/19. Cliente pagante 3 dias sem conseguir parear. Commits `3b55593`, `4ddd027`. Memória: `gowa-linking-blocked-whatsapp-side`.
+
+---
+
+## Dois produtos na MESMA conta Stripe → todo webhook chega nos dois; discrimine por preço {#stripe-cross-talk-dois-adapters}
+
+`tags: stripe, webhook, checkout.session.completed, dois produtos, mesma conta, cross-talk, provisionou no lugar errado, metadata identica, price id, endpoint nao registrado, assinatura cancelada, remove, direito de uso, entitlement`
+
+**Sintoma:** cliente paga, o painel volta pra tela de pagamento e nada é provisionado — mas o Stripe mostra `succeeded` e a assinatura ativa.
+
+**Causa-raiz:** não havia endpoint de webhook registrado para o serviço novo. O **único** endpoint registrado na conta era o do serviço legado, que consumiu o `checkout.session.completed` e provisionou **no banco dele**. O serviço novo nunca soube do pagamento.
+
+**Como resolver:**
+1. Confira `GET /v1/webhook_endpoints` **antes** de culpar o código — o evento pode estar sendo entregue a outro serviço da mesma conta.
+2. Registrar o endpoint **não basta**: com dois produtos na mesma conta, os dois passam a receber **todos** os eventos. A metadata da sessão costuma ser idêntica entre produtos, então **o `price` é o único discriminador confiável** — filtre por ele no handler dos dois lados.
+3. ⚠️ **Nunca deixe "remover recurso" cancelar a assinatura.** A assinatura é o **direito** a uma instância: remover o recurso deve liberar o slot, não encerrar o contrato. Um cliente clicou "Remove" para religar e perdeu, sem refund, o que pagara 40 minutos antes. Cancelar assinatura é ação separada e explícita.
+4. Remediação sem cobrar de novo: assinatura nova com `trial_end` cobrindo o período já pago, **reaplicando o cupom** (o desconto não migra sozinho, e cancelamento no Stripe é terminal).
+
+**Onde mordeu:** GHL-GOWA-WhatsApp, 2026-07-16. Commit `5e796c2`.
+
+---
+
+## Tag de plano aberta que já foi entregue sob OUTRO número de migration {#migration-numero-reciclado}
+
+`tags: plano, tag aberta, pendencia falsa, migration numerada, numero reciclado, obra ja entregue, auditoria de plano, frente fossil, arqueologia, PLANO.md, drift de plano`
+
+**Sintoma:** o plano tem dezenas de tags abertas de meses atrás. Parecem trabalho pendente, mas ninguém lembra de tê-las abandonado — e a feature parece existir em produção.
+
+**Causa-raiz:** planos antigos citam a obra pelo **número da migration** (`054`, `055`). Quando aquela frente parou, os números foram **reciclados** por frentes posteriores. A obra acabou sendo entregue depois, sob outro número e outro nome — e a tag antiga ficou aberta apontando para um identificador que hoje significa outra coisa. Ninguém fechou porque ninguém sabia que já estava feito.
+
+**Como resolver:**
+1. **Não julgue frente antiga por data.** "Parado há 6 semanas" não distingue abandono de obra-entregue-por-outra-rota. Ausência de sinal não é sinal.
+2. Verifique **cada tag aberta contra o código, o banco e as migrations** — nunca por memória nem pelo texto do plano. Agentes de busca em paralelo tornam isso barato.
+3. Trate número de migration citado em plano como **referência frágil**: confirme pelo **efeito** (tabela/coluna/flag existe? rota responde?), não pelo número.
+4. O veredito útil tem três valores, não dois: **VIVA · FÓSSIL · PARCIAL**. Parcial é o caso comum — a maior parte entregue, um resto real.
+5. Ao mover pro histórico, **feche a conta por soma de linhas** (antes = depois + movido ± cabeçalhos). Sem isso, "limpeza" e "perda silenciosa" são indistinguíveis.
+
+**Onde mordeu:** tiatendo, 2026-07-20 — auditoria de 4 frentes: 221 linhas fósseis, mas **6 pendências eram reais**. Commit `65140c7`.
+
+---
+
+## Teste que nunca falhou embarca fóssil: o red importa mais que o green {#red-nunca-visto-embarca-fossil}
+
+`tags: tdd, red green, teste nunca falhou, fixture fossil, guard de banco, dbSafety, skip silencioso, teste escrito depois, pg efemero, banco de teste, suite verde mentirosa`
+
+**Sintoma:** a suíte passa localmente, o teste novo "está verde", e ao rodar contra banco real ele quebra em coisas bobas — nome de campo, coluna de ordenação, tipo de exceção.
+
+**Causa-raiz:** um guard de segurança (tipo `dbSafety`) **pula** os testes de banco quando não há banco de teste configurado. O teste novo nunca rodou — nem vermelho, nem verde. Ele foi escrito contra o *contrato imaginado* da função, e cada divergência do contrato real virou um fóssil embutido: `sale["order_id"]` quando o retorno tem `id`, `ORDER BY created_at` quando a coluna é `transitioned_at`, `pytest.raises(Exception)` onde o código lança um tipo específico.
+
+**Como resolver:**
+1. **Ver a falha vermelha é o passo, não a formalidade.** Teste que passou de primeira ou não testa nada, ou o comportamento já existia — pare e descubra qual dos dois.
+2. Se o guard pula, **declare em voz alta** que o vermelho não foi visto e que o `[5-T]` depende do gate real. Não converta "não rodou" em "passou".
+3. Rode o recorte da feature no **gate real** (pg efêmero, CI) antes de marcar entregue — é lá que os fósseis aparecem, em lote e baratos.
+4. Vale também pro caminho inverso: **teste verde pode estar guardando bug**. Um teste chamado `..._still_requires` documentava como correta a regra que o operador reportou como defeito.
+
+**Onde mordeu:** tiatendo, 2026-07-20 — 8 testes de anulação escritos sem red; o pg efêmero achou **3 fósseis** neles. Commit `356aec3`.
