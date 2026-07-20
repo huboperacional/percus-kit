@@ -409,6 +409,7 @@ def test_flag(monkeypatch):
 **Ref:** sessão Session Resume auth-service 2026-07-12 (11 falhas fantasma em webhook tests); fix commit `603759e`.
 
 ## Fix editado DEPOIS do `add` fica fora do commit — review revisa versão limpa, commit embarca a buggy {#staging-pos-review-drift}
+`tags: git stage staged add diff review commit stale fix hook marker`
 
 **Sintoma:** você roda a review (R11), ela aponta um bug, você corrige o arquivo, mas o commit embarca a versão SEM o fix. O `git status` mostra o arquivo como `MM` (staged + working-tree divergem): o stage capturou o estado ANTES da correção; as edições pós-stage ficaram só no working tree.
 
@@ -547,6 +548,7 @@ def test_flag(monkeypatch):
 ---
 
 ## Preciso verificar que uma página admin/dashboard renderiza, mas o MCP de browser caiu / precisa login {#render-smoke-in-container}
+`tags: render smoke container docker admin dashboard browser login template`
 
 tags: render smoke, dashboard, admin page, browser mcp down, playwright, chrome-devtools, sem login, verificar tela, FastAPI, Jinja, TemplateResponse, super_admin, monkeypatch estado
 
@@ -567,6 +569,7 @@ tags: render smoke, dashboard, admin page, browser mcp down, playwright, chrome-
 ---
 
 ## Migração de UI+API pra novo domínio: cookie dinâmico por Host não basta, a base da API também {#migracao-dominio-cookie-e-api-dinamicos}
+`tags: dominio migracao cookie host api base-url dinamico frontend cors`
 
 tags: migração domínio, cutover, cookie domain, cross-site, SameSite lax, registrable domain, const API, coexistência, dual-host, huboperacional, ads4pros, 302 vs 301
 
@@ -581,6 +584,7 @@ tags: migração domínio, cutover, cookie domain, cross-site, SameSite lax, reg
 ---
 
 ## Mudar rota/Host do Traefik (label) não pega com `service update --image` {#traefik-label-precisa-stack-deploy}
+`tags: traefik label host rota service-update stack-deploy swarm routing`
 
 tags: traefik, swarm, label, router rule, Host, docker service update, stack deploy, label-add, rota não aplica, env drop, rollout transiente
 
@@ -593,6 +597,7 @@ tags: traefik, swarm, label, router rule, Host, docker service update, stack dep
 **Ref:** migração Painel Gestão Fases 1/4 2026-07-14.
 
 ## [5-T] de mudança no loader/script client-side na página real do cliente sem poluir prod {#loader-5t-sem-poluir-prod}
+`tags: loader script client-side 5t teste prod staging validacao query-param`
 
 tags: loader, tracking, pixel, fbq, gtag, ttq, CAPI, pmaTrack, [5-T] client-side, Playwright, GTM não carrega headless, injetar script, CNAME first-party, stub fetch, disparo real polui conversão, dispatchEvent submit, capture-phase
 
@@ -631,6 +636,7 @@ tags: loader, tracking, pixel, fbq, gtag, ttq, CAPI, pmaTrack, [5-T] client-side
 ---
 
 ## Migração de schema vai subir e o entrypoint roda `alembic upgrade || continuing` (fail-open) {#migracao-entrypoint-fail-open}
+`tags: migration alembic entrypoint fail-open upgrade schema deploy silencioso`
 
 **Sintoma / risco:** o entrypoint do container roda a migração no start, mas **fail-open**:
 
@@ -680,6 +686,7 @@ Achado pelo Cross-Claude no milestone-review — o DeepSeek não pegou.
 ---
 
 ## Reviewer cross-provider (R11/conselho) acusa "migration ausente"/"campo morto" que JÁ existe — ele só vê o diff staged {#reviewer-so-ve-diff-staged}
+`tags: review reviewer diff staged falso-positivo migration campo-morto r11 conselho`
 
 **Sintoma:** num fluxo de commits pequenos (subagent-driven, TDD task-a-task), o reviewer do R11
 solta `[SEV: risco]` do tipo:
@@ -829,6 +836,7 @@ Ver também [Devolutiva cross-time escrita da MEMÓRIA acusa o bug errado](#devo
 ---
 
 ## Validar UMA conta numa API multi-tenant e generalizar o resultado {#validar-uma-conta-generalizar}
+`tags: multi-tenant validacao conta amostra generalizar api teste`
 
 **Sintoma:** um probe de validação (ex.: `validateOnly`) passa contra a conta do piloto, você conclui
 "o campo X não é obrigatório → sem mudança de código", ship, e no primeiro cliente seguinte o mesmo
@@ -878,6 +886,7 @@ exceção ali escapa (o `try/except` costuma cobrir só o `json.loads`) e derrub
 ---
 
 ## Feature que depende de LLM ou dado real não fecha [5-T] sem smoke em prod com a FRASE/DADO EXATO do caso original {#smoke-prod-feature-llm}
+`tags: smoke prod llm 5t frase-exata dado-real validacao feature`
 
 **Sintoma:** feature "pronta" com testes verdes + review/conselho aprovando, mas que quebra no
 caso real. Aconteceu no D16/tiatendo (2026-07-16): **1128 testes verdes + 3 passadas de conselho
@@ -1154,6 +1163,7 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 **Onde mordeu:** tiatendo `0.237.0`, reconstrução do Relatório Semanal (`execution/quality/reportScheduler.py` + `execution/plugins/restaurant/weeklyReport.py`).
 
 ## Build no VPS falha puxando imagem PÚBLICA do ghcr.io ("denied") + `${VAR}` do stack deploy é no-op {#ghcr-denied-stale-login}
+`tags: ghcr docker denied login stale build vps pull imagem-publica stack-deploy`
 
 **Sintomas (2 no mesmo deploy, Scraper-prospeccao 2026-07-19):**
 1. `docker build` falha em `COPY --from=ghcr.io/astral-sh/uv:<tag>` com `failed to fetch oauth token: denied` — parece rate-limit ou imagem privada, mas a imagem é pública e o build já funcionou antes na mesma máquina.
