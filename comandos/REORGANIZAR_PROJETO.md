@@ -123,6 +123,19 @@ PASSO B2 — Diretivas de AUTONOMIA (v6.29.0) — aplica a TODO projeto:
   DESTE projeto (MESCLE, não sobrescreva). As regras-fonte vivem em 01_REGRAS (R5/R9/R11) + 06_CONSELHO — o
   projeto já as referencia via ${env:PERCUS_CANON_DIR}; esta adoção só reflete a diretiva no CLAUDE.md local.
 
+PASSO B3 — Canon V2: roteador de loops + gate mecânico (v6.30.0) — aplica a TODO projeto:
+- O canon ganhou o núcleo V2 em ${env:PERCUS_CANON_DIR}/v2/ (Constituição + 8 loops + gates).
+  Procedimento sai do CLAUDE.md e passa a ser roteado por situação (tabela "Roteador de loops").
+- Adotar (2 passos):
+  a) copie a seção "## Roteador de loops" de ${env:PERCUS_CANON_DIR}/templates/CLAUDE.template.md
+     pro CLAUDE.md DESTE projeto (MESCLE, não sobrescreva);
+  b) instale o gate: defina PERCUS_CANON_V2_DIR=${env:PERCUS_CANON_DIR}/v2 (setx, durável) e rode
+     `sh "$PERCUS_CANON_V2_DIR/gates/instalar-gates.sh"` na raiz do projeto (híbrido: preserva
+     hook existente; escape: PERCUS_GATE_OVERSIZE="motivo").
+- HANDOFF acima do teto (150) na primeira rodada é ESPERADO em projeto antigo: compacte no
+  formato ${env:PERCUS_CANON_DIR}/v2/artefatos/HANDOFF-FORMAT.md (histórico → docs/historico/,
+  consulta → docs/referencia-operacional.md). Referência de execução: tiatendo `70c9347`.
+
 PASSO C — Higiene interna do canon (informativo — NADA a adotar no projeto):
 - cascata aposentada, R-count vira ponteiro (R25), soaks fechados, parity .sh como gap aceito: são mudanças
   INTERNAS do canon/tooling, não diretivas que o projeto "adota". Só fique ciente; nenhuma ação no projeto.

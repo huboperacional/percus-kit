@@ -1,8 +1,33 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.29.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.30.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.30.0 — 2026-07-20
+
+**Canon V2 dobrado pra dentro do kit (`v2/`) + loop TDD + roteador de loops no template.**
+O greenfield `_Novo_Projeto_V2` (experimento aprovado no piloto-1) muda de casa pra pegar
+carona na entrega que já existe (`git pull` nas 10 máquinas). A pasta avulsa vira arquivo.
+
+- **`v2/`** entra no kit: `CONSTITUICAO.md` (74 linhas, teto 80) + **8 loops** ≤60
+  (`grilling`, `spec`, `conselho`, `tdd`, `review`, `deploy`, `checkpoint`, `drift`) +
+  4 formatos de artefato + gates mecânicos com instalador standalone (zero dependência de
+  republish do plugin).
+- **Loop `tdd` é novo** (conselho 3/3): teste nasce antes do código; pular é legítimo **se
+  registrado** no PLANO (`tdd: pulado — motivo`) — o `drift` conta os pulos.
+- **Roteador de loops** em `templates/CLAUDE.template.md`: o CLAUDE.md do projeto passa a
+  rotear situação → loop, resolvendo o disparo (skill de plugin auto-triggava; doc não —
+  o roteador devolve isso sem republish).
+- **Piloto-1 (tiatendo) FECHADO** — commit `70c9347` lá: boot 7.612→1.297 (−83%), HANDOFF
+  6.185→56, CONTEXT.md + 10 ADRs minerados, gate V2 em produção no pre-commit (híbrido,
+  R11 preservado). Meta "≤400" substituída por critério por-projeto (HANDOFF no teto +
+  PLANO só vivo). Piloto-2 planejado: Plexco Tasks (best-case).
+- Adoção nos projetos: caixa Delta `comandos/REORGANIZAR_PROJETO.md` **Passo B3**.
+- Versões: `.percus-version` = `plugin.json` = `CANON_VERSION` = **6.30.0** (sem republish
+  do plugin — mudança é toda doc/gates, chega via `git pull`).
 
 ---
 

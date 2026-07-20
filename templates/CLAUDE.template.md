@@ -17,6 +17,25 @@ Esse arquivo (uma linha com semver, ex: `6.3.0`) declara qual versão do canon P
 
 Sem essa declaração no primeiro turno, agente pode aplicar regras erradas (ex: tentar usar `/council:pre-mortem` num projeto v5.0.x onde nem existe).
 
+## Roteador de loops (canon V2 — v6.30.0+)
+
+Procedimento não mora neste arquivo: mora em `${env:PERCUS_CANON_DIR}/v2/loops/` e você
+carrega **só o loop da situação**. Invariantes: `${env:PERCUS_CANON_DIR}/v2/CONSTITUICAO.md`.
+
+| Situação | Leia AGORA |
+|---|---|
+| Feature/pedido novo, intenção ainda vaga | `v2/loops/grilling.md` |
+| Intenção clara → escrever requisito | `v2/loops/spec.md` |
+| Spec ou plano acabou de fechar | `v2/loops/conselho.md` (automático, não pergunte) |
+| Vai começar a implementar | `v2/loops/tdd.md` |
+| Vai commitar | `v2/loops/review.md` |
+| Marco pronto pra prod | `v2/loops/deploy.md` |
+| Sessão terminando / contexto cheio | `v2/loops/checkpoint.md` |
+| Algo repetidamente estranho (escape reincidente, doc que não bate) | `v2/loops/drift.md` |
+
+Sem situação da tabela → não carregue loop nenhum. Formatos de artefato (HANDOFF/CONTEXT/
+ADR/PLANO): `${env:PERCUS_CANON_DIR}/v2/artefatos/`.
+
 ## O que é este projeto
 
 {2-3 linhas descrevendo propósito, público, problema que resolve}
