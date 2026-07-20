@@ -1,6 +1,6 @@
 {
   "name": "percus-review",
-  "version": "6.30.1",
+  "version": "6.30.2",
   "description": "Percus kit Fase 7 — canon de regras (_Novo_Projeto/) + plugin de review cross-provider (DeepSeek + Cross-Claude + Llama). Versao atual, changelog e historico de versoes: CANON_VERSION.md (single-source, R25 — esta description NAO duplica o changelog).",
   "author": { "name": "Percus" },
   "commands": "./commands",

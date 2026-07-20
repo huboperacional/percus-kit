@@ -26,6 +26,20 @@
 - **Um membro falhou** → reporte "2 de 3 responderam". Nunca apresente conselho parcial como completo.
 - **`analyze` de spec exige ≥2 provedores** (DeepSeek + Cross-Claude). Spec é decisão de design — veredito de um provedor só não aprova spec.
 
+## Quando parar (regra de parada)
+
+O conselho converge ou não — **não roda pra sempre.** Achado do piloto-2 (Plexco,
+2026-07-20): sem teto, uma barra de progresso gastou **4 rounds** — o real saiu no round 1,
+os outros foram defender de findings alucinados. Num pino em que um provedor alucina, sem
+regra isso rodaria sem fim.
+
+- **Teto: 2 rounds.** O round 1 acha; o round 2 existe só pra endereçar bloqueador
+  **confirmado** do round 1 — não pra reabrir o que já passou.
+- **Só bloqueia o que é HIGH/CRITICAL e sobrevive ao fact-check.** Severidade menor, ou
+  finding que não se confirma, vira **risco documentado** (linha na spec/PLANO), não trava.
+- **Bateu o teto com findings abertos?** Viram risco aceito e registrado — não um 3º round.
+  Rodar de novo sem pergunta nova é o mesmo anti-padrão do escape reincidente (`loops/drift.md`).
+
 ## O que o conselho NÃO faz
 
 Ele **não decide** — expõe risco e alternativa. O operador decide. Conselho unânime numa direção ruim continua sendo direção ruim.

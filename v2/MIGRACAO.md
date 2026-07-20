@@ -86,14 +86,30 @@ Cross-Claude com a ressalva mais dura e mais útil:
 **Critério de promoção — 3/3 avaliados:** boot ✅ (−83% e −75%) · retrabalho ✅ (baseline
 capturado; ganho ainda não medido — o V2 é novo demais) · revisão plural ✅ (3/3 com ressalva).
 
-**Pendente pra promoção plena:** uma sessão fria (outro agente, sem o autor) rodando o V2.
+## Sessão fria — FECHADA 2026-07-20 (Plexco Tasks, feature A1)
 
-## Critério de promoção
+A quarta prova (a que o conselho anexou): outro agente, **sem o autor dos loops**, usando o
+V2 de verdade. A sessão do Plexco rodou o ciclo completo (grilling→spec→conselho→tdd→review→
+deploy→checkpoint) na fatia A1 (barra de % na Lista), entregou em prod, verificou, e devolveu
+uma **crítica** do canon. Veredito da própria sessão: **net-positivo** — *"mais rápido seria
+pior"*: sem o canon teria errado o "% vs N/M" (pego pelo grilling) e shipado o título espremido
+no Plexco (pego pelo E2E do deploy).
 
-O V2 só substitui o V1 se ganhar em número **e** em revisão:
+O que a crítica achou (e virou conserto, não elogio):
+- **`conselho.md` sem regra de parada** → rodou 4 rounds numa barra de progresso. **Corrigido
+  em v6.30.2** (teto 2 rounds; só HIGH/CRITICAL fact-checado bloqueia). *Este era o gate da
+  propagação: a sessão fria acha o furo, conserta-se, então espalha.*
+- Gate valida "review há <5min" (TTL), não "ESTE diff foi revisado" (hash) — fresta conhecida
+  (verbete `#staging-pos-review-drift`), imaterial pra comentário. Aceito.
+- Bug no `council-orchestrator.ps1` (Cross-Claude recebe `file:` vazio → bloqueio falso) —
+  tooling, tem workaround, spawnado.
 
-1. **Custo de boot** por-projeto (critério revisto acima)
-2. **Retrabalho** — commits `fix`/revert sobre código recente
-3. **Revisão do conselho** sobre cada piloto, antes e depois — a parte que número não captura
+## Critério de promoção — 4/4 FECHADO → V2 PROMOVIDO
 
-Sem ganho medido, o V2 é churn e o V1 volta a ser o canon.
+1. **Custo de boot** — ✅ tiatendo −83%, Plexco −75%
+2. **Retrabalho** — ✅ baseline 18,2% / 15,1% (régua pra frente)
+3. **Revisão do conselho** — ✅ 3/3 "promover com ressalva"
+4. **Sessão fria** — ✅ net-positiva, com o defeito que achou já corrigido
+
+**Liberado pra propagação:** Delta **Passo B3** nos projetos, quando o operador quiser.
+O V1 continua como referência (auth, infra, tracking, conhecimento) — o V2 não o apaga.

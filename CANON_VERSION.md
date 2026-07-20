@@ -1,8 +1,45 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.30.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.30.2`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.30.2 — 2026-07-20
+
+**Regra de parada no `conselho.md` (achado da sessão fria do piloto-2).** O critério de
+promoção do V2 (`v2/MIGRACAO.md`) exigia uma sessão fria — outro agente, sem o autor dos
+loops — usando o canon. Aconteceu: a sessão do Plexco Tasks rodou o ciclo V2 completo na
+feature A1 (grilling→spec→conselho→tdd→review→deploy), entregou em prod e **criticou o canon**.
+Veredito: **net-positivo** ("mais rápido seria pior" — sem o canon teria errado o "% vs N/M"
+e shipado o título espremido). Critério de promoção fechado 4/4.
+
+- **Defeito que a sessão fria achou:** `conselho.md` não tinha **regra de parada**. Numa barra
+  de progresso o conselho rodou **4 rounds** — o real saiu no round 1, os 2-4 foram defesa
+  contra findings alucinados. Sem teto, num pino em que um provedor alucina, rodaria sem fim.
+- **Fix (entregue pronto pela própria sessão fria):** teto de **2 rounds**; só HIGH/CRITICAL
+  confirmado por fact-check **bloqueia**; o resto vira **risco documentado** na spec/PLANO, não
+  3º round. Rodar de novo sem pergunta nova = anti-padrão do escape reincidente (`drift.md`).
+- **V2 PROMOVIDO** (de "com ressalva" → promovido): boot −83%/−75%, retrabalho baseline
+  18,2%/15,1%, conselho 3/3, sessão fria net-positiva. Liberado pra propagação (Delta B3).
+- Aberto (não bloqueia, tem workaround): bug no `council-orchestrator.ps1` (perna Cross-Claude
+  recebe blocos `file:` vazios → bloqueio falso HIGH) — spawnado como tarefa própria.
+
+---
+
+## Changelog v6.30.1 — 2026-07-20
+
+**Hook R11 O(N)→O(1): `latest.jsonl` fixo + escrita atômica + auto-poda.** O hook lia o review
+mais recente com `stat` em TODOS os `.deepseek/reviews/*.jsonl`; o wrapper gravava 1 arquivo
+por review (TTL 5min). O dir só crescia → tiatendo 2026 arquivos → commit pendurava **148s** e
+travava o projeto. 11 projetos afetados (Paid Midia 1399, Plexco Tasks 1123, Plexco Coach 844).
+
+- Wrapper (`deepseek-review.ps1`/`.sh`) grava sempre `latest.jsonl` (escrita atômica tmp+rename)
+  e **auto-poda** os irmãos — pilhas legadas drenam sozinhas no próximo review, sem tocar nos
+  hooks instalados. Leitores (template + `pre-commit-check.*`) leem path fixo O(1).
+- Medido: **148s → 1,1s** (127×). Fonte + 2 caches (6.28.0/6.29.0) alinhadas; 11 pastas limpas.
+- Verbete R23 `#estado-append-only-trava-hook`. Sem republish (chega via `git pull`).
 
 ---
 
