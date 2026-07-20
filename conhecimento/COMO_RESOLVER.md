@@ -44,6 +44,17 @@
 - [Verifiquei a pré-condição, pedi aprovação (R20/R5), e executei quando o operador respondeu — mas a verificação VENCEU na espera](#verificacao-vence-esperando-r20)
 - [Migração de schema vai subir e o entrypoint roda `alembic upgrade || continuing` (fail-open)](#migracao-entrypoint-fail-open)
 - [Reviewer cross-provider (R11/conselho) acusa "migration ausente"/"campo morto" que JÁ existe — ele só vê o diff staged](#reviewer-so-ve-diff-staged)
+- [Kill-switch com gate nos call-sites cobre menos do que promete — o docstring vira mentira](#kill-switch-no-facade)
+- [View `SELECT *` congela colunas na criação — prod funciona e instalação fresca quebra](#view-select-star-congela-colunas)
+- [Worker precisa de segredo que outro serviço cifrou → sonda roda DENTRO do serviço dono](#sonda-no-servico-dono-do-segredo)
+- [Next `next build` quebra ("Failed to collect page data") com client instanciado no top-level](#next-build-eager-client)
+- [Fix editado DEPOIS do `add` fica fora do commit — review revisa versão limpa, commit embarca a buggy](#staging-pos-review-drift)
+- ["Erro de conexão" no front que é, na verdade, um 500 do backend](#erro-de-conexao-e-500-sem-cors)
+- [Consumir `/internal/identities/v2` do auth-service: `name`, não `display_name`](#identities-v2-exige-name)
+- [`docker stack deploy` rola serviços pra trás quando o swarm.yml está com pins stale](#stack-deploy-swarm-pins-stale)
+- [Bot conversacional re-pergunta info que o cliente já deu FORA DE ORDEM (checkout/wizard)](#parking-info-fora-de-ordem)
+- [Validar UMA conta numa API multi-tenant e generalizar o resultado](#validar-uma-conta-generalizar)
+- [Feature que depende de LLM ou dado real não fecha `[5-T]` sem smoke em prod com a FRASE/DADO EXATO do caso original](#smoke-prod-feature-llm)
 
 ---
 
@@ -1187,3 +1198,59 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 2. **Skip deliberado ≠ falha, mas o pipe grava igual**: `ga4_sent_by_site` (auto-bridge suprime envio), `no_click_id` (orgânico), `missing_meta_config` — todos ficam com `response_ok=0` e passivamente são indistinguíveis de falha real. A camada que classifica precisa de um vocabulário de skips (espelhar `_CONFIG_SKIPS` do capi_fanout) antes de pintar o elo de vermelho.
 
 **Onde mordeu:** Paid Media Automation, cont.107 (fatia 1 do monitor de saúde, 2026-07-19). O item #4 do gabarito virou "conferir → fatia 2" com prova, em vez de um fix errado na regra. Memória: `project_tracking_health_monitor_fatia1`.
+
+---
+
+## Kill-switch cujo gate mora nos call-sites cobre menos do que promete — e o docstring vira mentira {#kill-switch-no-facade}
+
+`tags: kill-switch, feature flag, gate, call-site, facade, keyword-only sem default, fail-closed, cobertura parcial, docstring mentira, whatsapp proativo, cold outreach, guard-rail, inspect.signature, funcao fantasma, 409, silencio declarado`
+
+**Sintoma:** kill-switch de envio proativo de WhatsApp (`WA_PROACTIVE_ENABLED`) deployado, flag confirmada `false` em prod, log provando quarentena no startup. Mesmo assim, um clique em `/admin/engajamento/disparar` dispararia **cold outreach em massa** — exatamente o perfil que derruba o device. O docstring dizia "nada é iniciado por nós"; a v1 gateava **2 de 8** remetentes.
+
+**Causa:** o gate foi implementado nos **call-sites**, um por um. Isso torna a cobertura uma função da memória de quem escreve: remetente novo **nasce sem gate** e nada avisa. Pior que não ter switch — a v1 produzia confiança falsa em quem lia o docstring. Um inventário achou 14 remetentes proativos com zero switches.
+
+**Solução (3 camadas, nessa ordem de valor):**
+1. **Gate no FACADE, com a decisão obrigatória.** `sendMessage(..., *, proativo: bool)` **keyword-only SEM default**. Sem default é o ponto todo: default `False` faz remetente novo nascer sem gate de novo (a falha original); default `True` deixa o bot **mudo pra usuário real** no primeiro esquecimento. Sem default, esquecer é `TypeError` **alto**, pego pela suíte antes de prod. "Fail-closed" aqui é sobre a DECISÃO ser obrigatória, não sobre bloquear por omissão.
+2. **Guard-rail na SUPERFÍCIE do facade, não só nos call-sites.** Validar "todo call-site declarou" deixa o buraco simétrico: uma `sendImage()` nova **no próprio facade** nasce sem gate e todos os testes ficam verdes. Teste por `inspect.signature`: toda corrotina de envio precisa do parâmetro; isenção (`checkNumberExists`) só explícita numa allowlist.
+3. **Provar o guard-rail com função fantasma.** Criar o remetente/função que deveria ser pego, rodar (tem que falhar **nomeando-o**), remover. Sem isso você tem um teste que passa, não um teste que protege — foi assim que se descobriu que o padrão antigo (`\b(?:evo|wa_client)\.send…`) devolvia `False` pra `gowa_client.sendMessage`.
+
+**Efeito colateral a decidir conscientemente:** classificar honestamente revela envios que "pareciam inbound" mas são reach-out a terceiro — ex.: escalação pro número de SUPORTE nasce de um inbound, mas quem recebe **não escreveu pra nós**. Marcar como proativo silencia a escalação durante a quarentena; aceitável só porque o registro (`WhatsappLog`) é gravado **antes** e independe do envio. Decida e documente, não deixe implícito.
+
+**Regra geral:** *silêncio de kill-switch precisa ser DECLARADO.* Um endpoint que devolve `200` com zeros na quarentena faz a UI dar toast **verde** de sucesso — a mitigação escrita em `resultado["detalhes"]` era código morto (o front nunca renderizava). Use **409 + `detail`**, e conte a verdade a quem depende do envio (quem adicionou um membro precisa saber que a pessoa **não** foi avisada).
+
+**Onde mordeu:** Família Milionária, 2026-07-16 → 19. Commits `25e0a69` (v2 nos call-sites) → `04a5485` (facade). Memória: `incident_2026_07_16_device_ban_numero_queimado`.
+
+---
+
+## View `SELECT *` congela colunas na criação — prod "funciona" e instalação fresca quebra (e a suíte verde não te conta) {#view-select-star-congela-colunas}
+
+`tags: postgres, view, SELECT *, CREATE OR REPLACE VIEW, migration, instalacao fresca, fresh install, schema drift, column does not exist, schema_migrations, ledger de migration, idempotente, testes skipped em silencio, suite verde falsa, pg efemero, pgvector`
+
+**Sintoma:** validação de feature nova em pg efêmero (instalação FRESCA via `setupDatabase()`): `column o.payment_method does not exist` num caminho central (`listUnpaid`), mais fixtures inserindo colunas inexistentes (`tenants.company_name`). Em PROD tudo funciona há semanas. A tabela TEM a coluna; a **view** (`orders_real AS SELECT * FROM orders`, criada na migration 041) não — view congela o conjunto de colunas NA CRIAÇÃO, e a coluna nasceu na 068.
+
+**Causa (dupla):**
+1. **Era pré-ledger mascarou o drift:** até o ledger `schema_migrations` existir (2026-07-05 no tiatendo), toda migration re-executava idempotente a cada deploy — o `CREATE OR REPLACE VIEW` da 041 se re-aplicava e "via" as colunas novas. Com o ledger, cada migration roda 1× na ordem → instalação fresca congela a view pré-068. **Prod e fresh divergem sem ninguém mudar uma linha.**
+2. **A suíte "verde" não provava nada disso:** o guard de segurança (dbSafety esvazia DSN sem "test" no nome) fez os `needs_db` PULAREM em silêncio em toda máquina local — "4533 passed / 0 failed" com o coração de banco não-verificado. Fixtures fósseis (colunas de um schema antigo de outro produto) sobreviveram meses assim.
+
+**Solução:**
+1. Migration nova que re-emite o `CREATE OR REPLACE VIEW` (re-congela com as colunas atuais; append de colunas no fim é permitido pelo Postgres, prefixo preservado porque a view veio de `SELECT *` da MESMA tabela). Em prod tende a ser no-op.
+2. Grep de auditoria: `CREATE .*VIEW` + `SELECT \*` nas migrations — toda view assim é uma bomba de fresh-install se a tabela ganhar coluna depois.
+3. O número "X passed" de suíte só vale com a contagem de SKIPPED ao lado; gate real de feature de banco = pg efêmero (pgvector!) + `setupDatabase()` + pytest no container. Baseline pra separar "eu quebrei" de "já estava quebrado": mesmos testes com o código DA IMAGEM de prod, montando só `tests/` por cima.
+
+**Onde mordeu:** tiatendo, 2026-07-20, Task 7 da venda manual (migration `101_refresh_orders_real_view.sql`). Memória: `project-venda-manual-caixa-2026-07-20`.
+
+---
+
+## Worker precisa de segredo que outro serviço cifrou → sonda roda DENTRO do serviço dono (endpoint interno fail-closed) {#sonda-no-servico-dono-do-segredo}
+
+`tags: segredo cifrado, criptografia divergente, AES-GCM, AES-CBC, scrypt, master key, blast radius, endpoint interno, X-Internal-Auth, hmac.compare_digest, constant-time, fail-closed, traefik host rule, exposto na internet, worker, monitor de saude, degradar nao abortar`
+
+**Sintoma:** job agendado no worker precisa validar/usar credenciais de tenant cifradas por OUTRO serviço, e a descriptografia falha ou exigiria copiar a master key. Causa-raiz típica: criptos diferentes por design (Paid Media: worker = AES-CBC + scrypt de `ENCRYPTION_KEY`; tracking = AES-GCM + `PMT_MASTER_KEY`). Copiar a chave amplia blast radius; duplicar a lógica de probe cria drift.
+
+**Como resolver:**
+1. A sonda roda DENTRO do serviço dono do segredo, reusando o módulo existente (ex.: `credential_test.py`), exposta num endpoint interno (`POST /internal/...`).
+2. Auth por header de segredo compartilhado (`X-Internal-Auth`) com `hmac.compare_digest` (constant-time) e **fail-closed**: env ausente ⇒ 403 SEMPRE, travado por teste.
+3. ⚠️ Se o Traefik roteia o serviço por **Host rule**, `/internal` é alcançável da INTERNET — o header é o único gate; "rede interna" não protege nada. Smoke obrigatório: curl público sem header ⇒ 403.
+4. O cliente no worker NUNCA levanta exceção (serviço fora ⇒ elo degrada pra `desconhecido`, não aborta a varredura) e retorna `(resultado, motivo_erro)`.
+
+**Onde mordeu:** Paid Media Automation, 2026-07-20, fatia 2 do monitor de saúde (elo credencial). Memória: `project_tracking_health_monitor_fatia2`.
