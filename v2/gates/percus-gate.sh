@@ -49,6 +49,29 @@ checar_tamanho "CONSTITUICAO.md" 80  "constituicao guarda invariante, nao proced
 checar_tamanho "HANDOFF.md"     150  "HANDOFF descreve o presente; historico vai para docs/historico/"
 checar_tamanho "CONTEXT.md"     150  "CONTEXT e glossario, nao especificacao"
 
+# ---------- 1b. Teto AGREGADO do nucleo + contagem de loops ----------
+# Achado do conselho (Cross-Claude, 2026-07-20): teto por-arquivo sem teto
+# agregado nao elimina volume -- DESLOCA. Todo arquivo passa e o nucleo cresce
+# do 9o ao 15o loop; o boot volta como custo de ROTEAMENTO (o agente tem que
+# acertar qual loop carregar, e errar e retrabalho que metrica nenhuma captura).
+# Este bloco fecha o buraco: mede a SOMA e o NUMERO.
+# O nucleo mora em loops/ (quando se roda de dentro do V2) ou em v2/loops/
+# (quando se roda da raiz do canon). Procurar so um dos dois fazia a checagem
+# passar calada -- foi o que aconteceu no primeiro teste deste bloco.
+NUCLEO=""
+[ -d loops ] && NUCLEO="."
+[ -d v2/loops ] && NUCLEO="v2"
+if [ -n "$NUCLEO" ]; then
+  n_loops=$(ls "$NUCLEO"/loops/*.md 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$n_loops" -gt 10 ]; then
+    violacao "$n_loops loops (teto 10) -- loop novo compete por atencao com os 8; funde ou promove a referencia"
+  fi
+  soma=$(cat "$NUCLEO"/CONSTITUICAO.md "$NUCLEO"/loops/*.md 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$soma" -gt 600 ]; then
+    violacao "nucleo (constituicao + loops) tem $soma linhas (teto 600) -- o V1 morreu assim, um arquivo aceitavel por vez"
+  fi
+fi
+
 # ---------- 2. Verbete de conhecimento orfao do indice ----------
 for f in conhecimento/*.md referencia/conhecimento/*.md; do
   [ -f "$f" ] || continue
