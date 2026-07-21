@@ -1,8 +1,21 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.30.3`
+**Versão canônica em `huboperacional/percus-kit`:** `6.30.4`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.30.4 — 2026-07-21
+
+**Execução de plano é subagent-driven por DEFAULT — "subagent ou inline?" vira pergunta boba.**
+Pedido do operador: as sessões estavam perguntando como executar um plano (subagent vs inline);
+o default sempre foi subagent-driven (ganho de produtividade + corta contexto principal). Vira
+regra pra não perguntar mais.
+
+- `v2/CONSTITUICAO.md` §5 (paralelismo) e `01_REGRAS §R9` ganham: plano/frente com 2+ tasks
+  independentes → um subagente por task, revisa entre tasks, **sem perguntar**. Inline só pra
+  tarefa única trivial (subagente seria puro custo). Mesma família da trava-boba que R5 combate.
 
 ---
 

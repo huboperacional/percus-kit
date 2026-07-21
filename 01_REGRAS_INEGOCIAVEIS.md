@@ -306,6 +306,11 @@ independentes, frentes disjuntas, e **múltiplos tool calls concorrentes numa s�
 dependência entre eles. Serial só quando há dependência real (B precisa do output de A). **Deixar de
 paralelizar quando cabia = anti-padrão** — custa tempo e contexto do operador.
 
+**Executar plano é subagent-driven por DEFAULT — não pergunte "subagent ou inline" (pergunta boba):**
+plano/frente com 2+ tasks independentes → dispara um subagente por task, revisa entre tasks. Inline só
+pra tarefa única trivial, onde o subagente é puro custo. Perguntar como executar quando o default já é
+subagent = a mesma trava-boba que R5 combate.
+
 **Conselho automático (não pede permissão):** ao finalizar uma **spec** → o agente roda `spec-analyze`
 sozinho (Modo 5); ao finalizar um **plano** (antes de implementar) → roda `council-pre-mortem` sozinho
 (Modo 3). Sempre, sem perguntar. Detalhe em `06_CONSELHO_PERCUS.md`.
