@@ -1,8 +1,31 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.30.6`
+**Versão canônica em `huboperacional/percus-kit`:** `6.30.7`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.30.7 — 2026-07-21
+
+**2 achados do report de adoção do Paid Midia Automation — ambos verificados RODANDO.**
+
+**1. Gate cego a `docs/HANDOFF.md` (o teto do HANDOFF não disparava neste projeto).** `percus-gate.sh`
+fazia `checar_tamanho "HANDOFF.md"` — glob só de raiz. Projeto que guarda o HANDOFF em `docs/`
+(desvio de layout, mas real) passava calado: `docs/HANDOFF.md` de 245 linhas dava `exit 0`. É o
+mesmo modo de falha "passa calada" do arco inteiro, e a sessão provou rodando (245→exit0 na raiz-glob,
+mesmo conteúdo em `HANDOFF.md`→exit1). Havia sido levantado antes e **caiu no vão — nunca registrado
+no canon**. Fix: os globs de `HANDOFF.md` e `CONTEXT.md` cobrem também `docs/`. Gate que só dispara no
+caminho abençoado é o próprio "depende de alguém lembrar" que a Constituição §6 proíbe.
+- **Verificado RODANDO** (4 cenários): `docs/HANDOFF.md` 245→exit1 · 80→exit0 · `HANDOFF.md` raiz
+  200→exit1 (sem regressão) · `docs/CONTEXT.md` 160→exit1.
+
+**2. Compactação que relê o HANDOFF (e não o PLANO) propaga estado fantasma.** Um `[4-C]` fantasma
+sobreviveu 7 semanas no HANDOFF do Paid Midia: a linha errada nasceu na véspera de um fix, sobreviveu
+à compactação do canon V2 e foi promovida de um doc de 660 linhas a fato num de 34 — porque a
+compactação releu o próprio HANDOFF em vez de reconciliar contra o PLANO, que carregava a evidência
+do smoke. Fix: `loops/checkpoint.md` ganha a regra — ao reescrever, cada "Em obra" é conferido no
+PLANO; se o PLANO marca `[5-T]` com evidência e o HANDOFF diz "em obra", **o PLANO vence**.
 
 ---
 

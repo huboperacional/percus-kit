@@ -15,6 +15,8 @@
 | `CONTEXT.md` | termo de domínio novo ou afiado | implementação |
 | `docs/adrs/` | decisão que passou no triple-gate | ideia descartada em 5 minutos |
 
+> **Reconcilie contra o `PLANO`, não recopie o `HANDOFF`.** Ao reescrever, confira cada item de "Em obra" no `PLANO`: se o `PLANO` marca `[5-T]` (com evidência de teste/smoke) e o `HANDOFF` ainda diz "em obra", o **`PLANO` vence** — a anotação velha não vira fato. Compactar relendo só o `HANDOFF` **propaga** o erro: foi assim que um `[4-C]` fantasma sobreviveu 7 semanas e foi promovido de um doc de 660 linhas a fato num de 34 (sessão fria Paid Midia, 2026-07-21).
+
 **2. Empurre o passado para fora.** O que virou histórico sai do `HANDOFF` para `docs/historico/`. **O HANDOFF descreve o presente — ele não é log.**
 
 **3. Cheque o teto** (150 linhas). Estourou → o excedente é histórico. **Mova, não comprima.**

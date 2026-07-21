@@ -46,8 +46,12 @@ checar_tamanho() { # $1 = padrao  $2 = teto  $3 = por que
 
 checar_tamanho "loops/*.md"      60  "loop tem UM trabalho; o excedente e referencia, mova em vez de comprimir"
 checar_tamanho "CONSTITUICAO.md" 80  "constituicao guarda invariante, nao procedimento"
-checar_tamanho "HANDOFF.md"     150  "HANDOFF descreve o presente; historico vai para docs/historico/"
-checar_tamanho "CONTEXT.md"     150  "CONTEXT e glossario, nao especificacao"
+# HANDOFF/CONTEXT: o layout canonico e a raiz, mas projeto que os guarda em docs/
+# nao pode escapar do teto (achado da sessao fria Paid Midia, 2026-07-21: docs/HANDOFF.md
+# de 245 linhas passava calado -- glob so de raiz + '[ -f ] || continue' pulava sem avisar).
+# Gate que so dispara no caminho abencoado e o proprio "depende de alguem lembrar" (Sec. 6).
+checar_tamanho "HANDOFF.md docs/HANDOFF.md" 150  "HANDOFF descreve o presente; historico vai para docs/historico/"
+checar_tamanho "CONTEXT.md docs/CONTEXT.md" 150  "CONTEXT e glossario, nao especificacao"
 
 # ---------- 1b. Teto AGREGADO do nucleo + contagem de loops ----------
 # Achado do conselho (Cross-Claude, 2026-07-20): teto por-arquivo sem teto
