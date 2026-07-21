@@ -1,8 +1,30 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.30.4`
+**Versão canônica em `huboperacional/percus-kit`:** `6.30.5`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.30.5 — 2026-07-21
+
+**`instalar-gates.sh` agora é IDEMPOTENTE e AUTO-CURA — 2º achado de sessão fria.** O fix da
+v6.30.3 adicionou o fallback `.git/percus-v2-dir` **só pra instalações novas**. Hooks já
+instalados (consertados à mão pelas sessões) tinham o bloco ANTIGO, que só lê a env var — e
+`PERCUS_CANON_V2_DIR` (setado via `setx`) **não aparece em toda sessão de git-bash**. Resultado:
+hook **fail-closed TRAVADO** (bloqueava QUALQUER commit no check de env var, sem nunca chegar ao
+teste de tamanho). "Emperrado", não "vivo".
+
+- Falha minha de verificação, dita com todas as letras: declarei os hooks "VIVO" checando a
+  ESTRUTURA (gate alcançável), **nunca rodei o hook num shell sem a env var**. A sessão fria
+  rodou de verdade e travou. "O script funciona" ≠ "o hook roda no commit sem a env var".
+- Fix: o instalador **remove o bloco `percus-v2-gate` existente** (marcador a marcador) antes de
+  replantar o atual. Re-rodar cura instalação antiga — vira o bloco com fallback.
+- **Verificado RODANDO** (não olhando): hook antigo + env var unset → travava; após reinstalar,
+  barra HANDOFF de 200 linhas **por tamanho** e passa com 80, **tudo com a env var unset**.
+  tiatendo e Plexco curados e testados env-less.
+- Remediação nos projetos passa a ser trivial: **só re-rodar o instalador** (não mais remover
+  bloco à mão).
 
 ---
 

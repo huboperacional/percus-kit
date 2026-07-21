@@ -37,20 +37,23 @@ mkdir -p "$GITDIR/hooks"
 # fail-closed do gate travava commit legitimo. O hook le a env var OU este arquivo.
 printf '%s\n' "$V2DIR" > "$GITDIR/percus-v2-dir"
 
-# Ja instalado? Nao duplica (mas o fallback acima ja foi atualizado).
-if [ -f "$HOOK" ] && grep -q "$MARCA" "$HOOK" 2>/dev/null; then
-  echo "Gate V2 ja estava instalado em $HOOK -- caminho do canon atualizado."
-  exit 0
-fi
-
-# Hook existente de outra origem: preserva e acrescenta (merge hibrido).
+# IDEMPOTENTE E AUTO-CURA (2026-07-21, 2o achado de sessao fria): re-rodar sempre
+# reconstroi o bloco atual. Antes so pulava "se ja instalado" -- entao hook com
+# bloco ANTIGO (que so lia a env var, sem o fallback .git/percus-v2-dir) ficava
+# fail-closed TRAVADO num shell sem a env var. Agora remove o bloco velho e planta
+# o novo, e o mesmo comando conserta instalacao antiga.
 if [ -f "$HOOK" ]; then
-  echo "Hook pre-commit ja existe. Preservando e acrescentando o gate V2."
+  echo "Hook pre-commit ja existe. Preservando o resto e (re)plantando o gate V2."
   cp "$HOOK" "$HOOK.bak-percus"
-  # BUG consertado 2026-07-21 (achado por sessao fria): o hook R11 do
-  # percus-review termina com 'exit 0' no sucesso. Anexar o gate DEPOIS dele com
-  # cat >> deixava o gate INERTE (dead code) -- instalava e nunca rodava no commit.
-  # Remove um 'exit 0' que seja a ULTIMA linha nao-vazia, pro gate ser alcancavel.
+  # 1) remove qualquer bloco percus-v2-gate ja presente (marcador a marcador).
+  awk '
+    /# --- percus-v2-gate ---/ { skip=1 }
+    !skip { print }
+    /# --- fim percus-v2-gate ---/ { skip=0 }
+  ' "$HOOK" > "$HOOK.tmp" && mv "$HOOK.tmp" "$HOOK"
+  # 2) remove um 'exit 0' que seja a ULTIMA linha nao-vazia -- o hook R11 do
+  #    percus-review termina nele no sucesso, e o gate anexado depois viraria
+  #    dead code (1o achado). Sem isto o gate instala e nunca roda no commit.
   awk '
     { l[NR]=$0 }
     END {
