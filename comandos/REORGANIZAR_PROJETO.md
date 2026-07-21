@@ -135,6 +135,12 @@ PASSO B3 — Canon V2: roteador de loops + gate mecânico (v6.30.0) — aplica a
 - HANDOFF acima do teto (150) na primeira rodada é ESPERADO em projeto antigo: compacte no
   formato ${env:PERCUS_CANON_DIR}/v2/artefatos/HANDOFF-FORMAT.md (histórico → docs/historico/,
   consulta → docs/referencia-operacional.md). Referência de execução: tiatendo `70c9347`.
+  O gate afere HANDOFF/CONTEXT na raiz E em `docs/` (v6.30.7); teto 150.
+- PLANO.md NÃO tem teto de gate (é mapa de features, não estado transitório). Mas se estiver
+  inchado de frentes ENCERRADAS, mova-as pra docs/historico/ na mesma passada — higiene opcional,
+  não bloqueia commit. `docs/PLANO.md` é boot-read (o SessionStart lê HANDOFF/docs/PLANO primeiro),
+  então frente morta ali é custo de boot recorrente. O `referencia-operacional.md` só se houver
+  conteúdo de consulta real; não crie vazio por paridade com o tiatendo.
 
 PASSO C — Higiene interna do canon (informativo — NADA a adotar no projeto):
 - cascata aposentada, R-count vira ponteiro (R25), soaks fechados, parity .sh como gap aceito: são mudanças

@@ -1,8 +1,27 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.30.7`
+**Versão canônica em `huboperacional/percus-kit`:** `6.30.8`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+>
+> ⚠️ **O plugin INSTALADO (em `plugins/cache/`) pode ficar ATRÁS do canon-source — isso é ESPERADO, não drift.** O republish/retag do plugin foi descartado (decisão do operador, 01/07/2026), então o tooling novo é **repo-only**: os projetos continuam lendo o plugin em cache (hoje 6.28.0/6.29.0). Gates novos NÃO chegam por republish — chegam via `v2/gates/instalar-gates.sh` (git hook self-contained, zero dependência de publicação). Portanto: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta `plugins/cache/percus-tools/percus-review/<v>/` reflete o último republish e é legitimamente mais antiga. Não re-flaggar como bug.
+
+---
+
+## Changelog v6.30.8 — 2026-07-21
+
+**Higiene de doc a partir dos reports de adoção (auth-service + WhatsApp-API).** Sem mudança de código.
+
+- **`REORGANIZAR_PROJETO.md` (Passo B3): PLANO.md não tem teto de gate — dito explicitamente.** O
+  commit-referência (tiatendo `70c9347`) compactou PLANO, mas o texto do B3 só falava de HANDOFF —
+  divergência que confundiu a sessão de adoção do auth-service. Agora o B3 diz: PLANO é mapa de
+  features (sem teto), mas frente ENCERRADA inchando `docs/PLANO.md` é custo de boot (é boot-read);
+  mover pra `docs/historico/` é higiene opcional. `referencia-operacional.md` só com conteúdo real,
+  não por paridade. Também anota que o gate afere HANDOFF/CONTEXT na raiz E em `docs/` (v6.30.7).
+- **`CANON_VERSION.md`: ressalva de que o plugin INSTALADO fica legitimamente atrás do source.** A
+  sessão do WhatsApp-API flaggou "plugin uma versão atrás" — mas o header afirmava tag-sync sem a
+  ressalva do republish descartado (01/07). Agora explicita: cache atrás do canon é ESPERADO, gates
+  chegam via `instalar-gates.sh` self-contained, não por republish. Mata o re-flag na próxima adoção.
 
 ---
 
