@@ -1,8 +1,22 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.30.5`
+**Versão canônica em `huboperacional/percus-kit`:** `6.30.6`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.30.6 — 2026-07-21
+
+**`instalar-gates.sh` respeita `core.hooksPath` (3º achado de sessão fria).** Repo com
+`core.hooksPath` (husky `.husky`, `.githooks`) roda os hooks de OUTRO diretório — instalar em
+`.git/hooks/` plantava o gate onde o git **não olha** → gate ausente, e o auto-cura nunca
+alcançava. Fix: o instalador resolve o dir real (absoluto direto; relativo ancorado na raiz do
+repo; backslash do Windows → forward pro git-bash). O fallback `.git/percus-v2-dir` independe do
+hooksPath (git-dir é sempre `.git`). Re-rodei nos 5 repos com `core.hooksPath` e verifiquei
+**RODANDO o hook ativo** env-less: Familia-Milionaria (`.githooks`) + 4 que apontam pro próprio
+`.git/hooks`. Nenhum estava quebrado (Familia já curada à mão; os 4 coincidiam com `.git/hooks`),
+mas agora é correto por construção. 6º furo do dia achado por revisão externa, todos consertados.
 
 ---
 

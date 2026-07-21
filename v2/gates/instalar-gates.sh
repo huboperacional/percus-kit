@@ -29,8 +29,23 @@ GITDIR=$(git rev-parse --git-dir 2>/dev/null) || {
   exit 2
 }
 
-HOOK="$GITDIR/hooks/pre-commit"
-mkdir -p "$GITDIR/hooks"
+# Respeita core.hooksPath (2026-07-21, 3o achado de sessao fria): repo com
+# core.hooksPath (husky .husky, .githooks, etc.) roda os hooks de OUTRO dir --
+# instalar em .git/hooks/ plantava o gate onde o git NAO olha (gate ausente e o
+# auto-cura nunca alcancava). Resolve o dir real: absoluto usa direto; relativo
+# e ancorado na raiz do repo; backslash do Windows vira forward pro git-bash.
+HOOKS_DIR=$(git config core.hooksPath 2>/dev/null || true)
+if [ -n "$HOOKS_DIR" ]; then
+  HOOKS_DIR=$(printf '%s' "$HOOKS_DIR" | tr '\\' '/')
+  case "$HOOKS_DIR" in
+    /*|[A-Za-z]:/*) : ;;
+    *) HOOKS_DIR="$(git rev-parse --show-toplevel 2>/dev/null)/$HOOKS_DIR" ;;
+  esac
+else
+  HOOKS_DIR="$GITDIR/hooks"
+fi
+HOOK="$HOOKS_DIR/pre-commit"
+mkdir -p "$HOOKS_DIR"
 
 # Fallback do caminho do canon: grava num arquivo do .git (nao versionado). A env
 # var PERCUS_CANON_V2_DIR nao propaga pra shells ja abertos -> sem isto o
