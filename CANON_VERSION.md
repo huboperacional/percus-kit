@@ -1,8 +1,29 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.30.2`
+**Versão canônica em `huboperacional/percus-kit`:** `6.30.3`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+
+---
+
+## Changelog v6.30.3 — 2026-07-21
+
+**`instalar-gates.sh`: gate era instalado MORTO — achado por sessão fria de adoção B3.**
+Duas falhas de composição que meus testes de ontem não pegaram (rodei `percus-gate.sh`
+direto, nunca *através* do hook num commit real — "o script funciona" ≠ "o gate roda"):
+
+- **Dead code:** o `cat >>` anexava o gate DEPOIS do hook R11 do percus-review, que termina
+  em `exit 0` no sucesso → o gate nunca executava. Instalava e ficava inerte, sem avisar.
+  Fix: o instalador **remove o `exit 0` sentinela** (última linha não-vazia) antes de anexar,
+  tornando o gate alcançável.
+- **Fail-closed travava commit legítimo:** o gate dependia só da env var `PERCUS_CANON_V2_DIR`,
+  que **não propaga pra shells já abertos**. Fix: o instalador grava o caminho em
+  `.git/percus-v2-dir` (não versionado) e o hook lê a **env var OU o arquivo**.
+
+Provado: hook com `exit 0` sentinela → após instalar, barra HANDOFF de 200 linhas (exit 1)
+**mesmo sem a env var**, e passa com 80. Os 2 pilotos já estavam VIVO (sessões consertaram
+os próprios hooks); esta correção evita que as próximas adoções B3 instalem gate morto.
+Mesmo padrão do dia: sessão fria acha o furo → conserta no canon → então espalha.
 
 ---
 

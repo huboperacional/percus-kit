@@ -15,7 +15,7 @@ V2DIR="${PERCUS_CANON_V2_DIR:-}"
 
 if [ -z "$V2DIR" ]; then
   echo "ERRO: defina PERCUS_CANON_V2_DIR apontando para a pasta do canon V2." >&2
-  echo "  ex.: export PERCUS_CANON_V2_DIR='/d/Claud Automations/_Novo_Projeto_V2'" >&2
+  echo "  ex.: export PERCUS_CANON_V2_DIR='/d/Claud Automations/_Novo_Projeto/v2'" >&2
   exit 2
 fi
 
@@ -32,9 +32,14 @@ GITDIR=$(git rev-parse --git-dir 2>/dev/null) || {
 HOOK="$GITDIR/hooks/pre-commit"
 mkdir -p "$GITDIR/hooks"
 
-# Ja instalado? Nao duplica.
+# Fallback do caminho do canon: grava num arquivo do .git (nao versionado). A env
+# var PERCUS_CANON_V2_DIR nao propaga pra shells ja abertos -> sem isto o
+# fail-closed do gate travava commit legitimo. O hook le a env var OU este arquivo.
+printf '%s\n' "$V2DIR" > "$GITDIR/percus-v2-dir"
+
+# Ja instalado? Nao duplica (mas o fallback acima ja foi atualizado).
 if [ -f "$HOOK" ] && grep -q "$MARCA" "$HOOK" 2>/dev/null; then
-  echo "Gate V2 ja estava instalado em $HOOK -- nada a fazer."
+  echo "Gate V2 ja estava instalado em $HOOK -- caminho do canon atualizado."
   exit 0
 fi
 
@@ -42,6 +47,18 @@ fi
 if [ -f "$HOOK" ]; then
   echo "Hook pre-commit ja existe. Preservando e acrescentando o gate V2."
   cp "$HOOK" "$HOOK.bak-percus"
+  # BUG consertado 2026-07-21 (achado por sessao fria): o hook R11 do
+  # percus-review termina com 'exit 0' no sucesso. Anexar o gate DEPOIS dele com
+  # cat >> deixava o gate INERTE (dead code) -- instalava e nunca rodava no commit.
+  # Remove um 'exit 0' que seja a ULTIMA linha nao-vazia, pro gate ser alcancavel.
+  awk '
+    { l[NR]=$0 }
+    END {
+      last=NR; while (last>0 && l[last] ~ /^[[:space:]]*$/) last--
+      skip=(l[last] ~ /^[[:space:]]*exit[[:space:]]+0[[:space:]]*$/)?last:0
+      for (i=1;i<=NR;i++) if (i!=skip) print l[i]
+    }
+  ' "$HOOK" > "$HOOK.tmp" && mv "$HOOK.tmp" "$HOOK"
 else
   printf '#!/bin/sh\nset -e\n' > "$HOOK"
 fi
@@ -50,23 +67,28 @@ cat >> "$HOOK" <<HOOKEOF
 
 $MARCA
 # Tetos do canon V2. Escape: PERCUS_GATE_OVERSIZE="motivo" git commit ...
-# FAIL-CLOSED: gate instalado que nao consegue rodar BLOQUEIA (guard fail-closed,
-# precedente do canon). Var sumiu = commit para com instrucao, nao passa calado.
-if [ -z "\${PERCUS_CANON_V2_DIR:-}" ]; then
-  echo "PERCUS: gate V2 instalado mas PERCUS_CANON_V2_DIR nao definida." >&2
-  echo "  Defina (setx PERCUS_CANON_V2_DIR \"D:/Claud Automations/_Novo_Projeto/v2\")" >&2
-  echo "  ou escape uma vez: PERCUS_HOOKS_DISABLED=1 git commit ..." >&2
+# FAIL-CLOSED: gate instalado que nao consegue rodar BLOQUEIA. Le a env var OU o
+# caminho gravado na instalacao (.git/percus-v2-dir) -- a env var nao propaga pra
+# shells ja abertos, entao sem o fallback o fail-closed travaria commit legitimo.
+PV2="\${PERCUS_CANON_V2_DIR:-}"
+if [ -z "\$PV2" ]; then
+  _gd=\$(git rev-parse --git-dir 2>/dev/null)
+  [ -n "\$_gd" ] && [ -f "\$_gd/percus-v2-dir" ] && PV2=\$(cat "\$_gd/percus-v2-dir")
+fi
+if [ -z "\$PV2" ]; then
+  echo "PERCUS: gate V2 sem caminho do canon (env var e .git/percus-v2-dir ausentes)." >&2
+  echo "  Reinstale o gate, ou escape uma vez: PERCUS_HOOKS_DISABLED=1 git commit ..." >&2
   exit 1
 fi
-if [ ! -f "\$PERCUS_CANON_V2_DIR/gates/percus-gate.sh" ]; then
-  echo "PERCUS: gate V2 nao achado em \$PERCUS_CANON_V2_DIR/gates/ -- caminho errado?" >&2
+if [ ! -f "\$PV2/gates/percus-gate.sh" ]; then
+  echo "PERCUS: gate V2 nao achado em \$PV2/gates/ -- caminho errado?" >&2
   exit 1
 fi
-[ "\${PERCUS_HOOKS_DISABLED:-}" = "1" ] || sh "\$PERCUS_CANON_V2_DIR/gates/percus-gate.sh" || exit 1
+[ "\${PERCUS_HOOKS_DISABLED:-}" = "1" ] || sh "\$PV2/gates/percus-gate.sh" || exit 1
 # --- fim percus-v2-gate ---
 HOOKEOF
 
 chmod +x "$HOOK" 2>/dev/null || true
 
-echo "Gate V2 instalado em $HOOK"
-echo "Teste:  sh \"\$PERCUS_CANON_V2_DIR/gates/percus-gate.sh\"; echo \$?"
+echo "Gate V2 instalado em $HOOK (fallback de caminho em $GITDIR/percus-v2-dir)"
+echo "Teste real (atraves do hook):  sh \"$HOOK\"; echo \$?"
