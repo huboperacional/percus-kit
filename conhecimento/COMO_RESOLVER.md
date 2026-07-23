@@ -66,6 +66,10 @@
 - [Feature que depende de LLM ou dado real não fecha `[5-T]` sem smoke em prod com a FRASE/DADO EXATO do caso original](#smoke-prod-feature-llm)
 - [Coluna usada como critério de ORDENAÇÃO/desempate que ninguém nunca escreveu (NULL em 100% das linhas)](#coluna-ordenacao-nunca-escrita)
 - [Lookup por identificador "normalizado" só de um lado — metade da base fica invisível, sem erro](#lookup-normaliza-so-um-lado)
+- [SSH "Server accepts key" e logo "Permission denied" — chave com passphrase sem agente](#ssh-key-passphrase-sem-agente)
+- [Lista destrutiva datada pelo campo de AUDITORIA em vez do de negócio](#lista-data-auditoria-vs-negocio)
+- [Transição automática nova torna um status intermediário TRANSIENTE e mata todo leitor por igualdade](#status-intermediario-transiente)
+- [Cliente que "degrada gracioso" engole erro de credencial — log limpo não é prova de que conectou](#degrade-gracioso-esconde-noauth)
 
 ---
 
@@ -148,14 +152,22 @@ problema localmente e confirme a causa observada — não a inferida. Reproduzir
 **Contexto:** um projeto (ex.: Coach) tentou escrever/commitar um arquivo dentro do canon
 (`_Novo_Projeto`) ou o canon tentou `git mv/cp/rm` pra fora dele.
 
-**Causa raiz:** violação do protocolo cross-repo. O canon **nunca escreve em outro repo** e nenhum
-projeto escreve no canon diretamente.
+**Causa raiz:** violação do protocolo cross-repo. O canon **nunca escreve em outro repo**.
 
 **Solução:** o **único** mecanismo é entregar uma **caixa de texto pro operador colar manualmente** no
 repo de destino. Leitura cross-repo é permitida; escrita não. Se precisa propagar algo do canon pra um
-projeto (ou vice-versa), gere o bloco de texto e peça pro operador aplicar.
+projeto, gere o bloco de texto e peça pro operador aplicar.
 
-**Ref:** memória `feedback_cross_repo_write_protocol` (reforçado 2026-05-30).
+⚠️ **Exceção (operador, 2026-07-23): o canon é a ÚNICA exceção — escrita PRA DENTRO dele é livre.**
+Qualquer sessão, de qualquer projeto, pode escrever e commitar em `_Novo_Projeto/*` direto (é ali que
+o conhecimento R23, ADR e regra moram — obrigar caixa de texto pro próprio canon só fazia o
+aprendizado se perder). A caixa de texto continua obrigatória pra **todos os outros destinos**:
+canon → projeto e projeto → projeto. Regra curta: **escrever no canon, sim; escrever fora do canon,
+caixa de texto.** Ao commitar no canon vindo de outro projeto, commite **só os arquivos que você
+tocou** — a árvore do canon costuma ter trabalho em voo de outra sessão.
+
+**Ref:** memória `feedback_cross_repo_write_protocol` (reforçado 2026-05-30; exceção do canon
+adicionada 2026-07-23 a pedido do operador, a partir da Família Milionária).
 
 ---
 
@@ -1534,3 +1546,81 @@ coringa global (`679…` é Fiji, não DDD 67).
 
 **Ref:** Plexco Tasks, ADR-0013 (2026-07-23). 6 de 12 linhas de `users.phone` estavam fora do
 canônico; o telefone do próprio operador nunca resolvia.
+
+---
+
+## SSH: "Server accepts key" e logo "Permission denied" {#ssh-key-passphrase-sem-agente}
+
+`tags: ssh, permission denied, publickey, passphrase, ssh-agent, batchmode, rotacao de chave, deploy travado, automacao, chave revogada`
+
+**Contexto:** depois de uma rotação de chaves, toda automação que fala com a VPS (ssh_runner,
+deploy_v2, watchdogs locais) passa a falhar com `Permission denied (publickey,password)`.
+Tentar a chave nova falha igual — o que induz a culpar a rotação no servidor.
+
+**Causa raiz:** rode `ssh -v`. Se aparecer `Server accepts key: ... ED25519` **antes** do
+`Permission denied`, a pública ESTÁ autorizada no servidor — o que falha é o cliente **provar
+posse** da privada. Causa quase sempre: a chave nova foi gerada **com passphrase** e não há
+ssh-agent carregado. Como toda automação usa `BatchMode=yes`, o ssh não pode pedir a senha e
+falha calado. Confirme: `ssh-keygen -y -f <chave> -P ""` (erro = tem passphrase) e `ssh-add -l`
+(`Could not open a connection...` = sem agente). Dica extra: chave ed25519 cifrada tem ~464
+bytes; sem passphrase, ~411.
+
+**Solução:** carregue no agente (`eval $(ssh-agent) && ssh-add <chave>`) ou, melhor, use o
+agente do OpenSSH do Windows como **serviço** — persiste entre reboots e mantém a chave cifrada
+em disco. Remover a passphrase (`ssh-keygen -p`) funciona mas desfaz metade do ganho da rotação.
+E **não esqueça** de atualizar o `SSH_KEY_PATH` (ou `IdentityFile`) que a automação usa: apontar
+pra chave revogada dá exatamente o mesmo erro por outro motivo.
+
+**Ref:** Família Milionária, rotação de 2026-07-23 (travou deploy e acesso a prod).
+
+---
+
+## Lista destrutiva datada pelo campo de AUDITORIA em vez do de negócio {#lista-data-auditoria-vs-negocio}
+
+`tags: listagem, desambiguacao, data errada, criado_em, created_at, parcelamento, exclusao, perda de dado, campo de auditoria`
+
+**Contexto:** o bot lista N itens pro usuário escolher um número (pra excluir/corrigir) e todas
+as linhas aparecem com a MESMA data, ficando indistinguíveis — mas no banco as datas estão
+corretas e diferentes.
+
+**Causa raiz:** o formatador exibe o campo de **auditoria** (`criado_em`/`created_at`) em vez do
+campo de **negócio** (`data_prevista`/vencimento). Registros criados na mesma transação (parcelas
+de um parcelamento, importação em lote) têm `criado_em` idêntico. O bug é **invisível** no caso
+comum — item criado no mesmo dia a que se refere — e só aparece com data futura, retroativa ou
+lote. Procure a classe, não o caso: costuma haver o mesmo trecho copiado em 2-3 telas.
+
+**Solução:** exibir sempre o campo de negócio. Trate como severidade alta, não cosmético: se a
+data é o único campo que distingue as linhas e o fluxo pede um número pra **apagar**, o usuário
+escolhe às cegas dentro de uma ação destrutiva. Teste de regressão: crie 2+ registros na MESMA
+transação com datas de negócio diferentes e afirme que ambas aparecem na saída.
+
+**Ref:** Família Milionária `312cfd1` (3 sítios em `whatsapp/service.py`; parcelamento 5x saía
+com as 5 parcelas na mesma data).
+
+---
+
+## Transição automática nova torna um status intermediário TRANSIENTE e mata todo leitor por igualdade {#status-intermediario-transiente}
+
+`tags: status, state machine, transicao automatica, where status =, codigo morto, suite verde, mock esconde drift, notificacao, dispatch`
+
+**Contexto:** tiatendo, frente "estações de preparo" (2026-07-23). O pedido passou a ir de `confirmed` pra `in_kitchen`/`ready` **dentro da mesma transação** da confirmação. Nenhum pedido descansa mais em `confirmed`. Três leitores que perguntavam `status = 'confirmed'` viraram código morto **em silêncio**, com a suíte 100% verde: o sino de "novo pedido" do dashboard ficaria mudo pra sempre em todo tenant, e o comprovante Pix validado deixava o pedido como pendente no caixa (risco de cobrar de novo na entrega).
+
+**Causa raiz:** inserir uma transição automática **remove um estado de repouso** do sistema, mas ninguém audita quem lia aquele estado. Sobrevivem só os leitores que usam *conjunto* de status (`IN (...)`, `NOT IN (...)`); morrem os que usam **igualdade**. E os testes não pegam porque tipicamente mockam o status antigo ou testam a função pura, nunca a query.
+
+**Solução:** ao introduzir qualquer transição automática, faça um grep do estado que deixou de ser terminal (`= 'X'`, `== "X"`) em TODO o código — incluindo notificações, KPIs, relatórios e crons — antes de fechar a frente. Prefira perguntar pelo **fato** (`confirmed_at IS NOT NULL`) e não pelo **estado** (`status = 'confirmed'`). Desconfie de teste cujo mock devolve status fixo: ele passa exatamente quando a produção quebra.
+
+**Ref:** tiatendo PROD `0.244.0`, ADR-0013; memória de projeto `feedback-confirmed-virou-status-transiente`.
+
+---
+
+## Cliente que "degrada gracioso" engole erro de credencial — log limpo não é prova {#degrade-gracioso-esconde-noauth}
+
+`tags: redis, noauth, credencial, senha, degrade gracioso, fallback, silencioso, except exception, rotacao, verificar in-process, compose hardcoded`
+
+**Contexto:** o Redis do tiatendo passou a exigir senha (2026-07-23). O relato de que "não há erro de autenticação nos logs" foi apresentado como prova de que a credencial estava certa — mas o cliente **nunca logaria** esse erro.
+
+**Causa raiz:** `getRedis()` tem `except Exception: return None` **de propósito** (permitir deploy single-node sem Redis). Consequência não pretendida: URL sem senha, senha errada ou host errado devolvem `None` sem uma linha de log, e a aplicação cai em primitivas in-process — lock, dedup e rate-limit distribuídos **deixam de existir em silêncio**. Pior: o `docker-compose.yml` do repo ainda tinha a URL sem senha hardcoded, então um `docker stack deploy` reverteria a credencial e degradaria tudo sem avisar.
+
+**Solução:** (1) depois de qualquer rotação/redeploy, verifique **in-process** dentro do container (`getRedis()` devolve cliente ou `None`?), nunca pelo log; (2) no compose, exija a variável (`${REDIS_URL:?}`) pra falhar cedo em vez de silenciosamente; (3) ao escrever um cliente com degrade gracioso, **separe** "não configurado" (silêncio ok) de "configurado e falhou" (tem que alarmar).
+
+**Ref:** tiatendo `0.244.0`; memória de projeto `feedback-redis-noauth-degrada-em-silencio`.
