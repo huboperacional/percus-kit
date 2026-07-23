@@ -1447,7 +1447,7 @@ Cada rota tem que devolver o canonical DELA, nao a raiz.
 
 ## Sessão de login "morre sozinha" em todos os produtos ao mesmo tempo {#sessao-morre-invalidacao-por-pessoa}
 
-tags: sessão expira, login não dura, logout sozinho, refresh token, family invalidation, invalidate_all_families_for_subject, re-OTP, cross-produto, sub canal:destino, custo OTP, SSO 15 minutos, rt no fragmento, allkeys-lru, maxmemory-policy
+`tags: sessão expira, login não dura, logout sozinho, refresh token, family invalidation, invalidate_all_families_for_subject, re-OTP, cross-produto, sub canal:destino, custo OTP, SSO 15 minutos, rt no fragmento, allkeys-lru, maxmemory-policy`
 
 **Contexto:** usuários de VÁRIOS produtos reclamam que não ficam logados — voltam no dia seguinte (às vezes em horas) e tomam OTP de novo. Cada time acha que é "coisa do meu app". O TTL do refresh está correto (ex.: 30 dias) e a rotação até desliza a janela, então "a conta fecha" no papel.
 
