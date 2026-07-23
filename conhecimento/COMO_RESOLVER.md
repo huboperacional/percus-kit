@@ -8,8 +8,10 @@
 > e na skill `checkpoint`). Fonte da verdade = git; sincroniza pra todas as máquinas via `git pull`.
 > Regra: **R23** (`01_REGRAS_INEGOCIAVEIS.md`).
 >
-> **Formato de cada entrada:** `## <sintoma curto>` · `tags:` · **Contexto** · **Causa raiz** ·
-> **Solução** · **Ref**. Severidade implícita pela ordem (mais comum/caro primeiro).
+> **Formato de cada entrada:** `## <sintoma curto> {#ancora-kebab}` · `tags:` · **Contexto**
+> (ou **Sintoma**) · **Causa raiz** · **Solução** · **Ref**. Toda entrada tem âncora e uma linha
+> correspondente no Índice — sem âncora ela fica invisível pra quem lê pelo topo. Bloco-modelo
+> pronto pra copiar no **fim do arquivo**.
 
 ---
 
@@ -46,7 +48,7 @@
 - [Preciso verificar que uma página admin/dashboard renderiza, mas o MCP de browser caiu / precisa login](#render-smoke-in-container)
 - [Migração de UI+API pra novo domínio: cookie dinâmico por Host não basta, a base da API também](#migracao-dominio-cookie-e-api-dinamicos)
 - [Mudar rota/Host do Traefik (label) não pega com `service update --image`](#traefik-label-precisa-stack-deploy)
-- [[5-T] de mudança no loader/script client-side na página real do cliente sem poluir prod](#loader-5t-sem-poluir-prod)
+- [\[5-T\] de mudança no loader/script client-side na página real do cliente sem poluir prod](#loader-5t-sem-poluir-prod)
 - [Guard anti-dupla-cobrança com idempotency do Stripe não dispara (a key REPLICA a resposta cacheada)](#stripe-idempotency-replay)
 - [Raspando email de contato: JSON-LD é onde mora, e o MX "válido" aceita registro A](#scrape-email-jsonld-mx)
 - [Guard de segurança checa a INTENÇÃO e não o ALVO (ex.: `APP_ENV=test` não protege banco nenhum)](#guard-checa-intencao-nao-alvo)
@@ -63,13 +65,30 @@
 - [`docker stack deploy` rola serviços pra trás quando o swarm.yml está com pins stale](#stack-deploy-swarm-pins-stale)
 - [Bot conversacional re-pergunta info que o cliente já deu FORA DE ORDEM (checkout/wizard)](#parking-info-fora-de-ordem)
 - [Validar UMA conta numa API multi-tenant e generalizar o resultado](#validar-uma-conta-generalizar)
-- [Feature que depende de LLM ou dado real não fecha `[5-T]` sem smoke em prod com a FRASE/DADO EXATO do caso original](#smoke-prod-feature-llm)
+- [Feature que depende de LLM ou dado real não fecha `\[5-T\]` sem smoke em prod com a FRASE/DADO EXATO do caso original](#smoke-prod-feature-llm)
 - [Coluna usada como critério de ORDENAÇÃO/desempate que ninguém nunca escreveu (NULL em 100% das linhas)](#coluna-ordenacao-nunca-escrita)
 - [Lookup por identificador "normalizado" só de um lado — metade da base fica invisível, sem erro](#lookup-normaliza-so-um-lado)
 - [SSH "Server accepts key" e logo "Permission denied" — chave com passphrase sem agente](#ssh-key-passphrase-sem-agente)
 - [Lista destrutiva datada pelo campo de AUDITORIA em vez do de negócio](#lista-data-auditoria-vs-negocio)
 - [Transição automática nova torna um status intermediário TRANSIENTE e mata todo leitor por igualdade](#status-intermediario-transiente)
 - [Cliente que "degrada gracioso" engole erro de credencial — log limpo não é prova de que conectou](#degrade-gracioso-esconde-noauth)
+- [Gate de confirmação/escolha nunca pode ter dead-end infinito (cancel-escape + retry→escala)](#gate-confirmacao-dead-end)
+- [Side-effect flag-gated não dispara: cred provavelmente já existe self-hosted no VPS](#cred-selfhosted-no-vps)
+- [Falha na suite completa fora do teu diff → triar pollution/pré-existente ANTES de assumir culpa](#falha-fora-do-diff-triagem)
+- [Rodar testes que dropam tabelas contra Postgres efêmero isolado (sem Docker/PG local, nunca prod)](#pg-efemero-testes-destrutivos)
+- [Um fix commit que não re-roda a suíte de regressão enterra um RED sob "\[5-T\] local verde"](#fix-commit-sem-re-rodar-suite)
+- [Resgatar linhas órfãs de migration aditiva (coluna nova NULL) via backfill + path real do coletor](#linhas-orfas-migration-aditiva)
+- [Padronizar componente compartilhado: regra por POSIÇÃO vaza + env Jinja é por-rota (tiatendo I6)](#componente-compartilhado-posicao-e-env)
+- [Verificar UI: o que "não aparece" no screenshot pode ser artefato da ferramenta, não bug (Micro Investors F2)](#ui-falso-negativo-da-ferramenta)
+- [`deepseek-review.sh` morre com "jq: Argument list too long" (diff > ~30KB no Windows)](#jq-argv-too-long-review)
+- [Bug de fuso multi-tenant tem 4 camadas — e a mais traiçoeira é o YAML, não o código](#fuso-multi-tenant-4-camadas)
+- ["Concluída" decidida pelo TEXTO do status apodrece em silêncio quando o produto deixa renomear](#status-por-texto-apodrece)
+- [Escape que atravessa camadas de transporte pode virar troca de X por X — com "ok" mentiroso](#escape-atravessa-camadas-noop)
+- [Deploy delta com base defasada REVERTE feature entregue — e o smoke de feature não pega](#deploy-delta-base-defasada)
+- [Conselho responde bem à pergunta errada quando o contexto omite uma restrição](#conselho-contexto-incompleto)
+- [Scheduler novo sobre tabela velha: dedup por MARCADOR, senão a linha fóssil engole o 1º disparo](#scheduler-dedup-por-marcador)
+- ["O backend já aceita X" — repo ≠ imagem em prod (422 silencioso pós-deploy parcial)](#repo-nao-e-imagem-em-prod)
+- [Monitor passivo: o erro que você viu no probe ativo pode NÃO existir no pipe](#monitor-passivo-corpo-do-erro)
 
 ---
 
@@ -255,9 +274,6 @@ senão a flag do tenant fica off e o caminho que você quer testar (CALM) nem ex
 
 ---
 
-> **Nova entrada?** Copie o bloco-modelo abaixo, preencha, e adicione no Índice.
->
-> ```
 > ## <sintoma curto> {#ancora-kebab}
 > `tags: termo1, termo2, classe-de-erro, componente`
 > **Contexto:** quando/onde aparece.
@@ -269,7 +285,9 @@ senão a flag do tenant fica off e o caminho que você quer testar (CALM) nem ex
 ---
 
 ## Design travado num primitivo que a infra de teste não suporta (ex.: Lua no fakeredis) {#infra-teste-suporta-primitivo}
+
 `tags: fakeredis, lua, EVAL, EVALSHA, token-bucket, redis, design, testabilidade, TDD`
+
 **Contexto:** ao desenhar um rate-limiter compartilhado (auth+FM) travei o design num token-bucket via script **Lua** (`register_script`/`EVAL`) achando que seria "o jeito correto e atômico". Spec aprovado, revisado por cross-Claude adversarial (que apontou até o bug de drain do refill do Lua). Só na hora de escrever os testes descobri, empiricamente, que **`fakeredis` (2.35.1, a infra de teste do projeto inteiro) NÃO suporta `EVAL`/`EVALSHA`** ("unknown command 'eval'") — o Lua seria **100% não-testável** com a stack de testes existente.
 **Causa raiz:** não validar que a **infra de teste executa o primitivo** antes de cravar o design em cima dele. Design bonito no papel ≠ design testável na sua stack.
 **Solução:** (1) **Antes de fixar o design, escreva um probe de 15 linhas** que roda o primitivo contra a infra de teste real (`fakeredis`, o mock de HTTP, etc.) e prove que funciona. (2) Se não funciona, troque por um primitivo que a infra suporta E que idealmente **simplifica** o problema. No caso: troquei Lua por **fixed-window `INCR`+`EXPIRE NX` num pipeline `MULTI`** — atômico, suportado pelo fakeredis, e que **eliminou o blocker de drain por construção** (sem matemática de refill). Fixed-window com burst-de-fronteira 2× é aceitável pra proteção de device com sizing conservador.
@@ -278,7 +296,9 @@ senão a flag do tenant fica off e o caminho que você quer testar (CALM) nem ex
 ---
 
 ## Devolutiva cross-time escrita a partir da MEMÓRIA acusa o bug errado {#devolutiva-reverificar-no-codigo}
+
 `tags: devolutiva, cross-product, memoria, hipotese, verificacao, canonicalizacao, phonenumbers, consumer, 422`
+
 **Contexto:** ao escrever a devolutiva pro consumer `gestao`/ads4pros (incidente de login 2026-07-10), a memória da sessão anterior listava **3 fixes**. Um deles — *"o consumer manda o destino formatado `+55 (67) 93300-XXXX` em vez do E.164, e o `/otp/validate` casa por igualdade exata → `otp_wrong`"* — era **FALSO**. O `/otp/validate` chama `canonical_destination()` → `phonenumbers.parse(raw,"BR")` → E.164 **antes** de qualquer comparação. Todas as variantes formatadas canonizam pro mesmo número. Se a devolutiva tivesse saído assim, um time inteiro passaria o dia caçando um bug inexistente — e a nossa credibilidade técnica com o consumer iria junto.
 **Causa raiz:** memória de incidente registra **hipóteses de trabalho** com a mesma tipografia de **fatos provados**. Ao redigir o artefato final (devolutiva, post-mortem, doc de propagação), a hipótese é copiada como se fosse conclusão. É o mesmo modo de falha da "doc Evolution fabricada" (2026-07-09).
 **Solução:** **antes de escrever qualquer devolutiva/doc que acusa um bug de outro time, reverifique CADA acusação contra o código-fonte e, se possível, execute-a.** Barato e definitivo: um probe de ~20 linhas que roda a função real do contrato (schema Pydantic, canonizador, validador) contra as variantes de entrada suspeitas, e imprime o resultado. O probe desta sessão refutou 1 dos 3 fixes e **fortaleceu** outro — revelou que `code` com espaços explica os DOIS sintomas do log (11 chars → 422 de schema; 7 chars → passa o schema e falha no bcrypt → `otp_wrong`), ou seja, causa única em vez de duas.
@@ -296,7 +316,7 @@ senão a flag do tenant fica off e o caminho que você quer testar (CALM) nem ex
 
 **Sintoma:** o device GOWA (go-whatsapp-web-multidevice / whatsmeow) de um número **novo/cold** cai (deslogado, `LoggedOut`) diariamente, mesmo mandando **pouquíssimas mensagens**. O operador pergunta "por que bane com volume tão baixo?".
 
-**Causa-raiz:** NÃO é volume de mensagem — é **`usync` 429 `rate-overlimit`**. WhatsApp rate-limita as queries **usync** (`GET /user/info`, `GET /user/check` — checagem de número / info de contato) **por-conexão-de-device**, muito mais agressivo que envio; um número cold tem orçamento minúsculo. As fontes de usync são **invisíveis ao "volume de mensagem"**:
+**Causa raiz:** NÃO é volume de mensagem — é **`usync` 429 `rate-overlimit`**. WhatsApp rate-limita as queries **usync** (`GET /user/info`, `GET /user/check` — checagem de número / info de contato) **por-conexão-de-device**, muito mais agressivo que envio; um número cold tem orçamento minúsculo. As fontes de usync são **invisíveis ao "volume de mensagem"**:
 - **Healthcheck/watchdog** que sonda liveness com `GET /user/info` a cada 5 min = ~288 usync/dia, 24/7. **Esta costuma ser a maior fonte fixa.**
 - **Prewarm / probes de entrega** (checar 9º dígito, `is_on_whatsapp`) — 1+ por cadastro; letais em **rajada**.
 - **Contact-sync do whatsmeow no reconnect** — cada re-link por QR dispara um burst interno de usync.
@@ -320,7 +340,7 @@ senão a flag do tenant fica off e o caminho que você quer testar (CALM) nem ex
 **Contexto:** deploy de um backend novo no VPS Swarm compartilhado (`161.97.129.138`, 1 nó, ~30 stacks, Traefik+Postgres+Redis compartilhados). Sem Docker local na máquina do dev e git **local-only** (sem remote) → build tem que rodar NO VPS.
 
 **Sintomas e causas (cada um custou um ciclo):**
-1. **Task fica `0/1`, container em "created"/"Starting", crash-loopa, `docker service logs` VAZIO.** `journalctl -u docker` mostra `pull access denied for <img>, repository does not exist`. **Causa:** imagem construída LOCAL no nó não tem digest de registry; o Swarm tenta puxá-la de `docker.io` a cada (re)start de task. O `create` inicial pode rodar do local, mas os restarts pullam → nega. **Fix:** `docker stack deploy --resolve-image never -c stack.yml <stack>` (obrigatório p/ imagem local). Se o spec já quebrou, `docker stack rm` + redeploy limpo com a flag. Alternativa: referenciar a imagem pelo ID `sha256:...` (não pulla).
+1. **Task fica `0/1`, container em "created"/"Starting", crash-loopa, `docker service logs` VAZIO.** `journalctl -u docker` mostra `pull access denied for <img>, repository does not exist`. **Causa raiz:** imagem construída LOCAL no nó não tem digest de registry; o Swarm tenta puxá-la de `docker.io` a cada (re)start de task. O `create` inicial pode rodar do local, mas os restarts pullam → nega. **Fix:** `docker stack deploy --resolve-image never -c stack.yml <stack>` (obrigatório p/ imagem local). Se o spec já quebrou, `docker stack rm` + redeploy limpo com a flag. Alternativa: referenciar a imagem pelo ID `sha256:...` (não pulla).
 2. **App não boota — `IndexError` em `Path(__file__).resolve().parents[N]`.** Código calcula a raiz do repo por profundidade de path; no container a árvore é achatada (`/app/app/core/config.py` tem menos `parents` que o layout de dev `services/api/app/core/...`). **Fix:** guardar o índice — `_p = ...parents; root = _p[N] if len(_p) > N else Path("nonexistent")`. Em prod a config vem de env vars, não do `.env` em disco.
 3. **Worker ARQ fica `0/1` pra sempre (mesmo rodando e conectado ao Redis).** O serviço herda o `HEALTHCHECK` do Dockerfile (que bate em `:8000/health`), mas o worker não sobe HTTP → unhealthy eterno, nunca vira Running. **Fix:** `healthcheck: test: ["NONE"]` no serviço worker do stack.
 4. **Reachability das deps compartilhadas:** Redis desse VPS NÃO publica porta no host — só service-DNS na overlay (`redis://...@redis_redis:6379`); então TODOS os serviços que usam Redis (inclusive worker) precisam entrar na rede **`network_swarm_public`** (external). Postgres publica `161.97.129.138:5432` (dá pra usar via host). Traefik: entrypoint `websecure` + `certresolver=letsencryptresolver` (espelhar labels de um service irmão como `auth_service_api`).
@@ -337,7 +357,7 @@ senão a flag do tenant fica off e o caminho que você quer testar (CALM) nem ex
 
 **Sintoma:** um HANDOFF/doc/agente manda "rode `/percus-review:checkpoint`" (ou `/percus-review:feature-flow`, `/percus-review:consult-knowledge`…) e o command **não existe** — não aparece no autocomplete, "command not found".
 
-**Causa-raiz:** `checkpoint` e cia. são **skills**, não **slash commands**. No plugin `percus-review`, só o que está em `commands/*.md` é slash (review, milestone-review, deepseek-review, cross-claude-review, spec-analyze, install-git-hooks, version → `/percus-review:<nome>`; os 4 do conselho declaram `name: council:*` no frontmatter e têm namespace próprio a confirmar — ver `comandos/SKILLS_VS_COMMANDS.md`). O que está em `skills/<nome>/SKILL.md` (checkpoint, feature-flow, consult-knowledge, close-milestone, delegate-impl, auth-consumer, security-audit, tracking-audit, cookie-audit, pages-scan, port-allocate, catalog-publish) **não tem slash**. Agrava: o namespace de skill é **instável** — numa instalação real apareceu como `6.28.0:checkpoint` (a **versão** como namespace, não `percus-review:`), então nem `/6.28.0:checkpoint` é confiável entre bumps. O erro nasce de extrapolar `/percus-review:review` (que É command) pras skills.
+**Causa raiz:** `checkpoint` e cia. são **skills**, não **slash commands**. No plugin `percus-review`, só o que está em `commands/*.md` é slash (review, milestone-review, deepseek-review, cross-claude-review, spec-analyze, install-git-hooks, version → `/percus-review:<nome>`; os 4 do conselho declaram `name: council:*` no frontmatter e têm namespace próprio a confirmar — ver `comandos/SKILLS_VS_COMMANDS.md`). O que está em `skills/<nome>/SKILL.md` (checkpoint, feature-flow, consult-knowledge, close-milestone, delegate-impl, auth-consumer, security-audit, tracking-audit, cookie-audit, pages-scan, port-allocate, catalog-publish) **não tem slash**. Agrava: o namespace de skill é **instável** — numa instalação real apareceu como `6.28.0:checkpoint` (a **versão** como namespace, não `percus-review:`), então nem `/6.28.0:checkpoint` é confiável entre bumps. O erro nasce de extrapolar `/percus-review:review` (que É command) pras skills.
 
 **Solução:** skill invoca-se por **linguagem natural** — o user descreve a intenção ("faça o checkpoint deste milestone", "consulte o que já sabemos sobre X") e o **agente invoca via `Skill` tool**. Nunca escreva "rode `/percus-review:<skill>`" num doc/HANDOFF/template. Inventário completo (11 commands × 12 skills) + regra de ouro: `comandos/SKILLS_VS_COMMANDS.md`.
 
@@ -351,7 +371,7 @@ senão a flag do tenant fica off e o caminho que você quer testar (CALM) nem ex
 
 **Sintoma:** no conselho 3-membros (`council-orchestrator`), o **cross-claude falha com 400** — tipicamente no modo **pre-mortem**; consult e review passam. O agente cai no fallback (coleta a 3ª voz via subagent Sonnet, marker `__PERCUS_NEEDS_CROSS_CLAUDE__`).
 
-**Causa-raiz:** o wrapper `providers/cross-claude.ps1` enviava `temperature` no body da chamada à Anthropic. A família **Opus 4.7 / Opus 4.8 / Sonnet 5 / Fable 5 REMOVEU os sampling params** (`temperature`/`top_p`/`top_k`) — a API retorna **400 `invalid_request_error`** ("temperature: Extra inputs are not permitted") se recebê-los. O router escolhe o modelo por modo: pre-mortem → `claude-opus-4-7` (**rejeita**), review/analyze → `claude-sonnet-4-6` (aceita), consult → `claude-haiku-4-5` (aceita). Por isso só o pre-mortem quebrava "toda hora". ⚠️ **Os model IDs em si são VÁLIDOS** — `sonnet-4-6` e `opus-4-7` estão ativos no catálogo; a armadilha é acusar o ID de "inválido" quando o problema é o *parâmetro*.
+**Causa raiz:** o wrapper `providers/cross-claude.ps1` enviava `temperature` no body da chamada à Anthropic. A família **Opus 4.7 / Opus 4.8 / Sonnet 5 / Fable 5 REMOVEU os sampling params** (`temperature`/`top_p`/`top_k`) — a API retorna **400 `invalid_request_error`** ("temperature: Extra inputs are not permitted") se recebê-los. O router escolhe o modelo por modo: pre-mortem → `claude-opus-4-7` (**rejeita**), review/analyze → `claude-sonnet-4-6` (aceita), consult → `claude-haiku-4-5` (aceita). Por isso só o pre-mortem quebrava "toda hora". ⚠️ **Os model IDs em si são VÁLIDOS** — `sonnet-4-6` e `opus-4-7` estão ativos no catálogo; a armadilha é acusar o ID de "inválido" quando o problema é o *parâmetro*.
 
 **Solução:** (1) **não enviar `temperature`/`top_p`/`top_k`** — o mais simples e à prova de futuro é remover do body de vez (steering vai por prompt, não por sampling); assim o router pode migrar pra Sonnet 5 / Opus 4.8 sem quebrar. (2) O `catch` do wrapper deve expor `$_.ErrorDetails.Message` (corpo JSON do erro da Anthropic), não só `$_.Exception.Message` — que num 400 é o cego "(400) Bad Request". (3) **Antes de acusar um model ID de inválido, conferir no catálogo autoritativo** (skill `claude-api` → seção "Current Models" / `shared/models.md`), **nunca de memória**.
 
@@ -365,7 +385,7 @@ senão a flag do tenant fica off e o caminho que você quer testar (CALM) nem ex
 
 **Sintoma:** `next build` (produção/container) falha com `Failed to collect page data for /api/<rota>` (às vezes acompanhado de stack em `webpack-runtime`). O `next dev` funciona normal, e por isso "verifiquei no dev, tá 200" **não** garante que o build passa. Frequente em deploy de container (1º build real).
 
-**Causa-raiz:** o `next build` **avalia (importa) os módulos das rotas** na fase "collect page data" — **sem os secrets de runtime**. Se uma lib importada pela rota **instancia no top-level** um client que **joga quando falta credencial**, o import explode e o build morre. Caso clássico: `export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)` — no build `STRIPE_SECRET_KEY` é undefined e o construtor do Stripe joga. Vale pra qualquer SDK que exija credencial no construtor (Stripe, alguns clients GHL/AWS/etc.).
+**Causa raiz:** o `next build` **avalia (importa) os módulos das rotas** na fase "collect page data" — **sem os secrets de runtime**. Se uma lib importada pela rota **instancia no top-level** um client que **joga quando falta credencial**, o import explode e o build morre. Caso clássico: `export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)` — no build `STRIPE_SECRET_KEY` é undefined e o construtor do Stripe joga. Vale pra qualquer SDK que exija credencial no construtor (Stripe, alguns clients GHL/AWS/etc.).
 
 **Solução:** **lazy-init** — construir sob demanda, nunca no import.
 ```ts
@@ -381,11 +401,13 @@ e trocar `stripe.x` → `getStripe().x` nos call-sites. Constantes que só **lee
 
 ---
 
-## Gate de confirmação/escolha nunca pode ter dead-end infinito (cancel-escape + retry→escala)
+## Gate de confirmação/escolha nunca pode ter dead-end infinito (cancel-escape + retry→escala) {#gate-confirmacao-dead-end}
+
+`tags: gate, confirmacao, escolha, dead-end, loop infinito, cancel-escape, retry counter, escalar humano, conversa burra, bot, readback, disambiguacao, tamanho, pizza`
 
 **Sintoma:** um "micro-confirm" ou gate de escolha (bot pergunta "Confirma? sim/troca") trata como erro qualquer resposta que não seja o esperado — o usuário corrige/cancela/pergunta ("eu não pedi X, pedi Y") e leva um template "Não reconheci essa opção" em loop. É "conversa burra" nascida DA PRÓPRIA feature de confirmação.
 
-**Causa-raiz:** o gate tem só 2 saídas (sim | re-tentar a mesma extração) e a saída de falha é um `return template` sem estado — nenhum ramo pra cancelamento/correção-fora-de-banda, e nenhum contador que quebre o loop.
+**Causa raiz:** o gate tem só 2 saídas (sim | re-tentar a mesma extração) e a saída de falha é um `return template` sem estado — nenhum ramo pra cancelamento/correção-fora-de-banda, e nenhum contador que quebre o loop.
 
 **Solução (padrão, tiatendo `restaurantOrderFlow.py` gate de sabor, smoke 2026-07-12):** todo gate de confirmação/escolha ganha 3 propriedades, espelhando um gate já-robusto do mesmo código se existir (aqui o disambig de tamanho):
 1. **Cancel-escape** ANTES do match: regex de cancelamento ("cancela/deixa pra lá/não quero mais") tira o item/encerra o passo, em vez de re-extrair.
@@ -396,13 +418,15 @@ Corolário de wording: em domínio com dimensões colidentes (pizza P/M/**G** on
 
 **Ref:** smoke WhatsApp 2026-07-12 (Bug A/B); commit `ef74467`; memória `project-pizza-smoke-fixes-e-loja-web-2026-07-12`.
 
+---
+
 ## Hook pre-commit (R11) é PreToolUse: "review && commit" numa chamada só sempre bloqueia {#pretooluse-review-commit}
 
 `tags: pre-commit, hook, PreToolUse, percus-review-auto, marker stale, R11, git commit bloqueado, review antes de commit, chamada separada`
 
 **Contexto:** o hook `pre-commit-check` bloqueia `git commit` se o último `.deepseek/reviews/*.jsonl` tem >5min. A tentação é encadear `git add ... && pwsh percus-review-auto.ps1 && git commit` numa **única** chamada Bash — e ela é bloqueada mesmo depois do review rodar.
 
-**Causa-raiz:** o hook é **PreToolUse** (inspeciona o comando Bash e barra ANTES de executá-lo), não um git hook nativo. Ele vê o `git commit` no comando e checa a freshness do marker **no instante do pre-check** — quando o `percus-review-auto.ps1` do mesmo comando ainda NÃO rodou. Marker velho → bloqueia o comando inteiro (o review nem chega a rodar). (Observado também: ele barra `cat >>`/writes a arquivos tracked do repo com marker velho.)
+**Causa raiz:** o hook é **PreToolUse** (inspeciona o comando Bash e barra ANTES de executá-lo), não um git hook nativo. Ele vê o `git commit` no comando e checa a freshness do marker **no instante do pre-check** — quando o `percus-review-auto.ps1` do mesmo comando ainda NÃO rodou. Marker velho → bloqueia o comando inteiro (o review nem chega a rodar). (Observado também: ele barra `cat >>`/writes a arquivos tracked do repo com marker velho.)
 
 **Solução:** rodar o review em uma chamada Bash **SEPARADA** do commit:
 1. `git add <arquivos>`
@@ -412,13 +436,15 @@ Corolário: o review com **diff vazio** (nada staged/tracked) NÃO escreve marke
 
 **Ref:** sessão Session Resume auth-service 2026-07-12; memória `session_resume_implementado_2026-07-12`.
 
+---
+
 ## `importlib.reload(config)` num teste polui a suite inteira (quebra testes que rodam depois) {#reload-config-polui-suite}
 
 `tags: pytest, pollution, poluicao, importlib reload, get_settings, lru_cache, ordem de testes, falha fantasma, webhook, teste isolado passa suite falha, Settings, dependency_overrides`
 
 **Contexto:** um teste novo passa isolado, mas rodando a suite completa aparecem N falhas **fantasma** em arquivos NÃO relacionados (ex.: webhook signature tests) que rodam DEPOIS dele. Remover só o teste novo → suite verde de novo.
 
-**Causa-raiz:** o teste faz `importlib.reload(app.core.config)` (ou de outro módulo core) pra reler env. Reload cria um **novo** objeto `get_settings`/`Settings`, mas todos os módulos já importados (`app.main`, routers, handlers) seguram a referência ANTIGA de `get_settings` (bound no import-time). Ficam DUAS caches `lru_cache` dessincronizadas + um `Settings` novo ≠ o que o app usa. Testes posteriores que leem settings (ex. um secret de webhook) pegam valores inconsistentes → assert falha.
+**Causa raiz:** o teste faz `importlib.reload(app.core.config)` (ou de outro módulo core) pra reler env. Reload cria um **novo** objeto `get_settings`/`Settings`, mas todos os módulos já importados (`app.main`, routers, handlers) seguram a referência ANTIGA de `get_settings` (bound no import-time). Ficam DUAS caches `lru_cache` dessincronizadas + um `Settings` novo ≠ o que o app usa. Testes posteriores que leem settings (ex. um secret de webhook) pegam valores inconsistentes → assert falha.
 
 **Solução:** **nunca `importlib.reload` de módulo core no meio da suite.** Pra testar binding de env/flags, instancie `Settings()` **direto** (fresh, lê o env no construtor), sem tocar o singleton nem a cache:
 ```python
@@ -431,20 +457,27 @@ def test_flag(monkeypatch):
 
 **Ref:** sessão Session Resume auth-service 2026-07-12 (11 falhas fantasma em webhook tests); fix commit `603759e`.
 
+---
+
 ## Fix editado DEPOIS do `add` fica fora do commit — review revisa versão limpa, commit embarca a buggy {#staging-pos-review-drift}
+
 `tags: git stage staged add diff review commit stale fix hook marker`
 
 **Sintoma:** você roda a review (R11), ela aponta um bug, você corrige o arquivo, mas o commit embarca a versão SEM o fix. O `git status` mostra o arquivo como `MM` (staged + working-tree divergem): o stage capturou o estado ANTES da correção; as edições pós-stage ficaram só no working tree.
 
 **Como pegou (2026-07-12, tiatendo billing):** o Cross-Claude comparou `git diff --cached` (staged) vs `git diff` (working) e viu que o guard de refund/chargeback (não regride `canceled` terminal) existia no working tree mas NÃO no índice → o commit ali embarcaria o bug. O DeepSeek, que só olhou o staged, apontou o mesmo bug como "não corrigido" — porque de fato o fix não estava staged.
 
-**Resolução:** depois de QUALQUER edição pós-review (fixes de findings, ajustes), **re-adicione ao índice todos os arquivos tocados ANTES de fechar o commit**. Confirme com `git status --short`: nenhum `MM`/` M` nos arquivos do escopo; tudo `M `/`A ` (staged limpo). Regra: o gate de review roda sobre o MESMO conteúdo que vai pro commit — editou depois, re-stage.
+**Solução:** depois de QUALQUER edição pós-review (fixes de findings, ajustes), **re-adicione ao índice todos os arquivos tocados ANTES de fechar o commit**. Confirme com `git status --short`: nenhum `MM`/` M` nos arquivos do escopo; tudo `M `/`A ` (staged limpo). Regra: o gate de review roda sobre o MESMO conteúdo que vai pro commit — editou depois, re-stage.
 
 **Generaliza:** vale pra qualquer gate que inspeciona staged (mock-scan, types-check). Editar após o gate e fechar o commit sem re-stage fura o gate silenciosamente. Um 2º revisor (Cross-Claude) que compara staged vs working é o que pega — peça a comparação explícita quando o diff for sensível (pagamento/migrations).
 
+**Ref:** tiatendo billing (2026-07-12) — o Cross-Claude comparou `git diff --cached` vs `git diff` e pegou o guard de refund/chargeback fora do índice.
+
 ---
 
-## Side-effect flag-gated não dispara: cred provavelmente já existe self-hosted no VPS
+## Side-effect flag-gated não dispara: cred provavelmente já existe self-hosted no VPS {#cred-selfhosted-no-vps}
+
+`tags: side-effect, flag-gated, credencial, env var, gowa, google sheets, ghl, leadconnector, private integration token, docker service update, env-add, portainer, stack deploy, pydantic extra ignore, service account, sheets api disabled`
 
 **Contexto:** huboperacional-site `/new-client` (2026-07-12). Endpoint no Painel tem 3 side-effects best-effort (GOWA WhatsApp, Google Sheets, GHL) gated pela presença da cred no `.env`. Operador reportou "nada veio". Nada estava quebrado — os clientes logam skip por design quando a cred falta.
 
@@ -466,9 +499,13 @@ def test_flag(monkeypatch):
 
 **Env var setada mas `settings.X` continua vazio → nome errado engolido pelo pydantic:** `SettingsConfigDict(extra="ignore")` faz o pydantic **descartar em silêncio** env vars com nome que não casa com um campo (ex.: operador pôs `GHL_PRIVATE_TOKEN`/`GHL_SUBACCOUNT_ID`, config espera `GHL_TOKEN`/`GHL_LOCATION_ID`). Sem erro, sem log. Diagnóstico definitivo: `docker exec <cid> python3 -c "from execution.core.config import settings as s; print(len(s.ghl_token or ''))"` — se 0 apesar da var "existir", confira (a) o **nome exato** do campo no `config.py`, (b) se o arquivo/env realmente chega no container (`printenv` dentro do container é a verdade, não o `.env` do host).
 
+**Ref:** huboperacional-site `/new-client` (2026-07-12) + persistência da env var no stack e PIT do GHL (2026-07-13).
+
 ---
 
-## Falha na suite completa fora do teu diff → triar pollution/pré-existente ANTES de assumir culpa
+## Falha na suite completa fora do teu diff → triar pollution/pré-existente ANTES de assumir culpa {#falha-fora-do-diff-triagem}
+
+`tags: pytest, suite completa, falha fantasma, ordering pollution, pre-existente, MultipleResultsFound, db de teste sujo, rodar isolado, git checkout base, fixture autouse, seed idempotente`
 
 **Contexto:** auth-service /sso hardening (2026-07-14). A suite full deu `830 passed, 2 failed`, mas as 2 falhas eram em módulos que eu NÃO toquei (`tests/contracts/test_magic_v2.py` TTL + `test_resolve_org_v2.py` audit). Meu diff só mexeu em `redirect.py`/`sso`/`session` + testes deles. Assumir "quebrei algo" teria feito eu perseguir fantasma.
 
@@ -479,6 +516,8 @@ def test_flag(monkeypatch):
 **Regra:** `N passed, M failed` numa suite grande NÃO é "quebrei M" — é "M falham NESTE estado de DB/ordering". `MultipleResultsFound`/`.one()`/`scalar_one()` estourando é quase sempre **dado sujo acumulado no DB de teste compartilhado** (INSERTs de testes sem cleanup ao longo do tempo), não código. Um `UPDATE`-only seed (como o meu `_seed_sso_origins`) NUNCA cria duplicata — descarta essa hipótese de cara.
 
 **Blindagem do próprio teste (pre-mortem pegou):** teste DB-gated que depende de estado de linha (origins, ttl) num DB compartilhado é frágil. Semeie o estado que ele assume com um **fixture autouse idempotente (UPDATE)** — remove o acoplamento oculto e evita false-pass/false-fail por drift do DB. Cross-ref feedback_subagent_db_tests_env.
+
+**Ref:** auth-service /sso hardening (2026-07-14) — `830 passed, 2 failed`, ambas alheias ao diff. Memória `feedback_subagent_db_tests_env`.
 
 ---
 
@@ -571,6 +610,7 @@ def test_flag(monkeypatch):
 ---
 
 ## Preciso verificar que uma página admin/dashboard renderiza, mas o MCP de browser caiu / precisa login {#render-smoke-in-container}
+
 `tags: render smoke container docker admin dashboard browser login template`
 
 tags: render smoke, dashboard, admin page, browser mcp down, playwright, chrome-devtools, sem login, verificar tela, FastAPI, Jinja, TemplateResponse, super_admin, monkeypatch estado
@@ -592,6 +632,7 @@ tags: render smoke, dashboard, admin page, browser mcp down, playwright, chrome-
 ---
 
 ## Migração de UI+API pra novo domínio: cookie dinâmico por Host não basta, a base da API também {#migracao-dominio-cookie-e-api-dinamicos}
+
 `tags: dominio migracao cookie host api base-url dinamico frontend cors`
 
 tags: migração domínio, cutover, cookie domain, cross-site, SameSite lax, registrable domain, const API, coexistência, dual-host, huboperacional, ads4pros, 302 vs 301
@@ -607,6 +648,7 @@ tags: migração domínio, cutover, cookie domain, cross-site, SameSite lax, reg
 ---
 
 ## Mudar rota/Host do Traefik (label) não pega com `service update --image` {#traefik-label-precisa-stack-deploy}
+
 `tags: traefik label host rota service-update stack-deploy swarm routing`
 
 tags: traefik, swarm, label, router rule, Host, docker service update, stack deploy, label-add, rota não aplica, env drop, rollout transiente
@@ -619,7 +661,10 @@ tags: traefik, swarm, label, router rule, Host, docker service update, stack dep
 
 **Ref:** migração Painel Gestão Fases 1/4 2026-07-14.
 
+---
+
 ## [5-T] de mudança no loader/script client-side na página real do cliente sem poluir prod {#loader-5t-sem-poluir-prod}
+
 `tags: loader script client-side 5t teste prod staging validacao query-param`
 
 tags: loader, tracking, pixel, fbq, gtag, ttq, CAPI, pmaTrack, [5-T] client-side, Playwright, GTM não carrega headless, injetar script, CNAME first-party, stub fetch, disparo real polui conversão, dispatchEvent submit, capture-phase
@@ -659,6 +704,7 @@ tags: loader, tracking, pixel, fbq, gtag, ttq, CAPI, pmaTrack, [5-T] client-side
 ---
 
 ## Migração de schema vai subir e o entrypoint roda `alembic upgrade || continuing` (fail-open) {#migracao-entrypoint-fail-open}
+
 `tags: migration alembic entrypoint fail-open upgrade schema deploy silencioso`
 
 **Sintoma / risco:** o entrypoint do container roda a migração no start, mas **fail-open**:
@@ -709,6 +755,7 @@ Achado pelo Cross-Claude no milestone-review — o DeepSeek não pegou.
 ---
 
 ## Reviewer cross-provider (R11/conselho) acusa "migration ausente"/"campo morto" que JÁ existe — ele só vê o diff staged {#reviewer-so-ve-diff-staged}
+
 `tags: review reviewer diff staged falso-positivo migration campo-morto r11 conselho`
 
 **Sintoma:** num fluxo de commits pequenos (subagent-driven, TDD task-a-task), o reviewer do R11
@@ -720,7 +767,7 @@ solta `[SEV: risco]` do tipo:
 - *"comentário cita `send_to_meta` mas essa função não está no diff"* → é forward-reference
   intencional, sequenciada no plano.
 
-**Causa:** o reviewer recebe **só o `git diff` staged**, não o repo nem o histórico. Toda mudança
+**Causa raiz:** o reviewer recebe **só o `git diff` staged**, não o repo nem o histórico. Toda mudança
 sequenciada em commits atômicos "parece" incompleta pra ele. O bônus ruim: ele às vezes **inventa a
 regra violada** (citou "R6 banco novo por projeto" e "R3 zero mock escondido" pra um TypeError
 hipotético) e **aponta o caminho errado** (mandou criar a migration em `worker/migrations/` quando o
@@ -753,7 +800,7 @@ Ver também [Devolutiva cross-time escrita da MEMÓRIA acusa o bug errado](#devo
 
 **Sintoma:** você guarda contra dupla cobrança fazendo `sessions.create(params, { idempotencyKey })` e depois `if (!session.url) return 409 /* já pagou */`. O ramo do 409 **nunca dispara** — e o teste dele passa, porque mocka `url: null` (mocka a conclusão).
 
-**Causa-raiz:** **idempotency do Stripe é cache de resposta, não re-avaliação.** A doc é explícita: ele **salva o status+body da 1ª requisição** e devolve **o mesmo resultado** nas seguintes. Como a Checkout Session **nasce ativa**, o body cacheado tem `url` preenchida — então o replay devolve essa **`url` velha e não-nula mesmo depois do cliente pagar**. O `url: null` vale pro **`retrieve` ao vivo** (o SDK documenta: *"This value is only present when the session is active"*), **não pro replay do `create`**.
+**Causa raiz:** **idempotency do Stripe é cache de resposta, não re-avaliação.** A doc é explícita: ele **salva o status+body da 1ª requisição** e devolve **o mesmo resultado** nas seguintes. Como a Checkout Session **nasce ativa**, o body cacheado tem `url` preenchida — então o replay devolve essa **`url` velha e não-nula mesmo depois do cliente pagar**. O `url: null` vale pro **`retrieve` ao vivo** (o SDK documenta: *"This value is only present when the session is active"*), **não pro replay do `create`**.
 
 **O que a key resolve de fato:** o replay devolve **a mesma sessão**, e **Checkout Session é de uso único** — o Stripe não deixa pagar duas vezes a mesma sessão. **É isso** que barra a 2ª cobrança, não o `url`.
 
@@ -859,6 +906,7 @@ Ver também [Devolutiva cross-time escrita da MEMÓRIA acusa o bug errado](#devo
 ---
 
 ## Validar UMA conta numa API multi-tenant e generalizar o resultado {#validar-uma-conta-generalizar}
+
 `tags: multi-tenant validacao conta amostra generalizar api teste`
 
 **Sintoma:** um probe de validação (ex.: `validateOnly`) passa contra a conta do piloto, você conclui
@@ -909,6 +957,7 @@ exceção ali escapa (o `try/except` costuma cobrir só o `json.loads`) e derrub
 ---
 
 ## Feature que depende de LLM ou dado real não fecha [5-T] sem smoke em prod com a FRASE/DADO EXATO do caso original {#smoke-prod-feature-llm}
+
 `tags: smoke prod llm 5t frase-exata dado-real validacao feature`
 
 **Sintoma:** feature "pronta" com testes verdes + review/conselho aprovando, mas que quebra no
@@ -925,7 +974,7 @@ vivem no que só o ambiente real sabe:
    a variante); meu consumo comparava com o nome canônico `'Feijoada'` → **nunca casava**. Toda a
    lógica estava "certa" contra o formato que EU supus.
 
-**Como resolver:**
+**Solução:**
 - Feature LLM/integração **não fecha `[5-T]` sem smoke em prod com a FRASE/DADO EXATO do caso
   original** — não vale phrasing "equivalente" (foi phrasing limpo que passou o tempo todo enquanto
   o do print quebrava).
@@ -945,7 +994,9 @@ de tela, e pg efêmero p/ testes de DB que pulam em silêncio.
 
 ---
 
-## Um fix commit que não re-roda a suíte de regressão enterra um RED sob "[5-T] local verde"
+## Um fix commit que não re-roda a suíte de regressão enterra um RED sob "[5-T] local verde" {#fix-commit-sem-re-rodar-suite}
+
+`tags: regressao, suite stale, 5-T, handoff verde, fix commit tardio, assert substring, html renderizado, style, emoji, glifo, checar marcacao`
 
 **Sintoma:** handoff dizia "103 testes verdes / [5-T] local", mas ao retomar, `test_lojaCardE1` estava
 RED. O fix commit anterior (badge no compacto) adicionou um comentário CSS com uma **estrela literal**,
@@ -953,7 +1004,7 @@ e um teste PRÉ-EXISTENTE fazia checagem crua `"estrela" not in html` sobre o HT
 `<style>` sempre renderizado). O commit de fix não re-rodou a suíte daquele arquivo → o RED passou
 despercebido sob o "[5-T]" anterior.
 
-**Como resolver:**
+**Solução:**
 - Depois do ÚLTIMO commit de uma branch (inclusive fix commits tardios), **re-rode a suíte de
   regressão do alvo** — não confie no "[5-T]" tirado ANTES do último commit.
 - Antes de deployar branch "pronta de sessão anterior", rode a suíte relevante uma vez — o "verde"
@@ -966,14 +1017,16 @@ despercebido sob o "[5-T]" anterior.
 
 ---
 
-## Resgatar linhas órfãs de migration aditiva (coluna nova NULL) via backfill + path real do coletor
+## Resgatar linhas órfãs de migration aditiva (coluna nova NULL) via backfill + path real do coletor {#linhas-orfas-migration-aditiva}
+
+`tags: migration aditiva, coluna nova, NULL, backfill, reaper, IS NOT NULL, linha orfa, docker exec, asyncio.run, dispatch sem persistir, scan cross-tenant`
 
 **Sintoma:** um reaper filtra `WHERE col IS NOT NULL AND col < cutoff` (fail-safe: não age no que não
 sabe datar). Linhas criadas ANTES da migration que adicionou `col` ficam `col=NULL` → nunca são pegas
 (presas pra sempre). Caso tiatendo: conversa pausada antes da mig 100 (`bot_paused_at` NULL) ficava
 muda; o reaper horário exige `IS NOT NULL`.
 
-**Como resolver:**
+**Solução:**
 - **Backfill** com proxy defensável (`col = updated_at`) SÓ nas linhas-alvo, guardado
   (`WHERE ... AND col IS NULL AND id = ...`); depois deixe o **loop de produção do próprio serviço**
   agir — ele traz o efeito colateral (notificação) junto, uma vez.
@@ -987,7 +1040,11 @@ muda; o reaper horário exige `IS NOT NULL`.
 
 **Ref:** tiatendo Fabiula (2026-07-17). Memória `project-vitrine-e3-e6-loja-2026-07-17`.
 
-## [2026-07-18] Padronizar componente compartilhado: regra por POSIÇÃO vaza + env Jinja é por-rota (tiatendo I6)
+---
+
+## Padronizar componente compartilhado: regra por POSIÇÃO vaza + env Jinja é por-rota (tiatendo I6) {#componente-compartilhado-posicao-e-env}
+
+`tags: design system, componente compartilhado, css nth-child, regra por posicao, blast radius, Jinja2Templates, env globals, por-rota, macro, mock, widget de estoque`
 
 Ao padronizar `.ti-table` (design system, 27 usos) e migrar o Caixa pro componente, dois vazamentos silenciosos:
 
@@ -999,7 +1056,11 @@ Ao padronizar `.ti-table` (design system, 27 usos) e migrar o Caixa pro componen
 
 **Ref:** tiatendo I6/I5 (2026-07-18), PROD `0.224.0`/`0.225.0`. Memória `project-vitrine-e3-e6-loja-2026-07-17`.
 
-## [2026-07-18] Verificar UI: o que "não aparece" no screenshot pode ser artefato da ferramenta, não bug (Micro Investors F2)
+---
+
+## Verificar UI: o que "não aparece" no screenshot pode ser artefato da ferramenta, não bug (Micro Investors F2) {#ui-falso-negativo-da-ferramenta}
+
+`tags: playwright, fullPage, screenshot, falso negativo, DOM, naturalWidth, getBoundingClientRect, tailwind v4, turbopack, chunk css, IACVT, var indefinida, canal alpha, png`
 
 Três falsos-negativos numa sessão só, todos do mesmo tipo — **o instrumento mentiu, não o código**:
 
@@ -1025,13 +1086,17 @@ Três falsos-negativos numa sessão só, todos do mesmo tipo — **o instrumento
 
 **Ref:** Micro Investors F2 home (portal `v8`, 2026-07-18).
 
-## [2026-07-18] `deepseek-review.sh` morre com "jq: Argument list too long" (diff > ~30KB no Windows)
+---
+
+## `deepseek-review.sh` morre com "jq: Argument list too long" (diff > ~30KB no Windows) {#jq-argv-too-long-review}
+
+`tags: deepseek-review, jq, argument list too long, argv 32kb, windows, git-bash, diff grande, package-lock, commit em lotes, git stash, PreToolUse, hook R11`
 
 **Sintoma:** R11 falha em `line 123: jq: Argument list too long`. Não é bug do jq — é o **limite de argv
 do Windows/git-bash (~32KB)**: o script passa `AGENTS.md` + o diff inteiro via `--arg`. Um `package-lock.json`
 no diff (ou ~500 linhas de código novo) já estoura.
 
-**Como resolver:** dividir o trabalho em **lotes menores, cada um com sua própria review** (respeita R11) —
+**Solução:** dividir o trabalho em **lotes menores, cada um com sua própria review** (respeita R11) —
 `git stash push -- <paths do lote 2>`, revisa e fecha o lote 1, `git stash pop`, revisa e fecha o lote 2.
 Lockfile vai isolado (`chore:`, sem lógica). **NÃO** bypasse o hook: o gate continua válido, só o
 transporte é que não cabe.
@@ -1044,7 +1109,11 @@ num heredoc de documentação já dispara o gate.)
 
 **Ref:** Micro Investors F2 (2026-07-18), plugin percus-review 6.28.0.
 
-## [2026-07-19] Bug de fuso multi-tenant tem 4 camadas — e a mais traiçoeira é o YAML, não o código
+---
+
+## Bug de fuso multi-tenant tem 4 camadas — e a mais traiçoeira é o YAML, não o código {#fuso-multi-tenant-4-camadas}
+
+`tags: timezone, fuso, multi-tenant, yaml do tenant, cadeia de fallback, AT TIME ZONE, date_trunc, timestamptz, EXTRACT EPOCH, toBrasilia, rename nao shim, scp yaml prod, teste-lint`
 
 **Sintoma:** relatório mostra dado no dia/hora errados pra tenant fora do fuso "padrão" da equipe.
 No caso real (tiatendo, cliente em Dourados/MS = UTC−4): pedido às 20:00 **locais** virava 00:00 UTC
@@ -1093,13 +1162,15 @@ desenho está errado e **não se ajusta o corpus pra passar**; (b) **não pode a
 
 ---
 
-## "Concluída" decidida pelo TEXTO do status apodrece em silêncio quando o produto deixa renomear
+## "Concluída" decidida pelo TEXTO do status apodrece em silêncio quando o produto deixa renomear {#status-por-texto-apodrece}
+
+`tags: status, texto do status, ILIKE cancel, IN done completed, renomear situacao, completed_at, cancelled_at, predicado centralizado, progresso, metrica divergente`
 
 **Sintoma:** métricas e telas erram só para *algumas* organizações — as que renomearam a situação
 terminal. Barra de progresso da tarefa-mãe em 0% com tudo pronto; aviso de prazo cobrando tarefa já
 entregue; contagem de "concluídas" divergindo entre dois gráficos da mesma tela.
 
-**Causa:** o código compara `status` com uma lista fixa (`IN ('done','completed','concluido')`) ou por
+**Causa raiz:** o código compara `status` com uma lista fixa (`IN ('done','completed','concluido')`) ou por
 substring (`ILIKE '%cancel%'`). Funciona no seed padrão e quebra no minuto em que alguém chama a
 situação de "Entregue" ou "ABORTADO". A heurística de substring erra nos **dois** sentidos: deixa
 passar o que devia excluir ("ABORTADO" não casa "cancel") **e** exclui o que devia passar
@@ -1125,28 +1196,36 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Ref:** Plexco Tasks s141 (2026-07-18/19), épico WS-C F3 `/ext` escrita.
 
-## [2026-07-19] Escape que atravessa camadas de transporte pode virar troca de X por X — com "ok" mentiroso
+---
+
+## Escape que atravessa camadas de transporte pode virar troca de X por X — com "ok" mentiroso {#escape-atravessa-camadas-noop}
+
+`tags: escape, backslash, heredoc, bash, python, em-dash, no-op, verificacao em bytes, assert do novo, encoding, fix fantasma, ok mentiroso`
 
 **Sintoma:** script de fix (bash heredoc → python) imprime "ok", assert de `count==1` passa, testes verdes — e o arquivo continua EXATAMENTE igual. Dois reviewers independentes acharam o defeito "corrigido" ainda vivo.
 
-**Causa:** cada camada de transporte pode consumir um nível de backslash. No caso: `new = '") \\u2014 mesmo'` num heredoc chegou no Python como `—` — que É o próprio em-dash. O replace trocou em-dash por em-dash: no-op sintaticamente perfeito, com toda a aparência de sucesso (o assert checava o ANTIGO, que existia mesmo; o write escreveu o mesmo conteúdo).
+**Causa raiz:** cada camada de transporte pode consumir um nível de backslash. No caso: `new = '") \\u2014 mesmo'` num heredoc chegou no Python como `—` — que É o próprio em-dash. O replace trocou em-dash por em-dash: no-op sintaticamente perfeito, com toda a aparência de sucesso (o assert checava o ANTIGO, que existia mesmo; o write escreveu o mesmo conteúdo).
 
-**Como resolver:**
+**Solução:**
 1. **Verificação de fix de encoding/escape é SEMPRE em bytes**, nunca em string de alto nível: `open(p,'rb').read().count(b'\xe2\x80\x94')` não mente; `'—' in line` depende de quantas camadas o literal do próprio CHECK atravessou (o meu check tinha o MESMO bug do fix).
 2. Pra editar escape em arquivo, usar ferramenta que NÃO processa escapes (Edit tool / editor direto), não string através de shell.
 3. Assert de fix não é "o padrão antigo existia" — é "o padrão NOVO existe e o antigo NÃO": `assert new in s and old not in s` teria pego na hora.
 
-**Onde mordeu:** Paid Media cont.106.3, em-dash no template do loader (`proxy/router.py`). Só o quality reviewer batendo em bytes revelou.
+**Ref:** Paid Media cont.106.3, em-dash no template do loader (`proxy/router.py`). Só o quality reviewer batendo em bytes revelou.
 
-## [2026-07-19] Deploy delta com base defasada REVERTE feature entregue — e o smoke de feature não pega
+---
+
+## Deploy delta com base defasada REVERTE feature entregue — e o smoke de feature não pega {#deploy-delta-base-defasada}
+
+`tags: deploy delta, imagem base, COPY parcial, feature revertida, bisseccao de imagem, manifesto de hashes, CRLF LF, falso positivo, default silencioso, log por assinatura`
 
 **Sintoma:** features marcadas `[5-T]` com smoke em produção NA ÉPOCA simplesmente não estão mais lá semanas/dias depois. No caso: 5 features (widget de estoque, nav, e 3 da vitrine da loja) mortas em produção por ~23h, incluindo **zero ocorrências na página pública que o cliente final vê**.
 
-**Causa:** deploy delta (`FROM <imagem-base>` + `COPY` só dos arquivos mudados) usando uma base ANTERIOR às features já entregues. Tudo que entrou entre a base e a atual não é apagado — é **nunca copiado**. O serviço sobe, `/health` responde 200, e o smoke da feature nova passa.
+**Causa raiz:** deploy delta (`FROM <imagem-base>` + `COPY` só dos arquivos mudados) usando uma base ANTERIOR às features já entregues. Tudo que entrou entre a base e a atual não é apagado — é **nunca copiado**. O serviço sobe, `/health` responde 200, e o smoke da feature nova passa.
 
 **Por que fica invisível:** o consumidor da função sumida chamava dentro de um `_safe(..., [])`. O card mostrava "sem alertas", que é *indistinguível* de "está tudo em estoque". O único sintoma era 1 linha de ERROR por minuto num log que ninguém lia.
 
-**Como resolver:**
+**Solução:**
 1. **Bissecção nas imagens** acha o instante exato, sem adivinhação:
    `docker run --rm --entrypoint grep <img>:<versao> -c "def minhaFuncao" /app/caminho.py` em cada versão.
 2. **Comparar a ÁRVORE INTEIRA**, não a feature: manifesto de hashes do HEAD × árvore da imagem, rodado **entre `docker build` e `docker service update`**. Smoke de feature prova que a NOVA subiu; só o diff de árvore prova que as ANTIGAS sobreviveram.
@@ -1155,27 +1234,35 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Regra geral:** `except`/default silencioso transforma bug de deploy em bug invisível. Ao varrer produção atrás de falha engolida, agrupar o log por assinatura (`sed` normalizando ids + `sort | uniq -c`) revela em segundos o que passa despercebido linha a linha.
 
-**Onde mordeu:** tiatendo, imagens `0.226.0`→`0.232.0`. Trava: `scripts/verifyImageMatchesHead.py`.
+**Ref:** tiatendo, imagens `0.226.0`→`0.232.0`. Trava: `scripts/verifyImageMatchesHead.py`.
 
-## [2026-07-19] Conselho responde bem à pergunta errada quando o contexto omite uma restrição
+---
+
+## Conselho responde bem à pergunta errada quando o contexto omite uma restrição {#conselho-contexto-incompleto}
+
+`tags: conselho, council, pre-mortem, prompt incompleto, restricao de fluxo, multi-turno, veredito, autoridade do operador, reversao documentada`
 
 **Sintoma:** conselho 3-membros dá veredito coeso (2/3, 3/3), o agente implementa, e o operador aponta na hora um caminho melhor que o conselho nem considerou.
 
-**Causa:** o prompt do conselho descreveu o problema sem uma restrição decisiva. No caso: perguntei se o bot devia "avisar ou perguntar" quando um item some do pedido, informando que o resumo é ecoado no fim — mas **omiti que o checkout é multi-turno** (o bot ainda faz 1 a 4 perguntas antes de fechar). O argumento central deles ("o cliente quis encerrar, não incomode") desmonta na hora: vamos incomodar de qualquer jeito.
+**Causa raiz:** o prompt do conselho descreveu o problema sem uma restrição decisiva. No caso: perguntei se o bot devia "avisar ou perguntar" quando um item some do pedido, informando que o resumo é ecoado no fim — mas **omiti que o checkout é multi-turno** (o bot ainda faz 1 a 4 perguntas antes de fechar). O argumento central deles ("o cliente quis encerrar, não incomode") desmonta na hora: vamos incomodar de qualquer jeito.
 
-**Como resolver:**
+**Solução:**
 1. Antes de submeter, listar as **restrições de FLUXO** — o que acontece antes e depois do ponto de decisão, quantos turnos, o que ainda é reversível. Decisão de UX conversacional depende disso mais que do conteúdo da mensagem.
 2. Perguntar-se: **"o que ainda é possível fazer nesse instante?"** No caso, a restrição que decidia era "o rascunho ainda está ABERTO, dá pra incluir o item de verdade" — depois do fechamento, perguntar prometeria o que não se pode cumprir.
 3. Veredito do conselho **não vira autoridade sobre o operador**, que tem contexto de negócio que nenhum provider tem (ali: item omitido = venda perdida + chamado de suporte).
 4. Ao registrar a reversão, dizer QUE o conselho errou **e por quê o input estava incompleto** — senão a próxima sessão relê o veredito antigo e reverte de novo.
 
-**Onde mordeu:** tiatendo D16 (`0.236.0`). O desenho final ficou melhor que as 3 opções submetidas: pergunta 1× com escape + o aviso passivo do conselho como rede.
+**Ref:** tiatendo D16 (`0.236.0`). O desenho final ficou melhor que as 3 opções submetidas: pergunta 1× com escape + o aviso passivo do conselho como rede.
 
-## [2026-07-19] Scheduler novo sobre tabela velha: dedup por MARCADOR, senão a linha fóssil engole o 1º disparo
+---
+
+## Scheduler novo sobre tabela velha: dedup por MARCADOR, senão a linha fóssil engole o 1º disparo {#scheduler-dedup-por-marcador}
+
+`tags: scheduler, cron, dedup, linha fossil, upsert, marcador, report_meta, catch-up, restart, yaml sexagesimal, HH:MM vira 540, contrato de shape, degrade com warning`
 
 **Sintoma:** você troca um job agendado (ex.: relatório semanal domingo 03:00 UTC fixo) por um scheduler por-tenant com dedup persistente numa tabela que o job ANTIGO também escrevia. Na transição, o job antigo já gravou a linha da semana corrente → o scheduler novo vê "já existe" e **pula o 1º envio novo em silêncio**. Ninguém percebe: não há erro, só ausência.
 
-**Como resolver:**
+**Solução:**
 1. **Linha nova carrega um marcador** (ex.: chave `report_meta` no JSONB de metrics). O dedup checa o MARCADOR, não a existência da linha: linha fóssil (sem marcador) não bloqueia — o 1º disparo novo sobrescreve por cima (upsert).
 2. Dedup em memória (`_lastRun` global) **não sobrevive a restart/redeploy** — se o restart cair no dia do disparo, ou duplica ou engole. Persistir na tabela que já tem unique (tenant, período) sai de graça.
 3. Semântica catch-up ("1× por semana A PARTIR do instante agendado", não "== hora agendada") tolera o processo fora do ar no horário; o dedup persistente é o que impede o duplo envio.
@@ -1183,9 +1270,12 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Bônus da mesma sessão (contrato de shape entre caller e helper):** `sendPersonalAlert(config, msg)` lê `config["specialistPhone"]`; um caller passava o `tenantConfig` INTEIRO (onde o campo é `specialist.personal_whatsapp`) → warning logado e **nenhum envio, durante meses**. Helper de envio que "degrada com warning" quando falta campo esconde erro de contrato pra sempre — teste que trava o SHAPE do argumento (`assert config == {"specialistPhone": ...}`) pega na hora.
 
-**Onde mordeu:** tiatendo `0.237.0`, reconstrução do Relatório Semanal (`execution/quality/reportScheduler.py` + `execution/plugins/restaurant/weeklyReport.py`).
+**Ref:** tiatendo `0.237.0`, reconstrução do Relatório Semanal (`execution/quality/reportScheduler.py` + `execution/plugins/restaurant/weeklyReport.py`).
+
+---
 
 ## Build no VPS falha puxando imagem PÚBLICA do ghcr.io ("denied") + `${VAR}` do stack deploy é no-op {#ghcr-denied-stale-login}
+
 `tags: ghcr docker denied login stale build vps pull imagem-publica stack-deploy`
 
 **Sintomas (2 no mesmo deploy, Scraper-prospeccao 2026-07-19):**
@@ -1200,15 +1290,17 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 1. `docker logout ghcr.io` → rebuild (pull anônimo).
 2. Não passar tag por env var: **editar o default no `deploy/stack.yml` (repo = fonte da verdade) → `scp` pro VPS → `docker stack deploy`**. SEMPRE conferir depois: `docker service inspect <svc> --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'` — replicas 1/1 não prova imagem nova.
 
-**Onde mordeu:** Scraper-prospeccao, deploy `2026-07-19-nr1` (página niche-review). Memória: `reference_deploy_swarm_local_image_gotchas`.
+**Ref:** Scraper-prospeccao, deploy `2026-07-19-nr1` (página niche-review). Memória: `reference_deploy_swarm_local_image_gotchas`.
 
 ---
 
-## "O backend já aceita X" — repo ≠ imagem em prod (422 silencioso pós-deploy parcial)
+## "O backend já aceita X" — repo ≠ imagem em prod (422 silencioso pós-deploy parcial) {#repo-nao-e-imagem-em-prod}
+
+`tags: repo vs imagem, deploy parcial, 422, Literal, capacidade nao verificada, handoff herdado, smoke honeypot, gate de versao no deploy, milestone review`
 
 **Sintoma:** feature nova (form do `/investors`) 100% pronta e testada em código; o HANDOFF afirmava "o backend já aceita `source=investors` desde `d3ec75e`". Verdade **no repo** — mas a imagem em prod (`:0.2.40`) foi buildada ANTES desse commit, e o POST levava **422** (`Input should be 'portal' or 'landing'`). Se o portal tivesse subido sozinho, 100% dos leads da página de captação quebrariam com "Algo deu errado" e nada apareceria em log de erro do portal.
 
-**Causa:** afirmação de capacidade baseada em `git log`, não na imagem deployada. Commits de fundação (schema/Literal/notifier) entram no repo semanas antes do deploy que os carrega.
+**Causa raiz:** afirmação de capacidade baseada em `git log`, não na imagem deployada. Commits de fundação (schema/Literal/notifier) entram no repo semanas antes do deploy que os carrega.
 
 **Solução (2 camadas):**
 1. **Smoke da capacidade direto em prod ANTES do deploy dependente**, sem side-effect: POST com **honeypot preenchido** (`website`) — se o Literal aceita, vem 201 falso sem persistir nada; se não, vem o 422. Custo: 1 curl.
@@ -1216,21 +1308,23 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Padrão do gate no script de deploy:** o deploy dependente começa com `curl /health` e **aborta** se a versão exigida não está em prod (ver `.tmp/deploy_frontend_v76.py` step 0 no Micro Investors).
 
-**Onde mordeu:** Micro Investors, deploy F3 `portal:v9` (2026-07-19). O fix virou a ordem: `:0.2.41` → `v9` → `v76`.
+**Ref:** Micro Investors, deploy F3 `portal:v9` (2026-07-19). O fix virou a ordem: `:0.2.41` → `v9` → `v76`.
 
 ---
 
-## Monitor passivo: o erro que você viu no probe ativo pode NÃO existir no pipe
+## Monitor passivo: o erro que você viu no probe ativo pode NÃO existir no pipe {#monitor-passivo-corpo-do-erro}
+
+`tags: monitor passivo, probe ativo, event_log, corpo do erro, no_click_id, validateOnly, skip deliberado, response_ok, vocabulario de skips, gabarito impossivel`
 
 **Sintoma:** o gabarito do smoke exigia que o `INVALID_CONVERSION_ACTION_TYPE` do Moper (achado da auditoria) aparecesse no `detail` do elo entrega. O monitor devolveu `no_click_id`. Parecia bug do monitor — não era: probe `SELECT ... WHERE google_ads_response_body ILIKE '%INVALID%'` → **0 linhas em 60 tentativas**.
 
-**Causa:** o corpo de um erro só existe onde (a) o request realmente FOI feito e (b) o caminho grava a resposta. Os 60 envios do Moper morrem em `no_click_id` ANTES de chegar na API do Google; o `INVALID_CONVERSION_ACTION_TYPE` da auditoria veio do NOSSO `validateOnly` via service-layer — que **não passa pelo event_log**. Prometer detecção passiva de um erro sem checar onde o corpo mora = gabarito impossível.
+**Causa raiz:** o corpo de um erro só existe onde (a) o request realmente FOI feito e (b) o caminho grava a resposta. Os 60 envios do Moper morrem em `no_click_id` ANTES de chegar na API do Google; o `INVALID_CONVERSION_ACTION_TYPE` da auditoria veio do NOSSO `validateOnly` via service-layer — que **não passa pelo event_log**. Prometer detecção passiva de um erro sem checar onde o corpo mora = gabarito impossível.
 
 **Solução (2 regras):**
 1. Antes de prometer que um monitor passivo detecta o erro X, probe **onde o corpo mora**: `SELECT COUNT(*) FILTER (WHERE body ILIKE '%X%')` na tabela que o monitor lê. Se 0, o X é detectável só por sonda ATIVA — documentar, não forçar o gabarito.
 2. **Skip deliberado ≠ falha, mas o pipe grava igual**: `ga4_sent_by_site` (auto-bridge suprime envio), `no_click_id` (orgânico), `missing_meta_config` — todos ficam com `response_ok=0` e passivamente são indistinguíveis de falha real. A camada que classifica precisa de um vocabulário de skips (espelhar `_CONFIG_SKIPS` do capi_fanout) antes de pintar o elo de vermelho.
 
-**Onde mordeu:** Paid Media Automation, cont.107 (fatia 1 do monitor de saúde, 2026-07-19). O item #4 do gabarito virou "conferir → fatia 2" com prova, em vez de um fix errado na regra. Memória: `project_tracking_health_monitor_fatia1`.
+**Ref:** Paid Media Automation, cont.107 (fatia 1 do monitor de saúde, 2026-07-19). O item #4 do gabarito virou "conferir → fatia 2" com prova, em vez de um fix errado na regra. Memória: `project_tracking_health_monitor_fatia1`.
 
 ---
 
@@ -1240,7 +1334,7 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Sintoma:** kill-switch de envio proativo de WhatsApp (`WA_PROACTIVE_ENABLED`) deployado, flag confirmada `false` em prod, log provando quarentena no startup. Mesmo assim, um clique em `/admin/engajamento/disparar` dispararia **cold outreach em massa** — exatamente o perfil que derruba o device. O docstring dizia "nada é iniciado por nós"; a v1 gateava **2 de 8** remetentes.
 
-**Causa:** o gate foi implementado nos **call-sites**, um por um. Isso torna a cobertura uma função da memória de quem escreve: remetente novo **nasce sem gate** e nada avisa. Pior que não ter switch — a v1 produzia confiança falsa em quem lia o docstring. Um inventário achou 14 remetentes proativos com zero switches.
+**Causa raiz:** o gate foi implementado nos **call-sites**, um por um. Isso torna a cobertura uma função da memória de quem escreve: remetente novo **nasce sem gate** e nada avisa. Pior que não ter switch — a v1 produzia confiança falsa em quem lia o docstring. Um inventário achou 14 remetentes proativos com zero switches.
 
 **Solução (3 camadas, nessa ordem de valor):**
 1. **Gate no FACADE, com a decisão obrigatória.** `sendMessage(..., *, proativo: bool)` **keyword-only SEM default**. Sem default é o ponto todo: default `False` faz remetente novo nascer sem gate de novo (a falha original); default `True` deixa o bot **mudo pra usuário real** no primeiro esquecimento. Sem default, esquecer é `TypeError` **alto**, pego pela suíte antes de prod. "Fail-closed" aqui é sobre a DECISÃO ser obrigatória, não sobre bloquear por omissão.
@@ -1251,7 +1345,7 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Regra geral:** *silêncio de kill-switch precisa ser DECLARADO.* Um endpoint que devolve `200` com zeros na quarentena faz a UI dar toast **verde** de sucesso — a mitigação escrita em `resultado["detalhes"]` era código morto (o front nunca renderizava). Use **409 + `detail`**, e conte a verdade a quem depende do envio (quem adicionou um membro precisa saber que a pessoa **não** foi avisada).
 
-**Onde mordeu:** Família Milionária, 2026-07-16 → 19. Commits `25e0a69` (v2 nos call-sites) → `04a5485` (facade). Memória: `incident_2026_07_16_device_ban_numero_queimado`.
+**Ref:** Família Milionária, 2026-07-16 → 19. Commits `25e0a69` (v2 nos call-sites) → `04a5485` (facade). Memória: `incident_2026_07_16_device_ban_numero_queimado`.
 
 ---
 
@@ -1270,7 +1364,7 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 2. Grep de auditoria: `CREATE .*VIEW` + `SELECT \*` nas migrations — toda view assim é uma bomba de fresh-install se a tabela ganhar coluna depois.
 3. O número "X passed" de suíte só vale com a contagem de SKIPPED ao lado; gate real de feature de banco = pg efêmero (pgvector!) + `setupDatabase()` + pytest no container. Baseline pra separar "eu quebrei" de "já estava quebrado": mesmos testes com o código DA IMAGEM de prod, montando só `tests/` por cima.
 
-**Onde mordeu:** tiatendo, 2026-07-20, Task 7 da venda manual (migration `101_refresh_orders_real_view.sql`). Memória: `project-venda-manual-caixa-2026-07-20`.
+**Ref:** tiatendo, 2026-07-20, Task 7 da venda manual (migration `101_refresh_orders_real_view.sql`). Memória: `project-venda-manual-caixa-2026-07-20`.
 
 ---
 
@@ -1280,13 +1374,13 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Sintoma:** job agendado no worker precisa validar/usar credenciais de tenant cifradas por OUTRO serviço, e a descriptografia falha ou exigiria copiar a master key. Causa-raiz típica: criptos diferentes por design (Paid Media: worker = AES-CBC + scrypt de `ENCRYPTION_KEY`; tracking = AES-GCM + `PMT_MASTER_KEY`). Copiar a chave amplia blast radius; duplicar a lógica de probe cria drift.
 
-**Como resolver:**
+**Solução:**
 1. A sonda roda DENTRO do serviço dono do segredo, reusando o módulo existente (ex.: `credential_test.py`), exposta num endpoint interno (`POST /internal/...`).
 2. Auth por header de segredo compartilhado (`X-Internal-Auth`) com `hmac.compare_digest` (constant-time) e **fail-closed**: env ausente ⇒ 403 SEMPRE, travado por teste.
 3. ⚠️ Se o Traefik roteia o serviço por **Host rule**, `/internal` é alcançável da INTERNET — o header é o único gate; "rede interna" não protege nada. Smoke obrigatório: curl público sem header ⇒ 403.
 4. O cliente no worker NUNCA levanta exceção (serviço fora ⇒ elo degrada pra `desconhecido`, não aborta a varredura) e retorna `(resultado, motivo_erro)`.
 
-**Onde mordeu:** Paid Media Automation, 2026-07-20, fatia 2 do monitor de saúde (elo credencial). Memória: `project_tracking_health_monitor_fatia2`.
+**Ref:** Paid Media Automation, 2026-07-20, fatia 2 do monitor de saúde (elo credencial). Memória: `project_tracking_health_monitor_fatia2`.
 
 ---
 
@@ -1298,7 +1392,7 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Causa-raiz real:** o QR expira rápido (GOWA: `qr_duration: 30s`) e só é reemitido na próxima chamada de login. Se a UI busca o código **uma vez** e congela a imagem, quem demora mais que a janela escaneia um código morto — e o WhatsApp recusa isso **do lado dele**, antes de tocar o seu servidor. Daí o log limpo.
 
-**Como resolver:**
+**Solução:**
 1. **Teste decisivo e barato:** parear direto pela UI nativa do provedor (que auto-renova o QR). Funcionou lá e não no seu painel ⇒ o culpado é seu, não do provedor. Isso encerra a discussão em 2 minutos.
 2. Renove o QR antes de expirar (`qr_duration - 5s`), mas **com teto** (ex.: 5 tentativas ≈ 2min) e um botão "gerar novo". Loop sem teto inunda host compartilhado — se o host é de outro time, isso vira incidente **deles** (nos cegou durante a investigação de uma queda real).
 3. ⚠️ **Não use o status da conexão como sinal de "pareando".** O provedor reporta `is_logged_in:false` para device não pareado, o que normaliza para `disconnected` — que também é o estado ocioso. Parar o loop nesse status mata o refresh ~200ms depois do clique (loop roda **zero** vezes); e quando o poll de status falha, a linha fica `connecting` e o loop roda **para sempre**. Os dois sintomas, opostos, têm a mesma raiz. Use um **orçamento de tentativas explícito**, não o status.
@@ -1307,7 +1401,7 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Armadilha de processo:** JS de painel dentro de template literal não é lido pelo `tsc` **nem por teste nenhum** — foi assim que o bug subiu com "build verde". Extraia a lógica de decisão para um módulo compilado **pelo mesmo source** que a página e pelo spec, e teste "parar" e "exibir" como complementos exatos (property test) — eles divergiram e um status exibia QR enquanto cancelava o próprio refresh.
 
-**Onde mordeu:** GHL-GOWA-WhatsApp, 2026-07-16/19. Cliente pagante 3 dias sem conseguir parear. Commits `3b55593`, `4ddd027`. Memória: `gowa-linking-blocked-whatsapp-side`.
+**Ref:** GHL-GOWA-WhatsApp, 2026-07-16/19. Cliente pagante 3 dias sem conseguir parear. Commits `3b55593`, `4ddd027`. Memória: `gowa-linking-blocked-whatsapp-side`.
 
 ---
 
@@ -1317,15 +1411,15 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Sintoma:** cliente paga, o painel volta pra tela de pagamento e nada é provisionado — mas o Stripe mostra `succeeded` e a assinatura ativa.
 
-**Causa-raiz:** não havia endpoint de webhook registrado para o serviço novo. O **único** endpoint registrado na conta era o do serviço legado, que consumiu o `checkout.session.completed` e provisionou **no banco dele**. O serviço novo nunca soube do pagamento.
+**Causa raiz:** não havia endpoint de webhook registrado para o serviço novo. O **único** endpoint registrado na conta era o do serviço legado, que consumiu o `checkout.session.completed` e provisionou **no banco dele**. O serviço novo nunca soube do pagamento.
 
-**Como resolver:**
+**Solução:**
 1. Confira `GET /v1/webhook_endpoints` **antes** de culpar o código — o evento pode estar sendo entregue a outro serviço da mesma conta.
 2. Registrar o endpoint **não basta**: com dois produtos na mesma conta, os dois passam a receber **todos** os eventos. A metadata da sessão costuma ser idêntica entre produtos, então **o `price` é o único discriminador confiável** — filtre por ele no handler dos dois lados.
 3. ⚠️ **Nunca deixe "remover recurso" cancelar a assinatura.** A assinatura é o **direito** a uma instância: remover o recurso deve liberar o slot, não encerrar o contrato. Um cliente clicou "Remove" para religar e perdeu, sem refund, o que pagara 40 minutos antes. Cancelar assinatura é ação separada e explícita.
 4. Remediação sem cobrar de novo: assinatura nova com `trial_end` cobrindo o período já pago, **reaplicando o cupom** (o desconto não migra sozinho, e cancelamento no Stripe é terminal).
 
-**Onde mordeu:** GHL-GOWA-WhatsApp, 2026-07-16. Commit `5e796c2`.
+**Ref:** GHL-GOWA-WhatsApp, 2026-07-16. Commit `5e796c2`.
 
 ---
 
@@ -1335,16 +1429,16 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Sintoma:** o plano tem dezenas de tags abertas de meses atrás. Parecem trabalho pendente, mas ninguém lembra de tê-las abandonado — e a feature parece existir em produção.
 
-**Causa-raiz:** planos antigos citam a obra pelo **número da migration** (`054`, `055`). Quando aquela frente parou, os números foram **reciclados** por frentes posteriores. A obra acabou sendo entregue depois, sob outro número e outro nome — e a tag antiga ficou aberta apontando para um identificador que hoje significa outra coisa. Ninguém fechou porque ninguém sabia que já estava feito.
+**Causa raiz:** planos antigos citam a obra pelo **número da migration** (`054`, `055`). Quando aquela frente parou, os números foram **reciclados** por frentes posteriores. A obra acabou sendo entregue depois, sob outro número e outro nome — e a tag antiga ficou aberta apontando para um identificador que hoje significa outra coisa. Ninguém fechou porque ninguém sabia que já estava feito.
 
-**Como resolver:**
+**Solução:**
 1. **Não julgue frente antiga por data.** "Parado há 6 semanas" não distingue abandono de obra-entregue-por-outra-rota. Ausência de sinal não é sinal.
 2. Verifique **cada tag aberta contra o código, o banco e as migrations** — nunca por memória nem pelo texto do plano. Agentes de busca em paralelo tornam isso barato.
 3. Trate número de migration citado em plano como **referência frágil**: confirme pelo **efeito** (tabela/coluna/flag existe? rota responde?), não pelo número.
 4. O veredito útil tem três valores, não dois: **VIVA · FÓSSIL · PARCIAL**. Parcial é o caso comum — a maior parte entregue, um resto real.
 5. Ao mover pro histórico, **feche a conta por soma de linhas** (antes = depois + movido ± cabeçalhos). Sem isso, "limpeza" e "perda silenciosa" são indistinguíveis.
 
-**Onde mordeu:** tiatendo, 2026-07-20 — auditoria de 4 frentes: 221 linhas fósseis, mas **6 pendências eram reais**. Commit `65140c7`.
+**Ref:** tiatendo, 2026-07-20 — auditoria de 4 frentes: 221 linhas fósseis, mas **6 pendências eram reais**. Commit `65140c7`.
 
 ---
 
@@ -1354,34 +1448,34 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Sintoma:** a suíte passa localmente, o teste novo "está verde", e ao rodar contra banco real ele quebra em coisas bobas — nome de campo, coluna de ordenação, tipo de exceção.
 
-**Causa-raiz:** um guard de segurança (tipo `dbSafety`) **pula** os testes de banco quando não há banco de teste configurado. O teste novo nunca rodou — nem vermelho, nem verde. Ele foi escrito contra o *contrato imaginado* da função, e cada divergência do contrato real virou um fóssil embutido: `sale["order_id"]` quando o retorno tem `id`, `ORDER BY created_at` quando a coluna é `transitioned_at`, `pytest.raises(Exception)` onde o código lança um tipo específico.
+**Causa raiz:** um guard de segurança (tipo `dbSafety`) **pula** os testes de banco quando não há banco de teste configurado. O teste novo nunca rodou — nem vermelho, nem verde. Ele foi escrito contra o *contrato imaginado* da função, e cada divergência do contrato real virou um fóssil embutido: `sale["order_id"]` quando o retorno tem `id`, `ORDER BY created_at` quando a coluna é `transitioned_at`, `pytest.raises(Exception)` onde o código lança um tipo específico.
 
-**Como resolver:**
+**Solução:**
 1. **Ver a falha vermelha é o passo, não a formalidade.** Teste que passou de primeira ou não testa nada, ou o comportamento já existia — pare e descubra qual dos dois.
 2. Se o guard pula, **declare em voz alta** que o vermelho não foi visto e que o `[5-T]` depende do gate real. Não converta "não rodou" em "passou".
 3. Rode o recorte da feature no **gate real** (pg efêmero, CI) antes de marcar entregue — é lá que os fósseis aparecem, em lote e baratos.
 4. Vale também pro caminho inverso: **teste verde pode estar guardando bug**. Um teste chamado `..._still_requires` documentava como correta a regra que o operador reportou como defeito.
 
-**Onde mordeu:** tiatendo, 2026-07-20 — 8 testes de anulação escritos sem red; o pg efêmero achou **3 fósseis** neles. Commit `356aec3`.
+**Ref:** tiatendo, 2026-07-20 — 8 testes de anulação escritos sem red; o pg efêmero achou **3 fósseis** neles. Commit `356aec3`.
 
 ---
 
-## Hook fica lento e trava os commitS: diretorio de estado que so cresce {#estado-append-only-trava-hook}
+## Hook fica lento e trava os commits: diretorio de estado que so cresce {#estado-append-only-trava-hook}
 
 `tags: hook lento, pre-commit trava, pendura, timeout, commit lento, diretorio cresce, append only, marcador por timestamp, TTL, stat em N arquivos, ls -t, git bash windows, O(N), latest fixo, escrita atomica`
 
 **Sintoma:** de repente o commit demora dezenas de segundos ou pendura, e nada no diff mudou de tamanho. Pode travar **todos** os commitS do projeto.
 
-**Causa-raiz:** um hook le o "mais recente" de um diretorio de estado fazendo `stat` em **todos** os arquivos (laco `-nt` ou `ls -t`/`Sort-Object LastWriteTime`). O produtor grava **um arquivo novo por evento** (ex.: `<timestamp>.jsonl`). O diretorio cresce sem limite; no git-bash do Windows cada `stat` e caro, e o custo do hook vira O(N) sobre milhares de arquivos. Os marcadores tinham TTL de minutos e zero valor depois -- puro acumulo.
+**Causa raiz:** um hook le o "mais recente" de um diretorio de estado fazendo `stat` em **todos** os arquivos (laco `-nt` ou `ls -t`/`Sort-Object LastWriteTime`). O produtor grava **um arquivo novo por evento** (ex.: `<timestamp>.jsonl`). O diretorio cresce sem limite; no git-bash do Windows cada `stat` e caro, e o custo do hook vira O(N) sobre milhares de arquivos. Os marcadores tinham TTL de minutos e zero valor depois -- puro acumulo.
 
-**Como resolver:**
+**Solução:**
 1. **O produtor grava sempre no MESMO path fixo** (`latest.jsonl`), sobrescrevendo. O leitor faz `stat` em **um** arquivo conhecido -- O(1), independente do historico. Alinha o custo com a pergunta ("existe estado recente?" e sobre 1 ponto, nao sobre N).
 2. **Escrita atomica:** grave em `.tmp` e `mv -f`/`Move-Item -Force`. Sem isso o leitor pode pegar o arquivo no meio da escrita.
 3. **Auto-poda no produtor:** ao gravar, remova os irmaos antigos. Assim pilhas legadas drenam sozinhas no proximo evento -- sem limpeza manual nem reinstalar N copias de hook.
 4. **Corrija na fonte compartilhada, nao nas N copias.** Se o leitor e gerado por template (1 copia) e o produtor e 1 script, mude ali -- hooks por-projeto sao N lugares pra divergir. Depois da correcao do produtor + poda, as copias antigas ficam O(1) sozinhas (N=1).
 5. **Meca antes de "otimizar".** Trocar o laco por `ls -t` teria economizado 10% (o custo era o `stat` em N, nao o laco) -- a medicao refutou a hipotese obvia.
 
-**Onde mordeu:** canon Percus, hook R11 pre-commit, 2026-07-20. tiatendo chegou a **2026 marcadores** -> commit pendurava **148s** -> travou o projeto. Paid Midia (1399), Plexco Tasks (1123), Plexco Coach (844) estavam no mesmo caminho. Fix: `latest.jsonl` + escrita atomica + auto-poda no wrapper + leitura de path fixo no template/checks. Resultado: 148s -> **1,1s** (127x).
+**Ref:** canon Percus, hook R11 pre-commit, 2026-07-20. tiatendo chegou a **2026 marcadores** -> commit pendurava **148s** -> travou o projeto. Paid Midia (1399), Plexco Tasks (1123), Plexco Coach (844) estavam no mesmo caminho. Fix: `latest.jsonl` + escrita atomica + auto-poda no wrapper + leitura de path fixo no template/checks. Resultado: 148s -> **1,1s** (127x).
 
 ---
 
@@ -1391,16 +1485,16 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 
 **Sintoma:** voce instala/conserta um hook ou gate, confere que "esta la" e declara pronto. Numa sessao/maquina diferente ele nao roda -- ou como dead code (nunca executa), ou fail-closed travado (bloqueia tudo antes do check que importa). O defeito passa porque a verificacao foi ESTRUTURAL, nao de COMPORTAMENTO.
 
-**Causa-raiz:** "o arquivo tem o bloco certo" e "o script roda sozinho" NAO provam "o hook faz a coisa certa no commit real". Um hook depende do AMBIENTE de quando dispara: env var que nao propaga pra shell nova, `exit 0` de um bloco anterior que mata o codigo seguinte, cwd diferente, PATH diferente. Checar a estrutura e cego pra tudo isso.
+**Causa raiz:** "o arquivo tem o bloco certo" e "o script roda sozinho" NAO provam "o hook faz a coisa certa no commit real". Um hook depende do AMBIENTE de quando dispara: env var que nao propaga pra shell nova, `exit 0` de um bloco anterior que mata o codigo seguinte, cwd diferente, PATH diferente. Checar a estrutura e cego pra tudo isso.
 
-**Como resolver:**
+**Solução:**
 1. **Verifique RODANDO, no cenario de runtime real.** Pra hook de git: rode o proprio hook (`sh .git/hooks/pre-commit`), nao o script que ele chama. Reproduza a condicao adversa -- ex.: `env -u PERCUS_CANON_V2_DIR sh .git/hooks/pre-commit` (env var DESLIGADA), com um caso que DEVE passar e um que DEVE bloquear.
 2. **Exija os DOIS sinais:** passa quando deve (nao trava por acidente) E bloqueia quando deve (com a mensagem certa -- "teto 150", nao "nao definida").
 3. **"O script funciona" != "o hook roda no commit".** Rodar `percus-gate.sh` direto passando nao diz nada sobre o hook: o gate pode estar como dead code, ou o hook pode travar antes de chega-lo.
 4. **Fallback pra estado de ambiente:** o que depende de env var deve ter fallback duravel (arquivo gravado na instalacao) -- env var e o modo mais fragil de passar estado, some entre shells.
 5. E a regra `superpowers:verification-before-completion` / "evidencia observada, nunca assercao" aplicada a hook: a evidencia e a EXECUCAO no cenario real, nao a leitura do arquivo.
 
-**Onde mordeu:** canon Percus, gate V2 no pre-commit, 2026-07-21. Declarei hooks "VIVO" checando a estrutura (gate alcancavel); rodei `percus-gate.sh` direto, nunca o hook num shell sem `PERCUS_CANON_V2_DIR`. Sessao fria rodou de verdade: hook fail-closed travado (bloqueava qualquer commit). 3a vez no mesmo dia que verificacao estrutural escondeu defeito de runtime. Fix real so veio ao rodar `env -u PERCUS_CANON_V2_DIR sh .git/hooks/pre-commit`.
+**Ref:** canon Percus, gate V2 no pre-commit, 2026-07-21. Declarei hooks "VIVO" checando a estrutura (gate alcancavel); rodei `percus-gate.sh` direto, nunca o hook num shell sem `PERCUS_CANON_V2_DIR`. Sessao fria rodou de verdade: hook fail-closed travado (bloqueava qualquer commit). 3a vez no mesmo dia que verificacao estrutural escondeu defeito de runtime. Fix real so veio ao rodar `env -u PERCUS_CANON_V2_DIR sh .git/hooks/pre-commit`.
 
 ---
 
@@ -1479,7 +1573,6 @@ Agrava: era **intencional** (matar refresh token roubado) e estava **testado com
 **Trave com barreira estática (AST), não com teste comportamental.** Um teste da primitiva continua verde depois que você tira a chamada do router — ele não pega a reintrodução. Barre no **call-site** e, principalmente, no **import**: guardar só o nome deixa passar alias (`import x as _nuke`), `getattr` e `functools.partial`. Inclua as peças de um wipe artesanal (enumerar chaves do subject + deletar), senão a regressão volta sem citar a função óbvia. E prove a barreira **injetando a regressão e vendo falhar** — barreira que nunca ficou vermelha não vale nada.
 
 **Ref:** auth-service, ADR-0015 (2026-07-23). Sintoma: nenhum dos 10 produtos mantinha login por 1 dia contra 30 planejados.
-
 
 ---
 
@@ -1624,3 +1717,9 @@ com as 5 parcelas na mesma data).
 **Solução:** (1) depois de qualquer rotação/redeploy, verifique **in-process** dentro do container (`getRedis()` devolve cliente ou `None`?), nunca pelo log; (2) no compose, exija a variável (`${REDIS_URL:?}`) pra falhar cedo em vez de silenciosamente; (3) ao escrever um cliente com degrade gracioso, **separe** "não configurado" (silêncio ok) de "configurado e falhou" (tem que alarmar).
 
 **Ref:** tiatendo `0.244.0`; memória de projeto `feedback-redis-noauth-degrada-em-silencio`.
+
+---
+
+> **Nova entrada?** Copie o bloco-modelo abaixo, preencha, e adicione no Índice.
+>
+> ```
