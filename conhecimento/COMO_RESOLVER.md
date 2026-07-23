@@ -15,6 +15,7 @@
 
 ## Índice
 
+- [Sessão de login "morre sozinha" em todos os produtos ao mesmo tempo](#sessao-morre-invalidacao-por-pessoa)
 - [Conselho "revisa a coisa errada" / prompt stale entre runs](#conselho-prompt-stale)
 - [QR code de pareamento "não linka" → suspeite do SEU refresh antes de culpar o provedor](#qr-pareamento-expira)
 - [Dois produtos na MESMA conta Stripe → todo webhook chega nos dois; discrimine por preço](#stripe-cross-talk-dois-adapters)
@@ -38,6 +39,8 @@
 - [Hook pre-commit (R11) é PreToolUse: "review && commit" numa chamada só sempre bloqueia](#pretooluse-review-commit)
 - [`importlib.reload(config)` num teste polui a suite inteira (quebra testes que rodam depois)](#reload-config-polui-suite)
 - [Deploy: `docker build ... | tail && service update` mascara build falho → outage 404](#deploy-pipe-mascara-exit)
+- [Cloudflare proxied (laranja) impede Traefik/Let's Encrypt de emitir cert](#cloudflare-proxy-quebra-acme)
+- [Canonical absoluto no layout do Next desindexa TODAS as rotas filhas](#next-canonical-layout-herdado)
 - [Build no VPS falha puxando imagem PÚBLICA do ghcr.io ("denied") + `${VAR}` do stack deploy é no-op](#ghcr-denied-stale-login)
 - [`NEXT_PUBLIC_*` não aparece no bundle client em prod (setei só no compose runtime)](#next-public-baked-build)
 - [Preciso verificar que uma página admin/dashboard renderiza, mas o MCP de browser caiu / precisa login](#render-smoke-in-container)
@@ -61,6 +64,8 @@
 - [Bot conversacional re-pergunta info que o cliente já deu FORA DE ORDEM (checkout/wizard)](#parking-info-fora-de-ordem)
 - [Validar UMA conta numa API multi-tenant e generalizar o resultado](#validar-uma-conta-generalizar)
 - [Feature que depende de LLM ou dado real não fecha `[5-T]` sem smoke em prod com a FRASE/DADO EXATO do caso original](#smoke-prod-feature-llm)
+- [Coluna usada como critério de ORDENAÇÃO/desempate que ninguém nunca escreveu (NULL em 100% das linhas)](#coluna-ordenacao-nunca-escrita)
+- [Lookup por identificador "normalizado" só de um lado — metade da base fica invisível, sem erro](#lookup-normaliza-so-um-lado)
 
 ---
 
@@ -1384,3 +1389,148 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 5. E a regra `superpowers:verification-before-completion` / "evidencia observada, nunca assercao" aplicada a hook: a evidencia e a EXECUCAO no cenario real, nao a leitura do arquivo.
 
 **Onde mordeu:** canon Percus, gate V2 no pre-commit, 2026-07-21. Declarei hooks "VIVO" checando a estrutura (gate alcancavel); rodei `percus-gate.sh` direto, nunca o hook num shell sem `PERCUS_CANON_V2_DIR`. Sessao fria rodou de verdade: hook fail-closed travado (bloqueava qualquer commit). 3a vez no mesmo dia que verificacao estrutural escondeu defeito de runtime. Fix real so veio ao rodar `env -u PERCUS_CANON_V2_DIR sh .git/hooks/pre-commit`.
+
+---
+
+## Cloudflare proxied (laranja) impede Traefik/Let's Encrypt de emitir cert {#cloudflare-proxy-quebra-acme}
+
+`tags: cloudflare, proxy, laranja, orange cloud, dns only, cinza, traefik, lets encrypt, acme, certificado, tls, 403 unauthorized, well-known, acme-challenge, full strict, origin cert, dominio`
+
+**Contexto:** dominio servido por Traefik + Let's Encrypt num VPS. O A record aponta certo pro VPS, o site funciona, cadeado verde no browser -- mas o Traefik loga falha de ACME em loop e nunca emite o cert.
+
+**Causa raiz:** o registro esta **proxied (nuvem laranja)** no Cloudflare. O desafio ACME e' validado contra o IP que o DNS PUBLICO devolve, que sob proxy e' o do Cloudflare -- e o CF nao tem o token, entao responde **404**. O IP do CF aparece na propria mensagem de erro, e e' o que denuncia:
+`invalid authorization: acme: error: 403 :: unauthorized :: 2606:4700:3036::6815:5069: Invalid response from https://DOMINIO/.well-known/acme-challenge/... : 404`
+
+**Por que passa despercebido:** o site **funciona** -- o CF termina o TLS com cert proprio (emissor *Google Trust Services*) e encaminha pro origin. So olhando o cert do ORIGIN se ve o problema: fica em `TRAEFIK DEFAULT CERT` (auto-assinado). Funciona porque o CF esta em modo **"Full"**, que aceita cert invalido no origin. **Se alguem mudar pra "Full (strict)", o site cai na hora.** E o Traefik queima o limite do LE (5 falhas/h por hostname) em retry perpetuo.
+
+**Solução:** para dominio servido por Traefik, o registro tem que ser **DNS-only (nuvem cinza)**. Apagar tambem os **AAAA** -- sobrando IPv6 do CF, cliente dual-stack continua caindo no destino antigo. Alternativa (se quiser manter o CF na frente): instalar um **Cloudflare Origin Certificate** no Traefik, ou trocar o desafio pra **DNS-01** com token de API do CF.
+
+**Diagnostico em 10s** -- compare o emissor no publico e no origin:
+```bash
+echo | openssl s_client -connect DOMINIO:443 -servername DOMINIO 2>/dev/null | openssl x509 -noout -issuer
+echo | openssl s_client -connect IP_DO_VPS:443 -servername DOMINIO 2>/dev/null | openssl x509 -noout -issuer
+```
+Ambos *Let's Encrypt* -> cinza, saudavel. Publico *Google Trust Services* + origin *TRAEFIK DEFAULT CERT* -> laranja, ACME quebrado.
+
+**Ref:** Micro Investors, corte de dominio do F4 (2026-07-22). Os 3 subdominios irmaos ja eram cinza com LE; so apex e www estavam laranja. Desligar o laranja emitiu o cert em segundos e parou o churn. Familia de `#verificar-runtime-nao-estrutura`: o cert "existia" e era o errado.
+
+---
+
+## Canonical absoluto no layout do Next desindexa TODAS as rotas filhas {#next-canonical-layout-herdado}
+
+`tags: next.js, app router, metadata, canonical, alternates, hreflang, seo, desindexacao, layout, heranca, openGraph, i18n, next-intl`
+
+**Contexto:** portal Next (App Router) com varias rotas. Todas serviam `<link rel="canonical" href="https://dominio.com">` -- a RAIZ -- inclusive `/platform`, `/investors`, `/portfolio` e os equivalentes de outro locale. Efeito: cada rota diz ao Google que e' **duplicata da home**, e some do indice em favor de `/`.
+
+**Causa raiz:** o `layout.tsx` declarava `alternates: { canonical: "https://dominio.com" }` como string ABSOLUTA. Metadata de layout no App Router e' **herdada** por toda pagina que nao sobrescreve -- e nenhuma pagina sobrescrevia. Mesmo defeito no `openGraph.url`. Como bonus, nenhuma rota emitia `hreflang`.
+
+**Solução:** o layout NAO declara canonical (so `metadataBase`); cada pagina declara o seu no `generateMetadata`, via helper unico que tambem gera o `languages` (hreflang):
+```ts
+export const alternatesFor = (locale: string, path = "") => ({
+  canonical: absoluteUrl(locale, path),
+  languages: Object.fromEntries(routing.locales.map(l => [l, absoluteUrl(l, path)])),
+});
+```
+Centralizar a regra de prefixo de locale num modulo so (`lib/seo.ts`): ela estava reimplementada em 3 lugares (sitemap, pagina de detalhe e implicitamente no layout), e foi essa dispersao que deixou o bug passar.
+
+**Como verificar (o grep ingenuo mente):** o Next serializa o atributo como **`hrefLang`** (camelCase do JSX), entao `grep hreflang` case-sensitive da ZERO mesmo com a tag presente. Nome de atributo em HTML e' case-insensitive, entao esta correto -- use `grep -i`. Checar rota a rota:
+```bash
+for p in "" /platform /investors /pt/platform; do
+  curl -s "https://DOMINIO$p" | grep -oiE '<link rel="canonical" href="[^"]*"'
+done
+```
+Cada rota tem que devolver o canonical DELA, nao a raiz.
+
+**Ref:** Micro Investors, `[5-T]` do F4 (2026-07-22) -- pego no smoke de SEO, dias depois de a pagina ir ao ar. Nenhuma review por-commit pegou: o layout estava "certo" isoladamente; o defeito so existe na HERANCA.
+
+---
+
+## Sessão de login "morre sozinha" em todos os produtos ao mesmo tempo {#sessao-morre-invalidacao-por-pessoa}
+
+tags: sessão expira, login não dura, logout sozinho, refresh token, family invalidation, invalidate_all_families_for_subject, re-OTP, cross-produto, sub canal:destino, custo OTP, SSO 15 minutos, rt no fragmento, allkeys-lru, maxmemory-policy
+
+**Contexto:** usuários de VÁRIOS produtos reclamam que não ficam logados — voltam no dia seguinte (às vezes em horas) e tomam OTP de novo. Cada time acha que é "coisa do meu app". O TTL do refresh está correto (ex.: 30 dias) e a rotação até desliza a janela, então "a conta fecha" no papel.
+
+**Causa raiz (a que já aconteceu):** algum fluxo de login chamava uma primitiva de invalidação **chaveada pelo `sub`**. Em auth multi-produto o `sub` costuma ser `canal:destino` (`whatsapp:+55…`) — ou seja, **a PESSOA, não a audience**. Invalidar por `sub` num login apaga as famílias de refresh daquela pessoa em **todos os produtos**: um único login por magic-link em qualquer app derruba todos os outros, e o usuário entra num **loop de re-OTP cross-produto** (logou no A → caiu no B; logou no B → caiu no A). Com OTP pago (Cloud API), isso é custo direto por mensagem.
+
+Agrava: era **intencional** (matar refresh token roubado) e estava **testado como correto** — o teste criava famílias em duas audiences e afirmava que ambas morriam. Ninguém tinha ligado aquele teste ao efeito no login.
+
+**Como distinguir das outras causas (medir, não teorizar):** pegue o intervalo entre logins por identidade (ex.: `created_at` da tabela de OTP) e olhe a distribuição:
+- mortes a ~TTL do access (minutos) ⇒ **o consumer não renova** — não guarda o `rt` ou não chama o refresh;
+- mortes correlacionadas a login em OUTRO produto ⇒ **invalidação por pessoa** (este verbete);
+- mortes aleatórias e em massa ⇒ **despejo no Redis** — cheque `CONFIG GET maxmemory-policy`; `allkeys-*` despeja token antes do TTL e o sintoma é idêntico.
+
+**Solução:** login **nunca** destrói sessão. Roubo de token é tratado por rotação + reuse-detection (RFC 6749 §10.4), que é a defesa desenhada pra isso. Logout destrói **só o serviço que pediu** — não construa "logout-all": cross-produto reintroduz o bug sob demanda e vira vetor de DoS; "sair deste serviço" já é o revoke da família apresentada.
+
+**Verifique também as OUTRAS portas de entrada.** No mesmo incidente, o hop de SSO devolvia só o access token (15 min) e nenhum refresh — sessão morta por construção, e ninguém tinha percebido porque o sintoma se confundia com o bug principal. Se um fluxo entrega token, ele tem que entregar o par.
+
+**Trave com barreira estática (AST), não com teste comportamental.** Um teste da primitiva continua verde depois que você tira a chamada do router — ele não pega a reintrodução. Barre no **call-site** e, principalmente, no **import**: guardar só o nome deixa passar alias (`import x as _nuke`), `getattr` e `functools.partial`. Inclua as peças de um wipe artesanal (enumerar chaves do subject + deletar), senão a regressão volta sem citar a função óbvia. E prove a barreira **injetando a regressão e vendo falhar** — barreira que nunca ficou vermelha não vale nada.
+
+**Ref:** auth-service, ADR-0015 (2026-07-23). Sintoma: nenhum dos 10 produtos mantinha login por 1 dia contra 30 planejados.
+
+
+---
+
+## Coluna usada como critério de ORDENAÇÃO/desempate que ninguém nunca escreveu {#coluna-ordenacao-nunca-escrita}
+
+`tags: ORDER BY, desempate, tiebreak, coluna NULL, last_activity, comentario mente, spec nao implementada, criterio fantasma, NULLS LAST, ordenacao degenera, escolha nao-deterministica`
+
+**Contexto:** existe um `ORDER BY <coluna> DESC NULLS LAST, <fallback>` decidindo algo que
+importa (qual org/tenant/registro vence quando há mais de um candidato). O comentário ao lado
+descreve a regra em prosa ("last-active wins"), a spec previa preencher a coluna, o model
+declara, e há até teste afirmando que a coluna **existe**. Todo mundo cita a regra como fato —
+inclusive em devolutiva pra outro time.
+
+**Causa raiz:** **ninguém nunca escreveu a coluna.** A migração criou, a spec prometeu o
+`UPDATE`, e o `UPDATE` nunca foi implementado. Com 100% NULL, o `NULLS LAST` joga todo mundo pro
+fallback e a ordenação **degenera silenciosamente** no critério seguinte — normalmente
+`created_at DESC`, que é "a linha criada por último vence, para sempre", sem relação nenhuma com
+uso. O sistema tem um critério fantasma: documentado, testado na existência, morto no efeito.
+
+**Como detectar em 10 segundos:** `grep` por quem faz `UPDATE ... SET <coluna>` / atribui o
+campo. Zero ocorrências fora de migração/model/teste-de-existência ⇒ é fantasma. Depois confirme
+no banco: `SELECT count(*) FILTER (WHERE <coluna> IS NOT NULL), count(*) FROM <tabela>`.
+
+**Solução:** (a) implemente a escrita **ou** remova o degrau — mas não deixe os dois estados
+conviverem; (b) garanta **ordem total** (último degrau único, tipo `id`), senão empate deixa a
+decisão pra ordem física das linhas, que muda com `VACUUM`/restore; (c) **cuidado ao ligar a
+escrita**: se o critério é auto-reforçado (grava no vencedor), ligar cimenta a primeira escolha
+— só torne pegajosa a decisão que teve motivo, nunca a que saiu de empate, ou um bug reversível
+vira grudado.
+
+**Regra geral:** *ordenação por coluna só vale como fato depois de ver quem escreve nela.* Vale
+para qualquer campo de "última atividade", "último acesso", `daily_time_local` e afins.
+
+**Ref:** Plexco Tasks × Plexco Coach, ADR-0013 (2026-07-23). A coluna passou ~2 meses NULL
+enquanto o comentário afirmava o contrário; o efeito real mandaria a tarefa do operador pra org
+do cliente dele.
+
+---
+
+## Lookup por identificador "normalizado" só de um lado {#lookup-normaliza-so-um-lado}
+
+`tags: match exato, telefone, E.164, DDI, formato armazenado, normalizacao, unknown_phone, drop silencioso, regexp_replace, canonicalizacao, dado legado`
+
+**Contexto:** a borda canonicaliza o identificador que **chega** (telefone, CPF, e-mail, código)
+e faz `WHERE coluna = :valor_canonico`. Funciona pra maioria e falha pra uma minoria sem
+padrão — que some **sem erro**: nada logado como falha, nenhuma resposta ao usuário, só um
+contador genérico de "não encontrado".
+
+**Causa raiz:** a coluna **armazenada** nunca foi canonicalizada. Cadastro antigo, importação,
+tela sem máscara e API externa depositaram convenções diferentes na mesma coluna (com `+`, sem
+código do país, com pontuação). Canonicalizar só a entrada resolve metade do problema e esconde
+a outra: a comparação é entre uma forma limpa e um campo sujo.
+
+**Solução:** normalize **os dois lados** na comparação (ex.: `regexp_replace(col,'\D','','g')`)
+e trate a canonicalização da coluna como **higiene**, não pré-requisito — assim o conserto não
+fica bloqueado numa migração de dado. Se precisar de uma forma "curta" (sem prefixo/DDI) como
+candidato, **guarde por validação de país/tipo**: remover `55` cegamente transforma o lookup num
+coringa global (`679…` é Fiji, não DDD 67).
+
+⚠️ **Ordem importa.** Tolerar formato faz linhas que hoje não casam passarem a casar: quem tinha
+1 match passa a ter N. **Tenha a regra de desempate ANTES** — senão você troca um bug silencioso
+(drop) por um intermitente (escolha que oscila), que é pior. Ver
+[coluna de ordenação nunca escrita](#coluna-ordenacao-nunca-escrita).
+
+**Ref:** Plexco Tasks, ADR-0013 (2026-07-23). 6 de 12 linhas de `users.phone` estavam fora do
+canônico; o telefone do próprio operador nunca resolvia.
