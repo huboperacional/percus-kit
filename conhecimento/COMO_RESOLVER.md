@@ -28,7 +28,7 @@
 - [Hook `.ps1` quebra com erro de parser / acento vira caractere estranho](#ps51-ascii-hooks)
 - [Declarei versão errada ao retomar sessão (origin já estava à frente)](#origin-stale-resume)
 - [Fix aplicado não funciona / hipótese de root cause estava errada](#reproduzir-antes-de-fixar)
-- [Coach/projeto tentou commitar arquivo no canon (write cross-repo)](#cross-repo-write)
+- [Escrever em outro repo: caixa/arquivo — exceção é a pasta comum `conhecimento\`](#cross-repo-write)
 - [Editar JSON (plugin.json) via sed/CLI quebra a string com aspas](#json-sed-aspas)
 - [Ambiguidade de dado (2 formas válidas do mesmo identificador) — classificar por formato corrompe](#classificar-formato-corrompe)
 - [Codei o fix que o spec/HANDOFF mandava, mas mirava o alvo errado (target stale)](#alvo-do-spec-stale)
@@ -164,29 +164,35 @@ problema localmente e confirme a causa observada — não a inferida. Reproduzir
 
 ---
 
-## Projeto tentou commitar arquivo no canon (write cross-repo) {#cross-repo-write}
+## Escrever em outro repo: caixa/arquivo — exceção é a pasta comum `conhecimento\` {#cross-repo-write}
 
-`tags: cross-repo, canon, write, commit, outro projeto, protocolo, bloqueado, mover arquivo`
+`tags: cross-repo, canon, write, commit, outro projeto, protocolo, caixa de texto, conhecimento, mover arquivo, exceção`
 
-**Contexto:** um projeto (ex.: Coach) tentou escrever/commitar um arquivo dentro do canon
-(`_Novo_Projeto`) ou o canon tentou `git mv/cp/rm` pra fora dele.
+**Contexto:** uma sessão de um projeto (ex.: Coach, tiatendo) precisa propagar algo pra outro repo —
+outro produto, ou o canon (`_Novo_Projeto`).
 
-**Causa raiz:** violação do protocolo cross-repo. O canon **nunca escreve em outro repo**.
+**Regra geral:** pra escrever em **qualquer outro repo**, NÃO edite o repo de destino direto —
+entregue **texto numa caixa ou num arquivo** pro outro projeto aplicar nele mesmo. Leitura cross-repo
+é livre; escrita não. Vale pros dois sentidos: projeto → projeto **e** canon → projeto (o canon
+nunca faz `git mv/cp/rm` pra fora dele).
 
-**Solução:** o **único** mecanismo é entregar uma **caixa de texto pro operador colar manualmente** no
-repo de destino. Leitura cross-repo é permitida; escrita não. Se precisa propagar algo do canon pra um
-projeto, gere o bloco de texto e peça pro operador aplicar.
+⚠️ **Exceção única (operador, 2026-07-23):** os **arquivos comuns entre projetos que ficam em
+`D:\Claud Automations\_Novo_Projeto\conhecimento\`** — esses qualquer sessão **escreve e commita
+direto**. É onde mora o conhecimento cross-projeto (R23: este `COMO_RESOLVER.md`), sincronizado via
+`git pull`; obrigar caixa de texto pro próprio repositório de aprendizado só perderia o aprendizado.
+**A exceção é a pasta `conhecimento\`, NÃO o canon inteiro** — a raiz do canon
+(`01_REGRAS_INEGOCIAVEIS.md`, `02..06`, `CANON_VERSION.md`, plugin) segue a regra geral: mudança ali
+vai por caixa/arquivo pro operador aplicar. Regra curta: **`conhecimento\` → escreve direto; qualquer
+outro alvo → caixa de texto.**
 
-⚠️ **Exceção (operador, 2026-07-23): o canon é a ÚNICA exceção — escrita PRA DENTRO dele é livre.**
-Qualquer sessão, de qualquer projeto, pode escrever e commitar em `_Novo_Projeto/*` direto (é ali que
-o conhecimento R23, ADR e regra moram — obrigar caixa de texto pro próprio canon só fazia o
-aprendizado se perder). A caixa de texto continua obrigatória pra **todos os outros destinos**:
-canon → projeto e projeto → projeto. Regra curta: **escrever no canon, sim; escrever fora do canon,
-caixa de texto.** Ao commitar no canon vindo de outro projeto, commite **só os arquivos que você
-tocou** — a árvore do canon costuma ter trabalho em voo de outra sessão.
+**Ao commitar em `conhecimento\` vindo de outro projeto:** stage **seletivo** — commite só os arquivos
+que você tocou; a árvore do canon costuma ter trabalho em voo de outra sessão (em 23/07 havia
+`01_REGRAS_INEGOCIAVEIS.md` modificado por outra frente). Gate R11 com `Set-Location` no repo do
+canon, em chamada separada do commit (PreToolUse).
 
-**Ref:** memória `feedback_cross_repo_write_protocol` (reforçado 2026-05-30; exceção do canon
-adicionada 2026-07-23 a pedido do operador, a partir da Família Milionária).
+**Ref:** memória `feedback_cross_repo_write_protocol` (reforçado 2026-05-30). Exceção adicionada
+2026-07-23 (Família Milionária) e **estreitada de "canon inteiro" para `conhecimento\`** na mesma
+data a pedido do operador (sessão tiatendo).
 
 ---
 
