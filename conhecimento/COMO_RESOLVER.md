@@ -21,6 +21,7 @@
 - [Tirar um produto do superusuário do Postgres (least-privilege) num cluster compartilhado](#least-privilege-cluster-compartilhado)
 - [Conselho "revisa a coisa errada" / prompt stale entre runs](#conselho-prompt-stale)
 - [QR code de pareamento "não linka" → suspeite do SEU refresh antes de culpar o provedor](#qr-pareamento-expira)
+- ["SSH quebrou" depois de rotacionar chaves no Windows — mas a chave está OK, é o `ssh` errado](#ssh-automacao-git-bash-vs-agente-windows)
 - [Dois produtos na MESMA conta Stripe → todo webhook chega nos dois; discrimine por preço](#stripe-cross-talk-dois-adapters)
 - [Hook fica lento e trava os commits: diretorio de estado que so cresce](#estado-append-only-trava-hook)
 - [Tag de plano aberta que já foi entregue sob OUTRO número de migration](#migration-numero-reciclado)
@@ -1758,6 +1759,8 @@ plugin (`deepseek-review.ps1`, `deepseek-impl.{ps1,sh}` do R13, `review-router.p
 
 **Ref:** tiatendo `0.244.0`; memória de projeto `feedback-redis-noauth-degrada-em-silencio`.
 
+**2ª instância (Família Milionária, 2026-07-24) — o `environment:` do stack VENCE o `env_file`.** A rotação de 23/07 atualizou postgres/redis/GOWA + o `.env` (local e prod), mas o `docker-stack.yml` fixa `DATABASE_URL`/`REDIS_URL` num bloco `environment:` que **sobrepõe** o `env_file: .env` — então rotacionar só o `.env` **não chega no container**. Dois agravantes: (a) o `deploy_v2.py` faz `tar` da pasta e shipa o stack file **LOCAL** por cima da VPS (só depois faz `sed` do image tag), e esse stack file é **gitignored** (invisível no `git status`); (b) sintoma traiçoeiro — a API fica `healthy`/`db:ok` porque o container **vive de conexões abertas de ANTES da rotação** (o Postgres não re-autentica conexão viva), e só quebra num **restart** (`asyncpg InvalidPasswordError`), enquanto o GOWA_WEBHOOK_SECRET velho **mata o inbound do bot em silêncio** (HMAC fail-closed). **Não adivinhe qual valor é o vivo pela aparência** — teste: `psql`/`redis-cli`/`curl` com cada credencial, e pro webhook compare o **comprimento** com o que o servidor que ASSINA usa (aqui o vivo era o valor "novo", mas às vezes o "velho" é que é o certo). Fix = alinhar `.env` **E** stack file (local **e** VPS), depois `docker stack deploy`. Melhoria pendente: uma fonte só (remover do `environment:` → cair no `env_file`, ou docker secrets). Memória FM `gotcha_stack_file_hardcoda_creds_sobrepoe_envfile`.
+
 ---
 
 ## Tirar um produto do superusuário do Postgres (least-privilege) num cluster compartilhado {#least-privilege-cluster-compartilhado}
@@ -1779,7 +1782,23 @@ tags: postgres, superuser, superusuario, least-privilege, rls, row-level-securit
 
 **Solução:** ensaie num CLONE fiel (não no banco `_test` defasado), com sonda de grants em 5 camadas (`has_database_privilege` CONNECT → `has_schema_privilege` USAGE → `has_table_privilege` × verbos × tabelas → `has_sequence_privilege` → prova NEGATIVA conectando como a role: sem CREATE, sem BYPASSRLS, dona de 0 objetos). Cutover = trocar `DATABASE_URL` do serviço por `--env-add` (rollback em segundos). Modo de falha é BARULHENTO (`permission denied` no log, não listagem vazia) porque não há política RLS filtrando.
 
-**Ref:** Plexco Tasks s147 (2026-07-23); `Plexco Tasks/docs/superpowers/specs|plans/2026-07-23-least-privilege-*` + `docs/deploy/2026-07-23-least-privilege-cutover-runbook.md`; memórias `reference_least_privilege_ensaio_gotchas`, `reference_rls_alarme_falso_auth_gotrue_lixo`.
+**Variante mais simples (1 role só, sem migrator separado):** se as migrations do produto rodam **como `postgres`** (não como uma role própria), o app-role pode ser DML-only e você NÃO precisa de `_migrator` nem de `FOR ROLE` no `ALTER DEFAULT PRIVILEGES` — o default privilege da role que cria (o próprio `postgres`) já cobre as tabelas futuras. Trade-off: o migrator segue sendo superusuário (blast-radius do migrator não some; aceitável quando o objetivo é tirar o superusuário do **caminho de 100% do tráfego**, que é o app). O gotcha de **TYPES/FUNCTIONS continua valendo mesmo nessa variante**: hoje o default do `PUBLIC` cobre EXECUTE/USAGE, mas num cluster com sweeps de least-privilege o `PUBLIC` pode ser revogado → adicione `GRANT EXECUTE ON ALL FUNCTIONS` + `ALTER DEFAULT PRIVILEGES … EXECUTE ON FUNCTIONS` + `… USAGE ON TYPES` upfront (a varredura de `count(*)` NÃO pega isso; só o `[5-T]` no runtime pegaria).
+
+**Ref:** Plexco Tasks s147 (2026-07-23); `Plexco Tasks/docs/superpowers/specs|plans/2026-07-23-least-privilege-*` + `docs/deploy/2026-07-23-least-privilege-cutover-runbook.md`; memórias `reference_least_privilege_ensaio_gotchas`, `reference_rls_alarme_falso_auth_gotrue_lixo`. **2ª instância (variante 1-role):** Micro Investors, épico "sair de superusuário" 2026-07-23/24 — `Micro Investors/docs/superpowers/plans/2026-07-23-rls-superusuario.md` (migration 00045 desliga RLS legacy inerte; role `mi_v2_app` DML-only, `postgres` segue migrator; blindagem TYPES/FUNCTIONS aplicada).
+
+---
+
+## "SSH quebrou" depois de rotacionar chaves no Windows — mas a chave está OK, é o `ssh` errado {#ssh-automacao-git-bash-vs-agente-windows}
+
+tags: ssh, rotacao de chaves, permission denied, publickey, ssh-agent, windows, git bash, msys2, named pipe, batchmode, automacao, deploy, ssh_runner, passphrase, subprocess
+
+**Contexto:** rotação de chaves SSH (novas com passphrase, antigas revogadas). A automação (`ssh_runner`, deploy scripts) passa a dar `Permission denied (publickey)` mesmo depois de subir o `ssh-agent` e carregar a chave. O `ssh` cru pelo PowerShell conecta; o MESMO script pelo Git Bash falha — sintoma idêntico ao de chave não-autorizada, o que joga o diagnóstico pra "a rotação quebrou a chave".
+
+**Causa raiz:** duas coisas distintas confundidas numa só. (1) A chave precisa do **ssh-agent do Windows como serviço** com a chave carregada (`ssh-add -l`), senão `BatchMode=yes` não tem como provar posse da privada com passphrase. (2) Mesmo com o agente OK, automação lançada pelo **Git Bash** resolve `ssh` pro **MSYS2 `/usr/bin/ssh`** (vem antes no PATH — cheque `which -a ssh`), que **NÃO fala com o agente do Windows** (o agente expõe um named pipe; o MSYS2 espera um socket unix) → cai só na chave em disco, que tem passphrase, e com BatchMode falha silenciosamente.
+
+**Solução:** (a) agente do OpenSSH do Windows como serviço + `ssh-add` uma vez (persiste entre reboots, chave segue cifrada em disco); (b) no código de automação **pine o binário**: no Windows use `C:\Windows\System32\OpenSSH\ssh.exe` (agente-aware) em vez de `ssh` puro, independente do shell que lançou — `subprocess` resolve pelo PATH herdado, que muda entre Git Bash e PowerShell. Verifique do **shell em que a automação REALMENTE roda**, não do PowerShell interativo. Bônus: `subprocess` não expande `~` — passe `os.path.expanduser` no caminho da chave (o default do `os.getenv` já vem expandido, o valor do env NÃO).
+
+**Ref:** Família Milionária 2026-07-24; `execution/ssh_runner.py` (`_sshBin()`), `deploy_v2.py`, `deploy_frontend_v2.py`; memória `project_snapshot_2026_07_23_ssh_rotacao_quebrou_automacao`.
 
 ---
 
