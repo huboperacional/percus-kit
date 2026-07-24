@@ -18,6 +18,7 @@
 ## Índice
 
 - [Sessão de login "morre sozinha" em todos os produtos ao mesmo tempo](#sessao-morre-invalidacao-por-pessoa)
+- [Tirar um produto do superusuário do Postgres (least-privilege) num cluster compartilhado](#least-privilege-cluster-compartilhado)
 - [Conselho "revisa a coisa errada" / prompt stale entre runs](#conselho-prompt-stale)
 - [QR code de pareamento "não linka" → suspeite do SEU refresh antes de culpar o provedor](#qr-pareamento-expira)
 - [Dois produtos na MESMA conta Stripe → todo webhook chega nos dois; discrimine por preço](#stripe-cross-talk-dois-adapters)
@@ -1723,6 +1724,29 @@ com as 5 parcelas na mesma data).
 **Solução:** (1) depois de qualquer rotação/redeploy, verifique **in-process** dentro do container (`getRedis()` devolve cliente ou `None`?), nunca pelo log; (2) no compose, exija a variável (`${REDIS_URL:?}`) pra falhar cedo em vez de silenciosamente; (3) ao escrever um cliente com degrade gracioso, **separe** "não configurado" (silêncio ok) de "configurado e falhou" (tem que alarmar).
 
 **Ref:** tiatendo `0.244.0`; memória de projeto `feedback-redis-noauth-degrada-em-silencio`.
+
+---
+
+## Tirar um produto do superusuário do Postgres (least-privilege) num cluster compartilhado {#least-privilege-cluster-compartilhado}
+
+tags: postgres, superuser, superusuario, least-privilege, rls, row-level-security, grant, role, alembic, ddl, cluster-compartilhado, blast-radius, sqli
+
+**Contexto:** auditoria aponta que a aplicação conecta como `postgres` (superusuário) e que "N tabelas com RLS não estão sendo aplicadas". Antes de agir, MEÇA — a premissa costuma estar meio errada, e a parte errada é a alarmante.
+
+**Causa raiz / achados que recorrem:**
+- **RLS habilitado ≠ política existe.** `relrowsecurity=t` numa tabela só diz que o RLS está ligado; `SELECT count(*) FROM pg_policies` é quem diz se HÁ política. Ligado sem política = *deny-all* pra quem não é dono/super (e grant não vence RLS). Rode as duas queries: as tabelas "com RLS" podem ser todas de um schema morto (ex.: `auth` do GoTrue) sem política nenhuma.
+- **O risco real do superusuário num cluster compartilhado é BLAST RADIUS, não RLS.** Um SQLi na app conectada como `postgres` alcança os N bancos do cluster (inclusive o de auth de outros produtos), não só as tabelas do produto.
+- **Role só-DML quebra o Alembic.** O migrator precisa de DDL; separe `<prod>_app` (DML, pool 24/7) de `<prod>_migrator` (dono do schema, só migrations via `docker exec --env-file` — caminho do HOST, não vaza senha nos args).
+- **`ALTER DEFAULT PRIVILEGES` exige `FOR ROLE <migrator> IN SCHEMA public`** conectado ao banco certo, e cobre 4 classes: TABLES/SEQUENCES/FUNCTIONS/TYPES (esqueça TYPES e migration com enum novo nasce inacessível).
+- **`REASSIGN OWNED` é proibido em cluster compartilhado** (alcança objetos de outros bancos). Transfira posse por bloco `DO` escopado a `schemaname='public'`.
+- **Sequence serial-PK não troca de dono isolada** (`ALTER TABLE seq OWNER` → "linked to table"); ela segue a tabela. Exclua `relkind='S'` do loop de ownership.
+- **Enums precisam ir pro migrator** (`ALTER TYPE ... ADD VALUE` em migration futura falha se ele não for dono).
+- **`GRANT CONNECT ON DATABASE` usa nome LITERAL** → num script que roda em clone E prod, parametrize o dbname (`-v dbname=... :"dbname"`), senão o grant vaza pro banco errado. `CREATE ROLE` é cluster-global: limpe as roles de ensaio (`REVOKE`/`DROP OWNED`/`DROP ROLE`).
+- **A suíte pytest não roda como a app-role** se o `conftest` faz `DROP SCHEMA public` (trabalho de owner). Cubra "app precisa de algo além de DML?" por varredura estática do runtime (advisory-lock/TEMP/nextval passam pra qualquer role) + provas de conexão como a role.
+
+**Solução:** ensaie num CLONE fiel (não no banco `_test` defasado), com sonda de grants em 5 camadas (`has_database_privilege` CONNECT → `has_schema_privilege` USAGE → `has_table_privilege` × verbos × tabelas → `has_sequence_privilege` → prova NEGATIVA conectando como a role: sem CREATE, sem BYPASSRLS, dona de 0 objetos). Cutover = trocar `DATABASE_URL` do serviço por `--env-add` (rollback em segundos). Modo de falha é BARULHENTO (`permission denied` no log, não listagem vazia) porque não há política RLS filtrando.
+
+**Ref:** Plexco Tasks s147 (2026-07-23); `Plexco Tasks/docs/superpowers/specs|plans/2026-07-23-least-privilege-*` + `docs/deploy/2026-07-23-least-privilege-cutover-runbook.md`; memórias `reference_least_privilege_ensaio_gotchas`, `reference_rls_alarme_falso_auth_gotrue_lixo`.
 
 ---
 
