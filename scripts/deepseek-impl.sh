@@ -16,7 +16,7 @@ set -euo pipefail
 TASK=""
 FILES=""
 RULES="CLAUDE.md,AGENTS.md"
-MODEL="deepseek-chat"
+MODEL="deepseek-v4-pro"
 TEMPERATURE="0.0"
 ENDPOINT="https://api.deepseek.com/v1/chat/completions"
 APPLY=0

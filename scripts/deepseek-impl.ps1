@@ -28,8 +28,8 @@ param(
     [Parameter(HelpMessage = 'Arquivos de regras a injetar no system prompt (default: CLAUDE.md, AGENTS.md)')]
     [string[]]$Rules = @('CLAUDE.md', 'AGENTS.md'),
 
-    [Parameter(HelpMessage = 'Modelo DeepSeek (default: deepseek-chat = V3.1/V4)')]
-    [string]$Model = 'deepseek-chat',
+    [Parameter(HelpMessage = 'Modelo DeepSeek (default: deepseek-v4-pro = V3.1/V4)')]
+    [string]$Model = 'deepseek-v4-pro',
 
     [Parameter(HelpMessage = 'Temperatura (default: 0.0 para implementacao deterministica)')]
     [double]$Temperature = 0.0,

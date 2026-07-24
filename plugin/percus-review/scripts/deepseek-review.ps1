@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 <#
 .SYNOPSIS
   Revisa git diff usando DeepSeek API (cross-provider review).
@@ -17,7 +17,7 @@
 [CmdletBinding()]
 param(
     [string]$Base = "",
-    [string]$Model = "deepseek-chat",
+    [string]$Model = "deepseek-v4-pro",
     [double]$Temperature = 0.0,
     [string]$Endpoint = "https://api.deepseek.com/v1/chat/completions"
 )

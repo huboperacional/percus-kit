@@ -10,7 +10,7 @@
 set -euo pipefail
 
 BASE=""
-MODEL="${DEEPSEEK_MODEL:-deepseek-chat}"
+MODEL="${DEEPSEEK_MODEL:-deepseek-v4-pro}"
 TEMPERATURE="${DEEPSEEK_TEMPERATURE:-0.0}"
 ENDPOINT="${DEEPSEEK_ENDPOINT:-https://api.deepseek.com/v1/chat/completions}"
 

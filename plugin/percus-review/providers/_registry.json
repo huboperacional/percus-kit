@@ -2,10 +2,10 @@
   "providers": [
     {
       "id": "deepseek",
-      "name": "DeepSeek (deepseek-chat)",
+      "name": "DeepSeek (deepseek-v4-pro)",
       "type": "http",
       "endpoint": "https://api.deepseek.com/v1/chat/completions",
-      "model": "deepseek-chat",
+      "model": "deepseek-v4-pro",
       "env_key": "DEEPSEEK_API_KEY",
       "auth_header": "Authorization: Bearer ${KEY}",
       "wrapper_ps1": "providers/deepseek.ps1",

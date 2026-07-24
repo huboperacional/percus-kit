@@ -54,7 +54,7 @@ param(
     [ValidateSet("consult","pre-mortem","review","analyze")]
     [string]$Mode = "consult"
     ,[int]$MaxInputTokens = 8000
-    ,[string]$DeepSeekModel = "deepseek-chat"
+    ,[string]$DeepSeekModel = "deepseek-v4-pro"
     ,[string]$GroqModel     = "llama-3.3-70b-versatile"
     ,[AllowEmptyString()]
     [ValidateSet("claude-haiku-4-5","claude-sonnet-4-6","claude-opus-4-7","")]
