@@ -38,6 +38,9 @@
 - [Devolutiva cross-time escrita da MEMÓRIA acusa o bug errado — reverificar no código](#devolutiva-reverificar-no-codigo)
 - [Device GOWA (número novo/cold) banido "toda hora" com volume baixo](#gowa-device-ban-usync)
 - [Skill do plugin referida como slash command (`/percus-review:checkpoint`) — não existe](#skill-nao-e-slash)
+- [Relatório com JANELA de período re-introduz viés de sobrevivência que você "já consertou"](#janela-reintroduz-vies-sobrevivencia)
+- [Deploy sobe código VELHO com tag NOVA: diretório de build compartilhado entre serviços](#build-dir-compartilhado-tag-nova)
+- [Args com aspa simples atravessando `ssh` + `bash -c` selecionam a coisa ERRADA, sem erro](#aspa-simples-ssh-bash-c)
 - [Log de diagnóstico "no ar" que nunca emitiu: sob uvicorn o root logger é mudo](#uvicorn-root-logger-mudo)
 - [Cross-Claude do conselho retorna 400 — `temperature` num modelo Opus 4.7+](#cross-claude-400-sampling)
 - [Imagem local em Docker Swarm crash-loopa com "pull access denied" (sem registry)](#swarm-local-image-resolve)
@@ -95,6 +98,9 @@
 - [Scheduler novo sobre tabela velha: dedup por MARCADOR, senão a linha fóssil engole o 1º disparo](#scheduler-dedup-por-marcador)
 - ["O backend já aceita X" — repo ≠ imagem em prod (422 silencioso pós-deploy parcial)](#repo-nao-e-imagem-em-prod)
 - [Monitor passivo: o erro que você viu no probe ativo pode NÃO existir no pipe](#monitor-passivo-corpo-do-erro)
+- [Feature vira no-op DETERMINÍSTICO num caso comum e a suíte inteira fica verde](#fixture-uniforme-esconde-irregular)
+- ["Cinto de segurança" extra CORTA o caso legítimo — e alargá-lo vira guarda morta](#guarda-redundante-tesoura-ou-morta)
+- [`DROP COLUMN` no rollback falha: uma view `SELECT *` depende da coluna nova](#down-migration-view-select-star)
 
 ---
 
@@ -1861,6 +1867,144 @@ tags: handoff, bot_paused, escalonamento, atendente, reaper, virada de dia, clie
 ⚠️ **Duas armadilhas:** (a) os contadores têm que zerar em **TODOS** os caminhos que despausam — não só no helper "oficial": no nosso caso 4 dos 5 eram `UPDATE` cru em rotas do painel, e sem o reset um **segundo** handoff da mesma conversa nasceria "já avisado" e ficaria mudo de novo; (b) devolver ao bot sem **saída** re-escala pelo mesmo motivo → ping-pong; guarde o MOTIVO do handoff e ofereça alternativa (ex.: fora-de-área → oferecer retirada).
 
 **Ref:** tiatendo mig 104, `execution/engine/handoffNudge.py`, `execution/engine/handoffCleanup.py` (2026-07-25).
+
+<a id="fixture-uniforme-esconde-irregular"></a>
+## Feature vira no-op DETERMINÍSTICO num caso comum e a suíte inteira fica verde
+
+tags: fixture uniforme, caso irregular, dia fechado, feriado, no-op semanal, cobertura falsa, business hours, lookback curto, folga semanal
+
+**Sintoma:** feature nova, TDD com RED provado em cada teste, ~100 testes verdes incluindo banco real. Em produção ela simplesmente **não roda** — não com erro, sem rodar — num caso que é o MAIS COMUM do domínio. No caso medido: rotina diária que dependia de "achar o último fechamento olhando 1 dia pra trás". No tenant que **fecha na segunda** (o padrão de quase todo restaurante), a terça de manhã não achava fechamento nenhum, a função devolvia `None`, o caller abortava — e a rotina morria **toda semana**, em silêncio.
+
+**Causa raiz:** **todo fixture tinha os 7 dias da semana preenchidos e iguais.** Um fixture uniforme não é "um caso de teste": é uma AFIRMAÇÃO de que a irregularidade do domínio não existe. Com dados regulares o teste prova só o caminho regular — e a sensação de cobertura (100 verdes) impede de procurar mais. Some-se um limiar de busca curto ("olho 1 dia pra trás") calibrado no caso regular, e o resultado é no-op onde ninguém olha.
+
+**Solução:**
+1. Antes de dar a feature por coberta, pergunte **"qual é a IRREGULARIDADE deste domínio?"** e escreva um fixture que a contenha: dia da semana vazio, data marcada como exceção/feriado, item sem o campo opcional, tenant sem a config, mês de 28 dias, turno partido.
+2. Quando um helper varre "N períodos pra trás", **N tem que cobrir a maior lacuna plausível** (folga semanal + feriado emendado), e a varredura tem que **pular as exceções** (lista de datas fechadas), senão ela inventa um período que nunca existiu.
+3. Se a função pode devolver "não achei", **logue WARNING nesse caminho** — um no-op mudo é indistinguível de "não havia nada a fazer".
+4. Quem achou isto foi **review cross-provider reproduzindo por execução**, não lendo. Peça ao revisor pra TENTAR QUEBRAR com dados reais do domínio, não pra opinar sobre o código.
+
+**Ref:** tiatendo `0.251.0` / Frente B reset noturno (2026-07-26); `execution/plugins/restaurant/nightlyReset.py::_lastEndedWindow`, `tests/test_nightlyResetWindows.py`. Parente de [#red-nunca-visto-embarca-fossil](#red-nunca-visto-embarca-fossil) e [#verificar-runtime-nao-estrutura](#verificar-runtime-nao-estrutura).
+
+---
+
+<a id="guarda-redundante-tesoura-ou-morta"></a>
+## "Cinto de segurança" extra CORTA o caso legítimo — e alargá-lo vira guarda morta
+
+tags: guarda redundante, defensive programming, limiar, teto, janela temporal, codigo morto, falsa protecao, cap
+
+**Sintoma:** você adiciona um limite defensivo "a mais" (teto de tempo, cap de tamanho, janela máxima) além da proteção que já existe. Ele passa a **descartar em silêncio** casos válidos. Ao perceber, o reflexo é alargar o limite — e aí ele nunca mais dispara, virando código que **lê como proteção e não protege nada**.
+
+**Caso medido:** teto de 48h numa janela de "quem convidar de manhã". O tenant que fecha **dois dias seguidos** (dom+seg) reabre com o último fechamento 60h atrás → o teto empurrava o corte pra depois do evento, e aqueles clientes **nunca** eram convidados (o corte só anda pra frente). Alargar pra 8 dias consertou o corte e criou o problema oposto: a busca já era estruturalmente limitada a 8 dias, então o `max()` passou a nunca ativar.
+
+**Causa raiz:** limiar defensivo só vale se você souber **qual é o maior caso legítimo em números**. Abaixo dele é tesoura; acima do limite estrutural que já existe, é decoração. E a falha da tesoura é **silenciosa** — não há erro, só ausência.
+
+**Solução:**
+1. Escreva em números o **maior caso legítimo** ("folga de 2 dias = 60h") e o **limite que o sistema já impõe**. Se a guarda nova não fica ESTRITAMENTE entre os dois, não escreva: ela é tesoura ou é morta.
+2. Prefira proteção **exata** a proteção **temporal**: no caso medido, o que resolveu de verdade foi um **backfill na migration** carimbando todo o histórico como "já tratado" — sem raio pra errar. Coluna nova nasce `NULL`, e `NULL` costuma significar "elegível": carimbe o passado na própria migration.
+3. **Toda guarda precisa de um teste que a veja DISPARAR.** Guarda que nenhum teste consegue ativar é código morto disfarçado — remova ou substitua.
+
+**Ref:** tiatendo `0.251.0` (2026-07-26); `execution/core/backgroundRunner.py::_processTenantMorningQueue`, `execution/database/migrations/105_nightly_reset.sql`.
+
+---
+
+<a id="down-migration-view-select-star"></a>
+## `DROP COLUMN` no rollback falha: uma view `SELECT *` depende da coluna nova
+
+tags: migration down, rollback, drop column, view depends on column, select star, cascade, orders_real, downgrade nao testado
+
+**Sintoma:** o `up` da migration aplica limpo, mas o `down` estoura: `ERROR: cannot drop column X of table T because other objects depend on it / DETAIL: view V depends on column X`. Só aparece se você **rodar o down de verdade** — quem só lê o SQL não vê.
+
+**Causa raiz:** views criadas como `SELECT * FROM tabela` **congelam as colunas na criação**, mas se a view for recriada (`CREATE OR REPLACE`) em algum momento DEPOIS de a coluna existir, ela passa a depender dela. Aí o `DROP COLUMN` seco fica bloqueado. A dependência depende da ORDEM histórica das migrations naquele banco — então pode falhar em prod e passar num banco fresco (ou o contrário).
+
+**Solução:** no `down`, **derrubar a view, tirar a coluna e RECRIAR a view** com a definição da migration que é a fonte dela. ⚠️ **Nunca `DROP COLUMN ... CASCADE`**: "resolve" o erro e deixa o banco SEM a view — quebra consultas dependentes muito depois, longe da causa. Prove o ciclo completo em banco efêmero: **fresh → up → down → up → up** (a última repetição prova idempotência).
+
+**Ref:** tiatendo mig 105 vs view `orders_real` (2026-07-26); `execution/database/migrations/105_nightly_reset_down.sql`. Parente de [#migration-numero-reciclado](#migration-numero-reciclado).
+
+---
+
+---
+
+<a id="janela-reintroduz-vies-sobrevivencia"></a>
+## Relatório com JANELA de período re-introduz viés de sobrevivência que você "já consertou"
+
+tags: relatorio, janela, periodo, vies de sobrevivencia, dado censurado, media, mediana, gargalo, badge, etapa terminal, permanencia aberta, funil, cycle time
+
+**Contexto:** relatório de "tempo médio parado por etapa". O viés de sobrevivência estava
+identificado e tratado no plano: a média TEM que incluir as permanências **abertas** (`agora −
+entrada`), senão quem ainda está parado — justamente o lento — fica fora e a etapa mais travada
+aparece como a mais saudável.
+
+**Causa raiz:** o plano definia a amostra como "o que ENTROU na janela". Isso conserta o viés
+*dentro* da janela e o reintroduz *pela borda*: a tarefa parada há 60 dias **não entrou** numa
+janela de 30 dias e **não saiu** (nunca saiu) — some do relatório inteiro. O pior caso vira
+invisível justamente por ser o pior caso. Duas naturezas de bug moram aqui: o filtro que parecia
+neutro (a janela) carrega a mesma assimetria que você acabou de remover do cálculo.
+
+**Solução:** a base da média é `encerrou na janela` **∪** `segue aberta agora` — independente de
+quando começou —, medindo a permanência INTEIRA (nunca a fatia dentro da janela). Corolários:
+- **Declare a base de contagem de CADA campo** no docstring e na própria tela. Campos com bases
+  diferentes (entrada por data de entrada, saída por data de saída) não se somam, e quem somar vai
+  concluir que a tela está quebrada. Vale `amostra == saiu + ainda_aqui`; **não** vale
+  `entrou == saiu + ainda_aqui`.
+- **Taxa é fração da MESMA base do numerador.** `count/entrou` passa de 1 quando a etapa esvazia
+  mais do que recebeu no período; `count/saiu` é limitada a 1 por construção.
+- ⚠️ **Categoria TERMINAL não tem "tempo parado"** e envenena a mediana de comparação nos dois
+  sentidos: recém-alimentada (média ~0) derruba a base e acusa de gargalo quem está só um pouco
+  acima; envelhecida, absolve todo mundo. Tire-a da base **e** do diagnóstico.
+- **Prove cada guarda por MUTAÇÃO:** reintroduza o bug e confirme que o teste específico fica
+  vermelho com a mensagem certa. Foi assim que apareceu um teste que passava por **coincidência
+  aritmética** (2,99 dias contra um corte de 3,0) — verde não prova que ele testa algo.
+
+**Ref:** Plexco Tasks s150 (2026-07-26), `backend/app/services/stage_funnel.py` (as 6 armadilhas
+no docstring), `backend/tests/test_stage_funnel.py`. Parente de
+[#red-nunca-visto-embarca-fossil](#red-nunca-visto-embarca-fossil).
+
+---
+
+<a id="build-dir-compartilhado-tag-nova"></a>
+## Deploy sobe código VELHO com tag NOVA: diretório de build compartilhado entre serviços
+
+tags: deploy, build on vps, docker, tag unica, git archive, diretorio compartilhado, codigo velho, rollout falso, frontend backend
+
+**Sintoma:** você commita o fix, roda o deploy, a tag é nova, o `service update` converge, o
+container fica `Running` — e **o defeito continua na tela**. Nada no output indica erro.
+
+**Causa raiz:** o diretório de build na máquina remota (`/opt/<projeto>-build`) é **compartilhado
+pelos deploys de todos os serviços** e fica na revisão de **quem arquivou por último**. O script de
+um serviço fazia `git archive origin/master` antes de buildar; o do outro só entrava no diretório e
+buildava. Deployar o segundo depois de um commit novo empacota a árvore ANTIGA com uma tag NOVA —
+todos os sinais de sucesso presentes, conteúdo errado.
+
+**Solução:** **re-arquivar dentro de cada script de deploy**, sem exceção, e **imprimir a revisão
+empacotada** (`git rev-parse --short origin/master`) pra ela aparecer no log ao lado da tag. Tag
+única não protege disto: ela prova que a IMAGEM é nova, não que o CÓDIGO é. Ao verificar um deploy,
+compare o que está na tela com o COMMIT, não com a tag.
+
+**Ref:** Plexco Tasks s150 (2026-07-26) — o frontend saiu 2x no commit errado antes de eu perceber.
+Parente de [#verificar-runtime-nao-estrutura](#verificar-runtime-nao-estrutura).
+
+---
+
+<a id="aspa-simples-ssh-bash-c"></a>
+## Args com aspa simples atravessando `ssh` + `bash -c` selecionam a coisa ERRADA, sem erro
+
+tags: ssh, bash -c, aspas, quoting, pytest -k, selecao de testes, falso verde, paramiko, payload
+
+**Sintoma:** `-k 'a or b'` (ou qualquer arg com aspa simples) enviado por SSH dentro de
+`bash -c '...'` roda **sem erro** e reporta "1 passed" — mas selecionou testes que você não pediu, ou
+nenhum dos que importavam. Você lê o verde e acha que provou algo.
+
+**Causa raiz:** a aspa simples do arg **fecha o wrapper** `bash -c '...'`. O que sobra é reparseado
+como argumentos soltos, e ferramentas como o pytest aceitam argumentos a mais sem reclamar.
+
+**Solução:** escapar no padrão POSIX antes de montar o comando —
+`args.replace("'", "'''")` — ou não passar payload por `bash -c` (subir um script por SFTP e
+executá-lo). E ao ler o resultado de uma execução filtrada, **confira o número de testes
+selecionados/deselecionados**, não só o "passed": foi a contagem que não fechava (2 selecionados
+onde deviam ser 3) que revelou o problema.
+
+**Ref:** Plexco Tasks s150 (2026-07-26), `vps-test.py::run_pytest`. Parente de
+[#json-sed-aspas](#json-sed-aspas).
 
 > **Nova entrada?** Copie o bloco-modelo abaixo, preencha, e adicione no Índice.
 >
