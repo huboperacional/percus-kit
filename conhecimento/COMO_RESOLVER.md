@@ -41,6 +41,8 @@
 - [Log de diagnóstico "no ar" que nunca emitiu: sob uvicorn o root logger é mudo](#uvicorn-root-logger-mudo)
 - [Cross-Claude do conselho retorna 400 — `temperature` num modelo Opus 4.7+](#cross-claude-400-sampling)
 - [Imagem local em Docker Swarm crash-loopa com "pull access denied" (sem registry)](#swarm-local-image-resolve)
+- [Guard `try/except` fail-open esconde import errado: a feature vira no-op silencioso](#fail-open-esconde-import-errado)
+- [Conversa escalada pra humano fica MUDA e ninguém percebe (54 msgs em 34 min)](#handoff-mudo-sem-salvaguarda)
 - [Hook pre-commit (R11) é PreToolUse: "review && commit" numa chamada só sempre bloqueia](#pretooluse-review-commit)
 - [`importlib.reload(config)` num teste polui a suite inteira (quebra testes que rodam depois)](#reload-config-polui-suite)
 - [Deploy: `docker build ... | tail && service update` mascara build falho → outage 404](#deploy-pipe-mascara-exit)
@@ -1821,6 +1823,44 @@ tags: logging, uvicorn, fastapi, root logger, lastResort, log.info sumiu, observ
 **Ref:** Plexco Tasks s149 (2026-07-25); `backend/app/logging_setup.py`, `backend/app/utils/log_redact.py`, `backend/tests/test_log_sem_pii.py`; memória `reference_uvicorn_nao_configura_root_logger`. Parente de [#verificar-runtime-nao-estrutura](#verificar-runtime-nao-estrutura) e [#red-nunca-visto-embarca-fossil](#red-nunca-visto-embarca-fossil) — o teste da sonda passava porque logava `sorted(keys)` e teria passado com qualquer nome de chave.
 
 ---
+
+
+---
+
+<a id="fail-open-esconde-import-errado"></a>
+## Guard `try/except` fail-open esconde import errado: a feature vira no-op silencioso
+
+tags: fail-open, try except, import errado, no-op silencioso, review cross-provider, teste de wiring, migration aplicada, testes verdes
+
+**Contexto:** salvaguarda nova, plugada num caminho crítico (gate que não pode quebrar). Envolvi a chamada num `try/except` fail-open — correto em si: uma falha ali não podia impedir de salvar a mensagem do cliente. Só que o import dentro da função apontava pra um caminho **inexistente** (`execution.integrations.whatsappNotifier` em vez de `execution.notifications`).
+
+**Causa raiz:** o `ModuleNotFoundError` estourava no **import**, antes de qualquer lógica, e o fail-open engolia com um `logger.warning`. Resultado: **100% das execuções viravam no-op**, com migration aplicada, suíte verde (4729 testes) e deploy "saudável". A feature inteira não existia em produção e nada denunciava. Os testes cobriam só a função PURA de decisão — nunca o wiring.
+
+**Solução:** (a) todo caminho protegido por fail-open precisa de **um teste que chame a função de verdade** (monkeypatch só nas bordas de I/O) — é o único que pega import/NameError; no nosso caso esse teste pegou, além do import, um `NameError` de módulo fora de escopo; (b) **review cross-provider antes do commit** achou o import — verificação por leitura de outro modelo pega o que o próprio autor não vê; (c) se o fail-open engolir algo que já consumiu estado (contador, flag), logue **ERROR**, não `warning`.
+
+⚠️ **Corolário medido:** perda silenciosa também acontece no envio. No smoke em prod o WhatsApp rejeitou o alerta (`429 WA_REACHOUT_TIMELOCK`) **depois** do contador já commitado → aquele aviso se perderia pra sempre. Fix: consumir o contador, e **devolver** (UPDATE condicional) se o envio retornar falso. Assimetria proposital: alerta repetido ao operador é inofensivo, mensagem repetida ao cliente é spam.
+
+**Ref:** tiatendo `0.249.0`/`0.250.0` (2026-07-25); `execution/core/messageRouter.py::_handoffNudge`, `tests/restaurant/test_handoffNudge.py`. Parente de [#verificar-runtime-nao-estrutura](#verificar-runtime-nao-estrutura) e [#red-nunca-visto-embarca-fossil](#red-nunca-visto-embarca-fossil).
+
+---
+
+<a id="handoff-mudo-sem-salvaguarda"></a>
+## Conversa escalada pra humano fica MUDA e ninguém percebe (54 msgs em 34 min)
+
+tags: handoff, bot_paused, escalonamento, atendente, reaper, virada de dia, cliente orfao, alerta unico, anti-spam whatsapp
+
+**Contexto:** bot escala pra atendente e **cala** naquela conversa (gate salva a mensagem e retorna). O reaper devolvia ao bot só na **virada do dia**. Medido em prod: **54 mensagens do cliente em 34 minutos**, zero resposta, zero sinal novo. O único aviso foi o do instante da pausa — se o operador não vê aquele, o cliente fica órfão por até ~24h. **Foi o operador que percebeu, olhando o WhatsApp**, não o sistema.
+
+**Causa raiz:** "escalei" foi modelado como estado terminal esperando ação humana, sem nenhum caminho de volta dentro do dia e sem reincidência de aviso. Um único alerta é um **evento**, não um **lembrete**: some no meio das notificações.
+
+**Solução (padrão reaproveitável):** três camadas, com estado por conversa e **por EPISÓDIO** de handoff:
+1. **Cliente:** UMA resposta automática na 1ª mensagem durante a pausa ("já chamei um atendente"). Nunca mais que uma.
+2. **Operador:** re-alertas em marcos de tempo (5 e 10 min), **só se o cliente continuar mandando**, com teto duro.
+3. **TTL de retorno** ao bot (não só virada de dia), **só se nenhum humano respondeu** — senão o bot fala por cima do atendente.
+
+⚠️ **Duas armadilhas:** (a) os contadores têm que zerar em **TODOS** os caminhos que despausam — não só no helper "oficial": no nosso caso 4 dos 5 eram `UPDATE` cru em rotas do painel, e sem o reset um **segundo** handoff da mesma conversa nasceria "já avisado" e ficaria mudo de novo; (b) devolver ao bot sem **saída** re-escala pelo mesmo motivo → ping-pong; guarde o MOTIVO do handoff e ofereça alternativa (ex.: fora-de-área → oferecer retirada).
+
+**Ref:** tiatendo mig 104, `execution/engine/handoffNudge.py`, `execution/engine/handoffCleanup.py` (2026-07-25).
 
 > **Nova entrada?** Copie o bloco-modelo abaixo, preencha, e adicione no Índice.
 >
