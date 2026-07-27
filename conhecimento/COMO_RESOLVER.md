@@ -2244,3 +2244,203 @@ teste que exercita o **entrypoint de verdade**, provando qual camada atende cada
 relação de subconjunto no comentário — é ela que alguém vai quebrar sem perceber.
 
 Visto em: tiatendo, correção do "número solto no bot admin" (2026-07-27).
+
+---
+
+## Ausência por design não é falha — e o teste sintético não distingue as duas
+
+**Sintoma:** uma varredura automatizada clica CTAs e submete formulários de um site, e o relatório
+volta dizendo que N deles "não dispararam evento". Conclusão natural, e errada: a instrumentação
+está quebrada.
+
+**O que estava acontecendo:** três comportamentos **projetados** produziam o mesmo silêncio que uma
+falha produziria.
+1. **Deduplicação por sessão** — `leadOnce(metodo)` grava em `sessionStorage` e o segundo disparo do
+   mesmo método é pulado. Quem clica em 3 botões de WhatsApp gera **1** lead, que é o correto.
+2. **Exclusão deliberada** — CTAs de captação de estoque ("anunciar/avaliar meu imóvel") são
+   excluídos de propósito para não inflar o otimizador de mídia.
+3. **Recusa de formulário inválido** — o código não dispara conversão em form que não passa na
+   validação HTML5. E o preenchimento sintético do crawler ("PMA DIAGNOSTICO" num `<select>`
+   obrigatório) produz exatamente um form inválido.
+
+**Como resolver:** antes de declarar falha a partir de teste sintético, **procure o mesmo evento no
+tráfego real**. Uma query no log de eventos com o campo `method` resolveu em 30 segundos o que a
+varredura tinha deixado ambíguo: os leads reais chegavam por `form` **e** por `whatsapp`.
+
+🔑 **A regra:** teste sintético prova que algo **funciona** (disparou = funciona). Ele **não** prova
+que algo está quebrado — silêncio pode ser dedupe, exclusão de negócio ou validação. Para provar
+quebra, use dado real. E se o próprio relatório traz um veredito tipo `cruzamento_nao_aplicavel`,
+ele já está avisando que não dá pra concluir dali.
+
+Visto em: Paid Media Automation, diagnóstico do funil da Imobiliária Uni (2026-07-27).
+
+---
+
+## O ponteiro estava no PLANO e eu não o segui: improvisar spec sobre design já aprovado
+
+**Sintoma:** escrevi do zero uma spec de feature — com requisitos, riscos e critério de pronto — e
+rodei conselho nela. Depois o operador apontou que já existia um **handoff de design em alta
+fidelidade**, encomendado e aprovado por ele, cobrindo a mesma tela: README de ~200 linhas, 3
+protótipos navegáveis e 6 screenshots. O estado vazio do design **era** o wizard que eu especifiquei.
+
+**A parte incômoda:** o `PLANO.md` do projeto **já registrava** o handoff, com caminho, na linha
+`[0] Plano da UI — depende do handoff do Claude Design (…já entregue e lido)`. Não foi conhecimento
+perdido: foi ponteiro não seguido. A pasta estar no `.gitignore` explica por que ela não aparece em
+busca de código, mas **não** explica ter ignorado a linha do plano.
+
+**Como resolver:** antes de escrever spec de qualquer tela, **procure ativamente por artefato de
+design anterior** — `grep -ri "handoff\|design" docs/PLANO.md` e um `ls` na raiz do projeto (pastas
+gitignored não aparecem em busca de código nem em `git ls-files`). Se existir, a spec **implementa**
+o handoff em vez de redesenhar; o papel dela vira dizer o que entra em cada fatia, o que o backend
+precisa entregar e como se verifica.
+
+⚠️ **Corolário sobre perguntar:** tendo achado o design, perguntei ao operador se ele queria o design
+dele **ou** a minha improvisação. Não era decisão real, e ele reagiu a isso. Quando uma das opções é
+obviamente superior por um critério que o operador já estabeleceu, escolher é seu trabalho.
+
+Visto em: Paid Media Automation, funil da jornada (2026-07-27).
+
+---
+
+## Conselho: `status: ok` NÃO significa que o membro respondeu
+
+O `council-orchestrator` marca `status: "ok"` quando a chamada HTTP deu certo — **mesmo com
+`content: ""`**. Numa sessão o **DeepSeek devolveu conteúdo vazio 3 vezes seguidas** (analyze de
+spec e pre-mortem de plano, prompts de ~2,8k tokens), gastando **1024 de 1024 tokens de completion
+inteiramente em `reasoning_tokens`** e não emitindo resposta. Quem lê o `status` conclui que o
+conselho rodou.
+
+**Como detectar:** olhe `responses[].content`, não `status`. Vazio = membro caiu.
+**Efeito:** o canon exige ≥2 provedores para aprovar spec. Com o DeepSeek mudo e a Llama
+produzindo genérico, o conselho fica **abaixo do mínimo sem avisar**.
+
+⚠️ **A Llama passa no `status` e no `content`, e ainda assim pode não valer nada.** No mesmo dia ela
+devolveu, num pre-mortem, três tautologias: *"se a atualização não foi feita corretamente, o plano
+pode falhar"*. E num analyze pediu para especificar o que dois requisitos já especificavam —
+**findings falsos**, que só não viraram retrabalho porque foram conferidos contra a fonte.
+
+**O que fazer:** quando o conselho vier vazio ou genérico, dispare o **Cross-Claude (subagente
+Sonnet)** com o prompt e **mande ele ler os arquivos** que o artefato cita. Foi o único membro que
+produziu achado real nas duas rodadas — inclusive um CRITICAL que teria feito uma fatia inteira ir
+a produção sem mudar nada.
+
+**Reporte sempre "N de 3 responderam".** Conselho parcial apresentado como completo é pior que
+conselho nenhum.
+
+Visto em: Plexco Tasks, s151 (2026-07-27).
+
+---
+
+## Pre-mortem de plano: mande o revisor LER o código, não só o plano
+
+Um plano de 5 tasks para "a transcrição parar de sumir" estava **correto em tudo que afirmava** e
+ainda assim **não mudaria nada em produção**. Ele consertava o truncamento em dois lugares que
+conhecia (`tasks_bot_v1.py`, `_triagem_create.py`) e ignorava um terceiro, **anterior aos dois**,
+que era o que decidia (`wa_media_enrich.py:155` cortava em 255 antes de o handler ser chamado).
+
+O revisor que leu **só o plano** (Llama) não tinha como ver. O que leu **os arquivos citados**
+(Cross-Claude, 27 tool-uses) achou em uma passada — e achou junto que o teste do plano **passaria
+com o bug vivo**, porque exercitava a função isolada em vez do caminho real.
+
+**Regra prática:** no pre-mortem, liste no prompt os arquivos que o plano toca **e os vizinhos do
+caminho de execução**, e peça explicitamente: *"o plano faz afirmações sobre estes arquivos —
+verifique"*. Um plano internamente coerente pode estar consertando o lugar errado, e essa classe de
+erro é invisível de dentro do documento.
+
+**Sinal de alerta correlato:** se o teste do plano chama a função diretamente com dados "limpos",
+pergunte de onde vêm os dados **em produção**. Foi exatamente a diferença entre verde falso e
+verde real.
+
+Visto em: Plexco Tasks, s151 (2026-07-27).
+
+---
+
+## Org de teste limpa não expõe topologia — só comportamento
+
+Uma tela de grafo passou no E2E autenticado (org descartável, dados semeados) e estava **quebrada
+na org real do operador**: setas com coordenadas negativas apontando para fora do canvas e a pílula
+de taxa por cima do texto do cartão.
+
+Causa: a geometria ligava sempre `from.right → to.left`, assumindo destino à frente. A org real
+tinha **reentrada** (item que volta para uma etapa anterior, ou aresta entre dois nós da mesma
+coluna); a org de teste não. O backend **já tratava** reentrada — era o desenho que assumia fila.
+
+**Regra:** E2E em org limpa prova **comportamento** (persistiu, transicionou, respondeu), não
+**forma do dado**. Feature que depende da topologia (grafo, árvore, ciclo, hierarquia) exige semear
+a topologia adversa de propósito, ou olhar uma base real. Verde em org limpa é **falso verde** para
+essa classe.
+
+Vale para além de grafo: hierarquia profunda, coleção vazia, item órfão, ciclo — qualquer forma que
+a org nova não produz sozinha.
+
+Visto em: Plexco Tasks, s151 (2026-07-27).
+
+
+---
+
+## Marcar uma entidade como "fora do padrão": filtre os EMISSORES, não só os leitores
+
+Ao criar uma flag do tipo "esta linha não é do tipo normal" (conversa administrativa, usuário
+interno, tenant de teste, conta de sistema), a varredura óbvia é a dos **leitores**: métricas,
+relatórios, boards, exports. Foi o que fiz — e fechei a frente com números medidos, achando que
+tinha coberto.
+
+No dia seguinte a pergunta do conselho foi *"e broadcast/re-engajamento?"*. A medição em produção
+respondeu numa coluna: `last_reengage_sent_at = 2026-06-12`. **A pessoa já tinha recebido**, meses
+antes e em silêncio, um texto escrito para outro público.
+
+**Por que a lista dos leitores não bastou:** filtrar leitor conserta **relatório**; filtrar emissor
+conserta **o que a pessoa recebe no celular**. O segundo é o que o usuário final percebe.
+
+**Como aplicar:** ao introduzir a marca, varra DUAS listas antes de fechar —
+1. quem **LÊ** a entidade (métrica, resumo, board, export);
+2. quem **ENVIA** para ela (cron de reengajamento, broadcast, lembrete, alerta, convite, recuperação
+   de carrinho) — e para cada um pergunte *"o texto é escrito para quem?"*.
+
+E **meça no banco se já aconteceu** (`last_*_sent_at`, contadores de envio) em vez de raciocinar se
+é possível. A resposta veio de uma coluna, não de uma dedução.
+
+⚠️ Corolário que quase virou o defeito seguinte: **calar sem devolver é trocar de defeito.** Silenciar
+um automatismo numa entidade e excluí-la dos coletores que a reativariam a deixa muda para sempre. O
+retorno entra no mesmo commit — e, se for silencioso, ele **não pode herdar o gate de horário
+comercial** dos coletores que mandam texto (senão o silêncio dura a noite inteira).
+
+Visto em: tiatendo, 2026-07-28 (`0.254.0`/`0.255.0`).
+
+---
+
+## Brief de design que cita a fonte pelo NOME propaga erro invisível
+
+Um brief de redesenho dizia "Space Grotesk + JetBrains Mono". Eu copiei isso de um **comentário
+desatualizado** no template base; o produto carregava **Geist** havia muito tempo. O designer
+calibrou o mockup na métrica da fonte errada, e a altura prevista do componente (148px) não bateu com
+a implementada (160px) — diferença que só apareceu depois de construir.
+
+**Regra:** no brief, cite o **token** (`--ff-sans`, `--ff-mono`), não o nome da família. Token é
+verificável e não mente; nome é cópia, e cópia envelhece. Se precisar citar o nome para o designer se
+orientar, **leia do arquivo de tokens na hora**, nunca de um comentário.
+
+Vale para qualquer valor de design no brief: cor, raio, sombra, escala. Comentário em template é
+documentação **não testada** — envelhece em silêncio e vira fonte de verdade por acidente.
+
+Visto em: tiatendo, 2026-07-28 (rodada 1 do card recusada; brief corrigido para a rodada 2).
+
+---
+
+## Layout que depende de menu lateral colapsável: `@container`, não media query
+
+Um componente precisava rearranjar-se quando ficava estreito. O reflexo é `@media (max-width: …)` —
+e estaria **errado metade das vezes**: a tela tinha menu lateral de largura variável (68px recolhido
+/ 248px expandido). Com o menu aberto a 1920 o componente é mais estreito do que com o menu fechado a
+1280, mas a media query enxerga só a janela e responde igual nos dois casos.
+
+**Regra:** quando a largura útil do componente depende de algo que não é a janela (menu colapsável,
+painel lateral, split view), o gatilho é `container-type: inline-size` no ancestral + `@container`.
+A pergunta que decide: *"a largura deste componente muda sem a janela mudar?"* Se sim, media query
+é a ferramenta errada.
+
+**Ao medir o resultado, simule a casca real** (menu + conteúdo) no preview. Um preview que renderiza
+o componente solto numa página de 1800px mente sobre a largura da coluna — e foi o que fez a primeira
+rodada ser aprovada no preview e recusada na tela.
+
+Visto em: tiatendo, 2026-07-28 (card do quadro de pedidos, `0.257.0`).
