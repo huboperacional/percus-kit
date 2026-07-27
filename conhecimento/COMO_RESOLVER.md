@@ -18,6 +18,11 @@
 ## Índice
 
 - [Sessão de login "morre sozinha" em todos os produtos ao mesmo tempo](#sessao-morre-invalidacao-por-pessoa)
+- ["Sessão de 30 dias" que morre em 2 segundos: wipe do refresh token em falha transitória](#refresh-wipe-transitorio)
+- [Auditoria cross-repo que lê o CHECKOUT LOCAL vira evidência circular](#auditoria-cross-repo-working-tree)
+- [Cliente de API que devolve `None` no erro faz o produto achar que ENTREGOU](#provider-none-vira-entrega)
+- [Mock do DAO esconde erro de CHAVE e de serialização](#mock-dao-esconde-chave)
+- [Guarda que o entrypoint real nunca alcança](#guarda-morta-entrypoint)
 - [Tirar um produto do superusuário do Postgres (least-privilege) num cluster compartilhado](#least-privilege-cluster-compartilhado)
 - [Conselho "revisa a coisa errada" / prompt stale entre runs](#conselho-prompt-stale)
 - [QR code de pareamento "não linka" → suspeite do SEU refresh antes de culpar o provedor](#qr-pareamento-expira)
@@ -41,6 +46,8 @@
 - [Relatório com JANELA de período re-introduz viés de sobrevivência que você "já consertou"](#janela-reintroduz-vies-sobrevivencia)
 - [Deploy sobe código VELHO com tag NOVA: diretório de build compartilhado entre serviços](#build-dir-compartilhado-tag-nova)
 - [Args com aspa simples atravessando `ssh` + `bash -c` selecionam a coisa ERRADA, sem erro](#aspa-simples-ssh-bash-c)
+- [O fix vira o defeito seguinte: 3 CRITICALs em 5 rodadas, cada um filho da correcao anterior](#fix-vira-defeito-seguinte)
+- [Suite verde e boot morto: a versao da lib na IMAGEM nao e a da sua maquina](#skew-lib-imagem-vs-local)
 - [Log de diagnóstico "no ar" que nunca emitiu: sob uvicorn o root logger é mudo](#uvicorn-root-logger-mudo)
 - [Cross-Claude do conselho retorna 400 — `temperature` num modelo Opus 4.7+](#cross-claude-400-sampling)
 - [Imagem local em Docker Swarm crash-loopa com "pull access denied" (sem registry)](#swarm-local-image-resolve)
@@ -2006,6 +2013,234 @@ onde deviam ser 3) que revelou o problema.
 **Ref:** Plexco Tasks s150 (2026-07-26), `vps-test.py::run_pytest`. Parente de
 [#json-sed-aspas](#json-sed-aspas).
 
+<a id="fix-vira-defeito-seguinte"></a>
+## O fix vira o defeito seguinte: 3 CRITICALs em 5 rodadas, cada um filho da correção anterior
+
+**Sintoma:** cada rodada de review acha um CRITICAL, você corrige, a rodada seguinte acha outro
+CRITICAL **na sua correção**. Três das cinco vezes seguidas. Parece azar ou revisor implicante; não é.
+
+**Causa raiz:** você está aplicando um **remédio genérico sobre o VALOR** a um problema que pede a
+informação de **INTENÇÃO**. No caso real (dupla escrita de credenciais de tracking): "nunca escreva
+NULL" virou `COALESCE(:v, coluna)` → isso trocou *apagar credencial* por *par incoerente* (id de um
+registro com segredo de outro) **e** tornou impossível limpar qualquer campo; "então não copie nada"
+→ isso deixou o espelho velho e **ressuscitou credencial revogada** no toque seguinte. Copiar tudo e
+copiar nada são os dois extremos de um eixo em que a resposta certa não está.
+
+**Solução:** parar de decidir pelo valor e passar a decidir pelo que o usuário **pediu**. Concretamente:
+levar o conjunto de campos efetivamente enviados (`payload.model_dump(exclude_unset=True)` no
+pydantic) **até a camada de dados**, e copiar exatamente esse subconjunto. Junto:
+- parâmetro **kw-only SEM default** quando o mesmo valor significa coisas opostas em dois chamadores
+  (ali, "coluna vazia" era *"o operador desconectou"* numa rota e *"não há o que espelhar"* na outra) —
+  o call site esquecido quebra no import em vez de escolher em silêncio;
+- e **executar contra o banco real**: os 4 primeiros remédios foram raciocínio sobre o código; o que
+  encerrou o ciclo foi rodar o código real contra Postgres real, com os dois extremos virando dois
+  testes que se contradizem se alguém mexer num só.
+
+**Como perceber cedo:** se a sua correção é uma regra sobre *que valor escrever* (`COALESCE`,
+"nunca NULL", "sempre copia", "nunca copia"), pergunte se o dado que falta é **a intenção de quem
+chamou**. Se for, nenhuma regra sobre o valor vai fechar.
+
+**Ref:** Paid Media Automation, fatia 1 de multiplicidade de destinos (2026-07-26), commit `6c1b635`.
+
+<a id="skew-lib-imagem-vs-local"></a>
+## Suíte verde e boot morto: a versão da lib na IMAGEM não é a da sua máquina
+
+**Sintoma:** 818 testes passam local, o review aprova, e a task **morre no boot em produção**. O log
+do serviço não ajuda porque o container falhou e o swarm já o removeu.
+
+**Causa raiz:** skew de versão entre a imagem e o ambiente de dev. No caso real: FastAPI **0.115.6**
+na imagem × **0.136.1** local. Uma rota `status_code=204` com handler anotado `-> None` (num módulo
+com `from __future__ import annotations`, que transforma a anotação em `ForwardRef` → `NoneType`) é
+lida pela 0.115 como *tem response_model* e o **import aborta**; a 0.136 normaliza `None` para "sem
+modelo" e passa. Mesmo código, veredito oposto.
+
+**Solução (imediata):** declarar explicitamente o que as duas versões entendem igual — ali,
+`response_model=None` no decorator.
+
+**Solução (da classe):** um passo de CI que instala o `requirements.txt` **da imagem** num venv e faz
+só `python -c "import app.main"`. Isso pega a família inteira, não a instância.
+
+**Armadilha da guarda:** o teste óbvio — inspecionar `route.response_model` no app montado — é
+**teatro** no ambiente local, porque a lib nova normaliza e a asserção passa mesmo sem o fix (provado
+por mutação). A guarda tem que ler o **fonte** (AST, não regex: um revisor listou 7 estilos de
+declaração que regex perde e que quebram igual).
+
+**O que salvou:** `fail-closed` no entrypoint (migração falha ⇒ não sobe) **pareado** com
+`failure_action: rollback` no swarm — a task nova morreu, o pin anterior voltou sozinho e o tráfego
+não caiu. Fail-closed sem rollback pareado seria crash-loop.
+
+**Ref:** Paid Media Automation (2026-07-26), commit `b50a4e9`. Parente de
+[#verificar-runtime-nao-estrutura](#verificar-runtime-nao-estrutura) e
+[#build-dir-compartilhado-tag-nova](#build-dir-compartilhado-tag-nova).
+
+## "Sessão de 30 dias" que morre em 2 segundos: o wipe do refresh token em falha TRANSITÓRIA {#refresh-wipe-transitorio}
+
+**Sintoma:** usuários voltam pro OTP o tempo todo apesar do refresh token de 30 dias. A auditoria de
+código passa — o item "renova no 401?" está **PASS e correto**. A medição do lado do auth mostra
+famílias de refresh com **vida mediana 0,0h**: nascem no login e nunca rotacionam.
+
+**Causa raiz (a que mais machuca):** o cliente descarta a credencial em erro que **não é rejeição**.
+No caso real: `if (!res.ok) { clearTokens() }` — que inclui **5xx** — mais `catch { clearTokens() }`
+— que inclui **timeout/rede/CORS**. Com o servidor de auth reiniciando ou a rede oscilando, **um
+soluço de 2 segundos custa a sessão de 30 dias**, em silêncio. O interceptor ainda completava o
+serviço redirecionando pro `/login?expired=1`.
+
+**Causa raiz (a irmã, mais citada e menos frequente):** *cold start* que não consulta o refresh. Se o
+gate de sessão é `!!accessToken` e o refresh só roda reativamente no 401, então **sem access token
+não sai request → não há 401 → nunca se apresenta o refresh**. O app vai pro login com a credencial
+de 30 dias válida no storage e **zero** chamadas de refresh na aba Network.
+
+**Solução:**
+1. Descartar a credencial **somente** em rejeição definitiva do servidor (`401/403/422`). 5xx, 429,
+   timeout e rede **preservam** — o servidor não disse que a sessão morreu.
+2. O interceptor só derruba/redireciona se a credencial **já foi descartada** por quem sabe
+   distinguir. Caso contrário: falha a request, não a sessão.
+3. Gate de sessão conta **access OU refresh**. Mudar na fonte única cobre N telas sem editar N
+   arquivos (no caso real, 21).
+4. Refresh proativo no boot quando falta o access e sobra o refresh.
+5. **Timeout** no fetch do refresh (8–10s). Sem ele, um servidor pendurado prende o single-flight
+   pra sempre e enfileira toda renovação seguinte atrás dele — troca re-OTP por tela branca.
+
+**Por que preservar em 5xx é seguro (confirmado no código do servidor):** o consumo do refresh é
+posterior ao claim atômico. Em 502/503 de proxy e em 500 antes do claim, o token **não foi
+consumido** e segue válido. E quando foi consumido, o filho se perdeu junto com a resposta — aquela
+sessão já estava perdida. **Não existe cenário em que preservar piore a vida do usuário.**
+
+**O perigo que sobra NÃO é o retry pós-5xx — é staleness entre abas:** aba A rotaciona e recebe o
+filho; aba B, que leu o **mesmo** token antes, tenta 60s depois com o valor velho, cai fora da janela
+de graça (~10s) e **queima a família viva** — matando a sessão que A acabou de renovar (RFC 6749
+§10.4). Defesas: single-flight por aba; **ler o token do storage imediatamente antes de cada
+chamada**, nunca de variável/closure capturada antes; e nada de backoff martelando o mesmo token.
+Corolário: **"o token mudou?" não é sinal de nada** — `localStorage` é compartilhado entre abas; o
+sinal confiável é estado por aba.
+
+**Armadilha do teste:** os casos de falha transitória passam **antes e depois** do fix se você só
+exercitar o boot — sem access token, o código antigo nem chegava no wipe. O teste que prova é o do
+caminho do **interceptor**: access presente + API 401 + refresh 503 → a sessão tem que sobreviver.
+Prove revertendo o fonte (`git stash`) e mantendo o spec: se não ficar vermelho, o teste é teatro.
+
+**Ref:** Família Milionária (2026-07-27), commits `4f8c88e`/`75eb2bc`. Parente de
+[#verificar-runtime-nao-estrutura](#verificar-runtime-nao-estrutura).
+
+## Auditoria cross-repo que lê o CHECKOUT LOCAL vira evidência circular {#auditoria-cross-repo-working-tree}
+
+**Sintoma:** um time audita o repo do outro, conclui "vocês já estão cobertos" e **retira um alerta
+procedente**, citando linhas de arquivo como prova. O time auditado quase arquiva um defeito real.
+
+**Causa raiz:** a auditoria leu os arquivos do **working tree** do outro repo, não de
+`origin/<branch>`. Como havia uma sessão editando naquele momento — **em resposta ao próprio
+alerta** — o auditor enxergou o efeito do que ele mesmo causou e reportou como prova de que o alerta
+era desnecessário. Evidência circular perfeita: quanto mais rápido o outro time corrige, mais
+convincente fica o argumento de que não havia o que corrigir.
+
+**Solução:** auditoria cross-repo lê **`git show origin/<branch>:<arquivo>`**, sempre. O checkout
+local pode conter trabalho em andamento, stash aplicado, ou branch diferente.
+
+**Do lado de quem RECEBE a devolutiva:** se um documento cita o *seu* código como evidência, confira
+contra `origin` antes de aceitar — inclusive (e principalmente) quando a conclusão é elogiosa. Um
+`git grep -c "<símbolo citado>" origin/main -- <path>` devolvendo **0** encerra a discussão em
+segundos. Elogio que bate com o que você acabou de escrever e ainda não publicou é sinal de alarme,
+não de conforto.
+
+**Ref:** Família Milionária × auth-service (2026-07-27),
+`docs/cross-product/2026-07-27-auth-retrata-retirada-familia-e-responde-5xx.md` — o auditor
+retratou-se e adotou a regra do `origin/`.
+
 > **Nova entrada?** Copie o bloco-modelo abaixo, preencha, e adicione no Índice.
 >
 > ```
+
+## Cliente de API que devolve `None` no erro faz o produto inteiro achar que ENTREGOU {#provider-none-vira-entrega}
+
+`tags: provider none entrega recusa retry fila pending idempotencia envio whatsapp`
+
+tags: mensagem nao entregue, provider devolve None, WhatsApp recusou, 400 INVALID_JID, 429 rate limit, fila de retry vazia, pending_messages, achou que enviou, SENT REJECTED DROPPED, desfecho explicito, self-loop guard, idempotency key, duplicar mensagem
+
+**Sintoma:** mensagens que o provider RECUSOU aparecem como enviadas. A fila de retry existe,
+está implementada e testada — e NUNCA recebe nada. Ninguém percebe porque não há erro: o log da
+recusa fica no cliente HTTP, e a camada de cima segue como sucesso.
+
+**Causa:** o wrapper do provider engole a resposta ruim e devolve `None`
+(`if status < 300 and code == "SUCCESS": return data` … `return None`), e o chamador só faz
+`await client.send(...)` sem olhar o retorno. Como não LEVANTOU, "deu certo".
+
+**Como achar:** mande de propósito pra um destino que o provider recusa (número reservado,
+credencial inválida) e pergunte ao BANCO, não ao log: a linha entrou na fila de retry? Se a
+resposta for "zero linhas", o produto está mentindo. Teste unitário não pega porque todo mundo
+simula falha **levantando exceção** — que não é como esse tipo de envio falha.
+
+**Como resolver:** o envio passa a declarar um **desfecho explícito**, e são TRÊS, não dois:
+
+| Desfecho | Quem causou | Retenta? | Vai pra fila? |
+|---|---|---|---|
+| `SENT` | provider aceitou | — | — |
+| `REJECTED` | provider recusou / rede caiu | sim | sim |
+| `DROPPED` | **decisão nossa** de não enviar (guarda de segurança, destino inválido) | não | **NÃO** |
+
+O `DROPPED` separado não é preciosismo: enfileirar um descarte deliberado faz a fila entregar
+depois exatamente a mensagem que a guarda existia pra impedir. E desfecho **desconhecido** (caminho
+novo que esqueceu de declarar) deve cair como `REJECTED` + log de erro — fail-safe na direção da
+entrega, nunca na do silêncio.
+
+**Armadilhas ao aplicar (as duas custaram uma rodada cada):**
+- A tabela da fila costuma ter FK obrigatória (`conversation_id NOT NULL`). Há callers que
+  despacham sem esse contexto — passar a enfileirar transforma perda silenciosa em **exceção no
+  meio do envio**, que é pior. Sem o contexto: reporta e loga alto, não enfileira.
+- **Timeout depois da entrega** é indistinguível de recusa se o wrapper engole toda exceção. O
+  retry pode DUPLICAR. Decida conscientemente e ESCREVA a decisão no código; se duplicata doer, o
+  lugar de separar "resposta com erro" de "sem resposta" é o wrapper, não o chamador.
+
+**Sintoma-irmão pra procurar no mesmo repo:** algum chamador que já tentava ler o retorno
+(`ok = await send(...)`; `status = "success" if ok is not False`) — ele estava escrito esperando um
+bool que nunca existiu, e contabilizava 100% de sucesso. Achar isso confirma o diagnóstico.
+
+Visto em: tiatendo `0.253.1` (2026-07-27), achado por smoke em produção depois de a suíte inteira
+(4900+) e duas reviews cross-provider passarem.
+
+## Mock do DAO esconde erro de CHAVE e de serialização — se a mudança é de banco, o teste é de banco {#mock-dao-esconde-chave}
+
+`tags: mock dao chave lookup normalizacao jsonb serializacao teste banco postgres`
+
+tags: mock esconde bug, DAO, chave de lookup, normalizacao de telefone, E164, JSONB volta string, set_type_codec, teste de banco, postgres efemero, ida e volta, invariante de persistencia
+
+**Sintoma:** a feature tem testes de sobra (dezenas, todos verdes) e não funciona contra o banco
+real. Ou pior: funciona hoje e quebra quando o caller muda de formato.
+
+**Causa concreta que apareceu:** a fachada GRAVAVA com a chave crua (`+5567999…`) e LIA com a chave
+normalizada (só dígitos). Escrita e leitura em chaves diferentes → o estado some **em silêncio**.
+Todo teste passava porque mockava o DAO: o mock devolve o que você guardou, na chave que você usou.
+Havia ainda o irmão da mesma família: JSONB que volta como **string** quando o driver não tem codec,
+e o `.get()` do consumidor levanta `AttributeError` atrás de um `try/except` fail-open.
+
+**Como resolver:** ao mudar invariante de persistência (o que grava, o que apaga, qual a chave),
+escreva UM teste que faça a **ida e volta no banco de verdade** — gravar, ler, e usar o valor lido
+no consumidor real. Num projeto onde os testes de DB pulam sem DSN, isso significa rodar o recorte
+num Postgres efêmero antes de considerar pronto.
+
+**Regra prática:** mock prova FLUXO; banco prova CHAVE, TIPO e DEFAULT. Mudou fluxo, mocke. Mudou
+schema/chave/serialização, não tem jeito: banco.
+
+## Guarda que o entrypoint real nunca alcança: teste de componente ISOLADO cria a ilusão {#guarda-morta-entrypoint}
+
+`tags: guarda morta inalcancavel entrypoint teste isolado camadas subconjunto`
+
+tags: guarda morta, codigo inalcancavel, teste isolado engana, entrypoint real, ordem das camadas, subconjunto de gatilho, defesa em profundidade falsa, fronteira entre guardas
+
+**Sintoma:** você escreve uma proteção, testa, passa — e ela nunca roda em produção, porque outra
+camada consome o evento um passo antes. Fica um código que LÊ como proteção e não protege nada
+(veja também §"Cinto de segurança" extra CORTA o caso legítimo).
+
+**Como achar:** compare os CONJUNTOS de ativação das duas camadas. No caso real, a de cima ativava
+com `estado ∈ A` e `token ∈ B`; a de baixo, com `estado ∈ A'` e `token ∈ B'`, e valia
+`A' ⊆ A`, `B' ⊆ B` — ou seja, toda vez que a de baixo ativaria, a de cima já tinha comido o turno.
+Subconjunto é o sinal: se o gatilho da sua guarda é subconjunto do gatilho de quem vem antes, ela é
+inalcançável.
+
+**Por que o teste não pegou:** ele chamava o componente DIRETO, mockando o vizinho. O isolamento que
+torna o teste rápido é o mesmo que apaga a ordem real das camadas.
+
+**Como resolver:** apague a guarda morta (não a deixe "por garantia") e trave a FRONTEIRA com um
+teste que exercita o **entrypoint de verdade**, provando qual camada atende cada janela. Documente a
+relação de subconjunto no comentário — é ela que alguém vai quebrar sem perceber.
+
+Visto em: tiatendo, correção do "número solto no bot admin" (2026-07-27).
