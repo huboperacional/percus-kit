@@ -108,6 +108,9 @@
 - [Feature vira no-op DETERMINÍSTICO num caso comum e a suíte inteira fica verde](#fixture-uniforme-esconde-irregular)
 - ["Cinto de segurança" extra CORTA o caso legítimo — e alargá-lo vira guarda morta](#guarda-redundante-tesoura-ou-morta)
 - [`DROP COLUMN` no rollback falha: uma view `SELECT *` depende da coluna nova](#down-migration-view-select-star)
+- [Mesma regra escrita em dois interpretadores (.ps1 + .sh) diverge calada](#regra-duplicada-ps1-sh)
+- [Saída de `jq`/`python` no Windows vem com CRLF e o `\r` mata a regex em silêncio](#crlf-mata-regex-git-bash)
+- [Hook em PowerShell bloqueia commit legítimo vindo do git-bash (path `/d/...` e `-c` ≠ `-C`)](#hook-ps-path-msys-e-match-case)
 
 ---
 
@@ -2075,6 +2078,8 @@ não caiu. Fail-closed sem rollback pareado seria crash-loop.
 
 ## "Sessão de 30 dias" que morre em 2 segundos: o wipe do refresh token em falha TRANSITÓRIA {#refresh-wipe-transitorio}
 
+`tags: refresh token, sessao curta, logout inesperado, volta pro otp, wipe de credencial, erro transitorio, 5xx, timeout, rotacao, familia de refresh, auth`
+
 **Sintoma:** usuários voltam pro OTP o tempo todo apesar do refresh token de 30 dias. A auditoria de
 código passa — o item "renova no 401?" está **PASS e correto**. A medição do lado do auth mostra
 famílias de refresh com **vida mediana 0,0h**: nascem no login e nunca rotacionam.
@@ -2123,6 +2128,8 @@ Prove revertendo o fonte (`git stash`) e mantendo o spec: se não ficar vermelho
 [#verificar-runtime-nao-estrutura](#verificar-runtime-nao-estrutura).
 
 ## Auditoria cross-repo que lê o CHECKOUT LOCAL vira evidência circular {#auditoria-cross-repo-working-tree}
+
+`tags: auditoria cross-repo, working tree, origin, evidencia circular, checkout local, git fetch, alerta retirado por engano, prova de codigo, revisao entre times`
 
 **Sintoma:** um time audita o repo do outro, conclui "vocês já estão cobertos" e **retira um alerta
 procedente**, citando linhas de arquivo como prova. O time auditado quase arquiva um defeito real.
@@ -2444,3 +2451,78 @@ o componente solto numa página de 1800px mente sobre a largura da coluna — e 
 rodada ser aprovada no preview e recusada na tela.
 
 Visto em: tiatendo, 2026-07-28 (card do quadro de pedidos, `0.257.0`).
+
+---
+
+## Mesma regra escrita em dois interpretadores (.ps1 + .sh) diverge calada {#regra-duplicada-ps1-sh}
+
+`tags: duplicacao, ps1, sh, bash, powershell, paridade, gate, router, lista hardcoded, drift entre implementacoes, case-insensitive, fonte unica, teste que raspa fonte`
+
+**Sintoma:** o gate protege quando roda por um caminho e não protege pelo outro — ou pior, ninguém
+nota, porque cada máquina/agente usa só um dos dois. Nenhum erro aparece.
+
+**Causa raiz:** a mesma lista/regra existe em duas implementações (array no `.ps1`, cadeia
+`[[ =~ ]]` no `.sh`) e nada força as duas a concordarem. No caso real eram **três** cópias: os
+testes ainda **raspavam a regex do fonte `.ps1`** com `[regex]::Matches(...)` — então (a) o `.sh`
+nunca era testado e (b) o padrão que não casava com a regex de raspagem (`'^\.env'`, que não começa
+com `(`) ficou anos sem cobertura. Divergência achada: `-match` do PowerShell é **case-insensitive**
+por padrão e `[[ =~ ]]` do bash é **case-sensitive** — `backend/Auth/` escalava num e não no outro.
+
+**Solução:** a regra vira **dado**, num arquivo lido pelos dois (e pelos testes). Restrinja a
+sintaxe ao subconjunto comum aos dois motores (`[0-9]`, não `\d`; nada de `(?...)`) e tenha **teste
+de paridade**: mesma entrada nos dois executáveis, mesma saída. Sem o teste de paridade, a fonte
+única volta a divergir na primeira "correção rápida" de um lado só. Teste que lê o **fonte** em vez
+do **dado** é pior que não ter teste: quando a lista sai do fonte, ele passa a extrair lista vazia e
+o teste negativo ("não é sensível") passa por vacuidade.
+
+**Ref:** `CANON_VERSION.md` v6.31.0 (router de pasta sensível); report "Melhoria na VPS" 2026-07-27.
+
+---
+
+## Saída de `jq`/`python` no Windows vem com CRLF e o `\r` mata a regex em silêncio {#crlf-mata-regex-git-bash}
+
+`tags: crlf, \r, carriage return, jq, python, git-bash, windows, regex nao casa, padrao morre calado, command substitution, tr -d, msys`
+
+**Sintoma:** um padrão lido de arquivo/JSON simplesmente **não casa**, sem erro nenhum. O mesmo
+padrão, colado à mão no shell, casa. No caso real, cada projeto declarava seus caminhos sensíveis
+num JSON e o router lia, aceitava e ignorava — silenciosamente.
+
+**Causa raiz:** `jq` e `python` no Windows escrevem **CRLF**. `$(...)` remove só o `\n` final, então
+cada linha chega com `\r` colado no fim. Uma regex terminada em `$` vira `...$\r` e não casa com
+nada. Um path comparado por igualdade também nunca bate. Some ao fato de que ler o mesmo dado por
+`sed`/`grep` costuma **mascarar** o problema (`[[:space:]]` inclui `\r`), e o bug fica restrito a um
+dos caminhos de leitura.
+
+**Solução:** todo dado que vem de processo externo passa por `tr -d '\r'` antes de virar
+regex/comparação. E teste a **pipeline de verdade** (o script rodando com o arquivo real), não a
+lógica de matching isolada: em teste unitário as strings vêm limpas e o bug não aparece.
+
+**Ref:** `CANON_VERSION.md` v6.31.0 (achado enquanto se testava o próprio fix, 2026-07-27).
+
+---
+
+## Hook em PowerShell bloqueia commit legítimo vindo do git-bash (path `/d/...` e `-c` ≠ `-C`) {#hook-ps-path-msys-e-match-case}
+
+`tags: hook, pre-commit, powershell, git-bash, msys, /d/, cygdrive, path windows, -match case-insensitive, -cmatch, falso positivo, PERCUS_HOOKS_DISABLED, exit 128`
+
+**Sintoma:** o hook barra o commit dizendo que não há review — mas o review existe e está fresco. A
+mensagem de diagnóstico mostra um caminho estranho, tipo `\d\Claud Automations\repo\.deepseek\reviews`,
+ou um "git root" que nem é diretório (`commit.gpgsign=false`).
+
+**Causa raiz (duas, independentes):**
+1. O agente roda `cd "/d/Claud Automations/repo" && git commit`; o hook extrai o dir e entrega esse
+   path **MSYS** para o `git` do **Windows** → `exit 128`, o hook cai no fallback e vai procurar o
+   review num caminho inexistente.
+2. `-match` do PowerShell é **case-insensitive**: em `git -c commit.gpgsign=false commit`, o `-c` de
+   configuração casa no padrão de `-C <dir>` e o "repo target" vira `commit.gpgsign=false`.
+
+**Solução:** normalizar `/d/...` e `/cygdrive/d/...` para `D:\...` antes de qualquer chamada a
+binário Windows, e usar `-cmatch` onde a distinção maiúscula/minúscula **é** semântica (`-C` vs
+`-c`). Vale a regra geral: **flag que muda de significado com o case exige `-cmatch`**.
+
+Por que isso importa mesmo falhando "pro lado seguro": gate que bloqueia o caminho legítimo ensina a
+desligar o gate (`PERCUS_HOOKS_DISABLED`) — e aí ele deixa de existir de verdade. Falso positivo
+recorrente custa a proteção inteira.
+
+**Ref:** `CANON_VERSION.md` v6.31.1; testes em
+`plugin/percus-review/tests/pre-commit-path-resolution.tests.ps1`.

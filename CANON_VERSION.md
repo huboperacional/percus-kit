@@ -1,10 +1,48 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.31.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.31.1`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
 >
 > ⚠️ **O plugin INSTALADO (em `plugins/cache/`) pode ficar ATRÁS do canon-source — isso é ESPERADO, não drift.** O republish/retag do plugin foi descartado (decisão do operador, 01/07/2026), então o tooling novo é **repo-only**: os projetos continuam lendo o plugin em cache (hoje 6.28.0/6.29.0). Gates novos NÃO chegam por republish — chegam via `v2/gates/instalar-gates.sh` (git hook self-contained, zero dependência de publicação). Portanto: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta `plugins/cache/percus-tools/percus-review/<v>/` reflete o último republish e é legitimamente mais antiga. Não re-flaggar como bug.
+
+---
+
+## Changelog v6.31.1 — 2026-07-27
+
+**Dois gates bloqueavam o caminho legítimo — e falso positivo recorrente custa a proteção inteira.**
+Os dois falham "pro lado seguro", mas atrito assim é o que ensina a desligar o gate; a partir daí ele
+não existe mais. Ambos encontrados rodando o kit sobre ele mesmo no arco da v6.31.0.
+
+**1. `hooks/pre-commit-check.ps1` barrava commit que TINHA review.** Duas causas independentes:
+- **Path MSYS.** O agente roda `cd "/d/Claud Automations/repo" && git commit`; o hook extraía esse
+  path e entregava pro `git` do **Windows** → `exit 128`, caía no fallback e procurava o review em
+  `\d\Claud Automations\repo\.deepseek\reviews`. Agora normaliza `/d/...` e `/cygdrive/d/...` para
+  `D:\...` antes de qualquer chamada nativa.
+- **`-c` casando como `-C`.** `-match` do PowerShell é case-insensitive, então em
+  `git -c commit.gpgsign=false commit` o `-c` casava no padrão de `-C <dir>` e o "repo target" virava
+  `commit.gpgsign=false`. Trocado para `-cmatch` **só nesse padrão** (onde o case é semântico).
+- O twin `.sh` **não tinha** nenhum dos dois (usa `sed`, ERE case-sensitive, e path MSYS é nativo lá).
+- **Verificado RODANDO** — `tests/pre-commit-path-resolution.tests.ps1`, 9 testes: libera path MSYS
+  com review fresco; **ainda bloqueia** sem review e com review velho (normalizar não virou bypass);
+  libera `git -c ... commit`; `-C <dir>` maiúsculo continua definindo o repo target (inclusive
+  bloqueando quando é o target que não tem review, com o cwd revisado).
+
+**2. `v2/gates/percus-gate.sh` acusava 7 violações no canon, 6 falsas.**
+- Varria o arquivo **inteiro** atrás de `{#ancora}` e acusava o **bloco-modelo** e a prosa do
+  cabeçalho (`{#ancora-kebab}`) como "verbete fora do índice" — em toda rodada, no canon e em todo
+  projeto que copia o template. Agora só conta âncora em linha de título (`^## `).
+- Exigia **crase** em `` `tags:` ``, mas 18 dos ~100 verbetes escrevem `tags:` sem crase e são
+  perfeitamente encontráveis. A crase virou opcional — e isso **revelou** os 2 verbetes que estavam
+  mesmo sem tags (`#refresh-wipe-transitorio`, `#auditoria-cross-repo-working-tree`), invisíveis pra
+  `consult-knowledge` desde que foram escritos. Ambos ganharam linha `tags:`.
+- **Verificado RODANDO**: exit 0 no canon e no V2; e matriz negativa provando que ainda **bloqueia**
+  âncora fora do índice e verbete sem `tags:`. Gate que parou de acusar sem provar que ainda pega
+  violação real é gate cego.
+
+**3. R23 — 3 verbetes novos em `conhecimento/COMO_RESOLVER.md`:** regra duplicada em `.ps1`+`.sh`
+diverge calada · saída de `jq`/`python` no Windows vem com CRLF e o `\r` mata a regex ·
+hook em PowerShell bloqueando commit legítimo vindo do git-bash.
 
 ---
 

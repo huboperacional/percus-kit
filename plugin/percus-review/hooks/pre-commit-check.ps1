@@ -14,11 +14,29 @@
 # e resolve `git rev-parse --show-toplevel` desse target. Cross-repo work (CWD do
 # agente != repo target) passa a ser observavel.
 
+# v6.31.1 (2026-07-27): git-bash entrega o dir como '/d/Foo/Bar' (MSYS) e Cygwin como
+# '/cygdrive/d/Foo/Bar'. Passar isso pro git do WINDOWS da exit 128, o hook caia no
+# fallback e ia procurar review em '\d\Foo\Bar\.deepseek\reviews' — que nunca existe.
+# Efeito: bloqueava commit que TINHA review, ensinando a usar PERCUS_HOOKS_DISABLED.
+function ConvertTo-WindowsPath {
+    param([string]$path)
+    if (-not $path) { return $path }
+    if ($env:OS -ne 'Windows_NT') { return $path }   # em Unix '/d/...' e path legitimo
+    if ($path -match '^/cygdrive/([a-zA-Z])/(.*)$' -or $path -match '^/([a-zA-Z])/(.*)$') {
+        return ($matches[1].ToUpper() + ":\" + ($matches[2] -replace '/', '\'))
+    }
+    if ($path -match '^/([a-zA-Z])/?$') { return ($matches[1].ToUpper() + ":\") }
+    return $path
+}
+
 function Get-CommitTargetDir {
     param([string]$cmd, [string]$fallback)
 
     # git -C <dir> commit  (suporta quotes simples/duplas)
-    if ($cmd -match '\bgit\s+-C\s+(?:"([^"]+)"|''([^'']+)''|(\S+))\s+.*\bcommit\b') {
+    # -cmatch (case-SENSITIVE) de proposito: com -match, o '-c' de
+    # `git -c commit.gpgsign=false commit` casava neste padrao e o "repo target" virava
+    # 'commit.gpgsign=false'. Bug encontrado em 2026-07-27.
+    if ($cmd -cmatch '\bgit\s+-C\s+(?:"([^"]+)"|''([^'']+)''|(\S+))\s+.*\bcommit\b') {
         foreach ($g in $matches[1], $matches[2], $matches[3]) { if ($g) { return $g } }
     }
 
@@ -60,7 +78,7 @@ try {
 
     # Resolver repo target do commit
     $cwd = (Get-Location).Path
-    $targetDir = Get-CommitTargetDir -cmd $command -fallback $cwd
+    $targetDir = ConvertTo-WindowsPath (Get-CommitTargetDir -cmd $command -fallback $cwd)
     $repoRoot = & git -C "$targetDir" rev-parse --show-toplevel 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $repoRoot) { $repoRoot = $targetDir }
     $repoRoot = $repoRoot.Trim()
