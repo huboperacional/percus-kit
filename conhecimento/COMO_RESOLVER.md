@@ -17,6 +17,10 @@
 
 ## Índice
 
+- [Módulo fail-open: "quebrado" e "corretamente desligado" ficam idênticos de fora, e o teste passa nos dois](#fail-open-esconde-teste-vacuo)
+- [`ORDER BY created_at` não ordena um lote: `now()` é hora da TRANSAÇÃO](#created-at-nao-ordena-lote)
+- [Schema `strict` que OBRIGA o campo mas não ENSINA quando preenchê-lo produz silêncio, não erro](#strict-schema-campo-sem-instrucao)
+- [Guarda contra ação destrutiva tem que ser testada com PERGUNTAS, não só com comandos](#guarda-destrutiva-testar-com-perguntas)
 - [Sessão de login "morre sozinha" em todos os produtos ao mesmo tempo](#sessao-morre-invalidacao-por-pessoa)
 - [Flag de "já processei" que mente produz PERDA e DUPLICAÇÃO ao mesmo tempo — e uma esconde a outra](#flag-ja-processei-que-mente)
 - [Ao proteger alguém de um envio, o filtro tem que caber na CHAVE de cada emissor](#filtro-cabe-na-chave-do-emissor)
@@ -2639,3 +2643,131 @@ local × remoto. Foi a receita do deploy da FM sob uplink degradado (subir só o
 NOVO antes do MODIFICADO, + `deploy_*_v2.py --quick`).
 
 **Ref:** FM 2026-07-28 (deploy do frontend `20260728-004439`).
+
+---
+
+## Módulo fail-open: "quebrado" e "corretamente desligado" ficam idênticos de fora, e o teste passa nos dois {#fail-open-esconde-teste-vacuo}
+
+`tags: fail-open, feature flag, allowlist, dark launch, teste vacuo, mutation testing, assert_not_awaited, AsyncMock, gate silencioso, LLM, timeout`
+
+**Sintoma:** o teste do gate de uma feature flag / allowlist passa. Você apaga a linha de
+produção que implementa o gate. **O teste continua verde.**
+
+**Causa raiz:** num módulo fail-open, o gate e a falha real convergem para a **mesma saída
+observável**. Com o gate apagado, a execução segue até a chamada externa (LLM, HTTP, etc.), que
+levanta — por credencial ausente no ambiente de teste, timeout, o que for —, o `except Exception`
+do fail-open engole, e a função devolve exatamente o mesmo `ok=False` que o gate devolveria.
+Resultado igual, mecanismo oposto. Asserir o resultado não distingue os dois.
+
+Isso é grave porque **o gate costuma SER o dark launch**: se ele regride, a feature liga para
+todo mundo em produção e a suíte inteira continua verde.
+
+**Solução:** não asserte só o resultado — asserte que **o efeito colateral caro não aconteceu**.
+Mocke a dependência externa e verifique que ela não foi chamada:
+
+```python
+llm = AsyncMock(return_value={"itens": [{"titulo": "nao devia chegar aqui"}]})
+with patch.object(S.settings, "FEATURE_ENABLED", False), \
+     patch.object(S.Service, "chamada_cara", llm):
+    r = await S.entrypoint(texto, org_id="qualquer")
+assert r.ok is False
+llm.assert_not_awaited()      # <- é isto que dá dente ao teste
+```
+
+E escreva a **contraprova**: a org DENTRO da allowlist tem que CHEGAR na dependência. Sem ela,
+uma allowlist que bloqueia todo mundo também passaria no teste de cima.
+
+**Como descobrir se você já tem esse buraco:** mutação. Apague a linha de produção do gate, rode
+a suíte, e veja se alguma coisa fica vermelha. Verde = o gate não tem teste.
+
+**Ref:** Plexco Tasks s154 (2026-07-28), `wa_structurer.py`. Achado por mutação durante a
+implementação: com o gate `if not settings.WA_STRUCTURER_ENABLED or not _org_allowed(org_id)`
+removido, **7 passed**. Vale para qualquer guarda absorvida por `except` genérico — flag,
+allowlist, rate-limit, circuit breaker.
+
+---
+
+## `ORDER BY created_at` não ordena um lote: `now()` é hora da TRANSAÇÃO {#created-at-nao-ordena-lote}
+
+`tags: postgres, now(), current_timestamp, server_default, created_at, ordenacao, lote, batch, flake, transaction time, statement_timestamp, clock_timestamp`
+
+**Sintoma:** N linhas criadas juntas (um lote, um fan-out, um import) saem na ordem certa quando
+você testa, e um dia saem trocadas — sem ninguém ter mexido na query.
+
+**Causa raiz:** `created_at` com `server_default=func.now()` grava `now()` do Postgres, que é
+**hora do início da TRANSAÇÃO**, não do statement. Todas as N linhas do mesmo commit recebem o
+**timestamp idêntico**. `ORDER BY created_at` então não desempata nada e o Postgres devolve a
+ordem física do heap — que para poucas linhas num seq scan coincide com a de inserção, até deixar
+de coincidir. Colunas de posição costumam nascer 0 em todas e não ajudam.
+
+Medido em produção: 9 tarefas de um mesmo fan-out, `count(DISTINCT created_at) = 1`. E mais
+revelador — a chamada de transcrição rodou **3 segundos depois** do timestamp que ficou gravado,
+porque a transação já estava aberta.
+
+**Solução:** ordene pelo que o **produtor** emitiu, não pelo que o banco carimbou. No teste, leia
+os ids da lista que o próprio código montou (o retorno, o `side_effects`, o log) e resolva as
+linhas nessa ordem. Se a ordem precisa sobreviver no banco, grave uma coluna de sequência
+explícita — não confie em tempo. (`statement_timestamp()`/`clock_timestamp()` avançam dentro da
+transação, mas ainda são tempo: continuam podendo empatar.)
+
+**Ref:** Plexco Tasks s154 (2026-07-28), `test_wa_decomposicao.py` — três asserções de ordem
+passavam por sorte; viraram `_tarefas_da_leva(db, result)`, que lê os ids do `side_effect`.
+
+---
+
+## Schema `strict` que OBRIGA o campo mas não ENSINA quando preenchê-lo produz silêncio, não erro {#strict-schema-campo-sem-instrucao}
+
+`tags: structured outputs, function calling, strict, tool schema, prompt, openai, campo obrigatório, regressão silenciosa`
+
+**Sintoma:** um recurso simplesmente para de acontecer. Nada estoura, nada loga, nenhum teste
+fica vermelho. No caso real: "quero falar com um atendente" deixou de escalar para humano.
+
+**Causa raiz:** ao trocar o contrato do LLM eu reescrevi o system prompt do zero e esqueci
+**quatro** dos campos do schema (`atendente`, `entrega`, `endereco`, `pagamento`). Como o
+schema é `strict`, todo campo está em `required` — então o modelo **é obrigado a preencher**
+e devolve `false`/`null` para o que não entendeu que devia usar. O contrato continua válido, o
+parse continua funcionando, a suíte continua verde. O recurso só some.
+
+**Solução:** ao criar ou reescrever um tool schema, faça a checagem cruzada explícita —
+**todo campo do schema tem uma linha de instrução no prompt?** É uma lista de dois conjuntos e
+leva um minuto. E quando o schema substitui um anterior, faça o diff dos dois PROMPTS, não só
+o dos schemas: o schema novo pode estar completo enquanto o prompt novo está pela metade.
+
+**Corolário do mesmo caso** (contrato declarativo, "o LLM diz como o estado deve ficar"):
+enuncie a **consequência da omissão**, não só a instrução positiva. "Repita as linhas que
+permanecem" foi lido como sugestão; o que faltava era "toda linha que você NÃO incluir será
+REMOVIDA". A regra positiva e a consequência negativa não são a mesma frase para um LLM.
+
+**Ref:** tiatendo, frente do carrinho declarativo (2026-07-29), commit `6740202`.
+
+---
+
+## Guarda contra ação destrutiva tem que ser testada com PERGUNTAS, não só com comandos {#guarda-destrutiva-testar-com-perguntas}
+
+`tags: regex, detecção de intenção, nlp, guarda, remoção, falso positivo, revisão adversarial, assimetria`
+
+**Sintoma:** a proteção contra "apagar sem o cliente pedir" passa em todos os testes e mesmo
+assim apaga.
+
+**Causa raiz:** os testes exercitavam **comandos** ("tira o X", "troca o X pelo Y"). Ninguém
+testou **perguntas**. A regex de intenção de troca casava `melhor\s+[oa]` e `muda|mudar`, então
+`"melhor a G ou a M?"` e `"muda alguma coisa se eu pedir sem cebola?"` — perguntas comuns, sem
+intenção nenhuma de remover — **autorizavam a exclusão**. Pior: o cliente em dúvida entre
+tamanhos é exatamente o turno em que o LLM mais erra o estado desejado. A guarda desligava
+justamente quando era mais necessária.
+
+**Solução:**
+1. Teste a guarda com o corpus que ela vai encontrar de verdade: perguntas, comparações,
+   dúvidas, bordões ("não, pera..."), negações ("nunca tira X"), e a palavra dentro de outra
+   palavra ("Cola" dentro de "e**scola**" — case por `\b`, nunca por substring).
+2. Autorize **por item**, não por mensagem: um "tira o X" legítimo não pode liberar um corte no
+   Y que ninguém pediu.
+3. Exija desambiguação quando o alvo é ambíguo: com dois tamanhos do MESMO prato no carrinho,
+   nomear o prato não identifica a linha — peça o tamanho.
+4. Escolha o lado para o qual a guarda falha, e escreva isso no código. Falhar **fechado**
+   (perguntar sem precisar) custa um turno de conversa; falhar **aberto** (apagar) custa o
+   dinheiro do cliente. Endureça só o lado aberto e **documente o custo aceito**, senão o
+   próximo leitor "conserta" o que era deliberado.
+
+**Ref:** tiatendo, `execution/engine/restaurantCartDiff.py` (2026-07-29), commits `51784a2`
+→ `5571ba7`. Três rodadas de revisão, três furos, todos no desenho — nenhum no código gerado.
