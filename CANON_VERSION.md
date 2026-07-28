@@ -44,6 +44,19 @@ não existe mais. Ambos encontrados rodando o kit sobre ele mesmo no arco da v6.
 diverge calada · saída de `jq`/`python` no Windows vem com CRLF e o `\r` mata a regex ·
 hook em PowerShell bloqueando commit legítimo vindo do git-bash.
 
+**4. ⚠️ Existem DUAS regras de resolução de versão do plugin — hotfix precisa ir nas duas.**
+Descoberto porque o fix do hook, sincronizado só em `6.29.0`, continuou sem efeito:
+- **`CLAUDE_PLUGIN_ROOT` → `6.28.0`** (o que está em `installed_plugins.json`). É de lá que saem
+  **hooks, skills e slash commands** — inclusive o `/percus-review:review` do chat, que roda
+  `${CLAUDE_PLUGIN_ROOT}/scripts/review-router.ps1`.
+- **`percus-review-auto.*` → maior versão instalada (`6.29.0`)**, por ordenação semver do nome da
+  pasta. É o caminho que o agente usa via Bash tool.
+
+Ou seja: o mesmo kit pode rodar **router de uma versão e hook de outra**. Enquanto o republish
+estiver descartado, todo hotfix em `scripts/` ou `hooks/` vai nas **duas** pastas (cada uma tem um
+`.percus-hotfix.txt` dizendo o que foi copiado à mão e de qual versão-fonte). Sintoma de ter
+esquecido: o fix "não pega" e o comportamento antigo continua, sem erro nenhum.
+
 ---
 
 ## Changelog v6.31.0 — 2026-07-27
