@@ -57,6 +57,15 @@ estiver descartado, todo hotfix em `scripts/` ou `hooks/` vai nas **duas** pasta
 `.percus-hotfix.txt` dizendo o que foi copiado à mão e de qual versão-fonte). Sintoma de ter
 esquecido: o fix "não pega" e o comportamento antigo continua, sem erro nenhum.
 
+**5. Versões alinhadas: `.percus-version` = `plugin.json` = `marketplace.json` = `CANON_VERSION` =
+6.31.1 — agora com teste.** A convenção existia desde a v6.27.0 e já derrapou três vezes por depender
+de alguém lembrar: `marketplace.json` travado em 6.16.1, depois um patch atrás em 6.26.0, e agora
+**nove versões atrás** (6.29.0 — parado desde aquele release, enquanto o canon andava até 6.30.8).
+`.percus-version` estava em 6.30.8. Nada quebra na hora, e é justamente por isso que passa: o preço
+aparece num republish futuro, que nasceria com o número errado e criaria um diretório instalado que
+mente sobre o próprio conteúdo. `tests/version-alignment.tests.ps1` passa a aferir os 4 arquivos +
+a existência da entrada de changelog da versão atual (bump sem changelog = R25 violado).
+
 ---
 
 ## Changelog v6.31.0 — 2026-07-27
