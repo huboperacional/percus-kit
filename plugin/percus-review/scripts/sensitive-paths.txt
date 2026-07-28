@@ -1,0 +1,39 @@
+# sensitive-paths.txt — baseline GLOBAL de caminhos sensíveis do router de review.
+#
+# FONTE ÚNICA. Lido por review-router.ps1, review-router.sh e pelos testes.
+# Antes de 2026-07-27 esta lista existia duplicada nos dois routers (array PowerShell
+# + cadeia [[ =~ ]] em bash) e os testes raspavam o .ps1 com regex — três cópias que
+# podiam divergir em silêncio, e o padrão '^\.env' nunca chegou a ser testado.
+#
+# FORMATO
+#   - Uma regex por linha. Linha vazia e linha iniciada por '#' são ignoradas.
+#   - Match é CASE-INSENSITIVE nos dois motores (Auth/ e auth/ contam igual).
+#   - A regex é comparada contra o path como o git emite (`git diff --name-only`),
+#     relativo à raiz do repo, com barra normal.
+#
+# DIALETO PORTÁVEL (obrigatório — a mesma string roda em POSIX ERE e .NET):
+#   ✅ (^|[/\\])   [0-9]+   .*   \.   (a|b)   [^/\\]*   $
+#   ❌ \d  \w  \s  \b  (?i)  (?=...)  (?!...)  *?  {n,m} literal de repetição não-ERE
+#   Motivo: bash usa ERE, PowerShell usa .NET. Só o subconjunto comum é seguro.
+#
+# ESTE ARQUIVO É BASELINE, NÃO CATÁLOGO DE PROJETO.
+#   Entra aqui só o que é perigoso em QUALQUER projeto Percus.
+#   Convenção de nome própria de um projeto (`execution/`, `lib/*_client.py`, ...)
+#   vai no `.percus-review.json` da raiz DAQUELE repo:
+#       { "sensitivePatterns": ["(^|[/\\\\])execution[/\\\\].*\\.py$"] }
+#   O router soma os dois. Empurrar convenção de um projeto pra cá recria a dívida
+#   que este arquivo existe pra pagar (ver CANON_VERSION.md v6.31.0).
+
+# --- original ---
+(^|[/\\])auth[/\\]
+(^|[/\\])payment[^/\\]*[/\\]
+(^|[/\\])migrations[/\\]
+(^|[/\\])credentials[/\\]
+^\.env
+
+# --- expansão 2026-05-18 (incidente Plexco Tasks) ---
+(^|[/\\])alembic[/\\]versions[/\\]
+(^|[/\\])api[/\\]v[0-9]+[/\\]internal
+(^|[/\\])infra[/\\].*\.(yaml|yml)$
+(^|[/\\])(backend|app)[/\\].*config\.py$
+(^|[/\\])services[/\\](auth|payment|notification|webhook)[/\\]

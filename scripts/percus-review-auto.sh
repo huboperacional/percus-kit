@@ -74,7 +74,14 @@ if [ -z "$CURRENT" ]; then
     exit 1
 fi
 
->&2 echo "[percus-review-auto] plugin v$(basename "$CURRENT") em $CURRENT"
+# A versao real e a do plugin.json; o NOME DA PASTA reflete o ultimo republish e fica
+# legitimamente atras (republish descartado em 01/07/2026 — ver CANON_VERSION.md).
+MANIFEST_VERSION="?"
+if [ -f "$CURRENT/plugin.json" ]; then
+    MANIFEST_VERSION=$(sed -n 's/.*"version"[ ]*:[ ]*"\([^"]*\)".*/\1/p' "$CURRENT/plugin.json" | head -1)
+    [ -z "$MANIFEST_VERSION" ] && MANIFEST_VERSION="?"
+fi
+>&2 echo "[percus-review-auto] plugin pasta=$(basename "$CURRENT") plugin.json=$MANIFEST_VERSION em $CURRENT"
 
 ROUTER="$CURRENT/scripts/review-router.sh"
 DEEPSEEK="$CURRENT/scripts/deepseek-review.sh"
@@ -104,6 +111,23 @@ SENSITIVE=$(echo "$DECISION_JSON" | sed -n 's/.*"sensitive"[ ]*:[ ]*\(true\|fals
 if [ -z "$DECISION" ]; then
     >&2 echo "[percus-review-auto] ERRO: nao consegui parsear decisao de: $DECISION_JSON"
     exit 2
+fi
+
+# Avisos do router (v6.31.0): o router roda com 2>/dev/null, entao os avisos vem
+# DENTRO do JSON. Rebaixamento silencioso por config quebrada foi o bug de 2026-07-27.
+WARN_LINES=""
+if command -v jq >/dev/null 2>&1; then
+    WARN_LINES=$(printf '%s' "$DECISION_JSON" | jq -r '.warnings[]?' 2>/dev/null || true)
+elif command -v python3 >/dev/null 2>&1; then
+    WARN_LINES=$(printf '%s' "$DECISION_JSON" | python3 -c 'import json,sys
+for w in (json.load(sys.stdin).get("warnings") or []): print(w)' 2>/dev/null || true)
+elif printf '%s' "$DECISION_JSON" | tr -d ' \n' | grep -q '"warnings":\["'; then
+    WARN_LINES="router emitiu avisos e nao ha jq/python3 para le-los — rode o router direto"
+fi
+if [ -n "$WARN_LINES" ]; then
+    printf '%s\n' "$WARN_LINES" | while IFS= read -r w; do
+        [ -z "$w" ] || >&2 echo "[percus-review-auto] WARN (router): $w"
+    done
 fi
 
 >&2 echo "[percus-review-auto] decisao: $DECISION (sensitive=$SENSITIVE)"
@@ -176,6 +200,42 @@ case "$DECISION" in
         fi
         run_fact_check "$REVIEW_OUTPUT"
         >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review."
+        ;;
+
+    council)
+        # Fase 6 v6.1.0+: o router emite "council" (sensivel + grande/from-DS) desde a
+        # v6.1.0, mas este case nunca existiu aqui — so no .ps1. Resultado: quem rodava
+        # o wrapper por bash caia em "decisao desconhecida" e o review NAO acontecia.
+        # Encontrado em 2026-07-27 rodando o proprio gate sobre este commit.
+        # Semantica identica a do .ps1: DeepSeek local + Llama via orchestrator + marker
+        # pro agente completar a 3a perspectiva (Cross-Claude).
+        REVIEW_OUTPUT=$(bash "$DEEPSEEK" $DEEPSEEK_ARGS 2>/dev/null)
+        if [ $? -ne 0 ]; then
+            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou"
+            exit 3
+        fi
+        run_fact_check "$REVIEW_OUTPUT"
+
+        ORCH="$CURRENT/scripts/council-orchestrator.sh"
+        if [ -f "$ORCH" ]; then
+            if [ -n "$BASE" ]; then
+                DIFF=$(git diff "$BASE...HEAD" 2>/dev/null)
+            else
+                DIFF=$(printf '%s\n%s' "$(git diff --cached 2>/dev/null)" "$(git diff 2>/dev/null)")
+            fi
+            if [ -n "$(printf '%s' "$DIFF" | tr -d '[:space:]')" ]; then
+                TMP_PROMPT=$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-council-$$.txt")
+                printf 'Revise o git diff abaixo no padrao Percus R1-R19. Aponte bugs, regressoes, mocks, violacoes de auth, imports vetados. Se nada relevante: '"'"'Sem findings criticos'"'"'.\n\n---DIFF---\n%s' "$DIFF" > "$TMP_PROMPT"
+                if bash "$ORCH" --prompt-file "$TMP_PROMPT" --mode review --providers groq-llama >/dev/null 2>&1; then
+                    >&2 echo "[percus-review-auto] orchestrator Llama executado (log em .deepseek/council-log/)"
+                else
+                    >&2 echo "[percus-review-auto] WARN: orchestrator Llama falhou (DeepSeek ja cobriu hook)"
+                fi
+                rm -f "$TMP_PROMPT"
+            fi
+        fi
+
+        >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: decision=council (sensitive + grande/from-DS). DEVE dispatchar Sonnet subagent via Agent tool agora pra completar conselho 3-membros."
         ;;
 
     cross-claude)

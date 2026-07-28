@@ -108,11 +108,20 @@ Git diff:
 ${DIFF}"
 
 # === BUILD JSON BODY (jq garante encoding seguro) ===
+# USER_MSG vai por ARQUIVO (--rawfile), nao por argv: no git-bash do Windows o argv
+# estoura em ~32KB e o jq morre com "Argument list too long". Efeito perverso: quanto
+# MAIOR o diff, menor a chance de ser revisado — o wrapper so dizia "deepseek-review.sh
+# falhou". Mesma licao que ja tinha sido aprendida pro curl logo abaixo.
+# Encontrado em 2026-07-27 (diff de 52KB do proprio fix do router).
+USER_MSG_FILE="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-usermsg-$$.txt")"
+trap 'rm -f "$USER_MSG_FILE"' EXIT
+printf '%s' "$USER_MSG" > "$USER_MSG_FILE"
+
 BODY="$(jq -n \
     --arg model "$MODEL" \
     --argjson temperature "$TEMPERATURE" \
     --arg sys "$SYSTEM_PROMPT" \
-    --arg usr "$USER_MSG" \
+    --rawfile usr "$USER_MSG_FILE" \
     '{
         model: $model,
         temperature: $temperature,

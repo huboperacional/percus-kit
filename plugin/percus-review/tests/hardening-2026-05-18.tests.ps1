@@ -9,6 +9,15 @@ Describe "Hardening 2026-05-18 — incident regression prevention" {
             $env:PERCUS_CANON_DIR = "D:\Claud Automations\_Novo_Projeto"
         }
         $script:routerPath = Join-Path $PSScriptRoot ".." "scripts" "review-router.ps1"
+        # v6.31.0: os padroes sairam do fonte do router pra scripts/sensitive-paths.txt
+        # (fonte unica lida tambem pelo .sh). Raspar regex do .ps1 nao funciona mais —
+        # e, pior, retornava lista VAZIA, o que faria o teste negativo passar a toa.
+        $script:sensitivePathsFile = Join-Path $PSScriptRoot ".." "scripts" "sensitive-paths.txt"
+        $script:sensitivePatterns = @(
+            Get-Content $script:sensitivePathsFile |
+                ForEach-Object { $_.Trim() } |
+                Where-Object { $_ -ne "" -and -not $_.StartsWith("#") }
+        )
         $script:factCheckPath = Join-Path $PSScriptRoot ".." "scripts" "fact-check.ps1"
         $script:orchPath = Join-Path $PSScriptRoot ".." "scripts" "council-orchestrator.ps1"
         $script:hookPath = Join-Path $PSScriptRoot ".." "hooks" "external-action-guard.ps1"
@@ -19,12 +28,10 @@ Describe "Hardening 2026-05-18 — incident regression prevention" {
     # -------------------------------------------------------------------------
     Context "Cenario 1: Router sensitive_paths cobre alembic (causa raiz F1)" {
         It "1. alembic-only PR seria classificado sensitive (incidente 2026-05-18)" {
-            $content = Get-Content $routerPath -Raw
-            # Extrai patterns no formato '(...)' do array $sensitivePatterns
-            $patterns = [regex]::Matches($content, "'(\([^']+\)[^']*)'") | ForEach-Object { $_.Groups[1].Value }
+            $script:sensitivePatterns.Count | Should -BeGreaterThan 0 -Because "lista vazia faria o teste negativo (cenario 4) passar a toa"
             $testPath = "backend/alembic/versions/099_test.py"
             $matched = $false
-            foreach ($p in $patterns) { if ($testPath -match $p) { $matched = $true; break } }
+            foreach ($p in $script:sensitivePatterns) { if ($testPath -match $p) { $matched = $true; break } }
             $matched | Should -Be $true -Because "alembic deveria estar em sensitive_paths apos F1 (incidente 2026-05-18)"
         }
     }
@@ -76,13 +83,12 @@ Describe "Hardening 2026-05-18 — incident regression prevention" {
     # -------------------------------------------------------------------------
     Context "Cenario 4: Doc-only PR nao regride para sensitive (negative test)" {
         It "4. doc-only PR (.md) nao e classificado como sensitive" {
-            $content = Get-Content $routerPath -Raw
-            $patterns = [regex]::Matches($content, "'(\([^']+\)[^']*)'") | ForEach-Object { $_.Groups[1].Value }
+            $script:sensitivePatterns.Count | Should -BeGreaterThan 0 -Because "sem padrao carregado este teste passa por vacuidade"
             $matchedReadme = $false
             $matchedHandoff = $false
-            foreach ($p in $patterns) {
-                if ("docs/README.md" -match $p) { $matchedReadme = $true; break }
-                if ("HANDOFF.md" -match $p) { $matchedHandoff = $true; break }
+            foreach ($p in $script:sensitivePatterns) {
+                if ("docs/README.md" -match $p) { $matchedReadme = $true }
+                if ("HANDOFF.md" -match $p) { $matchedHandoff = $true }
             }
             $matchedReadme | Should -Be $false -Because "docs/README.md NAO eh sensitive"
             $matchedHandoff | Should -Be $false -Because "HANDOFF.md NAO eh sensitive"

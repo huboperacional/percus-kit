@@ -71,7 +71,15 @@ if (-not $current) {
     exit 1
 }
 
-[Console]::Error.WriteLine("[percus-review-auto] plugin v$($current.Name) em $($current.FullName)")
+# A versao real e a do plugin.json; o NOME DA PASTA reflete o ultimo republish e fica
+# legitimamente atras (republish descartado em 01/07/2026 — ver CANON_VERSION.md).
+# Logar so a pasta ja fez sessao de adocao reportar "drift" que nao existe.
+$manifestVersion = "?"
+$manifestPath = Join-Path $current.FullName "plugin.json"
+if (Test-Path $manifestPath) {
+    try { $manifestVersion = (Get-Content $manifestPath -Raw | ConvertFrom-Json).version } catch { $manifestVersion = "?" }
+}
+[Console]::Error.WriteLine("[percus-review-auto] plugin pasta=$($current.Name) plugin.json=$manifestVersion em $($current.FullName)")
 
 $routerScript   = Join-Path $current.FullName "scripts\review-router.ps1"
 $deepseekScript = Join-Path $current.FullName "scripts\deepseek-review.ps1"
@@ -138,6 +146,12 @@ try {
 } catch {
     [Console]::Error.WriteLine("[percus-review-auto] ERRO: router retornou JSON invalido: $decisionJson")
     exit 2
+}
+
+# Avisos do router (v6.31.0): o router e chamado com 2>$null, entao eles vem DENTRO
+# do JSON. Rebaixamento silencioso por config quebrada foi o bug de 2026-07-27.
+foreach ($w in @($decision.warnings)) {
+    if ($w) { [Console]::Error.WriteLine("[percus-review-auto] WARN (router): $w") }
 }
 
 [Console]::Error.WriteLine("[percus-review-auto] decisao: $($decision.decision) (sensitive=$($decision.sensitive), from_deepseek=$($decision.from_deepseek), $($decision.files_count) arquivo(s))")

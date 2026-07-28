@@ -406,10 +406,25 @@ Hook Layer 1+2 continua sendo backstop final — se agente esquecer auto-trigger
 | Cenário | Reviewer | Por quê |
 |---|---|---|
 | Pre-commit rotineiro | **DeepSeek** (`deepseek-chat`) | Cross-provider real (não-Anthropic), 9× mais barato que GPT-5, suficiente pra catch básico |
-| Pre-commit em pasta sensível (`**/auth/**`, `**/payment*/**`, `**/migrations/**`, `**/credentials/**`, `.env*`) | **DeepSeek + Cross-Claude duplo** | Defesa em profundidade onde o risco × consequência paga o custo |
+| Pre-commit em pasta sensível — baseline (`**/auth/**`, `**/payment*/**`, `**/migrations/**`, `**/credentials/**`, `.env*`, ver `plugin/percus-review/scripts/sensitive-paths.txt`) **+ o que o projeto declarar em `.percus-review.json`** | **DeepSeek + Cross-Claude duplo** | Defesa em profundidade onde o risco × consequência paga o custo |
 | Pre-commit de saída DeepSeek (commit com trailer `Co-implemented-by: deepseek-v4` — ver R13) | **Cross-Claude apenas** (subagent Sonnet) | Princípio R11: revisor ≠ implementador. DeepSeek não pode auto-revisar |
 | Marco (fim de fase/feature/épico) | **DeepSeek + Cross-Claude duplo** | Frequência baixa, gate crítico — vale defesa em profundidade |
 | Pre-commit com alegação sobre função importada (lib externa, auth-service, SDK) | **Cross-Claude obrigatório no review** | DeepSeek pode alucinar comportamento por nome de função sem ler implementação. Cross-Claude segue imports melhor. Detectado por F4c hook quando reviewer principal foi só DeepSeek. |
+
+**Declarar a pasta sensível DESTE projeto (v6.31.0+).** O baseline global é taxonomia de produto web
+(`auth/`, `payment*/`, `migrations/`...). Projeto de tooling/infra tem outro vocabulário — e o router
+não adivinha. Crie `.percus-review.json` na **raiz do repo**, versionado:
+
+```json
+{ "sensitivePatterns": ["(^|[/\\\\])execution[/\\\\].*\\.py$",
+                        "(^|[/\\\\])lib[/\\\\].*_client\\.py$"] }
+```
+
+Regra prática: **entra aqui tudo que escreve em produção** (script com `--apply`, execução remota,
+cliente autenticado de API de infra). Sem esse arquivo, esse código é revisado como código trivial —
+foi exatamente assim que 2 bugs passaram no report de 2026-07-27. Descrever a pasta sensível **só em
+prosa** no `CLAUDE.md` não configura nada: o router lê o JSON, não o markdown. Config quebrada não
+rebaixa nada — o router assume sensível e avisa.
 
 Justificativa do design: dois provedores diferentes (DeepSeek Inc + Anthropic) cobrem viés de modelo de cada um. Cross-Claude é grátis (consome plano Claude). DeepSeek é ~$0.02/call. Custo agregado mensal estimado: $2-5.
 

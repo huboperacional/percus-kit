@@ -1,0 +1,9 @@
+{
+  "_comment": "Pasta sensivel DESTE repo (o canon Percus). O baseline global do router e taxonomia de produto web e nao cobre nada disto. Regra: entra aqui o que, se sair errado, quebra o gate de TODOS os projetos. Ver 01_REGRAS_INEGOCIAVEIS.md e CANON_VERSION.md v6.31.0.",
+  "sensitivePatterns": [
+    "(^|[/\\\\])plugin[/\\\\]percus-review[/\\\\](scripts|hooks|git-hooks)[/\\\\]",
+    "(^|[/\\\\])hooks[/\\\\]",
+    "(^|[/\\\\])scripts[/\\\\]percus-.*\\.(ps1|sh)$",
+    "(^|[/\\\\])tools[/\\\\]scaffold-percus-project\\.(ps1|sh)$"
+  ]
+}

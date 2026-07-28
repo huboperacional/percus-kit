@@ -1,10 +1,74 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.30.8`
+**Versão canônica em `huboperacional/percus-kit`:** `6.31.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
 >
 > ⚠️ **O plugin INSTALADO (em `plugins/cache/`) pode ficar ATRÁS do canon-source — isso é ESPERADO, não drift.** O republish/retag do plugin foi descartado (decisão do operador, 01/07/2026), então o tooling novo é **repo-only**: os projetos continuam lendo o plugin em cache (hoje 6.28.0/6.29.0). Gates novos NÃO chegam por republish — chegam via `v2/gates/instalar-gates.sh` (git hook self-contained, zero dependência de publicação). Portanto: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta `plugins/cache/percus-tools/percus-review/<v>/` reflete o último republish e é legitimamente mais antiga. Não re-flaggar como bug.
+
+---
+
+## Changelog v6.31.0 — 2026-07-27
+
+**Router rebaixava o review de arquivo que o projeto declarou sensível (report "Melhoria na VPS").**
+Segunda ocorrência da mesma classe de falha do incidente 2026-05-18 — a primeira foi "paga" só
+expandindo o array, e a lista global voltou a não cobrir o projeto seguinte.
+
+**O que acontecia.** Commit `da2724f` do "Melhoria na VPS" tocou `execution/n8n_evo_to_gowa.py`
+(script com `--apply` que escreve em workflow de n8n **de produção**) e `lib/n8n_client.py`. O
+`CLAUDE.md`/`AGENTS.md` daquele repo declaram essas duas pastas como sensíveis — mas o router
+**nunca leu config de projeto**: a lista era hardcoded, global, e com taxonomia de produto web
+(`auth/`, `payment*/`, `services/webhook/`). Projeto de tooling/infra não tem nenhuma dessas.
+Saiu `sensitive=False` → **deepseek simples**. O Cross-Claude, rodado na mão por fora do router,
+achou 2 dos 3 bugs da rodada (gate `is None` deixando node vazio migrar sem `--allow-empty`;
+`--batch` saindo com código 0 mesmo com falha). Os dois teriam ido pro commit.
+
+**1. Fonte única: `plugin/percus-review/scripts/sensitive-paths.txt`.** A lista existia em **três**
+cópias que podiam divergir em silêncio: array no `review-router.ps1`, cadeia `[[ =~ ]]` no
+`review-router.sh`, e os testes, que raspavam a regex do fonte `.ps1` com
+`[regex]::Matches($c, "'(\([^']+\)[^']*)'")`. Agora os dois routers e os testes leem o mesmo
+arquivo. Padrões restritos ao subconjunto portável ERE/.NET (`[0-9]`, não `\d`) — há teste que
+barra `\d`/`\w`/`\s`/`(?...)` entrando no baseline.
+- Efeito colateral do jeito antigo: `'^\.env'` **nunca foi testado** — não começa com `(`, então
+  a regex de raspagem não o capturava. Hoje tem teste.
+
+**2. Extensão por projeto: `.percus-review.json` na raiz do repo revisado.**
+`{ "sensitivePatterns": ["(^|[/\\\\])execution[/\\\\].*\\.py$"] }` — somado ao baseline. Cada
+projeto declara sua convenção **junto do código, versionada**, em vez de só em prosa no `CLAUDE.md`.
+O baseline continua sendo baseline: convenção de um projeto **não** entra nele (foi assim que a
+dívida nasceu).
+
+**3. Falha fechada.** Baseline ausente/vazio, JSON inválido, regex que não compila, ou timeout de
+match → `sensitive=true` + aviso. Erro de config **nunca** rebaixa o review. Antes, qualquer um
+desses cenários viraria "deepseek simples" calado — o mesmo modo de falha do arco inteiro.
+
+**4. Avisos deixam de morrer no `2>/dev/null`.** Os wrappers chamam o router silenciando stderr,
+então o aviso agora sai **dentro do JSON** (`warnings[]`) e os dois `percus-review-auto.*` imprimem
+cada um com prefixo `WARN (router)`.
+
+**5. Match agora é case-insensitive nos dois motores.** O `.ps1` usava `-match` (CI por default) e o
+`.sh` usava `[[ =~ ]]` (CS): `backend/Auth/` escalava no Windows e não escalava no bash. Divergência
+real que a lista duplicada escondia.
+
+**Verificado RODANDO** (`tests/router-sensitive-paths.tests.ps1`, 35 testes, Pester 5.7.1 — 35/35):
+matriz de 9 cenários nos **dois** routers, incluindo **6 testes de paridade** `.ps1` × `.sh` sobre o
+mesmo repo temporário; `execution/*.py` sem config → `deepseek` / com config → `dual`; doc-only com
+config → `deepseek` (config não vira `sensitive` global); config quebrada e baseline ausente → `dual`
++ aviso; `.env` e `backend/Auth/` (maiúsculo) → `dual`. Router também exercitado sob Windows
+PowerShell 5.1, não só pwsh 7.
+- Bug encontrado e corrigido durante a verificação: `jq`/`python` no Windows emitem **CRLF**, e o
+  `\r` grudava no fim da regex do projeto (`...$\r` não casa com nada) — o padrão declarado morria
+  em silêncio. Só apareceu porque o teste roda o router de verdade, não a lógica de matching.
+
+**6. `percus-review-auto.*` loga `pasta=X plugin.json=Y`.** Logava só o nome da pasta, e sessão de
+adoção já reportou "drift" que não existe (pasta `6.29.0` contendo `plugin.json` 6.30.x é o esperado
+— republish descartado em 01/07/2026, ver ressalva no topo deste arquivo).
+
+> **Nota de congelamento (V1 durante o piloto V2).** `MIGRACAO.md` congela o V1 exceto correção de
+> bug crítico. Esta entrada foi autorizada pelo operador como bug crítico: o router rebaixando
+> review de código que escreve em produção já deixou 2 bugs passarem. Os arquivos do router no
+> **cache instalado** (`plugins/cache/.../6.29.0/scripts/`) foram atualizados junto — sem isso o fix
+> ficaria inerte, porque os wrappers executam o cache, não o repo.
 
 ---
 
