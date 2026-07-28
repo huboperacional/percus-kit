@@ -18,6 +18,10 @@
 ## Índice
 
 - [Sessão de login "morre sozinha" em todos os produtos ao mesmo tempo](#sessao-morre-invalidacao-por-pessoa)
+- [Flag de "já processei" que mente produz PERDA e DUPLICAÇÃO ao mesmo tempo — e uma esconde a outra](#flag-ja-processei-que-mente)
+- [Ao proteger alguém de um envio, o filtro tem que caber na CHAVE de cada emissor](#filtro-cabe-na-chave-do-emissor)
+- [`<input type="date">` mostra mm/dd mesmo com a página inteira em pt-BR](#input-date-formato-idioma-navegador)
+- [scp pra caminho remoto com colchetes (`[id]` de rota Next) falha por glob no lado remoto](#scp-colchetes-glob-remoto)
 - ["Sessão de 30 dias" que morre em 2 segundos: wipe do refresh token em falha transitória](#refresh-wipe-transitorio)
 - [Auditoria cross-repo que lê o CHECKOUT LOCAL vira evidência circular](#auditoria-cross-repo-working-tree)
 - [Cliente de API que devolve `None` no erro faz o produto achar que ENTREGOU](#provider-none-vira-entrega)
@@ -2526,3 +2530,112 @@ recorrente custa a proteção inteira.
 
 **Ref:** `CANON_VERSION.md` v6.31.1; testes em
 `plugin/percus-review/tests/pre-commit-path-resolution.tests.ps1`.
+
+
+## Flag de "já processei" que mente produz PERDA e DUPLICAÇÃO ao mesmo tempo — e uma esconde a outra {#flag-ja-processei-que-mente}
+
+`tags: idempotencia, _preSaved, pre-salvo, duplicata, mensagem perdida, webhook, batch, pipeline inbound, persistencia, contrato de flag, defeitos de sinais opostos`
+
+**Sintoma:** você investiga "o item X não é gravado" e a contagem no banco parece desmentir a
+suspeita (há linhas de X, então "não perde"). Meses de dados dizem que está tudo bem. Ao mesmo tempo,
+ninguém reclama de duplicata — porque duplicata não dispara alarme: o total fica ALTO, a lista parece
+completa, e nenhum contador acusa falta.
+
+**Causa raiz:** um flag booleano do tipo `_preSaved` / `alreadyHandled` / `processed` cujo CONTRATO
+("este item já está persistido") não é honrado nas duas pontas:
+1. quem **carimba** o flag o faz incondicionalmente, mas só persiste um subconjunto
+   (ex.: `if text:` — então o item sem texto é marcado como salvo sem ter sido) → **PERDA**;
+2. quem **deveria ler** o flag não lê (ex.: gates que gravam "pra trilha de auditoria") → **DUPLICAÇÃO**.
+
+Os dois defeitos têm a MESMA raiz e sinais opostos, então se cancelam na hora de procurar: quem
+duplica parece não ter perdido nada, e é por isso que a suspeita original nunca fecha.
+
+**Solução:**
+- Teste as DUAS direções no mesmo commit: o caso em que o flag mente pra mais (perde) e o caso em que
+  quem deveria lê-lo não lê (duplica). Um teste só deixa o outro defeito passar.
+- Faça quem carimba persistir TUDO que é persistível (não só o caminho feliz), e todo ponto de escrita
+  ler o flag antes de escrever e carimbá-lo depois.
+- **A metadata é o melhor delator de autoria.** Quando a mesma chave lógica aparece 2×, compare a
+  metadata das duas linhas: o formato de cada uma aponta o arquivo que a escreveu. Foi assim que os 5
+  pontos de escrita apareceram, sem ler o código todo.
+- Consulta que acha o defeito sem saber onde ele está (janela + `lag`):
+  `lag(content) OVER (PARTITION BY <conversa> ORDER BY created_at)` e filtrar
+  `content = prev_content AND created_at - prev_at < interval '5 seconds'`; agrupe **por mês** pra
+  saber se é defeito VIVO ou fóssil de uma era antiga do sistema.
+
+**Armadilha ao consertar:** se "não há nada a persistir" (evento de protocolo, payload vazio), o flag
+deve ficar **True** — "não sobrou nada pra jusante gravar". Marcá-lo False por "honestidade" faz cada
+evento vazio virar uma linha placeholder FANTASMA, porque o save a jusante costuma ser
+`conteudo or "[placeholder]"`. O contrato certo é "não há pendência", não "eu gravei".
+
+**Ref:** tiatendo `0.259.0` (2026-07-29) — 3711 pares idênticos com o mesmo `messageId`, 54 em julho;
+`execution/webhooks/inboundPipeline.py`, `execution/core/messageRouter.py` (5 pontos de save),
+`tests/test_inboundPersistenceContract.py`.
+
+
+## Ao proteger alguém de um envio, o filtro tem que caber na CHAVE de cada emissor {#filtro-cabe-na-chave-do-emissor}
+
+`tags: emissor, destinatario, filtro, guarda, is_admin, chave de busca, multi-tenant, outbound proativo, varredura`
+
+**Sintoma:** você fecha o vazamento num emissor e replica "o mesmo filtro" nos outros. Um deles
+continua alcançando quem deveria estar protegido — e o teste do filtro copiado passa.
+
+**Causa raiz:** cada emissor encontra o destinatário por uma **chave diferente** (conversa, telefone,
+tabela de clientes, JID de configuração). Uma marca gravada em UMA dessas entidades (ex.: uma coluna
+`is_admin` na tabela de conversas) simplesmente não alcança o emissor que busca por outra chave —
+registros criados por canais que nascem sem aquela entidade (loja web, painel) ficam órfãos e passam
+pelo filtro sem nem serem avaliados.
+
+**Solução:** ao varrer emissores, responda DUAS perguntas por emissor, não uma: (1) ele pode alcançar
+quem quero proteger? (2) por qual CHAVE ele acha o destinatário? O filtro mora na chave dele — e onde
+duas chaves coexistem, a guarda é dupla. Comparação de telefone é sempre por DÍGITOS
+(`regexp_replace(x,'[^0-9]','','g')`): um lado guarda E.164 com `+` e o outro sem, e comparar cru casa
+ZERO linhas **passando como sucesso** — falha silenciosa.
+
+**Ref:** tiatendo `0.258.0` (2026-07-29); `scripts/auditAdminReach.py` mediu 0 ocorrências ANTES do
+fix — medir também serve pra saber que não há o que consertar.
+
+---
+
+## `<input type="date">` mostra mm/dd mesmo com a página inteira em pt-BR {#input-date-formato-idioma-navegador}
+
+`tags: input date, formato de data, dd/mm/aaaa, mm/dd, locale, lang, navegador em ingles, mascara, PatternFormat, react-number-format, showPicker, picker nativo`
+
+**Sintoma:** usuário com o navegador em inglês vê datas `mm/dd/aaaa` numa página inteiramente
+pt-BR; pôr `lang="pt-BR"` no HTML não muda nada.
+
+**Causa raiz:** o formato de EXIBIÇÃO do `<input type="date">` nativo segue o **idioma da
+interface do navegador**, não o `lang` da página — testado nos 3 casos (sem `lang`, `en-US`,
+`pt-BR`): renderizam igual. Não existe fix por atributo.
+
+**Solução:** componente próprio que preserva o picker nativo: input de texto com máscara
+digitável `dd/mm/aaaa` (na FM: `PatternFormat` do `react-number-format`, dep que já estava no
+bundle pro campo de dinheiro — zero dependência nova) + um `<input type="date">` **oculto**
+(opacity 0, 1×1, `tabIndex={-1}`, `aria-hidden`) ancorando o botão de calendário via
+`el.showPicker()` com fallback `el.focus()`. O contrato com o form continua ISO
+(`aaaa-mm-dd`), idêntico ao input que foi substituído: digitação completa e válida emite ISO,
+incompleta/inválida emite `''` — a validação de obrigatório do form segue intacta e os
+call-sites não mudam de shape. Implementação de referência:
+`Familia-Milionaria/familia-frontend/src/components/DateInput.tsx`.
+
+**Ref:** FM commit `cbbd4e6` (2026-07-28) + spec `tests/e2e/date-mask.spec.ts` (digitou
+dd/mm/aaaa → POST ISO; incompleta → zero POST; picker sincroniza a máscara).
+
+---
+
+## scp pra caminho remoto com colchetes (`[id]` de rota Next) falha por glob no lado remoto {#scp-colchetes-glob-remoto}
+
+`tags: scp, ssh, glob, colchetes, [id], next.js app router, upload vps, cat redirect, wc -c`
+
+**Sintoma:** subir `src/app/batch/[id]/page.tsx` por `scp` falha ("no match") ou o arquivo não
+chega onde deveria.
+
+**Causa raiz:** o lado remoto do scp passa o caminho pelo shell — `[id]` vira classe de
+caracteres de glob e o alvo deixa de ser literal.
+
+**Solução:** `ssh host "cat > '/caminho/batch/[id]/page.tsx'"` com o conteúdo no **stdin**
+(aspas simples no remoto; alvo de redirection não sofre glob). Conferir depois com `wc -c`
+local × remoto. Foi a receita do deploy da FM sob uplink degradado (subir só os alterados,
+NOVO antes do MODIFICADO, + `deploy_*_v2.py --quick`).
+
+**Ref:** FM 2026-07-28 (deploy do frontend `20260728-004439`).
