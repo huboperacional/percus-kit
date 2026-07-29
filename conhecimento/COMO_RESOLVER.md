@@ -39,6 +39,8 @@
 - [Hook fica lento e trava os commits: diretorio de estado que so cresce](#estado-append-only-trava-hook)
 - [Tag de plano aberta que já foi entregue sob OUTRO número de migration](#migration-numero-reciclado)
 - [Teste que nunca falhou embarca fóssil: o red importa mais que o green](#red-nunca-visto-embarca-fossil)
+- [`testIgnore`/`testMatch` de PROJETO substitui o do config raiz — não soma](#playwright-testignore-projeto-sobrescreve)
+- [Spec vermelha há semanas: o elemento não sumiu, a PÁGINA não abre (guard de perfil)](#spec-vermelha-rota-inacessivel-por-perfil)
 - [Declarei hook/gate "instalado" sem rodar no cenario real -> passou defeito](#verificar-runtime-nao-estrutura)
 - [Hook `.ps1` quebra com erro de parser / acento vira caractere estranho](#ps51-ascii-hooks)
 - [Declarei versão errada ao retomar sessão (origin já estava à frente)](#origin-stale-resume)
@@ -1493,6 +1495,41 @@ exercita o efeito colateral real encontra o que a revisão de diff não vê.
 4. Vale também pro caminho inverso: **teste verde pode estar guardando bug**. Um teste chamado `..._still_requires` documentava como correta a regra que o operador reportou como defeito.
 
 **Ref:** tiatendo, 2026-07-20 — 8 testes de anulação escritos sem red; o pg efêmero achou **3 fósseis** neles. Commit `356aec3`.
+
+---
+
+## `testIgnore`/`testMatch` de PROJETO substitui o do config raiz — não soma {#playwright-testignore-projeto-sobrescreve}
+
+`tags: playwright, testIgnore, testMatch, projects, particao de suite, spec roda no projeto errado, suite mistura ruido, config raiz, override silencioso`
+
+**Sintoma:** uma partição de suíte que estava funcionando volta a misturar specs: testes mobile/mockados rodam no projeto desktop e falham por motivo errado (viewport, dev server ausente), e a rodada mistura defeito real com ruído — exatamente o problema que a partição existia pra resolver.
+
+**Causa raiz:** no Playwright, `testIgnore` (e `testMatch`) declarados **dentro de um `project`** *substituem* os declarados no nível do config — eles **não somam**. Adicionar um `testIgnore` novo no projeto (ex.: pra não rodar as specs públicas duas vezes) **anula em silêncio** a lista global. Nada avisa: a suíte simplesmente passa a rodar mais coisa, e como a maioria dos specs extras passa, o sintoma aparece só nos poucos que dependem de viewport/servidor.
+
+**Solução:**
+1. Extraia as listas pra **constantes nomeadas** e **concatene explicitamente** no projeto: `testIgnore: [...SPECS_COM_CONFIG_PROPRIA, ...SPECS_PUBLICAS]`.
+2. Trave com contagem: `npx playwright test --list` e conte por projeto. Se o número subiu depois de mexer em partição, você anulou alguma lista.
+3. Comente o porquê no config — é contraintuitivo o bastante pra ser refeito por quem vier depois.
+
+**Ref:** Família Milionária, 2026-07-29 — o `testIgnore` do projeto `chromium` (adicionado 1 dia antes) anulou a lista de 11 specs com config própria; a rodada "4 failed" era 3 ruídos + 1 defeito. Commit `569e4c8`.
+
+---
+
+## Spec vermelha há semanas: o elemento não sumiu, a PÁGINA não abre (guard de perfil) {#spec-vermelha-rota-inacessivel-por-perfil}
+
+`tags: e2e, spec vermelha, elemento nao encontrado, getByRole nao acha, guard de perfil, superadmin, redirect, storageState fabricado, laudo errado, rota protegida`
+
+**Sintoma:** um spec e2e falha em `elemento não encontrado` e o laudo conclui "o botão foi removido no redesign". O botão **existe** no código-fonte. Semanas depois ninguém consertou, porque "a UI mudou" parece explicação suficiente.
+
+**Causa raiz:** a rota tem **guard de perfil** (`if (user.perfil !== 'superadmin') router.replace('/dashboard')`). O elemento não é encontrado porque **a página nunca renderizou** — o teste já está em outra URL. Agrava: o setup de auth pode **fabricar** o perfil no `storageState` (`perfil: payload.perfil || 'superadmin'`), então o teste "deveria" passar — até o app buscar o perfil real no servidor e redirecionar. E o perfil exigido pode **não existir em nenhum usuário** do banco, deixando a rota inacessível pra todo mundo, inclusive em produção.
+
+**Solução:**
+1. **Antes de culpar o seletor, afirme a URL:** `await expect(page).toHaveURL(/\/rota/)` como primeira linha. Falha aí = problema de acesso, não de UI.
+2. Cheque o **perfil real no banco** (`SELECT perfil FROM usuarios WHERE ...`) — não o fabricado no storageState.
+3. Se a rota é inacessível por decisão de produto, **`test.describe.skip` com o motivo medido** (arquivo:linha do guard + o que o banco diz). Vermelho eterno ensina a suíte a ser ignorada.
+4. Rota que exige um perfil que **ninguém tem** é achado de produto, não de teste — reporte.
+
+**Ref:** Família Milionária, 2026-07-29 — `/fluxo-bot` e `/admin` exigem `superadmin`; o operador é `admin` e o banco de prod não tem nenhum superadmin. O laudo anterior dizia "o botão adicionar step não existe mais". Commit `569e4c8`.
 
 ---
 
