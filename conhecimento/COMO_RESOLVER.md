@@ -17,6 +17,7 @@
 
 ## Índice
 
+- [404 "por design" transforma erro de tenancy em bug invisível: 3 orgs homônimas e um link que nunca abre](#404-por-design-esconde-tenancy)
 - [Módulo fail-open: "quebrado" e "corretamente desligado" ficam idênticos de fora, e o teste passa nos dois](#fail-open-esconde-teste-vacuo)
 - [`ORDER BY created_at` não ordena um lote: `now()` é hora da TRANSAÇÃO](#created-at-nao-ordena-lote)
 - [Schema `strict` que OBRIGA o campo mas não ENSINA quando preenchê-lo produz silêncio, não erro](#strict-schema-campo-sem-instrucao)
@@ -128,6 +129,9 @@
 - [`docker exec` sem `-i` engole o stdin — e vazio parece resposta](#docker-exec-stdin)
 - [Magic-link mintado do lado do servidor falha com `context_mismatch`](#magic-link-server-side-context-mismatch)
 - [Rota que ainda não existe devolve 404 — e isso deixa o teste VERDE sem implementação](#rota-inexistente-deixa-teste-verde)
+- [`service update` diz "converged" mas o serviço continua na imagem VELHA (rollback silencioso)](#swarm-converged-e-rollback)
+- [`alembic upgrade head` não vê a migration nova: ela mora DENTRO da imagem](#alembic-head-mora-na-imagem)
+- [CHECK bicondicional ACEITA a linha proibida quando o discriminante é NULL (UNKNOWN passa)](#check-bicondicional-unknown)
 
 ---
 
@@ -2996,3 +3000,124 @@ linha de CONTROLE** no output (`SELECT 'CONTROLE: total='||count(*)`). Se ela n�
 era do canal e não do banco. Corolário: script enviado de máquina Windows chega com **CRLF** e o
 bash da VPS morre com `$'\r': command not found` — rode do worktree clonado pelo git, não do arquivo
 enviado.
+
+---
+
+## `service update` diz "converged" mas o serviço continua na imagem VELHA (rollback silencioso) {#swarm-converged-e-rollback}
+
+`tags: docker swarm, service update, converged, rollback_completed, UpdateStatus, healthcheck, CRLF, entrypoint.sh, exec no such file or directory, shebang, no-resolve-image, force, deploy, windows, tar, gate de imagem`
+
+**Contexto:** deploy de imagem construída no próprio VPS (sem registry). `docker service update --image ... --no-resolve-image` respondeu `verify: Service X converged` — e o serviço continuou rodando a tag antiga, com a task de 3 horas atrás intacta. `--force` também "convergiu" sem trocar nada.
+
+**Causa raiz:** o swarm SUBIU a task nova, ela reprovou no healthcheck, ele reverteu, e a mensagem `converged` é sobre **o rollback ter convergido**, não sobre o update ter dado certo. O sinal está em `docker service inspect X --format "{{.UpdateStatus.State}}"` → **`rollback_completed`**. `docker service ls` mostra a imagem do spec vigente (a velha), o que reforça a ilusão de que o comando não foi executado.
+
+**Por que a task nova morria:** `exec /usr/local/bin/entrypoint.sh: no such file or directory` — o arquivo EXISTE. O shebang estava `#!/bin/sh` seguido de CR+LF, então o kernel procurava um interpretador com `\r` no nome. O contexto de build tinha sido empacotado no Windows. Diagnóstico: `file entrypoint.sh` → *"with CRLF line terminators"*, ou `head -c 20 entrypoint.sh | od -c` mostrando o `\r`.
+
+**Fix:** `sed -i "s/\r$//" entrypoint.sh && chmod +x entrypoint.sh` no contexto, rebuildar. Varrer o contexto inteiro em busca de outros `.sh` com CR antes.
+
+**Duas armadilhas que amplificam:**
+1. **Gate de conteúdo não vê fim de linha.** Seis gates do tipo `docker run --entrypoint sh <img> -c "test -f ... && grep -q ..."` passaram TODOS na imagem morta. O único gate que pega é **subir o container e bater no health**: `docker run -d --env-file <env real> --network <rede real> <img>`, esperar ~20s, `docker ps --format "{{.Status}}"` (tem que dizer `healthy`) + `curl -sf localhost:8000/health`. Fazer isso ANTES do `service update`, sempre.
+2. **Serviço SEM healthcheck aceita a imagem morta em silêncio.** O serviço irmão (worker ARQ, sem healthcheck) engoliu a mesma imagem quebrada e reportou `1/1` + `completed`. Ou seja: o serviço que tinha healthcheck protegeu mentindo "converged"; o que não tinha desprotegeu dizendo a verdade. **Depois de qualquer deploy, confira `UpdateStatus.State == completed` E `service ps` mostrando task nova ("Running N seconds ago"), serviço por serviço.**
+
+**Env real sem vazar segredo:** `docker inspect <container-rodando> --format "{{range .Config.Env}}{{println .}}{{end}}" > /tmp/x.env` e usar `--env-file`. A rede certa vem de `docker inspect <container> --format "{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}"` — chutar `<stack>_default` falha (aqui era `network_swarm_public`).
+
+**Ref:** Paid Media Automation, deploy `crm-140bebb` (2026-07-29). Relacionado: [imagem local sem registry](#swarm-local-image-resolve), [build pipe mascara exit](#deploy-pipe-mascara-exit).
+
+---
+
+## `alembic upgrade head` não vê a migration nova: ela mora DENTRO da imagem {#alembic-head-mora-na-imagem}
+
+`tags: alembic, migration, docker, deploy, ordem de deploy, upgrade head, docker cp, aditiva, rollback nao pareado, imagem, base64, md5`
+
+**Contexto:** plano de deploy dizia "aplicar a migration ANTES da imagem" (correto em princípio: com a imagem nova primeiro, o código escreve numa tabela que ainda não existe e loga `relation does not exist` a cada tick). Rodei `docker exec <container-prod> alembic upgrade head` → **nenhuma saída, e `alembic current` continuou na revisão anterior**.
+
+**Causa raiz:** o arquivo `versions/NNNN_*.py` é COPIADO para dentro da imagem no build. O container em produção roda a imagem ANTIGA, que não contém a revisão nova — para o alembic dela, a revisão anterior **é** o head. Não há erro: ele "aplica tudo até o head que conhece", que é nada. `alembic heads` confirma (mostra a revisão velha).
+
+**Fix (quando a migration é ADITIVA):** injetar só o arquivo no container em execução e rodar ali —
+`docker cp NNNN_x.py <container>:/app/alembic/versions/` → `docker exec <container> sh -c "cd /app && alembic heads && alembic upgrade head"`. É inócuo porque a imagem antiga não lê o objeto novo. O arquivo some no próximo deploy, quando a imagem nova já o traz.
+
+**Transferir o arquivo sem SFTP/registry:** base64 em blocos por SSH e conferir MD5 dos dois lados — fatiar em ~20k chars, `printf "%s" "<chunk>" >> f.b64`, `base64 -d f.b64 > f.py`, `md5sum`. Sem o MD5 você não sabe se truncou.
+
+**Se a migration NÃO for aditiva** (drop/alter destrutivo), o `docker cp` não resolve: aí a ordem é imagem→migration e você aceita a janela de erro, ou para o serviço. E lembre que `DROP` torna o rollback **pareado** — ver [rollback pareado](#drop-table-rollback-pareado).
+
+**Conferir sempre em `information_schema`/`pg_constraint`, nunca na saída do alembic.**
+
+**Ref:** Paid Media Automation, migration `0029_crm_signal_state` (2026-07-29).
+
+---
+
+## CHECK bicondicional ACEITA a linha proibida quando o discriminante é NULL (UNKNOWN passa) {#check-bicondicional-unknown}
+
+`tags: postgres, check constraint, three-valued logic, UNKNOWN, NULL, IS DISTINCT FROM, pg_constraint, conrelid, conname, idempotente, migration, mutation testing, invariante estrutural, schema`
+
+**Contexto:** constraint escrita para tornar um invariante impossível de violar ("contagem existe SE E SOMENTE SE o estado é 'medido'"), porque a regra em código dependia de alguém lembrar de checá-la.
+
+```sql
+CHECK ( (state = 'medido'  AND count IS NOT NULL)
+     OR (state <> 'medido' AND count IS NULL) )
+```
+
+**Causa raiz:** com `state = NULL` os dois ramos avaliam **UNKNOWN**, e `UNKNOWN OR UNKNOWN = UNKNOWN` — e **CHECK só rejeita quando o resultado é FALSE**. A linha proibida entra. A "totalidade" do bicondicional estava delegada ao `NOT NULL` da coluna, que vive em OUTRO statement — e num `CREATE TABLE IF NOT EXISTS`, justamente o que pode ser pulado numa reaplicação.
+
+⚠️ **`IS DISTINCT FROM` NÃO resolve:** `state IS DISTINCT FROM 'medido'` com NULL dá `UNKNOWN OR FALSE = UNKNOWN`, também aceito.
+
+**Fix:** tornar o CHECK auto-suficiente — `CHECK (state IS NOT NULL AND ( ...os dois ramos... ))`. Custo zero, e a barreira deixa de depender de cláusula alheia.
+
+**Segundo furo na mesma migration — a guarda de idempotência:**
+
+```sql
+IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_x') THEN ALTER TABLE ...
+```
+
+`conname` é único por **TABELA**, não por banco. Com dois schemas no mesmo banco (ex.: `tracking` + `public`, `search_path` cobrindo os dois), a guarda casa a constraint da OUTRA cópia, **pula o ADD e a migration reporta sucesso com a tabela sem o CHECK**. Fix: `AND conrelid = 'tabela'::regclass`.
+
+**Como os dois foram achados (é isto que replicar):** nenhum apareceu em leitura nem em review de prosa. Apareceram em **mutation testing** — remover cada conjunto do CHECK e rodar a suíte. 5 de 8 mutações passavam VERDES. A prova final foi executar o DDL contra um `postgres:17` efêmero e ver o banco **recusar** as 7 linhas ilegais; depois remover o CHECK e ver 5 testes ficarem vermelhos. Guarda que ninguém viu reprovar não é guarda. Ver [Postgres efêmero para testes destrutivos](#pg-efemero-testes-destrutivos).
+
+**Bônus da mesma frente — teste-espelho satisfeito pelo DOCSTRING:** testes que afirmam sobre o TEXTO do arquivo (`assert "coluna" in SRC`) são satisfeitos pelo cabeçalho de documentação, que costuma listar exatamente as mesmas colunas/constraints. Remover uma coluna do `CREATE TABLE` passava VERDE. Quanto melhor o docstring, mais cego o teste. Fix: recortar o alvo antes de afirmar (`SRC.split("CREATE TABLE ...")[1].split(chr(34)*3)[0]`) e prender o TIPO junto do nome.
+
+**Ref:** Paid Media Automation, `crm_signal_state` (2026-07-29).
+
+---
+
+## 404 "por design" transforma erro de tenancy em bug invisível {#404-por-design-esconde-tenancy}
+
+`tags: multi-tenant, organization_id, 404 vs 403, enumeration, org homonima, RF-17, escopo de org, identity_id, membership, link compartilhavel, deep-link, diagnostico`
+
+**Contexto:** um recurso org-scoped devolve **404 tanto para "não existe" quanto para "existe em outra
+org"** — decisão de segurança correta e comum (403 confirmaria a existência do recurso alheio, virando
+oráculo de enumeração). Um link legítimo, mandado por WhatsApp/e-mail ao próprio dono do dado, falhava
+para sempre com "não encontrado".
+
+**Causa raiz:** **três organizações com o MESMO nome de exibição** ("Hub Operacional"), criadas em
+horas diferentes e distinguíveis só pelo `slug` — e um deles nem parecia (`ads4pros`). O canal de
+entrada (webhook de WhatsApp) resolveu o remetente por **telefone** e gravou na org A; o browser da
+mesma pessoa loga por **e-mail**, numa identidade diferente, com membership só na org B. Duas linhas
+de `users` para o mesmo humano, `identity_id` distintos, nenhuma interseção.
+
+**Por que ninguém viu antes:** a UI mostra o **nome** da org, não o id. Três orgs homônimas são
+indistinguíveis na tela, no switcher e no log. E o 404 correto por segurança é lido pelo time como
+"o dado sumiu" ou "o link expirou" — não como "você está na org errada". A tela ainda dizia *"tente
+recarregar a página"*, conselho que nunca resolveria.
+
+**Diagnóstico (a ordem que funciona):**
+1. Chamar o endpoint **direto pela API**, com o token do browser, e confirmar o status cru
+   (`404 {"detail":"..."}`) — separa problema de front de problema de escopo.
+2. `GET /me/organizations` → qual é a org **ativa** e quais a identidade alcança.
+3. No banco: `SELECT id, name, slug, created_at FROM organizations WHERE name ILIKE '<nome>'` —
+   **é aqui que os homônimos aparecem**; sem este passo você fica procurando bug de código.
+4. `SELECT organization_id, identity_id, email, phone FROM users WHERE identity_id = '<iid do JWT>'` vs
+   o `user_id` gravado no recurso. Se não houver interseção, o 404 é **permanente**, não timing.
+
+**Fix (dois níveis):**
+- **Produto:** link org-scoped deve carregar contexto de org (ou o login deve cair na org que dona o
+  recurso). E o front tem que ramificar em `status === 404` com mensagem honesta + saída ("ir para X"),
+  em vez de "recarregue".
+- **Dado:** consolidar homônimos, ou dar membership. E **proibir orgs com nome idêntico** — ou pelo
+  menos exibir o `slug` no switcher quando houver colisão de nome.
+
+⚠️ **Corolário para allowlists por org:** ligar uma feature para `ORG_A,ORG_B` quando o operador só
+navega em `ORG_A` faz a feature "funcionar em produção" e ser **invisível para quem testa**. O
+registro de deploy dizia "as 2 orgs do operador" — e uma delas não era acessível a ele.
+
+**Ref:** Plexco Tasks s156 — tela da leva `[4-C]` travada 1 sessão inteira por isto, atribuído a
+"falta o operador abrir".
