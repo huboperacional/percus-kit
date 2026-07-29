@@ -82,8 +82,16 @@ desativado **no mesmo commit**. Nunca os dois vivos ao mesmo tempo.
 
 ## 4. Ordem de execução
 
-1. **Merge das duas cópias do V2** em `percus-kit/v2/`, arquivo por arquivo, resolvendo as divergências
-   medidas na §1. Inclui obrigatoriamente o fix dos 6 falsos positivos do gate.
+1. **Merge das duas cópias do V2** em `percus-kit/v2/`. **Não** é "merge arquivo por arquivo" — o
+   pre-mortem apontou isso como risco de consenso. O procedimento é assimétrico de propósito:
+   - **Base = cópia viva** (`_Novo_Projeto/v2/`). É ela que os projetos leem e ela tem `loops/tdd.md`
+     e a evolução v6.30.x. A cópia morta **nunca** é base.
+   - Da cópia morta entram **exatamente 3 deltas nomeados**, nada além: (a) fix dos 6 falsos positivos
+     em `gates/percus-gate.sh`, (b) seção `.percus-review.json` em `loops/review.md`, (c) `.gitignore`.
+     Qualquer outra diferença é evolução da viva e **fica como está**.
+   - Prova antes de seguir: gate roda no canon com `exit 0` **e** a matriz negativa (repo temporário)
+     ainda bloqueia âncora órfã e verbete sem `tags:`. Sem essas duas evidências, o passo não fecha.
+   - A pasta morta **só é apagada no passo 5**, depois de tudo verde — ela é o backup natural.
 2. **Rename** da pasta + varredura das referências:
    - `.claude-home\settings.json`: `PERCUS_CANON_DIR` + ~14 entradas de permissão que hardcodam o path
      absoluto (variantes acumuladas do mesmo comando; se não forem atualizadas, viram prompt de
@@ -98,9 +106,35 @@ desativado **no mesmo commit**. Nunca os dois vivos ao mesmo tempo.
      `docs/contracts/*`, `.archive/*`): descrevem o passado e reescrevê-los falsifica o registro.
    - 2 arquivos de projeto: `GHL-GOWA-WhatsApp\CLAUDE.md`, settings do `GHL-Evolution-WhatsApp`.
    - `tests/version-alignment.tests.ps1` deriva o path de `$PSScriptRoot` — imune ao rename por desenho.
+   - **A varredura não é confiável como ato de memória** (risco levantado no pre-mortem: uma referência
+     escapa e quebra em silêncio). Então ela vira **gate**: `tests/no-legacy-kit-path.tests.ps1` falha se
+     `_Novo_Projeto` aparecer em qualquer arquivo **vivo** (allowlist explícita para `.archive/`,
+     `docs/superpowers/plans|specs/`, `docs/handoffs/`, `docs/contracts/` e o próprio teste). Escapar
+     passa a ser vermelho na suíte, não descoberta em produção.
+   - **⚠️ O rename NÃO se propaga por `git pull`.** O nome do diretório de trabalho é local de cada
+     máquina — o repo é o mesmo. Com 10 máquinas, ou existe um passo local por máquina ou o kit passa a
+     ter nome diferente em cada uma e todo path absoluto documentado mente. Mitigação: `scripts/
+     renomear-kit-local.ps1` (idempotente) que (a) detecta o path atual via `PERCUS_CANON_DIR`,
+     (b) renomeia a pasta, (c) reescreve `PERCUS_CANON_DIR` e as entradas de permissão no
+     `settings.json` do usuário, (d) valida o JSON resultante com `ConvertFrom-Json` antes de salvar,
+     (e) faz backup datado do settings. Rodar em cada máquina no primeiro `git pull` após o rename.
+     **Enquanto uma máquina não rodar, ela continua funcionando com o nome antigo** — o script é o
+     único jeito de o rename não virar drift entre máquinas.
 3. **Arquivar a camada velha** em `.archive/` com ponteiro.
 4. **Migrar os 11 hooks** pro `settings.json` — um hook por commit, com o equivalente do plugin
    desativado no mesmo commit. Começa por `pre-commit-check` e `external-action-guard`.
+   O pre-mortem chamou este passo de "desativa todo o enforcement sem alarme". Então a ordem **dentro
+   de cada commit** é fixa e nenhuma etapa é pulável:
+   1. Backup datado do `settings.json`.
+   2. Registra o hook novo apontando pro kit.
+   3. **Valida o JSON** (`Get-Content ... | ConvertFrom-Json`) — erro de sintaxe em `settings.json`
+      falha calado e derruba os hooks todos, não só o que foi editado.
+   4. **Canário do par**: um comando que **deve** ser bloqueado e um que **deve** passar, os dois
+      rodados de verdade. Bloqueio observado = hook novo vivo. Sem isso, não avança.
+   5. Só então desativa o equivalente no `hooks.json` do plugin, e repete o canário para provar que
+      **um** bloqueio acontece — não dois, não zero.
+   6. Sincroniza as **duas** pastas de cache do plugin (`6.28.0` e `6.29.0`), senão o hook desativado
+      continua vivo em uma delas (foi o erro cometido em 2026-07-29 com o fix do `pre-commit-check`).
 5. **Apagar** `_Novo_Projeto_V2`.
 
 ## 5. Critério de pronto (evidência observada, não asserção)
@@ -126,6 +160,20 @@ O rótulo "V1/V2" nomeia **três pares diferentes** neste kit, e isso já produz
 
 Foi essa sobrecarga que fez o operador (e esta sessão) trabalharem na pasta errada. A fase 2 não é
 cosmética: é remover o termo ambíguo do vocabulário.
+
+## 5.2 Registro do pre-mortem do conselho (2026-07-29)
+
+Rodado em `pre-mortem` com `deepseek` + `groq-llama` sobre a versão de 137 linhas deste spec. A perna
+Cross-Claude não rodou: exige subagent via Agent tool, restrito nesta sessão sem pedido do operador.
+Log em `.deepseek/council-log/`.
+
+| Risco | Quem apontou | O que mudou no spec |
+|---|---|---|
+| Merge das cópias perde o fix ou introduz divergência sutil | DeepSeek + Llama (**consenso**) | §4.1 virou merge **assimétrico**: base = cópia viva, 3 deltas nomeados da morta, prova por gate + matriz negativa antes de seguir, pasta morta só apagada no fim |
+| `settings.json` mal editado desativa **todo** o enforcement sem alarme / enforcement duplo | DeepSeek + Llama (**consenso**) | §4.4 ganhou sequência fixa de 6 etapas por commit: backup → registra → valida JSON → canário → desativa o do plugin → canário de novo + sync das 2 caches |
+| Varredura manual deixa referência escapar e quebra em silêncio | DeepSeek | §4.2: a varredura virou **teste** (`no-legacy-kit-path.tests.ps1`) com allowlist pros históricos |
+| Resistência/incompreensão do vocabulário novo | Llama | §5.1 já trata (fase 2 mata o termo); o ponteiro no `README.md` do passo 3 é o paliativo imediato |
+| **O rename não se propaga por `git pull`** (achado ao ler o pre-mortem; nenhum provider viu) | — | §4.2: `scripts/renomear-kit-local.ps1`, idempotente, roda uma vez por máquina; sem ele o kit tem nome diferente em cada máquina |
 
 ## 6. Fora de escopo (declarado)
 
