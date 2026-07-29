@@ -123,6 +123,11 @@
 - [Mesma regra escrita em dois interpretadores (.ps1 + .sh) diverge calada](#regra-duplicada-ps1-sh)
 - [Saída de `jq`/`python` no Windows vem com CRLF e o `\r` mata a regex em silêncio](#crlf-mata-regex-git-bash)
 - [Hook em PowerShell bloqueia commit legítimo vindo do git-bash (path `/d/...` e `-c` ≠ `-C`)](#hook-ps-path-msys-e-match-case)
+- [Depois de um `DROP TABLE`, "voltar a tag" não é rollback](#drop-table-rollback-pareado)
+- [Defeito que o serviço remoto ACEITA é latente, não risco](#defeito-latente-aceito)
+- [`docker exec` sem `-i` engole o stdin — e vazio parece resposta](#docker-exec-stdin)
+- [Magic-link mintado do lado do servidor falha com `context_mismatch`](#magic-link-server-side-context-mismatch)
+- [Rota que ainda não existe devolve 404 — e isso deixa o teste VERDE sem implementação](#rota-inexistente-deixa-teste-verde)
 
 ---
 
@@ -2870,3 +2875,124 @@ Regra irmã, e vale mais que a economia de um teste vermelho: **nunca enfraquece
 acomodar variância de LLM**. Golden que reprova vira `xfail` com motivo ESCRITO e frente própria —
 jamais um `>=`, um `in`, ou uma tolerância "por robustez". Foi um `>= 1` "por robustez" que deixou um
 pedido de 3 itens chegar ao banco com 2.
+
+## Rota que ainda não existe devolve 404 — e isso deixa o teste VERDE sem implementação {#rota-inexistente-deixa-teste-verde}
+
+`tags: tdd, fastapi, 404, teste vácuo, mutação, fase vermelha, escopo multi-tenant, idempotência`
+
+**Sintoma:** você escreve o teste do endpoint antes do endpoint, roda a fase vermelha e ele
+**passa**. Não é sorte nem cache: o framework devolve **404 para rota ausente**, e o banco fica
+intacto porque nada rodou. Justamente os testes mais rigorosos são os que caem nessa.
+
+Três numa sessão só (Plexco Tasks, s155):
+
+| O teste | Por que ficou verde sem código |
+|---|---|
+| escopo de org (`assert status == 404`) | rota ausente **também** dá 404 |
+| idempotência (`primeira == segunda`) | os 2 POSTs deram 404 e os dois lados eram `None` |
+| atomicidade ("nada mudou de projeto") | nada mudou porque **nada rodou** |
+
+**O que fazer, em ordem de força:**
+
+1. **Prova por mutação.** Apague a linha de produção que o teste deveria proteger e confirme que ele
+   cai; reponha. Numa delas, trocar o filtro de organização por um `select` sem filtro matou
+   **exatamente** o teste de escopo e nenhum outro — é esse sinal que você quer ver.
+2. **Assere o contrato observável** — `(status, corpo)` — em vez do estado final. `200 +
+   {"cancelled": false}` distingue no-op limpo de erro engolido; "o carimbo não mudou" não distingue.
+3. **`assert_not_awaited`** na chamada externa quando há fail-open: "não chamou" e "chamou e falhou"
+   produzem a mesma saída.
+
+Relacionado: {#fail-open-esconde-teste-vacuo}, {#xfail-que-xpassa-anuncia-defeito-que-nao-demonstra}.
+
+## Magic-link mintado server-side morre no consume: `context_mismatch` {#magic-link-server-side-context-mismatch}
+
+`tags: auth, magic-link, whatsapp, webhook, device fingerprint, context_mismatch, precedente`
+
+**Sintoma:** o produto manda um magic-link por um canal assíncrono (WhatsApp, e-mail de worker) e o
+usuário clica minutos depois: **"link expirou ou já foi usado"**. Não é TTL, não é preview do
+mensageiro consumindo o código de uso único — o log do auth-service diz `outcome=context_mismatch`.
+
+**Causa:** o auth-service **vincula o magic ao IP/UA de quem o mintou** (device fingerprint). Num
+caminho que responde a webhook não existe browser no instante da emissão, e não há
+`forwarded_for`/`user_agent` do usuário para propagar. O fingerprint do container nunca vai bater
+com o aparelho de quem clica. Só funciona quando quem minta é a request do próprio browser.
+
+**O que fazer:** mandar o **link simples** para a tela de destino. Quem tem sessão longa entra
+direto; quem não tem cai no login — e o login precisa preservar o destino (`?next=`, com guard de
+path relativo). Magic que falha é **beco sem saída**: a página de erro é do auth-service e não
+conhece o destino, então o usuário perde o objeto de vista.
+
+🪤 **A lição que custou mais que o bug:** o plano citava um call-site existente como prova de que o
+padrão funcionava — e a **docstring daquele próprio call-site** avisava que ele falha
+`context_mismatch` nesse cenário. **Precedente que EXISTE não é precedente que FUNCIONA**; ler as
+três linhas do docstring custava menos que o deploy.
+
+Relacionado: {#rota-inexistente-deixa-teste-verde}.
+
+---
+
+## Depois de um `DROP TABLE`, "voltar a tag" não é rollback {#drop-table-rollback-pareado}
+
+`tags: rollback, drop table, migração, alembic, deploy, swarm, docker service update, container saudável, 500 no request, gate negativo, pg_dump`
+
+**Sintoma:** você reverte a imagem para o pin anterior, o `docker service ls` mostra `1/1`, o
+healthcheck passa — e o cliente vê 500 numa tela específica.
+
+**Causa:** a imagem anterior lê a tabela que a migração dropou. Isso **não quebra no boot** (não é
+erro de import, não é conexão) e **não quebra a suíte** (que usa banco fake). Só falha no request.
+
+**O que fazer:**
+
+1. Escreva o rollback **pareado** no `docker-compose.swarm.yml`, junto do pin — é o arquivo que quem
+   reverte abre: `alembic downgrade <rev-anterior>` **ANTES** do `docker service update`.
+2. `pg_dump -t <tabela>` **antes** de aplicar, e diga no docstring que o downgrade recria a
+   **estrutura**, não as linhas. Prometer rollback completo é mentira silenciosa.
+3. **Gate negativo na imagem**: `grep -r` provando que o nome da tabela **não está** no artefato.
+   Verifique que ele **reprova a imagem anterior** — gate que passa em tudo não prova nada.
+4. Ordem de deploy: **código primeiro** (que já não lê), migração depois.
+
+Aplicado em 2026-07-29 (Paid Media, fatia 0028).
+
+---
+
+## Defeito que o serviço remoto ACEITA é latente, não risco {#defeito-latente-aceito}
+
+`tags: defeito latente, dado malformado, httpx, ReadTimeout, str(exc) vazio, mensagem de erro vazia, espaço em identificador, normalizar na porta, string vazia vs None, medir antes de classificar`
+
+**Sintoma:** você acha um dado malformado em produção (um id com espaço, um corpo de erro vazio) e
+classifica como risco. Ninguém nunca reportou nada.
+
+**Causa:** o serviço remoto tolera. **Não há incidente, não há alerta, e ninguém investiga um envio
+que funciona** — o defeito espera o dia em que outra ponta compara por igualdade.
+
+**O que fazer:** **meça antes de classificar.** Dois casos medidos no mesmo dia:
+
+- `fetch_error:` gravando corpo vazio — **8 de 8 registros em 30 dias**, porque as exceções de rede
+  do `httpx` (`ReadTimeout`, `ConnectTimeout`, `ConnectError`, `RemoteProtocolError`) são levantadas
+  **sem argumento** e `str(exc)` é `""`. Grave sempre o **tipo** da exceção, mesmo quando há
+  mensagem: corpo vazio não é só inútil, é **ambíguo** (não se distingue de "o servidor respondeu
+  vazio").
+- `meta_pixel_id` com espaço à esquerda — **o Meta aceitou**, 7 de 7 eventos recebidos. Latente, não
+  quebrado. Normalize **na porta** (o dado sujo não chega a existir) e faça `"   "` virar `None`,
+  nunca `""`: vazio numa coluna que o dispatch lê significa "configurado com nada" e monta URL sem
+  id; `None` significa "não configurado", que é o que tela e monitor sabem ler.
+
+Relacionado: {#drop-table-rollback-pareado}.
+
+---
+
+## `docker exec` sem `-i` engole o stdin — e vazio parece resposta {#docker-exec-stdin}
+
+`tags: docker exec, stdin, heredoc, psql, resultado vazio, falso negativo, linha de controle, CRLF, git bash, VPS`
+
+**Sintoma:** você roda uma checagem via heredoc (`docker exec pg psql -f /dev/stdin <<SQL`) e o
+retorno vem **vazio**. Vazio parece "não há dependências", "não há linhas", "está limpo".
+
+**Causa:** sem `-i`, o `docker exec` não conecta o stdin; o `psql` lê EOF e não executa nada. O
+comando retorna 0.
+
+**O que fazer:** `docker cp` do arquivo `.sql`/`.py` e execute por caminho — e **inclua sempre uma
+linha de CONTROLE** no output (`SELECT 'CONTROLE: total='||count(*)`). Se ela não aparecer, o vazio
+era do canal e não do banco. Corolário: script enviado de máquina Windows chega com **CRLF** e o
+bash da VPS morre com `$'\r': command not found` — rode do worktree clonado pelo git, não do arquivo
+enviado.
