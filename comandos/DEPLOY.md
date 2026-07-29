@@ -37,7 +37,15 @@ fase-destino: 7+ (v6.20.0)
 A infra é Docker **Swarm + Traefik** no VPS `161.97.129.138`, gerida via **Portainer**
 (`https://painel.huboperacional.com.br`) — API ou UI. Resumo:
 
-1. **Build/push da imagem** (se aplicável ao projeto — registry ou imagem buildada na VPS).
+1. **Origem da imagem** — os dois caminhos são canônicos; escolha pelo projeto ter ou não registry:
+   - **Registry:** build/push da imagem, depois stack update com `pullImage:true`.
+   - **Build no próprio nó** (sem registry): build na VPS com a **mesma tag** do spec e
+     `docker service update --force --no-resolve-image --image <tag> <stack>_<svc>`. Bumpe o `image:`
+     no arquivo de stack e **commite** — o arquivo é o estado desejado; sem isso, o próximo
+     `stack deploy` limpo reverte o serviço.
+   - **2026-07-28:** GH Actions da org está desativado por decisão de custo, então onde havia registry
+     o caminho corrente é **build no nó**; o GHCR restante é rollback profundo, não estado atual.
+     Regra de decisão completa em `conhecimento/COMO_FAZER.md#deploy-vps`.
 2. **Atualizar a stack** existente via Portainer API (`PUT /api/stacks/{STACK_ID}?endpointId=1` com
    `stackFileContent`, `prune:true`, `pullImage:true` se imagem nova) — ver `02_INFRA` §10 "Atualizar stack existente".
 3. Ou **forçar restart** do serviço (`ForceUpdate++`) se só mudou config/secret — ver `02_INFRA` §10.
