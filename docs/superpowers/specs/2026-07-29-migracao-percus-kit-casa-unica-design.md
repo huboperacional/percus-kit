@@ -19,7 +19,7 @@ coisa, então todo trabalho continua drenando pro lugar errado — inclusive o d
 | O V2 **já mora dentro do kit** desde 2026-07-20 | `CANON_VERSION.md`, changelog v6.30.0: "Canon V2 dobrado pra dentro do kit (`v2/`). O greenfield `_Novo_Projeto_V2` muda de casa… **A pasta avulsa vira arquivo**" |
 | A pasta avulsa **não virou arquivo** e continua recebendo commits | 3 commits desta sessão (`7f8b1f1`, `b1a7856`, `9f983c3`) caíram nela |
 | As duas cópias **divergiram** | `MIGRACAO.md` 125 linhas, `instalar-gates.sh` 78, `percus-gate.sh` 49, `conselho.md` 15, `review.md` 8, `CONSTITUICAO.md` 2; `loops/tdd.md` existe **só** na cópia viva |
-| O gate que roda de verdade **não tem** o fix dos 6 falsos positivos | `_Novo_Projeto/v2/gates/percus-gate.sh` sem o `grep -E '^## '`; o fix está só na cópia avulsa |
+| O gate que roda de verdade está **cego**, não apenas desatualizado | `_Novo_Projeto/v2/gates/percus-gate.sh` enxerga **33 de 105** verbetes de `COMO_RESOLVER.md`: o rastreio de fence dessincroniza com um ``` solto no texto e ele pula o resto do arquivo. Sai `exit 0` por não olhar, não por estar limpo. A cópia avulsa vê os 105, mas tinha os falsos positivos que corrigi hoje |
 | A pasta avulsa tem **zero consumidores** | nenhum projeto define `PERCUS_CANON_V2_DIR`; o `tiatendo` (piloto-1) não referencia `_Novo_Projeto_V2` nem `v2/` |
 | Quem roteia os projetos aponta pra cópia **viva** | `templates/CLAUDE.template.md`: `${env:PERCUS_CANON_DIR}/v2/loops/` |
 | O kit é o veículo de entrega | `git pull` nas 10 máquinas; `PERCUS_CANON_DIR` → kit; `marketplace.json` com `source: ./plugin/percus-review` (relativo) |
@@ -86,9 +86,16 @@ desativado **no mesmo commit**. Nunca os dois vivos ao mesmo tempo.
    pre-mortem apontou isso como risco de consenso. O procedimento é assimétrico de propósito:
    - **Base = cópia viva** (`_Novo_Projeto/v2/`). É ela que os projetos leem e ela tem `loops/tdd.md`
      e a evolução v6.30.x. A cópia morta **nunca** é base.
-   - Da cópia morta entram **exatamente 3 deltas nomeados**, nada além: (a) fix dos 6 falsos positivos
-     em `gates/percus-gate.sh`, (b) seção `.percus-review.json` em `loops/review.md`, (c) `.gitignore`.
-     Qualquer outra diferença é evolução da viva e **fica como está**.
+   - Da cópia morta entram **exatamente 3 deltas nomeados**, nada além: (a) o gate de conhecimento,
+     (b) seção `.percus-review.json` em `loops/review.md`, (c) o `.gitignore` — que no kit vira só a
+     linha `.percus/`, porque `.deepseek/` já está lá. Qualquer outra diferença é evolução da viva e
+     **fica como está**.
+   - **Delta (a) não é "portar o meu fix"** — medir mudou o alvo. A cópia viva já resolve o falso
+     positivo de âncora (pulando code fence e blockquote), mas é justamente esse rastreio de fence que
+     a deixa **cega em 72 dos 105 verbetes**. A cópia morta enxerga os 105 mas tinha os falsos
+     positivos. O resultado do merge é **melhor que as duas**: detecção por linha de título (`^## `),
+     que exclui blockquote por construção e não depende de fence, mais crase opcional em `tags:`.
+     Prova: 105 verbetes visíveis + `exit 0` no canon + matriz negativa ainda barrando.
    - Prova antes de seguir: gate roda no canon com `exit 0` **e** a matriz negativa (repo temporário)
      ainda bloqueia âncora órfã e verbete sem `tags:`. Sem essas duas evidências, o passo não fecha.
    - A pasta morta **só é apagada no passo 5**, depois de tudo verde — ela é o backup natural.
