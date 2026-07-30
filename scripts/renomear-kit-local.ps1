@@ -3,11 +3,18 @@
 .SYNOPSIS
   Renomeia a pasta local do kit Percus e conserta TODOS os ponteiros locais pra ela.
 .DESCRIPTION
-  O nome do diretorio de trabalho NAO vem por git pull — e local de cada maquina.
+  O nome do diretorio de trabalho NAO vem por git pull -- e local de cada maquina.
+
+  ASCII PURO, sem excecao: este script e rodado a mao pelo operador, e o terminal padrao
+  do Windows e o PowerShell 5.1, que le .ps1 sem BOM como ANSI. Em ANSI, o em dash (U+2014
+  = E2 80 94 em UTF-8) virava tres caracteres, sendo o ultimo uma ASPA CURVA -- que o
+  PowerShell aceita como delimitador de string. Resultado medido em 2026-07-30: cascata de
+  7 erros de parse, nenhum deles no lugar do problema. O teste "roda sob Windows
+  PowerShell 5.1" existe pra barrar recaida.
   Rode uma vez por maquina apos o rename entrar no canon. Idempotente.
 
   Sao TRES familias de ponteiro local, nao uma (medido em 2026-07-30 nesta maquina):
-    1. variaveis de ambiente de USUARIO (registro HKCU) — sao ELAS, e nao o settings.json,
+    1. variaveis de ambiente de USUARIO (registro HKCU) -- sao ELAS, e nao o settings.json,
        que apontam as sessoes pro kit: PERCUS_CANON_DIR (a pasta) e PERCUS_CANON_V2_DIR
        (a pasta\v2). Por isso a varredura e por VALOR, nao por nome fixo;
     2. o settings.json do usuario (16 ocorrencias, em 4 formas de path diferentes);
@@ -84,7 +91,7 @@ function Get-SegmentoReapontado {
 function Update-SettingsJson {
     param([string]$Caminho, [string]$Padrao, [string]$Novo, [string]$Stamp, $Registro)
     # -Encoding UTF8 explicito: no PS 5.1 o default de leitura e ANSI, entao um settings
-    # UTF-8 sem BOM com acento no path (C:\Users\Joao vs Joäo) seria lido errado e gravado
+    # UTF-8 sem BOM com acento no path (C:\Users\Joao vs a versao acentuada) seria lido errado e gravado
     # de volta corrompido. O script roda em 5.1 e em 7.
     $conteudo = Get-Content $Caminho -Raw -Encoding UTF8
     if ($conteudo -notmatch $Padrao) { return $false }
@@ -123,7 +130,7 @@ if ($antigoLeaf -ne $NomeNovo) {
     Write-Host "[renomear-kit] pasta: $KitAtual -> $destino"
 } else {
     $destino = $KitAtual
-    Write-Host "[renomear-kit] pasta ja esta como '$NomeNovo' — so os ponteiros"
+    Write-Host "[renomear-kit] pasta ja esta como '$NomeNovo' -- so os ponteiros"
 }
 
 # Daqui pra baixo, QUALQUER falha deixaria a pasta renomeada com os ponteiros apontando

@@ -284,6 +284,33 @@ Describe "renomear-kit-local.ps1" {
         }
     }
 
+    # --- compatibilidade com Windows PowerShell 5.1 -----------------------------------
+    # Este e o unico script do kit que o OPERADOR roda a mao, e o terminal padrao do
+    # Windows e o 5.1 -- que le .ps1 sem BOM como ANSI. Em 2026-07-30 o script quebrou na
+    # mao do operador com 7 erros de parse: um em dash (U+2014) num comentario virava
+    # aspa curva em ANSI, e o PowerShell aceita aspa curva como delimitador de string.
+    # A suite roda em pwsh 7, entao nada disso aparecia aqui. Por isso este teste invoca
+    # o powershell.exe DE VERDADE em vez de conferir a lista de caracteres: inspecao de
+    # bytes provaria uma causa, e o que precisa ser provado e que o artefato roda.
+    It "roda sob Windows PowerShell 5.1 (o terminal do operador), nao so em pwsh 7" {
+        $ps51 = Get-Command powershell.exe -ErrorAction SilentlyContinue
+        if (-not $ps51) { Set-ItResult -Skipped -Because "powershell.exe (5.1) nao existe nesta maquina" ; return }
+
+        $c = New-Cenario
+        $saida = & $ps51.Source -NoProfile -ExecutionPolicy Bypass -File $script:script `
+                    -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $c.Settings 2>&1
+        $texto = ($saida | Out-String)
+
+        # 'ParserError' e o nome do enum de CategoryInfo, igual em qualquer idioma de
+        # Windows. Nao afiro a frase do erro: ela e traduzida, e o teste passaria a
+        # depender do idioma da maquina.
+        $texto | Should -Not -Match 'ParserError' -Because "erro de parse no 5.1 e o que quebrou na mao do operador: $texto"
+        $LASTEXITCODE | Should -Be 0 -Because $texto
+        Test-Path $c.Novo   | Should -Be $true  -Because "nao basta parsear: tem que renomear. Saida: $texto"
+        Test-Path $c.Antigo | Should -Be $false
+        (Get-Content $c.Settings -Raw -Encoding UTF8 | ConvertFrom-Json).env.PERCUS_CANON_DIR | Should -Be $c.Novo
+    }
+
     It "recusa -KitAtual sem pasta pai, com mensagem util" {
         { & $script:script -KitAtual "D:" -NomeNovo "percus-kit" -SettingsPath "$env:TEMP\nao-existe-$([Guid]::NewGuid().ToString('N')).json" } |
             Should -Throw -ExpectedMessage "*pasta pai*"
