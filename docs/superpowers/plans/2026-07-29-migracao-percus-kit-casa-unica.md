@@ -14,7 +14,7 @@
 
 ---
 
-## ESTADO DA EXECUÇÃO (atualizado 2026-07-29, antes do `/clear`)
+## ESTADO DA EXECUÇÃO (atualizado 2026-07-30)
 
 Branch: **`migracao-percus-kit-fase1`** (o kit está em `main`; nada foi mergeado).
 
@@ -23,9 +23,9 @@ Branch: **`migracao-percus-kit-fase1`** (o kit está em `main`; nada foi mergead
 | 1 — gate de conhecimento | ✅ **fechada**, aprovada nos 2 estágios de review | `5486e2d`, `9ac75d7`, `951ab30` · 10 testes · gate enxerga 105/105 verbetes (antes: 33) |
 | 2 — `.percus-review.json` no loop | ✅ fechada (revisada inline) | `bc9f19e` · loop em 35/60 linhas, fence par |
 | 3 — `.percus/` no `.gitignore` | ✅ fechada (revisada inline) | `b637bfe` · provado com `git status` vazio |
-| 4 — `renomear-kit-local.ps1` | ⚠️ **implementada, review REPROVOU 2ª vez** | `b8c96ee`, `14cfb9b` · 9 testes · ver "pendência" abaixo |
-| 7 — roteamento (era arquivamento) | 🔨 **em curso** — escopo reduzido por decisão do operador | ver §3.1 do spec; patch do move em `scratchpad/task7-arquivamento.patch` |
-| 5 — rename da pasta | ⏸️ pendente | muda `PERCUS_CANON_DIR` e a allowlist da sessão; exige aval do operador na hora |
+| 4 — `renomear-kit-local.ps1` | ✅ **fechada** na 3ª volta (rollback pós-rename) | `b8c96ee`, `14cfb9b`, `3ed2bd4` · 11 testes · suíte 187/187 |
+| 7 — roteamento (era arquivamento) | ✅ fechada — escopo reduzido por decisão do operador | `244fd6e`, `7a018b5` · ver §3.1 do spec; patch do move em `scratchpad/task7-arquivamento.patch` |
+| 5 — rename da pasta | ⏸️ pendente — **próxima** | muda `PERCUS_CANON_DIR` e a allowlist da sessão; exige aval do operador na hora |
 | 6 — gate anti-path-legado | ⏸️ pendente | só passa **depois** do rename |
 | 8 — versão 6.32.0 | ⏸️ pendente | 4 arquivos + changelog |
 | 9 — apagar `_Novo_Projeto_V2` | ⏸️ pendente | último, depois de tudo verde |
@@ -34,24 +34,23 @@ Branch: **`migracao-percus-kit-fase1`** (o kit está em `main`; nada foi mergead
 pasta no meio do voo quebra os caminhos que a sessão e os subagents usam, e a allowlist de diretórios
 do harness aponta pro nome antigo.
 
-### PENDÊNCIA BLOQUEANTE da Task 4 (fazer antes de seguir pro 5)
+### Como a pendência bloqueante da Task 4 foi resolvida (2026-07-30, `3ed2bd4`)
 
-A re-revisão reprovou: o fix fechou **uma** das três portas para o mesmo estado quebrado. `Copy-Item`
-(backup) e `[IO.File]::WriteAllText` (escrita final) rodam **depois** do `Rename-Item` e não têm
-proteção — provado por execução (ACL negando o `.bak`; `settings.json` somente-leitura). Nos dois
-casos a pasta fica renomeada, o settings aponta pro caminho morto, e a mensagem é a exceção crua do
-.NET, sem instrução de recuperação.
+A re-revisão tinha reprovado porque o fix fechou **uma** das três portas pro mesmo estado quebrado:
+`Copy-Item` (backup) e `[IO.File]::WriteAllText` (escrita final) rodavam **depois** do `Rename-Item`
+sem proteção — provado por execução (ACL negando o `.bak`; `settings.json` somente-leitura). Nos dois
+casos a pasta ficava renomeada com `PERCUS_CANON_DIR` apontando pro caminho morto.
 
-**Correção decidida (não é remendo de mensagem):** `try/catch` envolvendo **tudo** que acontece após o
-rename e, no `catch`, **rollback** — renomear a pasta de volta, deixando a máquina no estado original;
-se o rollback também falhar, dizer exatamente em que estado ficou e qual `-KitAtual` usar pra retomar.
-Mais dois testes: falha na escrita final (arquivo somente-leitura) e falha no backup, ambos aferindo
-que a pasta voltou ao nome antigo.
+Fechado assim: **tudo** que acontece após o rename roda dentro de um `try`; no `catch`, a pasta volta
+ao nome antigo. Se o rollback também falhar, a mensagem diz em que estado a máquina ficou e qual
+`-KitAtual` usar pra retomar. Quando a falha foi **durante a escrita**, o backup deixa de ser
+anunciado como "pode apagar" — ele pode ser a única cópia boa do settings.
 
-### Nota operacional
-
-O limite de sessão da API foi atingido em 2026-07-29 ~21:5x (reseta 22:10, Cuiabá) e derrubou um
-subagent no meio da Task 7. Enquanto não resetar, executar **inline**; subagent falha.
+Provado por 2 testes novos que forçam falha **real** (somente-leitura na escrita; ACL negando
+`CreateFiles` no backup), ambos aferindo que a pasta voltou ao nome antigo e que o settings ficou
+intacto. A porta "JSON inválido depois da troca" também passou a rolar back, mas segue sem teste:
+para o resultado da substituição quebrar o JSON, o `-NomeNovo` precisaria conter `"` ou `\`, e aí o
+`Rename-Item` falha antes (caractere inválido em nome de arquivo no Windows). É guarda defensiva.
 
 ---
 
