@@ -79,9 +79,13 @@ fi
 # ---------- 2. Verbete de conhecimento orfao do indice ----------
 for f in conhecimento/*.md referencia/conhecimento/*.md; do
   [ -f "$f" ] || continue
-  # Ignora exemplos: linhas em code fence (```) ou blockquote (>) nao sao verbete real.
-  orfaos=$(awk '/^[[:space:]]*(> )?```/{fence=!fence; next} fence{next} /^[[:space:]]*>/{next} {print}' "$f" \
-           | grep -oE '\{#[a-z0-9-]+\}' 2>/dev/null | tr -d '{}#' | sort -u \
+  # Verbete real = linha de TITULO (^## ) fora de bloco de codigo.
+  # Fence ESTRITO (^``` na coluna 0): o padrao antigo casava tambem fence indentado e
+  # dentro de blockquote, o toggle dessincronizava e o gate ficava CEGO do ponto em
+  # diante — medido 2026-07-29: via 33 de 105 verbetes e saia exit 0 por nao olhar.
+  # ^## ja exclui blockquote por construcao (linha comeca com '>').
+  orfaos=$(awk '/^```/{f=!f; next} f{next} /^## .*\{#/{print}' "$f" 2>/dev/null \
+           | grep -oE '\{#[a-z0-9-]+\}' | tr -d '{}#' | sort -u \
            | while read -r a; do grep -qF "(#$a)" "$f" || echo "$a"; done)
   for a in $orfaos; do
     violacao "$f -- verbete #$a existe mas nao esta no indice (escrito e invisivel)"
@@ -92,16 +96,26 @@ done
 for f in conhecimento/*.md referencia/conhecimento/*.md; do
   [ -f "$f" ] || continue
   sem_tags=$(awk '
-    /^[[:space:]]*(> )?```/ { fence = !fence; next }
+    /^```/ { fence = !fence; next }
     fence { next }
-    /^[[:space:]]*>/ { next }
     /^## .*\{#/ { if (p != "") print p; p=$0; c=0; next }
-    p != "" { c++; if ($0 ~ /^`tags:/) p=""; else if (c >= 4) { print p; p="" } }
+    p != "" { c++; if ($0 ~ /^`?tags:/) p=""; else if (c >= 4) { print p; p="" } }
     END { if (p != "") print p }
   ' "$f" | grep -oE '\{#[a-z0-9-]+\}' | tr -d '{}#')
   for a in $sem_tags; do
     violacao "$f -- verbete #$a sem linha tags: (a busca de conhecimento nao acha)"
   done
+done
+
+# ---------- 3b. Bloco de codigo aberto e nunca fechado ----------
+# Fence sem par cega os blocos 2 e 3 dali pra frente. Acusar e obrigatorio: gate que
+# para de olhar no meio do arquivo e pior que gate com falso positivo (2026-07-29).
+for f in conhecimento/*.md referencia/conhecimento/*.md; do
+  [ -f "$f" ] || continue
+  aberto=$(awk '/^```/{fence=!fence; if (fence) linha=NR} END{print (fence ? linha : 0)}' "$f")
+  if [ "$aberto" -gt 0 ]; then
+    violacao "$f -- bloco de codigo aberto na linha $aberto e nunca fechado (o gate fica cego dali pra frente)"
+  fi
 done
 
 # ---------- Resultado ----------
