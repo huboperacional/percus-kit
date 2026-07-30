@@ -25,10 +25,25 @@ Branch: **`migracao-percus-kit-fase1`** (o kit está em `main`; nada foi mergead
 | 3 — `.percus/` no `.gitignore` | ✅ fechada (revisada inline) | `b637bfe` · provado com `git status` vazio |
 | 4 — `renomear-kit-local.ps1` | ✅ **fechada** na 3ª volta (rollback pós-rename) | `b8c96ee`, `14cfb9b`, `3ed2bd4` · 11 testes · suíte 187/187 |
 | 7 — roteamento (era arquivamento) | ✅ fechada — escopo reduzido por decisão do operador | `244fd6e`, `7a018b5` · ver §3.1 do spec; patch do move em `scratchpad/task7-arquivamento.patch` |
-| 5 — rename da pasta | ⏸️ pendente — **próxima** | muda `PERCUS_CANON_DIR` e a allowlist da sessão; exige aval do operador na hora |
-| 6 — gate anti-path-legado | ⏸️ pendente | só passa **depois** do rename |
-| 8 — versão 6.32.0 | ⏸️ pendente | 4 arquivos + changelog |
-| 9 — apagar `_Novo_Projeto_V2` | ⏸️ pendente | último, depois de tudo verde |
+| 5 — rename da pasta | ✅ **fechada** (executada pelo operador em 2026-07-30 ~09:00) | 4 famílias de ponteiro consertadas: pasta, 2 env vars de usuário, `settings.json` (16 ocorrências), 4 projetos vizinhos (18) |
+| 8 — versão 6.32.0 | ✅ **fechada** | `ee6eb87` · 4 arquivos + changelog · publicada e instalada (`/plugin update` → 6.32.0 no cache) |
+| 6 — gate anti-path-legado | ⏸️ **pendente — próxima** | já dá pra rodar (o rename aconteceu). Alvo conhecido: `v2/gates/instalar-gates.sh` ainda cita `_Novo_Projeto` numa mensagem de erro |
+| 9 — apagar `_Novo_Projeto_V2` | ⏸️ pendente | último, depois de tudo verde. A pasta e o `.rar` dela seguem em `D:\Claud Automations\` |
+
+**Arco não previsto que entrou em 2026-07-30 e fechou:** três guardas `PreToolUse` estavam
+respondendo verde **sem rodar** (34 `.ps1` sem BOM que o PowerShell 5.1 lia como ANSI + 11 wrappers
+`.cmd` que traduziam "script morreu" em `exit 0`). Plano próprio, fechado:
+`docs/superpowers/plans/2026-07-30-guardas-mortas-powershell-51.md`. Descoberto ao investigar por que
+o `renomear-kit-local.ps1` quebrou na mão do operador.
+
+### Pendências fora dos Tasks (medidas, sem plano ainda)
+
+| Pendência | Tamanho medido |
+|---|---|
+| `.git/percus-v2-dir` apontando pro caminho morto | **12 repos** desta máquina. Só morde quando `PERCUS_CANON_V2_DIR` está vazia. Conserto por repo: `sh "$PERCUS_CANON_V2_DIR/gates/instalar-gates.sh"` |
+| Gate dizer *"o canon parece ter sido movido de X para Y"* em vez de só *"caminho errado?"* | sugestão do time Plexco Tasks, em `docs/cross-product/` daquele repo |
+| `git pull` do kit continua manual | o `autoUpdate` liga o plugin em cache, não a cópia de trabalho de onde os gates leem |
+| `conhecimento/COMO_RESOLVER.md` com trabalho não-commitado de outra sessão | 121 linhas, 2 verbetes sem índice e sem `tags:` — **barra o gate de qualquer commit neste repo** até serem fechados (4 linhas) |
 
 **Ordem ajustada em execução:** 1 → 2 → 3 → 4 → 7 → **5 (rename)** → 6 → 8 → 9. Motivo: renomear a
 pasta no meio do voo quebra os caminhos que a sessão e os subagents usam, e a allowlist de diretórios
