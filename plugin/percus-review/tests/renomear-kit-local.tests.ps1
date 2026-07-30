@@ -89,6 +89,50 @@ Describe "renomear-kit-local.ps1" {
         Test-Path $c.Novo   | Should -Be $false
     }
 
+    It "falha na ESCRITA final: faz rollback e a pasta volta ao nome antigo" {
+        # Somente-leitura no settings: Copy-Item (backup) passa, Get-Content passa,
+        # WriteAllText estoura. Sem rollback, a pasta ficaria renomeada com
+        # PERCUS_CANON_DIR apontando pro caminho morto.
+        $c = New-Cenario
+        Set-ItemProperty -Path $c.Settings -Name IsReadOnly -Value $true
+        try {
+            $erro = $null
+            try { & $script:script -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $c.Settings } catch { $erro = $_.Exception.Message }
+            $erro | Should -Match 'ROLLBACK OK'
+            $erro | Should -Match 'NAO apague' -Because "se a escrita pode ter saido parcial, o backup e a unica copia boa -- mandar apagar seria armadilha"
+            Test-Path $c.Antigo | Should -Be $true  -Because "o rollback tem que devolver a pasta ao nome antigo"
+            Test-Path $c.Novo   | Should -Be $false
+            (Get-Content $c.Settings -Raw -Encoding UTF8 | ConvertFrom-Json).env.PERCUS_CANON_DIR |
+                Should -Be $c.Antigo -Because "a escrita falhou, o settings tem que estar intacto"
+        } finally {
+            Set-ItemProperty -Path $c.Settings -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+        }
+    }
+
+    It "falha no BACKUP: faz rollback e a pasta volta ao nome antigo" {
+        # Nega CREATE FILES na pasta do settings (nao na pasta pai do kit, pra que a ACL
+        # nao interfira no rename nem no rollback). Copy-Item do .bak estoura; leitura do
+        # settings continua permitida.
+        $c = New-Cenario
+        $cfg = Join-Path $c.Base "cfg"
+        New-Item -ItemType Directory -Path $cfg -Force | Out-Null
+        Copy-Item $c.Settings (Join-Path $cfg "settings.json")
+        $sp = Join-Path $cfg "settings.json"
+
+        $acl  = Get-Acl $cfg
+        $eu   = [Security.Principal.WindowsIdentity]::GetCurrent().User
+        $nega = New-Object Security.AccessControl.FileSystemAccessRule($eu, "CreateFiles", "Deny")
+        $acl.AddAccessRule($nega); Set-Acl -Path $cfg -AclObject $acl
+        try {
+            { & $script:script -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $sp } |
+                Should -Throw -ExpectedMessage "*ROLLBACK OK*"
+            Test-Path $c.Antigo | Should -Be $true  -Because "o rollback tem que devolver a pasta ao nome antigo"
+            Test-Path $c.Novo   | Should -Be $false
+        } finally {
+            $a2 = Get-Acl $cfg; $a2.RemoveAccessRule($nega) | Out-Null; Set-Acl -Path $cfg -AclObject $a2
+        }
+    }
+
     It "recusa -KitAtual sem pasta pai, com mensagem util" {
         { & $script:script -KitAtual "D:" -NomeNovo "percus-kit" -SettingsPath "$env:TEMP\nao-existe-$([Guid]::NewGuid().ToString('N')).json" } |
             Should -Throw -ExpectedMessage "*pasta pai*"
