@@ -137,6 +137,9 @@
 - [CHECK bicondicional ACEITA a linha proibida quando o discriminante é NULL (UNKNOWN passa)](#check-bicondicional-unknown)
 - [Preflight CORS recusado: o serviço fica verde e só o browser do usuário quebra](#preflight-cors-falha-silenciosa)
 - [A mutação sobreviveu: o código está certo e a prova de que precisa estar não existe](#mutacao-sobrevive-predicado-quase-certo)
+- [Sessão de 30 dias que "não persiste": como provar de que lado está o defeito](#sessao-30-dias-nao-persiste)
+- [Auditar código de OUTRO repo: leia a ref publicada, nunca o working tree](#auditar-outro-repo-ref-publicada)
+- [Config que só o browser vê: env stale sobrepondo o default do código](#env-stale-sobrepondo-default)
 
 ---
 
@@ -3362,3 +3365,110 @@ Predicado composto com teste que só exercita o caso "ambos verdadeiros" é test
 
 **Relacionado:** [#404-por-design-esconde-tenancy] (erro que parece feature) ·
 [#guarda-fonte-strip-string] (guarda que some com o que procura).
+
+---
+
+## Sessão de 30 dias que "não persiste": como provar de que lado está o defeito {#sessao-30-dias-nao-persiste}
+
+tags: refresh token, rotacao, sessao de 30 dias, re-OTP, cold start, descarte em falha transitoria,
+clearTokens, delete_cookie, 401 e so, 422 RequestValidationError, rolling update, localStorage entre
+abas, AbortController, auth-service, consumer
+
+**Origem:** auth-service, 2026-07-25 → 07-30. Operador reportou re-OTP "em todos os projetos".
+Resultado: **6 de 7 consumers** tinham o mesmo defeito, o auth estava correto.
+
+### A métrica que decide (não use auditoria de código)
+
+Auditoria de código dá **falso PASS**. A prova é a **rotação do refresh token em produção**. No
+auth-service, via `scan_iter("auth:refresh:*")` + payload JSON de cada chave:
+
+- **rotações** = tokens com `used_at` preenchido.
+- **vida da família** = `max(created_at) - min(created_at)` da mesma família = quanto tempo aquela
+  sessão se sustentou renovando.
+- `parent_id=None` + `used_at=None` + 1 token = **família criada no login que nunca renovou**.
+
+Leitura: vida mediana **0,0h** = o `rt` é emitido e nunca usado. Sessões de **20+ dias vivas** em
+outro consumer = prova positiva de que o servidor está correto (use isso pra inocentar o auth em
+vez de argumentar).
+
+### Os dois defeitos que o checklist ingênuo não pega
+
+1. **COLD START** — o refresh só existe no caminho reativo (interceptor de 401). No boot **não sai
+   request nenhuma** → não há 401 → não há refresh → tela de login com o `rt` de 30 dias intacto no
+   storage. "Renova no 401?" passa e a sessão morre assim mesmo.
+   *Teste de 30s:* apagar **só o access token**, F5 com Network aberto. Tem que sair
+   `POST /token/refresh` → 200.
+
+2. **DESCARTE EM FALHA TRANSITÓRIA (o dominante)** — `clearTokens()` / `delete_cookie()` em
+   **qualquer** não-2xx ou no `catch` de rede/timeout. Um 502 de 3s destrói a sessão de 30 dias.
+   **Não vira incidente: vira "o pessoal anda relogando mais".** O gatilho mais comum é o **próprio
+   rolling update do serviço de auth** (segundos de 502 no proxy), então atinge **todo mundo ao
+   mesmo tempo**.
+   *Regra:* descartar credencial **só** quando o servidor **confirma** sessão morta. No contrato
+   Percus isso é **`401` e só** — `403` não é emitido nessa rota e **`422` é o
+   `RequestValidationError` do FastAPI** (body malformado = drift de contrato). Com 422 na lista, o
+   dia em que o schema mudar apaga a sessão de **todos os usuários de todos os produtos**.
+
+3. **A segunda metade, que todo mundo esquece:** consertar o `doRefresh` preserva a credencial
+   (resolve o **custo**), mas se o **chamador** tratar todo `null` como sessão morta o usuário
+   continua sendo **expulso** pro `/login` (a **interrupção**). Exige as duas metades.
+
+### Armadilhas de sinal (custaram bug real)
+
+- **Não use "ainda existe refresh token?" como prova de falha transitória** — o interceptor pode ter
+  **rotacionado** logo antes, e aí uma identidade rejeitada (conta desativada, token válido)
+  rotacionaria pra sempre sem nunca deslogar. Use estado **por aba** (contador de refreshes OK).
+- **`localStorage` é compartilhado entre abas** — "o token mudou?" é sinal contaminado, e uma aba
+  parada reapresentando o `rt` velho **queima a família** da aba que acabou de renovar.
+- Quem passar a **aguardar** o refresh no boot precisa de **timeout** (`AbortController`), senão
+  troca re-OTP por tela branca. O abort conta como transitório.
+
+---
+
+## Auditar código de OUTRO repo: leia a ref publicada, nunca o working tree {#auditar-outro-repo-ref-publicada}
+
+tags: auditoria cross-repo, working tree engana, evidencia circular, git show origin, ref publicada,
+branch default nao e main, symbolic-ref, grep por stack, falso-negativo, retirada de suspeita
+
+**Origem:** mesma sessão. Custou uma "retirada de suspeita" errada, que quase encerrou um defeito
+real que estava deslogando usuário em produção.
+
+O checkout local de outro projeto pode conter **trabalho em andamento de outra sessão**. Eu li o
+working tree, vi o fix que o time estava escrevendo **em resposta ao meu próprio alerta**, e reportei
+como prova de que o alerta era desnecessário — **evidência circular**.
+
+- ✅ `git show origin/<ref>:<arquivo>` · ❌ abrir o arquivo do checkout.
+- ⚠️ **A ref publicada nem sempre é `main`.** Num dos repos o `origin/main` era um snapshot antigo e
+  a branch deployada era `origin/onda-minus-1/migracao-supabase`; noutro o default era `master`.
+  Confirme com `git branch -r --contains <commit>` ou `git symbolic-ref refs/remotes/origin/HEAD`.
+- Ao varrer um padrão em N repos, **greppe por stack**: `clearTokens|clearCookie` não acha Python
+  (`delete_cookie`) — deu falso-negativo justamente no repo que tinha o bug.
+
+---
+
+## Config que só o browser vê: env stale sobrepondo o default do código {#env-stale-sobrepondo-default}
+
+tags: env override, CORS_ALLOWED_ORIGINS, config apodrece, default no codigo, swarm, tasks recriadas,
+falha silenciosa no servidor, TypeError Failed to fetch, smoke pos-deploy, OPTIONS por origin,
+cross-product
+
+**Origem:** P0 de 2026-07-30 — 11h com login quebrado em 6 produtos.
+
+Um `CORS_ALLOWED_ORIGINS` explícito no env do Swarm sobrepunha o default do código (que era gerado,
+versionado e completo) e recusava 7 origins. **A falha é silenciosa do lado do servidor:** serviço
+`healthy`, log limpo, nada erra — quem quebra é o browser do usuário (`TypeError: Failed to fetch`,
+porque o preflight volta 400 sem `access-control-allow-origin`).
+
+- **Padrão:** env override de lista **apodrece**. Prefira o default no código (gerado de um manifesto
+  versionado) e trate o env como escape hatch temporário.
+- **Sintoma de que o env está mandando:** o valor efetivo do processo ≠ o literal do código. Leia o
+  processo vivo, não o repo.
+- **Gatilho comum:** a mudança de env só entra em vigor quando as **tasks são recriadas** — pode
+  ficar meses armada e detonar num restart qualquer.
+- **Cuidado cross-product:** o script de outro produto pode estar escrevendo no seu serviço. Procure
+  o consumidor declarado (`grep -rl 'SEU_ENV' /opt /root --include='*.yml' --include='*.yaml'`).
+- **Defesa:** smoke pós-deploy de `OPTIONS` por origin, esperando **200 + `ACAO`**. Transforma falha
+  invisível em falha barulhenta.
+
+**Relacionado:** [#preflight-cors-falha-silenciosa] — mesmo P0, visto do outro lado: lá está **como
+diagnosticar** o preflight recusado; aqui, **por que o env chegou nesse estado**.
