@@ -1,10 +1,67 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.31.1`
+**Versão canônica em `huboperacional/percus-kit`:** `6.32.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
 >
-> ⚠️ **O plugin INSTALADO (em `plugins/cache/`) pode ficar ATRÁS do canon-source — isso é ESPERADO, não drift.** O republish/retag do plugin foi descartado (decisão do operador, 01/07/2026), então o tooling novo é **repo-only**: os projetos continuam lendo o plugin em cache (hoje 6.28.0/6.29.0). Gates novos NÃO chegam por republish — chegam via `v2/gates/instalar-gates.sh` (git hook self-contained, zero dependência de publicação). Portanto: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta `plugins/cache/percus-tools/percus-review/<v>/` reflete o último republish e é legitimamente mais antiga. Não re-flaggar como bug.
+> ⚠️ **O plugin INSTALADO (em `plugins/cache/`) pode ficar ATRÁS do canon-source — isso é ESPERADO para os GATES, e NÃO é esperado para os HOOKS.** O republish/retag do plugin foi descartado (decisão do operador, 01/07/2026), então o tooling novo é **repo-only**: os projetos continuam lendo o plugin em cache (hoje 6.28.0/6.29.0). Isso funciona para os **gates de commit**, que chegam via `v2/gates/instalar-gates.sh` (git hook self-contained, zero dependência de publicação).
+>
+> **Mas NÃO funciona para os hooks do plugin** (`PreToolUse`, `Stop`, `PreCompact`), e isso custou caro: o `hooks.json` invoca `${CLAUDE_PLUGIN_ROOT}/hooks/*.cmd`, e `CLAUDE_PLUGIN_ROOT` resolve para a pasta **instalada** — não para o kit. Medido em 2026-07-30: três guardas de `PreToolUse` estavam **mortas respondendo verde** e o conserto no repo não as alcançava. Correção da regra: conserto em `plugin/percus-review/hooks/` **exige publicação** (bump → push → `/plugin marketplace update` → `/plugin update`). Copiar arquivo para dentro de `plugins/cache/` à mão **não é suportado** — o próximo update sobrescreve, o cleanup de 14 dias apaga versão órfã, e o `installed_plugins.json` passa a mentir sobre o estado real.
+>
+> Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
+
+---
+
+## Changelog v6.32.0 — 2026-07-30
+
+**Três guardas de `PreToolUse` estavam respondendo verde sem rodar.** `external-action-guard` (a que
+barra `git push` e `gh pr comment` por R20), `auth-import-pre-commit` e `types-check-pre-commit`. Não
+falhavam: **aprovavam**. Duas falhas encaixadas, e é a segunda que transformou a primeira em silêncio.
+
+**1. O gatilho — 34 `.ps1` sem BOM.** O Windows PowerShell 5.1 (`powershell.exe`, que é o runtime real
+de todo hook do plugin) lê `.ps1` sem BOM como cp1252. O último byte do em-dash (`E2 80 94`) é `94`,
+que em cp1252 é **aspa curva** `”` — e o PowerShell aceita aspa curva como delimitador de string.
+Dentro de uma string, ela fecha a string cedo e o arquivo inteiro desanda, com erros de parse
+apontando linhas **sem defeito**, às vezes dezenas de linhas depois. 16 arquivos não parseavam; outros
+18 parseavam e só imprimiam lixo. A suíte não via nada disso: ela roda em **pwsh 7**, que lê UTF-8 por
+default — cega para a classe por construção.
+
+**2. O amplificador — o wrapper `.cmd` traduzia "script morreu" em "aprovado".** A forma era
+`-Command "& script; exit $LASTEXITCODE"`. Script que não parseia nunca roda, `$LASTEXITCODE` fica
+nulo, e o `exit` sai **0** — que o harness lê como "guarda aprovou".
+
+**O conserto, em camadas.** BOM nos 34 (prepend de bytes; via texto o fim de linha seria reescrito e o
+diff viraria arquivo inteiro). Wrappers em duas formas, escolhidas pelo **evento declarado no
+`hooks.json`**: os 8 de `PreToolUse` são **fail-closed** (qualquer não-zero vira `exit 2`), e os 3 de
+`Stop`/`PreCompact` **repassam** o código — porque nesses eventos `exit 2` barra o encerramento da
+sessão e a compactação de contexto, e os três arquivos documentam no próprio cabeçalho que não
+bloqueiam por erro. Os dois formatos checam `PERCUS_HOOKS_DISABLED` **na linha 2**, antes de invocar o
+PowerShell: sem isso, um `.ps1` corrompido trancaria a máquina, porque o escape de hoje mora *dentro*
+do `.ps1` que não roda.
+
+**A regra de encoding mudou: era "100% ASCII", agora é "não-ASCII exige BOM".** Regra sem gate é
+sugestão — a de ASCII era violada por 34 arquivos e ninguém sabia. Quem enforça agora é
+`tests/ps51-compat.tests.ps1`: um `It` parseia todo `.ps1` sob o `powershell.exe` real; outro barra
+qualquer byte `> 0x7F` sem BOM, inclusive nos que parseiam e só imprimem lixo. Verbete
+`#ps51-ascii-hooks` atualizado; a memória `feedback_ps51_ascii_hooks` está desatualizada neste ponto.
+
+**Correção de rota na decisão de 01/07 (republish descartado):** ela vale para os **gates**, que
+chegam por `instalar-gates.sh` sem depender de publicação. Não vale para os **hooks do plugin** —
+`hooks.json` invoca `${CLAUDE_PLUGIN_ROOT}`, que é a pasta **instalada**. Foi por isso que as três
+guardas ficaram mortas: o conserto no repo não chega nelas. Ver o bloco no topo deste arquivo.
+
+**Verificado rodando, não por inspeção:** prova de mutação (tirar o BOM de um dos 16 derruba os dois
+`It`; de um dos 18, só o de invariante), conserto parcial dos wrappers deixa o invariante vermelho, e
+ponta a ponta nas duas formas — guarda com `.ps1` quebrado dá **2** e com `PERCUS_HOOKS_DISABLED=1` dá
+**0**; observador com `.ps1` quebrado dá **1** e com `exit 2` próprio dá **2**. Suíte: 203 passando.
+
+**Erro meu que vale registrar:** eu afirmei em duas versões do spec que `-File` fazia a guarda morta
+*bloquear*. O contrato documentado é `exit 2` bloqueia e **qualquer outro não-zero é erro visível com
+a ferramenta seguindo**. As duas afirmações eram inferência apresentada como medição — exatamente o
+defeito que este arco conserta. Spec §3.1 registra a correção.
+
+Spec: `docs/superpowers/specs/2026-07-30-guardas-mortas-powershell-51-design.md` ·
+Plano: `docs/superpowers/plans/2026-07-30-guardas-mortas-powershell-51.md`
 
 ---
 
