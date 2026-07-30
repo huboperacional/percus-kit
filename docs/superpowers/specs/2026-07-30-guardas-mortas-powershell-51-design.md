@@ -52,6 +52,25 @@ acentos corretos.
 Verificado antes de escolher: nada no kit ancora regex na primeira linha de `.ps1` (os `head -1` que
 existem são sobre `.jsonl` e `plugin.json`), então o BOM não quebra gate nem teste.
 
+**Método — obrigatório, e não é detalhe.** O BOM entra por **manipulação de bytes**, nunca por
+`Set-Content`/`Out-File`/editor:
+
+```powershell
+$bytes = [IO.File]::ReadAllBytes($f)
+[IO.File]::WriteAllBytes($f, (@(0xEF,0xBB,0xBF) + $bytes))
+```
+
+Os arquivos do kit estão com fim de linha **LF** no working tree (medido: `external-action-guard.ps1`
+tem 91 LF e zero CRLF) e o repo está com `core.autocrlf=true` sem `.gitattributes`. Qualquer via de
+texto reescreve fim de linha: `Set-Content -Encoding utf8BOM` no pwsh 7 já acrescenta um CRLF final
+(4098 → 4103 bytes, arquivo com terminação mista); no PowerShell 5.1 converteria os 91 LF em CRLF. O
+resultado seria um diff de arquivo inteiro em vez de uma linha, e a promessa de "conteúdo intacto"
+deixaria de ser verdade.
+
+**Verificação por arquivo:** o conteúdo a partir do 4º byte tem que ser byte-idêntico ao original
+(provado na bancada). Um `git diff --stat` de `16 files changed, 16 insertions(+)` é o outro lado da
+mesma prova.
+
 ## 3. Camada 2 — o amplificador: `-File` nos 11 `.cmd`
 
 ```diff
@@ -116,8 +135,21 @@ código provaria uma causa; o que precisa ser provado é que o artefato **roda**
 | `ps51-compat.tests.ps1` | todo `.ps1` do kit parseia sob o `powershell.exe` real | os 16 |
 | `hook-wrapper-fail-loud.tests.ps1` | `.cmd` com `.ps1` quebrado sai **não-zero**, e `.ps1` sadio com `exit 2` continua devolvendo 2 | o amplificador |
 
-O segundo copia um par real `.cmd` + `.ps1` pro temp e corrompe a cópia — o `.cmd` resolve o script
-por `%~dp0`, então o par copiado funciona sem tocar no original.
+**Como `ps51-compat` afere, exatamente:** invoca o `powershell.exe` real e pede **só o parse**, sem
+executar o script — `[System.Management.Automation.Language.Parser]::ParseFile($caminho, [ref]$null,
+[ref]$erros)`, reprovando se `$erros.Count -gt 0`. Executar os `.ps1` para descobrir se parseiam
+seria disparar hook de verdade (`git`, rede, escrita em `.deepseek/`) como efeito colateral de um
+teste. O parse tem que rodar **sob o 5.1**, não sob o pwsh 7: é a diferença entre os dois que é o
+objeto do teste.
+
+**Como `hook-wrapper-fail-loud` corrompe, exatamente:** copia um par real `.cmd` + `.ps1` pro temp
+(o `.cmd` resolve o script por `%~dp0`, então o par copiado funciona sem tocar no original) e
+acrescenta ao `.ps1` copiado uma linha com **em dash dentro de string** — `Write-Host "x — y"` —
+gravada **sem BOM**. Ou seja, reproduz o gatilho real deste spec.
+
+Não usar chave desbalanceada nem lixo aleatório: precisa ser uma falha de **parse**, e uma corrupção
+qualquer pode virar falha de **execução** — que o wrapper atual já propaga corretamente. O teste
+passaria pelo motivo errado e não provaria nada sobre o amplificador.
 
 **Máquina sem `powershell.exe`:** o teste reporta `Skipped`, não verde. É honesto porque essa máquina
 também não roda os `.cmd` — o hook é irrelevante ali.
@@ -140,6 +172,10 @@ também não roda os `.cmd` — o hook é irrelevante ali.
   **Caveat de método:** os três riscos ecoam a lista `(a)(b)(c)` que eu mesmo pus no prompt, então a
   informação independente ali é baixa. O que veio além do plantado: o modo de falha **social** (o
   conserto ser revertido) e a hipótese de CWD.
+- **Review do spec escrito** (mesmos dois): o DeepSeek achou três ambiguidades reais, todas
+  aplicadas — método de gravação do BOM (§2), como o `ps51-compat` parseia sem executar (§6), e o
+  que exatamente corromper no teste do wrapper (§6). A Llama não trouxe achado nesta rodada
+  (resumiu o spec); registrado como veio.
 - **Cross-Claude não rodou** (exige subagent; não autorizado nesta sessão).
 
 ## 9. Fora de escopo
