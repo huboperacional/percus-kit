@@ -16,6 +16,14 @@
 
 O router decide sozinho: DeepSeek por padrão · Cross-Claude quando o código veio do DeepSeek (evita auto-revisão) ou toca pasta sensível · ambos no fechamento de marco.
 
+**Pasta sensível é declarada, não adivinhada.** O baseline do router é taxonomia de produto web (`auth/`, `payment*/`, `migrations/`). Se o que escreve em produção neste projeto tem outro nome, declare em `.percus-review.json` na raiz — senão ele é revisado como código trivial:
+
+```json
+{ "sensitivePatterns": ["(^|[/\\\\])execution[/\\\\].*\\.py$"] }
+```
+
+Descrever isso só em prosa no `CLAUDE.md` não configura nada: o router lê o JSON, não o markdown.
+
 ## Limites que valem saber
 
 - O marker vale **~5 min**. Em sequência longa de commits, re-rode.
