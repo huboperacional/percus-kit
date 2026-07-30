@@ -93,8 +93,8 @@ Bancada, cenário por cenário:
 | Cenário | `-Command` (atual) | `-File` (novo) |
 |---|---|---|
 | guarda sadia que bloqueia (`exit 2`) | 2 | 2 |
-| guarda com erro de parse | **0** — aprova | **1** — bloqueia |
-| `.ps1` ausente | **0** — aprova | não-zero |
+| guarda com erro de parse | **0** — aprova | **1** — erro visível, **não bloqueia** |
+| `.ps1` ausente | **0** — aprova | não-zero, **não bloqueia** |
 | stdin (o hook recebe JSON por stdin) | chega | chega |
 | stdout com acentos | — | **byte-idêntico** ao `-Command` |
 | `$PSScriptRoot`, `CWD`, `$PSCommandPath`, `$args` | — | **idênticos** ao `-Command` |
@@ -110,11 +110,65 @@ harness lê apenas zero/não-zero, então o código "diagnóstico" seria interpr
 a opção que parecia mais informativa é a que trava a máquina. Também descartado trocar pra `pwsh`
 com fallback: o engolimento é do `-Command`, não da versão.
 
+## 3.1. Correção posterior (2026-07-30): `-File` sozinho grita, mas não barra
+
+> Esta seção corrige duas afirmações erradas das versões anteriores deste spec. Ambas foram escritas
+> por inferência e não por medição — o erro que este próprio documento existe para combater.
+
+O contrato **documentado** de exit code de hook no Claude Code:
+
+| exit | efeito | a ferramenta roda? |
+|---|---|---|
+| `0` | fluxo normal | sim |
+| `2` | stderr vai pro modelo, **bloqueia** | **não** |
+| qualquer outro (`1`, `-196608`) | erro **não-bloqueante**, aparece no transcript | **sim** |
+
+Então `-File` sozinho deixa a guarda morta **visível**, não **barrada**. Fail-open barulhento é melhor
+que fail-open silencioso, mas ainda é fail-open — e o canon do kit já é fail-closed em outro lugar
+(`v2/gates/instalar-gates.sh`: *"FAIL-CLOSED: gate instalado que nao consegue rodar BLOQUEIA"*).
+
+**Decisão (conselho, consenso 2/2): fail-closed nas guardas.** Duas formas de wrapper, escolhidas pelo
+**evento declarado em `hooks.json`**, não pelo gosto:
+
+**Forma GUARDA** — os 8 de `PreToolUse`:
+
+```bat
+@echo off
+if "%PERCUS_HOOKS_DISABLED%"=="1" exit /b 0
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0X.ps1"
+if %ERRORLEVEL%==0 exit /b 0
+exit /b 2
+```
+
+**Forma OBSERVADOR** — os 3 de `Stop`/`PreCompact` (`on-stop-check`, `state-drift-check`,
+`pre-compact-checkpoint`): as três primeiras linhas, sem tradução de código.
+
+A distinção não é preciosismo. Em `Stop`, `exit 2` bloqueia o **encerramento da sessão**; em
+`PreCompact`, a **compactação de contexto**. E os três arquivos documentam no próprio cabeçalho que
+não bloqueiam por erro — `on-stop-check.ps1:43` (*"erros nao bloqueiam o stop"*),
+`state-drift-check.ps1:8-10` (*"CONSERVADOR por design (fail-open)"*), `pre-compact-checkpoint.ps1:5`
+(*"NAO bloqueia"*, e o corpo só usa `exit 0`). Fail-closed neles inventaria um bloqueio que o autor
+nunca quis emitir. Aplicá-lo aos 11 foi generalização indevida, corrigida antes de fechar.
+
+A checagem de `PERCUS_HOOKS_DISABLED` **dentro do `.cmd`** é o que torna o fail-closed seguro: o escape
+de hoje mora dentro do `.ps1`, então com o `.ps1` quebrado ele nunca roda. Sem a linha 2, um arquivo
+corrompido trancaria a máquina sem saída.
+
+**Resíduo declarado, que nenhuma linha de `.cmd` resolve:** se o `cmd.exe` não estiver disponível (WSL
+sem interop Win32, container sem shell batch), nem o wrapper nem o `.ps1` chegam a rodar, e a
+ferramenta segue sem bloqueio. O contrato de exit code não cobre falha *antes* do processo iniciar.
+Achado do conselho; fica registrado em vez de fingirmos que fail-closed é absoluto.
+
 ## 4. Ordem é obrigatória, não preferência
 
-**Camada 1 antes da 2, ou as duas no mesmo commit.** Wrapper barulhento com os três `.ps1` ainda
-quebrados faz as guardas saírem de "aprovam tudo" para **"bloqueiam todo `PreToolUse` Bash"** — e a
-máquina para de commitar, inclusive o commit do próprio conserto. É um estado que se auto-tranca.
+**Camada 1 antes da 2, ou as duas no mesmo commit.**
+
+> **Ressalva (2026-07-30):** a justificativa original desta seção estava errada. Eu escrevi que wrapper
+> barulhento com `.ps1` quebrado faria as guardas "bloquearem todo `PreToolUse` Bash", travando a
+> máquina. Com `-File` puro isso é falso — exit 1 não bloqueia (§3.1). A ordem continua correta por
+> outro motivo: aplicar o fail-closed da §3.1 **antes** dos arquivos consertados aí sim tranca, porque
+> aí o não-zero vira `exit 2` de verdade. A conclusão sobreviveu à medição; a razão que eu tinha dado
+> para ela, não.
 
 ## 5. Consequência esperada: as guardas voltam a barrar
 

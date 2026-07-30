@@ -568,3 +568,49 @@ O que precisa chegar às outras máquinas, em uma frase: *"as guardas `external-
 | Verbete R23 em `conhecimento/COMO_RESOLVER.md` sobre erro de parse que aponta pro lugar errado | não decidido pelo operador |
 | Migrar os 11 hooks pro `settings.json` | "plano 2" previsto no design da casa única |
 | Bump de versão e changelog | Task 8 do plano da migração |
+
+---
+
+## Estado final (2026-07-30) — o que ficou diferente do texto acima
+
+Os blocos de código das Tasks 1, 4 e 5 mostram o que foi escrito **naquele passo**, em ordem. Duas
+revisões posteriores mudaram os artefatos, e o texto acima não foi reescrito de propósito: apagar o
+caminho faria o plano mentir sobre como se chegou no resultado. O que vale hoje está aqui.
+
+### Testes
+
+| Arquivo | `It` | O que ficou diferente |
+|---|---|---|
+| `plugin\percus-review\tests\ps51-compat.tests.ps1` | 2 | ganhou o `It` de invariante (não-ASCII sem BOM), piso `VISTOS > 40`, exclusão de `node_modules`, e número de linha no diagnóstico |
+| `plugin\percus-review\tests\hook-wrapper-fail-loud.tests.ps1` | 7 | os `It` de falha exigem **`2`**, não "não-zero"; ganhou o `It` do escape hatch, o do caminho sadio, o comportamental da forma OBSERVADOR, e o invariante virou **positivo** (forma exata, derivada do evento em `hooks.json`, com contagem 8 guarda / 3 observador) |
+
+### Wrappers: duas formas, escolhidas pelo evento
+
+Ver §3.1 do spec. Resumo: os 8 de `PreToolUse` são **fail-closed** (não-zero vira `exit 2`); os 3 de
+`Stop`/`PreCompact` **repassam** o código (script morto dá 1 = erro visível, não bloqueia). Os dois
+formatos checam `PERCUS_HOOKS_DISABLED` na linha 2, antes de invocar o PowerShell.
+
+### Commits
+
+| Commit | O quê |
+|---|---|
+| `7fb10ff`, `35154dd` | teste `ps51-compat` vermelho (16 parse, 34 invariante) |
+| `12912fc` | BOM nos 34 `.ps1` |
+| `1d2e93e`, `7b42a70` | teste `hook-wrapper-fail-loud` vermelho |
+| `e06e839` | `-File` nos 11 wrappers |
+| `a0c75b7`, `42f9c51` | fail-closed nos 11 (generalização indevida) |
+| `f39e92f`, `93e4fbd` | correção: os 3 de `Stop`/`PreCompact` viram OBSERVADOR |
+| `1ce7c57` | verbete do canon: "100% ASCII" → "não-ASCII exige BOM" |
+
+**Erratas nos corpos de commit** (não reescrevo histórico por isso): `e06e839` diz "3 testes do
+wrapper verdes" — eram 4 desde `7b42a70`.
+
+### O que este plano NÃO fecha
+
+As guardas seguem mortas **na máquina** até a publicação: `hooks.json` invoca
+`${CLAUDE_PLUGIN_ROOT}/hooks/*.cmd`, e `CLAUDE_PLUGIN_ROOT` resolve para o plugin **instalado**
+(`~\.claude\plugins\cache\percus-tools\percus-review\6.28.0`, de 2026-07-04), não para o kit. O
+procedimento suportado é bump de versão → push → `/plugin marketplace update` →
+`/plugin update` → `/reload-plugins`. Copiar arquivo pro cache à mão **não é suportado** (o próximo
+update sobrescreve, o cleanup de 14 dias apaga versão órfã, e o `installed_plugins.json` passa a
+mentir). Isso é a Task 8 do plano da migração.
