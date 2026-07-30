@@ -176,7 +176,15 @@ Esperado: `alvos: 34`, 34 linhas `OK`, nenhuma `ERRO`, nenhuma `JA TEM BOM`.
 cd "/d/Claud Automations/percus-kit" && git diff --stat
 ```
 
-Esperado: `34 files changed, 34 insertions(+)` — sem deleções. Qualquer deleção significa fim de linha reescrito: **desfaça com `git checkout -- <arquivo>` e refaça por bytes.**
+Esperado: `34 files changed, 34 insertions(+), 34 deletions(-)` — **uma linha por arquivo**, não zero deleções. O BOM cola na primeira linha existente, então o git registra modificação de linha (1 remoção + 1 inserção), não inserção pura.
+
+O que prova que o fim de linha ficou intacto é o `numstat` dar `1 1` em **todos** os arquivos, sem exceção:
+
+```bash
+cd "/d/Claud Automations/percus-kit" && git diff --numstat -- '*.ps1' | awk '$1!=1 || $2!=1'
+```
+
+Esperado: **nenhuma linha de saída**. Qualquer arquivo com número diferente de `1 1` teve o fim de linha reescrito — desfaça com `git checkout -- <arquivo>` e refaça por bytes. Para inspecionar um caso, `git diff --stat` mais `cat -A` mostram a troca sendo só `#requires` → `M-oM-;M-?#requires` com terminação `$` (LF) preservada.
 
 - [ ] **Step 3: Rodar o teste da Task 1 e ver os DOIS `It` passarem**
 

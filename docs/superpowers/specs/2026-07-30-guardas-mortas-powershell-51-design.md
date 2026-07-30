@@ -76,8 +76,10 @@ resultado seria um diff de arquivo inteiro em vez de uma linha, e a promessa de 
 deixaria de ser verdade.
 
 **Verificação por arquivo:** o conteúdo a partir do 4º byte tem que ser byte-idêntico ao original
-(provado na bancada). Um `git diff --stat` de `16 files changed, 16 insertions(+)` é o outro lado da
-mesma prova.
+(provado na bancada). O outro lado da mesma prova é `git diff --numstat` dar `1 1` em **todos** os
+arquivos: o BOM cola na primeira linha existente, então o git registra uma modificação de linha
+(1 remoção + 1 inserção), não uma inserção pura. Fim de linha reescrito apareceria como arquivo
+inteiro modificado, e é isso que o `numstat` descarta.
 
 ## 3. Camada 2 — o amplificador: `-File` nos 11 `.cmd`
 
