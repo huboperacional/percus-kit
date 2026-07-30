@@ -142,14 +142,23 @@ seria disparar hook de verdade (`git`, rede, escrita em `.deepseek/`) como efeit
 teste. O parse tem que rodar **sob o 5.1**, não sob o pwsh 7: é a diferença entre os dois que é o
 objeto do teste.
 
-**Como `hook-wrapper-fail-loud` corrompe, exatamente:** copia um par real `.cmd` + `.ps1` pro temp
-(o `.cmd` resolve o script por `%~dp0`, então o par copiado funciona sem tocar no original) e
-acrescenta ao `.ps1` copiado uma linha com **em dash dentro de string** — `Write-Host "x — y"` —
-gravada **sem BOM**. Ou seja, reproduz o gatilho real deste spec.
+**Como `hook-wrapper-fail-loud` monta o caso, exatamente:** copia o **`.cmd` real** pro temp e planta
+ao lado um `.ps1` **sintético** de mesmo nome (o `.cmd` resolve o script por `%~dp0`, então o par
+funciona sem tocar no original). O artefato sob teste é o **wrapper**, não a guarda.
 
-Não usar chave desbalanceada nem lixo aleatório: precisa ser uma falha de **parse**, e uma corrupção
-qualquer pode virar falha de **execução** — que o wrapper atual já propaga corretamente. O teste
-passaria pelo motivo errado e não provaria nada sobre o amplificador.
+O `.ps1` sintético do caso quebrado tem uma linha com **em dash dentro de string** —
+`Write-Host "x — y"` — e é gravado **sem BOM**: o gatilho real deste spec.
+
+Três decisões que não são estilo:
+
+- **Sintético, não cópia do `.ps1` real.** Depois da camada 1 o arquivo real **tem BOM**, então a
+  cópia também teria, o 5.1 leria UTF-8 e o em dash não corromperia nada — o teste passaria sem
+  testar. Sintético sem BOM é a única forma que continua reproduzindo o defeito depois do conserto.
+- **Nem chave desbalanceada nem lixo aleatório.** Precisa ser falha de **parse**. Corrupção qualquer
+  pode virar falha de **execução**, que o wrapper atual já propaga corretamente — o teste passaria
+  pelo motivo errado e não provaria nada sobre o amplificador.
+- **O corpo sadio do arquivo faz `exit 0`.** Se um dia a corrupção parar de corromper, o script roda,
+  sai 0, e o teste **falha**. A direção da falha é segura: nunca vira falso verde.
 
 **Máquina sem `powershell.exe`:** o teste reporta `Skipped`, não verde. É honesto porque essa máquina
 também não roda os `.cmd` — o hook é irrelevante ali.
