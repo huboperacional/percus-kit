@@ -4,6 +4,8 @@
 
 # Logs de runs/reviews do DeepSeek (R13 + R11) — podem conter prompts/respostas
 .deepseek/
+# Log de escape do gate (local por maquina — o loop drift audita rodando o script)
+.percus/
 **/runs/
 **/reviews/
 
