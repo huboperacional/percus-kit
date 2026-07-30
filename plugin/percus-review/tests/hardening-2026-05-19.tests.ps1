@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Test suite de regressao pro doc consolidado 2026-05-19 (incidentes 2 + 3).
 # Cobre Propostas F (hook cross-repo), G (diagnostic messages) e invariantes D+E
 # (wrapper nao edita / nao cria branches autonomamente — barrar regressao em v6.8+).

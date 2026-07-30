@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Council orchestrator: roda DeepSeek + Llama em paralelo (PowerShell jobs), agrega resultados.

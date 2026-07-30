@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Tests: os 4 lugares que guardam a versao do kit concordam entre si.
 #
 #   plugin/percus-review/plugin.json   -> versao do plugin (o que o wrapper loga)

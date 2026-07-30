@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 <#
 .SYNOPSIS
 Scaffold Percus auth pattern em projeto Next.js/FastAPI existente.

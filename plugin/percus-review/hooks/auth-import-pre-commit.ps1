@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Hook pre-commit Percus auth-import (R7).
 # Bloqueia commit se staged code contem imports de auth providers vetados
 # (Supabase, GoTrue, NextAuth). Percus usa auth-service proprio.

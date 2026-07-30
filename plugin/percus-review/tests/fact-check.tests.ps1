@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Tests: fact-check.ps1 pipeline F3 — valida findings criticos contra codigo real.
 # TDD: escrever primeiro, rodar ANTES da implementacao (todos devem falhar).
 

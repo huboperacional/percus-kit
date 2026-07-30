@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Tests: dedup-findings.ps1 — F5 echo dedup findings em PRs stackados.
 # TDD: escrever primeiro, rodar ANTES da implementacao (todos devem falhar).
 

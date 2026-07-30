@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Provider wrapper: Cross-Claude (Anthropic API direto, com prompt cache ephemeral).

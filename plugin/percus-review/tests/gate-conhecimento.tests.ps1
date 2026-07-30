@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Prova COMPORTAMENTAL do gate de conhecimento: roda o script de verdade num repo
 # temporario e afere o que ele barra. Nao inspeciona o codigo do gate — inspecao de
 # codigo foi o que deixou passar o gate cego de 2026-07-29 (via 33 de 105 verbetes).

@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Testes do fact-check-triage.ps1 (Vetor B / v6.14.0).
 #
 # Triagem Llama upstream do Sonnet: classifica cada finding critico como

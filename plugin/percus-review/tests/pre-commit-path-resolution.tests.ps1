@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Tests: pre-commit-check.ps1 resolve o repo target de comandos vindos do git-bash.
 #
 # Dois defeitos encontrados em 2026-07-27, rodando o proprio gate do kit:

@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Integracao da triagem Llama (Vetor B / v6.14.0) no fact-check.ps1.
 #
 # Modos via $env:PERCUS_FACTCHECK_TRIAGE:

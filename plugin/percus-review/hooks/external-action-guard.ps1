@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Hook PreToolUse Percus (Layer 1 R20 enforcement).
 # Bloqueia tools externos publicos quando council recente tem premise_validity != ok
 # OU quando findings criticos nao tem fact_check: CONFIRMADO.

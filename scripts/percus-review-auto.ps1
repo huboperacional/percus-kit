@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Wrapper kit-level pra agente Claude Code auto-disparar /percus-review:review

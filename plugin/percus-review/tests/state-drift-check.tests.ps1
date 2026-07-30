@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Testes do hook state-drift-check (R2 / R8 / v6.12.0).
 #
 # Hook Stop event. BLOQUEIA (exit 2) o encerramento da sessao quando uma feature

@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Vetor B (v6.14.0): triagem Llama upstream do fact-check Sonnet.

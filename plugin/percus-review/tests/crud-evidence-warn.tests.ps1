@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Testes do hook crud-evidence-warn (R2 / v6.12.0).
 #
 # Hook PreToolUse:Bash, WARN-ONLY (exit 0 sempre — nunca bloqueia).

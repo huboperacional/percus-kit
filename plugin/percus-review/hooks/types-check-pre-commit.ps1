@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Hook pre-commit Percus types-check (R5).
 # Roda mypy --strict em arquivos .py staged + tsc --noEmit em arquivos .ts/.tsx staged.
 # Best-effort: se mypy ou tsc nao disponiveis no projeto, skip silencioso.

@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Regressao do hook mock-scan (R3).
 # Foco principal: falso-positivo em palavras acentuadas que contem "todo" como
 # substring (ex: portugues "metodo" -> "me'todo'") — causado por (a) decode OEM

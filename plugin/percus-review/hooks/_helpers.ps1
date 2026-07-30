@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Helpers compartilhados pelos hooks Percus. Source via dot-sourcing:
 #   . "$PSScriptRoot\_helpers.ps1"
 

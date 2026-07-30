@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Tests: caminhos sensiveis do router — baseline unico (scripts/sensitive-paths.txt)
 # + extensao por projeto (.percus-review.json na raiz do repo revisado).
 #

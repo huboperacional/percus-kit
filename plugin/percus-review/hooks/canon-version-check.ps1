@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Pre-commit warn: avisa se canon_version dos system-prompt-*.md diverge do CANON_VERSION.md atual.

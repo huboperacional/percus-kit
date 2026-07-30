@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Smoke test on-stop hook
 #
 # LIMITAÇÃO CONHECIDA: PowerShell 5.1 tem bug ao passar stdin pra subprocess via pipe.

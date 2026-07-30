@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   TDD tests for council-orchestrator.ps1 F2 — code context injection + premise_validity.

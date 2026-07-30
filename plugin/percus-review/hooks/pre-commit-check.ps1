@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Hook pre-commit Percus (Layer 1 — UX dentro do Claude Code).
 # Bloqueia commit sem /percus-review:review recente quando Claude executa via Bash tool.
 # Falha graceful: qualquer erro -> exit 0.

@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Vetor D (v6.14.0): Llama tie-breaker do conselho. Funcoes puras, dot-sourcaveis.

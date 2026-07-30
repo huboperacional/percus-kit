@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Fact-check pipeline F3 — valida findings criticos contra codigo real.

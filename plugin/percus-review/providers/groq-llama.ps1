@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Provider wrapper: Llama 3.3 70B via Groq — single-shot consult.

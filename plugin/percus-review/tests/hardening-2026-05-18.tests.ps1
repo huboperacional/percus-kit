@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Test suite de regressao pro incidente Plexco Tasks 2026-05-18.
 # Valida que mecanismos de defesa implementados em v6.7.0 estao presentes e funcionais.
 # Testes estaticos (inspecao de codigo) — nao requerem API calls pagas.

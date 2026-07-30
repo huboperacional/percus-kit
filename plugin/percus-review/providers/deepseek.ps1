@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Provider wrapper: DeepSeek (deepseek-v4-pro) — single-shot consult.
