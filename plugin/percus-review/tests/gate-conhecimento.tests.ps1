@@ -51,6 +51,21 @@ Describe "percus-gate.sh — higiene de conhecimento" {
         Invoke-Gate -Repo $repo | Should -Be 1 -Because "o verbete sem tags vem depois e precisa ser visto"
     }
 
+    It "enxerga verbete depois de UM fence espurio impar (a dessincronizacao real)" {
+        # Um unico '> ```' (blockquote seguido IMEDIATAMENTE de crase tripla, sem texto
+        # entre os dois) bastava pro padrao antigo togglar uma vez so e considerar TODO
+        # o resto do arquivo como dentro de bloco. Foi assim que 72 dos 105 verbetes
+        # sumiram da vista do gate no canon real. (Um '> ``` texto solto' NAO reproduz:
+        # o padrao antigo so casa crase tripla logo apos '> ', sem nada no meio.)
+        $repo = New-KnowledgeRepo @(
+            '# T', '', '## Indice', '', '- [Boa](#boa)', '- [Sem tags](#sem-tags)', '', '---', '',
+            '## Boa {#boa}', '', '`tags: a`', '', '**Sintoma:** ok.', '',
+            '> ```', '',
+            '## Sem tags {#sem-tags}', '', '**Sintoma:** precisa ser acusada mesmo vindo depois.'
+        )
+        Invoke-Gate -Repo $repo | Should -Be 1 -Because "um fence espurio nao pode apagar o resto do arquivo"
+    }
+
     It "BARRA arquivo com bloco de codigo aberto e nunca fechado" {
         # Fence nao fechado cega o gate dali pra frente. Em vez de passar calado, acusa.
         $repo = New-KnowledgeRepo @(
