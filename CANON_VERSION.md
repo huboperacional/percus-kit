@@ -8,6 +8,15 @@
 >
 > **Mas NÃO funciona para os hooks do plugin** (`PreToolUse`, `Stop`, `PreCompact`), e isso custou caro: o `hooks.json` invoca `${CLAUDE_PLUGIN_ROOT}/hooks/*.cmd`, e `CLAUDE_PLUGIN_ROOT` resolve para a pasta **instalada** — não para o kit. Medido em 2026-07-30: três guardas de `PreToolUse` estavam **mortas respondendo verde** e o conserto no repo não as alcançava. Correção da regra: conserto em `plugin/percus-review/hooks/` **exige publicação** (bump → push → `/plugin marketplace update` → `/plugin update`). Copiar arquivo para dentro de `plugins/cache/` à mão **não é suportado** — o próximo update sobrescreve, o cleanup de 14 dias apaga versão órfã, e o `installed_plugins.json` passa a mentir sobre o estado real.
 >
+> **Publicacao agora e automatica (2026-07-30):** `autoUpdate: true` no `percus-tools` dentro de
+> `extraKnownMarketplaces`. Auto-update vem ligado por padrao apenas para marketplaces oficiais da
+> Anthropic; para marketplace proprio como este, vem **desligado** — foi por isso que a versao
+> instalada ficou 26 dias atras sem ninguem desligar nada. Com a chave ligada, cada maquina busca a
+> versao nova sozinha depois que a sessao sobe (atraso aleatorio de ate 10 min) e carrega no proximo
+> launch, ou na hora com `/reload-plugins`. **O que continua manual: o `git pull` do proprio kit** —
+> auto-update cuida do plugin em cache, nao da copia de trabalho que o `PERCUS_CANON_DIR` aponta e de
+> onde os gates de commit leem.
+>
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---

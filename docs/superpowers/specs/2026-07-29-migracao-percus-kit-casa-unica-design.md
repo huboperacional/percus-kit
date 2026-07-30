@@ -22,7 +22,7 @@ coisa, então todo trabalho continua drenando pro lugar errado — inclusive o d
 | O gate que roda de verdade está **cego**, não apenas desatualizado | `_Novo_Projeto/v2/gates/percus-gate.sh` enxerga **33 de 105** verbetes de `COMO_RESOLVER.md`: o rastreio de fence dessincroniza com um ``` solto no texto e ele pula o resto do arquivo. Sai `exit 0` por não olhar, não por estar limpo. A cópia avulsa vê os 105, mas tinha os falsos positivos que corrigi hoje |
 | A pasta avulsa tem **zero consumidores** | nenhum projeto define `PERCUS_CANON_V2_DIR`; o `tiatendo` (piloto-1) não referencia `_Novo_Projeto_V2` nem `v2/` |
 | Quem roteia os projetos aponta pra cópia **viva** | `templates/CLAUDE.template.md`: `${env:PERCUS_CANON_DIR}/v2/loops/` |
-| O kit é o veículo de entrega | `git pull` nas 10 máquinas; `PERCUS_CANON_DIR` → kit; `marketplace.json` com `source: ./plugin/percus-review` (relativo) |
+| O kit é o veículo de entrega | `git pull` em cada máquina do operador; `PERCUS_CANON_DIR` → kit; `marketplace.json` com `source: ./plugin/percus-review` (relativo) |
 | Atividade | kit: 63 commits/30 dias · pasta avulsa: 8 commits no total |
 
 **Diagnóstico:** `_Novo_Projeto` **não é "o V1"** — é o *kit* (`huboperacional/percus-kit`), e contém
@@ -65,7 +65,7 @@ hoje, no mesmo dia em que custaram trabalho real:
   preservado em `scratchpad/task7-arquivamento.patch` para quando a migração de conteúdo acontecer.
 - **Não** aterrissar em `_Novo_Projeto_V2`: a pasta avulsa tem 8 commits, enquanto o kit carrega o
   histórico do canon (48 versões de changelog). Landar no repo de 8 commits joga esse histórico fora
-  ou exige cirurgia de merge, e o remote que as 10 máquinas puxam é o do kit.
+  ou exige cirurgia de merge, e o remote que as máquinas puxam é o do kit.
 
 ### 3.2 Plugin: encolher, em duas etapas
 
@@ -131,7 +131,7 @@ desativado **no mesmo commit**. Nunca os dois vivos ao mesmo tempo.
      `docs/superpowers/plans|specs/`, `docs/handoffs/`, `docs/contracts/` e o próprio teste). Escapar
      passa a ser vermelho na suíte, não descoberta em produção.
    - **⚠️ O rename NÃO se propaga por `git pull`.** O nome do diretório de trabalho é local de cada
-     máquina — o repo é o mesmo. Com 10 máquinas, ou existe um passo local por máquina ou o kit passa a
+     máquina — o repo é o mesmo. Com mais de uma máquina, ou existe um passo local por máquina ou o kit passa a
      ter nome diferente em cada uma e todo path absoluto documentado mente. Mitigação: `scripts/
      renomear-kit-local.ps1` (idempotente) que (a) detecta o path atual via `PERCUS_CANON_DIR`,
      (b) renomeia a pasta, (c) reescreve `PERCUS_CANON_DIR` e as entradas de permissão no

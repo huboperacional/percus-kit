@@ -778,7 +778,7 @@ cd "/d/Claud Automations/percus-kit" && git commit -F - <<'MSG'
 kit: _Novo_Projeto -> percus-kit nas referencias vivas, com gate que impede recaida
 
 O nome da pasta dizia "projeto novo generico"; ela e o kit (huboperacional/percus-kit),
-veiculo de entrega das 10 maquinas. Historico (plans/specs/handoffs/contracts/.archive)
+veiculo de entrega das maquinas do operador. Historico (plans/specs/handoffs/contracts/.archive)
 fica intocado de proposito: reescrever registro do passado falsifica o registro.
 
 no-legacy-kit-path.tests.ps1 transforma a varredura em gate -- referencia escapando
