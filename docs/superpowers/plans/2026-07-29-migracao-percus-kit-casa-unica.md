@@ -612,9 +612,18 @@ MSG
 
 > **A partir daqui o kit é `D:\Claud Automations\percus-kit`.** Todos os caminhos abaixo já usam o nome novo.
 
+> **Medido em 2026-07-30, antes de executar:** os ponteiros locais são **três famílias**, não
+> uma. `PERCUS_CANON_DIR` **não está** no `settings.json` — é variável de ambiente de **usuário**
+> (HKCU), e não está sozinha: `PERCUS_CANON_V2_DIR` aponta pra `<kit>\v2`. Além disso, 4 projetos
+> irmãos hardcodam o path do kit nos próprios `.claude/settings*.json` (18 ocorrências, todas hook
+> de review). O script foi estendido pra cobrir os três (commit `5bcb1b6`) — a versão anterior
+> renomearia a pasta e deixaria variáveis e vizinhos apontando pro caminho morto.
+
 - [ ] **Step 1: Fechar o que segura a pasta**
 
-Encerre qualquer terminal/editor com o diretório atual dentro de `D:\Claud Automations\_Novo_Projeto`. O `Rename-Item` falha se houver handle aberto.
+Encerre qualquer terminal/editor com o diretório atual dentro de `D:\Claud Automations\_Novo_Projeto`
+— **inclusive os shells da própria sessão do Claude Code**, que é o handle mais fácil de esquecer.
+O `Rename-Item` falha se houver handle aberto (e aí o script aborta sem ter mexido em nada).
 
 - [ ] **Step 2: Rodar o script**
 
@@ -623,20 +632,33 @@ cd "D:\Claud Automations"
 & "D:\Claud Automations\_Novo_Projeto\scripts\renomear-kit-local.ps1" -KitAtual "D:\Claud Automations\_Novo_Projeto" -NomeNovo "percus-kit"
 ```
 
-Esperado: duas linhas — `pasta: ... -> D:\Claud Automations\percus-kit` e `settings atualizado (backup: ...)`.
+Esperado, nesta ordem: `pasta: ... -> D:\Claud Automations\percus-kit`; duas linhas
+`variavel de usuario PERCUS_CANON_DIR/PERCUS_CANON_V2_DIR: ... -> ...`; `settings atualizado`;
+**quatro** linhas `projeto vizinho atualizado` (GHL-Evolution-WhatsApp, Melhoria do prompt inicial,
+Plexco Coach, Scraper-prospeccao); e o `PRONTO`.
 
-- [ ] **Step 3: Verificar**
+- [ ] **Step 3: Verificar os três ponteiros**
 
 ```powershell
-Test-Path "D:\Claud Automations\percus-kit\CANON_VERSION.md"
-Test-Path "D:\Claud Automations\_Novo_Projeto"
+Test-Path "D:\Claud Automations\percus-kit\CANON_VERSION.md"   # True
+Test-Path "D:\Claud Automations\_Novo_Projeto"                 # False
+[Environment]::GetEnvironmentVariable('PERCUS_CANON_DIR','User')     # ...\percus-kit
+[Environment]::GetEnvironmentVariable('PERCUS_CANON_V2_DIR','User')  # ...\percus-kit\v2
 # Resolve o settings pela MESMA logica do script, em vez de cravar o path: nesta maquina
 # CLAUDE_CONFIG_DIR e "D:\Claud Automations\.claude-home", mas o plano nao deve depender disso.
 $claudeHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { "$env:USERPROFILE\.claude" }
-(Get-Content (Join-Path $claudeHome "settings.json") -Raw | ConvertFrom-Json).env.PERCUS_CANON_DIR
+Select-String -Path (Join-Path $claudeHome "settings.json") -Pattern '_Novo_Projeto' | Measure-Object | % Count  # 0
+# Vizinhos: nenhum settings de projeto sobrou apontando pro nome antigo
+Get-ChildItem "D:\Claud Automations" -Directory | ForEach-Object {
+  foreach ($n in @("settings.json", "settings.local.json")) {
+    $f = Join-Path $_.FullName ".claude\$n"
+    if ((Test-Path $f) -and (Select-String -Path $f -Pattern '_Novo_Projeto' -Quiet)) { $f }
+  }
+}   # Esperado: nenhuma linha
 ```
 
-Esperado: `True`, `False`, `D:\Claud Automations\percus-kit` (ou a forma com barra que estava lá).
+**Atenção:** as variáveis novas só valem em **processo novo** — o shell que rodou o script continua
+com o valor antigo em `$env:`. Confira pelo escopo `'User'`, como acima, não por `$env:`.
 
 - [ ] **Step 4: Provar que o wrapper roda do path novo**
 
@@ -652,7 +674,16 @@ Esperado: linha `[percus-review-auto] plugin pasta=… plugin.json=…` seguida 
 cd "/d/Claud Automations/percus-kit" && git status --short
 ```
 
-Esperado: **vazio**. O rename não gera diff (o nome da pasta não é versionado).
+Esperado: **vazio**. O rename não gera diff (o nome da pasta não é versionado). Se aparecer algo em
+`.claude/settings.json`, o script mexeu dentro do kit — não devia, e o teste
+"NAO mexe em arquivo DENTRO da pasta do kit" existe pra barrar isso.
+
+- [ ] **Step 6: REABRIR o Claude Code antes de seguir**
+
+A sessão que roda o rename **morre com ele**: a allowlist de diretórios do harness e o
+`PERCUS_CANON_DIR` daquele processo apontam pro nome antigo, e o hook de review passa a resolver um
+caminho morto (ou seja, commit trava). Task 6 em diante só numa sessão nova, aberta em
+`D:\Claud Automations\percus-kit`.
 
 ---
 
