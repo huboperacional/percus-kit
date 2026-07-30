@@ -62,4 +62,20 @@ Describe "wrapper .cmd nao engole falha do .ps1" {
         # de proposito: nenhum .ps1 ao lado
         Invoke-Wrapper -Cmd (Join-Path $dir "external-action-guard.cmd") | Should -Not -Be 0
     }
+
+    It "TODOS os wrappers .cmd usam a forma que propaga falha, nao so o testado acima" {
+        # Os tres It anteriores provam o comportamento em UM wrapper. Sem este, a correcao
+        # poderia fechar so alguns dos 11 e a suite ficaria verde -- exatamente o tipo de
+        # meia-correcao que deixou 3 guardas mortas sem ninguem ver.
+        #
+        # Aqui e inspecao de forma, e nao comportamento, de proposito: rodar os 11 wrappers
+        # de verdade dispararia hook real (git, rede, escrita) como efeito colateral de
+        # teste. A prova COMPORTAMENTAL da forma esta nos It acima; este garante que a forma
+        # provada e a que todo mundo usa.
+        $engolem = Get-ChildItem $script:hooksDir -Filter *.cmd |
+            Where-Object { (Get-Content $_.FullName -Raw) -match '-Command' } |
+            ForEach-Object { $_.Name }
+
+        @($engolem) | Should -BeNullOrEmpty -Because "-Command com 'exit `$LASTEXITCODE' sai 0 quando o script nem parseia, e o harness le isso como 'guarda aprovou':`n$($engolem -join "`n")"
+    }
 }
