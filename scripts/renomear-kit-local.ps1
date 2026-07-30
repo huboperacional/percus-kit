@@ -23,13 +23,27 @@ if (-not $SettingsPath) {
 
 if (-not $KitAtual) { throw "Informe -KitAtual ou defina PERCUS_CANON_DIR." }
 $KitAtual = $KitAtual.TrimEnd('\','/')
-$destino  = Join-Path (Split-Path $KitAtual -Parent) $NomeNovo
+# Split-Path -Parent lanca excecao (nao devolve string vazia) para caminhos sem pasta
+# pai como "D:" -- por isso o try/catch, alem do "-not $pai" para os casos em que ele
+# devolve vazio sem lancar.
+try { $pai = Split-Path $KitAtual -Parent } catch { $pai = $null }
+if (-not $pai) { throw "-KitAtual precisa ser um caminho com pasta pai (recebi '$KitAtual'). Exemplo: D:\Claud Automations\_Novo_Projeto" }
+$destino = Join-Path $pai $NomeNovo
+
+# 0. Valida o settings ANTES de qualquer mudanca. Renomear primeiro e falhar depois
+#    deixaria PERCUS_CANON_DIR apontando pra um caminho que nao existe mais -- e o
+#    operador so descobriria debugando.
+if (Test-Path $SettingsPath) {
+    try { $null = Get-Content $SettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { throw "settings.json JA esta invalido antes de qualquer mudanca ($SettingsPath). Conserte o JSON primeiro. NADA foi renomeado." }
+}
 
 # 1. Rename (idempotente: se ja esta no nome novo, segue pro settings)
 if ((Split-Path $KitAtual -Leaf) -ne $NomeNovo) {
     if (-not (Test-Path $KitAtual)) { throw "Pasta nao encontrada: $KitAtual" }
     if (Test-Path $destino) { throw "Destino ja existe: $destino (resolva a mao)" }
-    Rename-Item -LiteralPath $KitAtual -NewName $NomeNovo
+    try { Rename-Item -LiteralPath $KitAtual -NewName $NomeNovo }
+    catch { throw "Nao consegui renomear '$KitAtual': $($_.Exception.Message). Causa mais provavel: um terminal, editor ou processo esta com essa pasta aberta. Feche e rode de novo -- nada foi alterado no settings." }
     Write-Host "[renomear-kit] pasta: $KitAtual -> $destino"
 } else {
     $destino = $KitAtual
@@ -38,7 +52,7 @@ if ((Split-Path $KitAtual -Leaf) -ne $NomeNovo) {
 
 # 2. Settings: backup datado ANTES de qualquer escrita
 if (-not (Test-Path $SettingsPath)) { Write-Host "[renomear-kit] settings nao encontrado: $SettingsPath"; return }
-$stamp  = Get-Date -Format "yyyyMMdd-HHmmss"
+$stamp  = Get-Date -Format "yyyyMMdd-HHmmss-fff"
 Copy-Item $SettingsPath "$SettingsPath.bak-$stamp"
 
 # 3. Troca o nome da pasta em todas as formas de path (barra, contrabarra, escapada).
@@ -57,7 +71,9 @@ $padrao = '(?<![A-Za-z0-9_])' + [regex]::Escape($antigoLeaf) + '(?![A-Za-z0-9_])
 $raw = [regex]::Replace($raw, $padrao, $NomeNovo)
 
 # 4. Valida ANTES de salvar — JSON quebrado desativa todos os hooks em silencio
-try { $null = $raw | ConvertFrom-Json } catch { throw "Resultado nao e JSON valido; nada foi salvo. Backup em $SettingsPath.bak-$stamp" }
+try { $null = $raw | ConvertFrom-Json } catch {
+    throw "Resultado nao e JSON valido; o settings NAO foi salvo. ATENCAO: a pasta JA foi renomeada para '$destino' -- corrija o JSON e rode de novo com -KitAtual '$destino'. Backup em $SettingsPath.bak-$stamp"
+}
 [IO.File]::WriteAllText($SettingsPath, $raw, (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "[renomear-kit] settings atualizado (backup: $SettingsPath.bak-$stamp)"
 Write-Host "[renomear-kit] PRONTO. Reabra o Claude Code para o PERCUS_CANON_DIR novo valer."

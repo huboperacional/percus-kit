@@ -80,4 +80,17 @@ Describe "renomear-kit-local.ps1" {
         { & $script:script -KitAtual $c.Novo -NomeNovo "percus-kit" -SettingsPath $c.Settings } | Should -Not -Throw
         (Get-Content $c.Settings -Raw -Encoding UTF8 | ConvertFrom-Json).env.PERCUS_CANON_DIR | Should -Be $c.Novo
     }
+
+    It "com settings JA invalido, aborta SEM renomear a pasta" {
+        $c = New-Cenario
+        [IO.File]::WriteAllText($c.Settings, '{ "env": { QUEBRADO', (New-Object System.Text.UTF8Encoding($false)))
+        { & $script:script -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $c.Settings } | Should -Throw
+        Test-Path $c.Antigo | Should -Be $true  -Because "a pasta nao pode ser renomeada se o settings nem pode ser consertado depois"
+        Test-Path $c.Novo   | Should -Be $false
+    }
+
+    It "recusa -KitAtual sem pasta pai, com mensagem util" {
+        { & $script:script -KitAtual "D:" -NomeNovo "percus-kit" -SettingsPath "$env:TEMP\nao-existe-$([Guid]::NewGuid().ToString('N')).json" } |
+            Should -Throw -ExpectedMessage "*pasta pai*"
+    }
 }
