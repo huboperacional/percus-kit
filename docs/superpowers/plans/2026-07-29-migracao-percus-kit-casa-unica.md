@@ -28,7 +28,7 @@ Branch: **`migracao-percus-kit-fase1`** (o kit está em `main`; nada foi mergead
 | 5 — rename da pasta | ✅ **fechada** (executada pelo operador em 2026-07-30 ~09:00) | 4 famílias de ponteiro consertadas: pasta, 2 env vars de usuário, `settings.json` (16 ocorrências), 4 projetos vizinhos (18) |
 | 8 — versão 6.32.0 | ✅ **fechada** | `ee6eb87` · 4 arquivos + changelog · publicada e instalada (`/plugin update` → 6.32.0 no cache) |
 | 6 — gate anti-path-legado | ✅ **fechada** (2026-07-30) | `c156466` · 3 testes novos · 34 arquivos vivos corrigidos · suíte 208/208 · ver §"Como a Task 6 fechou" abaixo |
-| 9 — apagar `_Novo_Projeto_V2` | ⏸️ **pendente — próxima** | último, depois de tudo verde. A pasta e o `.rar` dela seguem em `D:\Claud Automations\`. **Atenção:** o gate da Task 6 poupa `_Novo_Projeto_V2` por desenho (lookahead `(?!_V2)`), então ele **não** vai apontar as referências vivas a essa pasta — há 1 em `v2/MIGRACAO.md:9`. Varra à mão ao fechar |
+| 9 — apagar `_Novo_Projeto_V2` | ✅ **fechada** (2026-07-30) — conteúdo apagado; resta só a casca vazia do diretório | `5c1cfc2` (resgate) · conteúdo 100% removido, `.git` incluído · o diretório **vazio** sobrevive porque é o cwd desta sessão e o Windows não apaga cwd de processo vivo. Ver §"Como a Task 9 fechou" |
 
 **Arco não previsto que entrou em 2026-07-30 e fechou:** três guardas `PreToolUse` estavam
 respondendo verde **sem rodar** (34 `.ps1` sem BOM que o PowerShell 5.1 lia como ANSI + 11 wrappers
@@ -109,6 +109,30 @@ falso sobre o passado; allowlistar o arquivo inteiro cegaria o gate para as inst
 nome não introduziu o hardcode; de-hardcodar pede teste próprio. Efeito colateral notado: o path
 primário do `catalog-publish` estava **morto** desde o rename (caía num fallback inexistente), e
 voltou a existir.
+
+### Como a Task 9 fechou (2026-07-30, `5c1cfc2`)
+
+**A Step 1 do Task passou e ainda assim o apagar teria destruído coisa única.** Ela confirma que os
+3 deltas chegaram no kit — e chegaram. O que ela não pergunta:
+
+| O que a pasta guardava | Por que não estava coberto |
+|---|---|
+| 8 commits (`e027235` → `9f983c3`) | aquele repo **não tinha remote**. O conteúdo foi dobrado em `v2/`; a **história**, não |
+| `referencia/conhecimento/COMO_RESOLVER.md`, 97 linhas não-rastreadas | 3 verbetes ausentes do kit, conferidos título a título |
+| `_Novo_Projeto_V2.rar` ao lado | de **21/jul**; último commit de **27/jul** — o backup estava 6 dias atrasado |
+
+Resgatado antes de apagar: os 3 verbetes foram pro `conhecimento/COMO_RESOLVER.md`
+(`#sessao-30-dias-nao-persiste`, `#auditar-outro-repo-ref-publicada`,
+`#env-stale-sobrepondo-default`), e os 8 commits viraram
+`.archive/v2-experimento-standalone.bundle` (26K) — não confiei no `git bundle verify`: clonei o
+bundle num temp e conferi os 8 commits com árvore de trabalho.
+
+**Estado residual:** o conteúdo foi 100% removido (`.git` incluído — confirmado: 0 itens), mas o
+**diretório vazio** `D:\Claud Automations\_Novo_Projeto_V2` sobrevive: é o cwd desta sessão, e o
+Windows recusa apagar o diretório corrente de um processo vivo (`being used by another process`).
+Some sozinho quando a sessão fechar; ou, de outra sessão:
+`Remove-Item -Force "D:\Claud Automations\_Novo_Projeto_V2"`. O `.rar` segue ao lado, intocado —
+apagá-lo é decisão do operador, não deste plano.
 
 ---
 
@@ -1048,12 +1072,18 @@ Esperado: `0`.
 
 ## Critério de pronto do plano (todos observados, nenhum assumido)
 
-- [ ] `Invoke-Pester -Path "tests"` → `Failed: 0` (≥173 testes; não aferir número exato)
-- [ ] Gate roda no canon com `exit 0` **e** os 4 testes negativos do Task 1 continuam barrando
-- [ ] `D:\Claud Automations\percus-kit` existe; `_Novo_Projeto` e `_Novo_Projeto_V2` não existem
-- [ ] `PERCUS_CANON_DIR` aponta pro path novo e o wrapper roda de lá
-- [ ] `no-legacy-kit-path.tests.ps1` verde (nenhum arquivo vivo com o nome antigo)
-- [ ] Os 4 arquivos de versão em `6.32.0`, com entrada de changelog
+Todos observados em 2026-07-30, na ordem abaixo:
+
+- [x] `Invoke-Pester -Path "tests"` → **208/208, `Failed: 0`**
+- [x] Gate roda no canon com `exit 0` **e** os 4 testes negativos do Task 1 continuam barrando
+- [x] `D:\Claud Automations\percus-kit` existe; `_Novo_Projeto` não existe. **`_Novo_Projeto_V2`: conteúdo removido, diretório vazio residual preso no cwd da sessão** (ver §"Como a Task 9 fechou")
+- [x] `PERCUS_CANON_DIR` (User) aponta pro path novo e o wrapper roda de lá
+- [x] `no-legacy-kit-path.tests.ps1` verde (nenhum arquivo vivo com o nome antigo)
+- [x] Os 4 arquivos de versão em `6.32.0`, com entrada de changelog
+
+**Fase 1 fechada.** Falta só publicar: 6 commits na branch `migracao-percus-kit-fase1` ainda não
+estão em `main` (`git push origin migracao-percus-kit-fase1:main`, R20 exige aval). O commit
+`c156466` toca hooks, então desta vez o plugin instalado fica atrás do repo até a publicação.
 
 ## Próximo plano (não é este)
 
