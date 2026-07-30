@@ -22,6 +22,36 @@ Describe "renomear-kit-local.ps1" {
             [void]$script:temps.Add($base)
             return [pscustomobject]@{ Base = $base; Settings = $sp; Antigo = (Join-Path $base "_Novo_Projeto"); Novo = (Join-Path $base "percus-kit") }
         }
+
+        # Variavel de ambiente de usuario descartavel. Escreve/apaga direto no HKCU de
+        # proposito: [Environment]::SetEnvironmentVariable dispara WM_SETTINGCHANGE e
+        # custa ~7s por chamada, e (medido em 2026-07-30) passar $null NAO remove a
+        # chave -- deixa valor vazio sujando o registro do usuario. O script de verdade
+        # continua usando a API .NET; aqui e so cenario.
+        function New-VarTeste {
+            param([string]$Valor)
+            $nome = "PERCUS_TESTE_" + [Guid]::NewGuid().ToString("N").Substring(0,8)
+            New-ItemProperty -Path "HKCU:\Environment" -Name $nome -Value $Valor -PropertyType String -Force | Out-Null
+            return $nome
+        }
+        function Remove-VarTeste {
+            param([string]$Nome)
+            Remove-ItemProperty -Path "HKCU:\Environment" -Name $Nome -ErrorAction SilentlyContinue
+        }
+
+        # Projeto irmao da pasta do kit, com o path do kit hardcodado num hook -- e a
+        # forma real medida nos 4 projetos desta maquina.
+        function New-Vizinho {
+            param([string]$Base, [string]$Nome, [string]$PathKit)
+            $dir = Join-Path $Base "$Nome\.claude"
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            $f = Join-Path $dir "settings.local.json"
+            $conteudo = @{ permissions = @{ allow = @(
+                ('Bash(pwsh -File "' + ($PathKit -replace '\\','/') + '/scripts/percus-review-auto.ps1")')
+            ) } } | ConvertTo-Json -Depth 10
+            [IO.File]::WriteAllText($f, $conteudo, (New-Object System.Text.UTF8Encoding($false)))
+            return $f
+        }
     }
 
     AfterAll { foreach ($d in $script:temps) { Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue } }
@@ -74,6 +104,20 @@ Describe "renomear-kit-local.ps1" {
         $depois | Should -Not -Match 'percus-kit_V2' -Because "prefixo trocado no meio da palavra corrompe o path"
     }
 
+    It "NAO deixa o -NomeNovo ser interpretado como substituicao de regex" {
+        # '$&' na string de substituicao do [regex]::Replace significa "a match inteira".
+        # Com o nome novo entrando cru, 'percus$&kit' viraria 'percus_Novo_Projetokit'
+        # dentro do settings -- path corrompido em silencio. '$' e '&' sao caracteres
+        # legais em nome de pasta no Windows, entao isso e alcancavel.
+        $c = New-Cenario
+        $nome = 'percus$&kit'
+        & $script:script -KitAtual $c.Antigo -NomeNovo $nome -SettingsPath $c.Settings
+        $depois = Get-Content $c.Settings -Raw -Encoding UTF8
+        $depois | Should -Match ([regex]::Escape($nome))
+        $depois | Should -Not -Match '_Novo_Projeto'
+        Test-Path (Join-Path $c.Base $nome) | Should -Be $true
+    }
+
     It "e idempotente: rodar de novo com a pasta ja renomeada nao quebra nem duplica" {
         $c = New-Cenario
         & $script:script -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $c.Settings
@@ -89,6 +133,113 @@ Describe "renomear-kit-local.ps1" {
         Test-Path $c.Novo   | Should -Be $false
     }
 
+    # --- variaveis de ambiente de USUARIO --------------------------------------------
+    # Medido em 2026-07-30: nesta maquina os ponteiros do kit sao DUAS env var de usuario
+    # (HKCU) e nenhuma esta no settings.json -- PERCUS_CANON_DIR (a pasta) e
+    # PERCUS_CANON_V2_DIR (pasta\v2). Consertar so o settings deixaria toda sessao nova
+    # apontando pro caminho morto. O script so mexe em segmento que E a pasta renomeada
+    # ou esta DENTRO dela, entao as variaveis reais da maquina (que apontam pra outro
+    # caminho) nunca entram em jogo -- e os testes usam nome descartavel como 2a tranca.
+    It "conserta TODAS as variaveis de usuario que apontam pra pasta renomeada, inclusive as que apontam pra DENTRO dela" {
+        $c   = New-Cenario
+        $vA  = New-VarTeste -Valor $c.Antigo
+        # Forma com barra normal, apontando pra subpasta: e o caso do PERCUS_CANON_V2_DIR.
+        $vB  = New-VarTeste -Valor (($c.Antigo -replace '\\','/') + "/v2")
+        try {
+            & $script:script -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $c.Settings
+            [Environment]::GetEnvironmentVariable($vA, 'User') | Should -Be $c.Novo
+            [Environment]::GetEnvironmentVariable($vB, 'User') |
+                Should -Be (($c.Novo -replace '\\','/') + "/v2") -Because "so o nome da pasta muda; a subpasta e a forma do path (barra) tem que sobreviver"
+        } finally { Remove-VarTeste $vA; Remove-VarTeste $vB }
+    }
+
+    It "NAO mexe em variavel de usuario que aponta pra OUTRA pasta" {
+        $c = New-Cenario
+        $outra = Join-Path $c.Base "_Novo_Projeto_de_outra_maquina"
+        $var = New-VarTeste -Valor $outra
+        try {
+            & $script:script -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $c.Settings
+            [Environment]::GetEnvironmentVariable($var, 'User') | Should -Be $outra -Because "cita o nome antigo mas nao e a pasta renomeada -- reescrever seria estragar a config de outra coisa"
+        } finally { Remove-VarTeste $var }
+    }
+
+    It "em variavel com LISTA, troca so o segmento do kit e preserva os outros" {
+        $c = New-Cenario
+        $lista = "C:\Windows;" + (Join-Path $c.Antigo "scripts") + ";C:\OutroLugar"
+        $var = New-VarTeste -Valor $lista
+        try {
+            & $script:script -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $c.Settings
+            [Environment]::GetEnvironmentVariable($var, 'User') |
+                Should -Be ("C:\Windows;" + (Join-Path $c.Novo "scripts") + ";C:\OutroLugar") -Because "estragar o PATH da maquina por causa de um segmento seria pior que o bug original"
+        } finally { Remove-VarTeste $var }
+    }
+
+    It "rollback devolve TAMBEM a variavel de ambiente ao valor antigo" {
+        $c = New-Cenario
+        $var = New-VarTeste -Valor $c.Antigo
+        Set-ItemProperty -Path $c.Settings -Name IsReadOnly -Value $true
+        try {
+            $erro = $null
+            try { & $script:script -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $c.Settings } catch { $erro = $_.Exception.Message }
+            [Environment]::GetEnvironmentVariable($var, 'User') | Should -Be $c.Antigo -Because "a pasta voltou ao nome antigo, a variavel tem que voltar com ela"
+            $erro | Should -Match ([regex]::Escape($var)) -Because "o operador precisa saber que a variavel foi desfeita, nao deduzir"
+            Test-Path $c.Antigo | Should -Be $true
+        } finally {
+            Remove-VarTeste $var
+            Set-ItemProperty -Path $c.Settings -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+        }
+    }
+
+    # --- settings de projetos vizinhos -----------------------------------------------
+    # Medido em 2026-07-30: 4 projetos irmaos da pasta do kit hardcodam o path dele nos
+    # proprios .claude/settings*.json (11 ocorrencias, todas hook de review). Depois do
+    # rename, apontariam pro nada.
+    It "conserta os settings de projetos vizinhos que hardcodam o path do kit" {
+        $c = New-Cenario
+        $vf = New-Vizinho -Base $c.Base -Nome "a-vizinho" -PathKit $c.Antigo
+        & $script:script -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $c.Settings
+        $depois = Get-Content $vf -Raw -Encoding UTF8
+        $depois | Should -Match 'percus-kit'
+        $depois | Should -Not -Match '_Novo_Projeto'
+        { $depois | ConvertFrom-Json } | Should -Not -Throw
+    }
+
+    It "NAO mexe em arquivo DENTRO da pasta do kit (e versionado; sujaria o git status)" {
+        $c = New-Cenario
+        New-Item -ItemType Directory -Path (Join-Path $c.Antigo ".claude") -Force | Out-Null
+        $doKit = Join-Path $c.Antigo ".claude\settings.json"
+        [IO.File]::WriteAllText($doKit, ('{ "x": "' + ($c.Antigo -replace '\\','/') + '/scripts/y.ps1" }'), (New-Object System.Text.UTF8Encoding($false)))
+        & $script:script -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $c.Settings
+        (Get-Content (Join-Path $c.Novo ".claude\settings.json") -Raw -Encoding UTF8) |
+            Should -Match '_Novo_Projeto' -Because "o gate do Task 6 cuida do que esta dentro do kit; o script mexendo ai geraria diff no repo"
+    }
+
+    It "rollback restaura o settings de vizinho que JA tinha sido reescrito" {
+        # 'a-vizinho' e reescrito com sucesso; 'z-vizinho' estoura no backup (ACL). O
+        # rollback tem que devolver a-vizinho, o settings principal e o nome da pasta.
+        $c  = New-Cenario
+        $va = New-Vizinho -Base $c.Base -Nome "a-vizinho" -PathKit $c.Antigo
+        $vz = New-Vizinho -Base $c.Base -Nome "z-vizinho" -PathKit $c.Antigo
+        $dirZ = Split-Path $vz -Parent
+
+        $acl  = Get-Acl $dirZ
+        $eu   = [Security.Principal.WindowsIdentity]::GetCurrent().User
+        $nega = New-Object Security.AccessControl.FileSystemAccessRule($eu, "CreateFiles", "Deny")
+        $acl.AddAccessRule($nega); Set-Acl -Path $dirZ -AclObject $acl
+        try {
+            $erro = $null
+            try { & $script:script -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $c.Settings } catch { $erro = $_.Exception.Message }
+            $erro | Should -Match 'ROLLBACK OK'
+            (Get-Content $va -Raw -Encoding UTF8) | Should -Match '_Novo_Projeto' -Because "vizinho ja reescrito tem que voltar do backup"
+            (Get-Content $va -Raw -Encoding UTF8) | Should -Not -Match 'percus-kit'
+            (Get-Content $c.Settings -Raw -Encoding UTF8 | ConvertFrom-Json).env.PERCUS_CANON_DIR | Should -Be $c.Antigo
+            Test-Path $c.Antigo | Should -Be $true
+            Test-Path $c.Novo   | Should -Be $false
+        } finally {
+            $a2 = Get-Acl $dirZ; $a2.RemoveAccessRule($nega) | Out-Null; Set-Acl -Path $dirZ -AclObject $a2
+        }
+    }
+
     It "falha na ESCRITA final: faz rollback e a pasta volta ao nome antigo" {
         # Somente-leitura no settings: Copy-Item (backup) passa, Get-Content passa,
         # WriteAllText estoura. Sem rollback, a pasta ficaria renomeada com
@@ -99,7 +250,7 @@ Describe "renomear-kit-local.ps1" {
             $erro = $null
             try { & $script:script -KitAtual $c.Antigo -NomeNovo "percus-kit" -SettingsPath $c.Settings } catch { $erro = $_.Exception.Message }
             $erro | Should -Match 'ROLLBACK OK'
-            $erro | Should -Match 'NAO apague' -Because "se a escrita pode ter saido parcial, o backup e a unica copia boa -- mandar apagar seria armadilha"
+            $erro | Should -Match 'restaurad' -Because "a escrita pode ter saido parcial, entao o rollback tem que devolver o arquivo do backup -- nao so avisar"
             Test-Path $c.Antigo | Should -Be $true  -Because "o rollback tem que devolver a pasta ao nome antigo"
             Test-Path $c.Novo   | Should -Be $false
             (Get-Content $c.Settings -Raw -Encoding UTF8 | ConvertFrom-Json).env.PERCUS_CANON_DIR |
