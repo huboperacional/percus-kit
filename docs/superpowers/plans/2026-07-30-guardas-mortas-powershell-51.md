@@ -4,7 +4,7 @@
 
 **Goal:** Trazer de volta as três guardas `PreToolUse` que estão respondendo verde sem rodar, e deixar a classe impossível de se repetir em silêncio.
 
-**Architecture:** Duas falhas encaixadas: 16 `.ps1` que o PowerShell 5.1 não parseia (encoding lido como ANSI) e 11 wrappers `.cmd` que traduzem "script morreu" em `exit 0`. O conserto é em camadas com **ordem obrigatória** — os arquivos primeiro, o wrapper depois — mais dois testes comportamentais que rodam o artefato de verdade sob o runtime real (`powershell.exe`, não `pwsh`).
+**Architecture:** Duas falhas encaixadas: 34 `.ps1` sem BOM que o PowerShell 5.1 lê como ANSI (16 deles nem parseiam; os outros 18 parseiam e imprimem lixo) e 11 wrappers `.cmd` que traduzem "script morreu" em `exit 0`. O conserto é em camadas com **ordem obrigatória** — os arquivos primeiro, o wrapper depois — mais dois testes comportamentais que rodam o artefato de verdade sob o runtime real (`powershell.exe`, não `pwsh`).
 
 **Tech Stack:** Windows PowerShell 5.1 (`powershell.exe`) + PowerShell 7 (`pwsh`) + Pester 5.7, batch (`.cmd`), git.
 
@@ -20,8 +20,8 @@ A Task 5 (wrapper barulhento) **depois** da Task 2 (arquivos consertados). Inver
 
 | Arquivo | Responsabilidade | Ação |
 |---|---|---|
-| `plugin\percus-review\tests\ps51-compat.tests.ps1` | prova que todo `.ps1` do kit parseia sob o runtime real dos hooks | Criar (Task 1) |
-| os 16 `.ps1` do Anexo A do spec | receber BOM, conteúdo byte-idêntico | Modificar (Task 2) |
+| `plugin\percus-review\tests\ps51-compat.tests.ps1` | prova que todo `.ps1` do kit parseia sob o runtime real dos hooks, e que nenhum tem não-ASCII sem BOM | Criar (Task 1) |
+| os 34 `.ps1` com byte > `0x7F` e sem BOM | receber BOM, conteúdo byte-idêntico | Modificar (Task 2) |
 | `plugin\percus-review\tests\hook-wrapper-fail-loud.tests.ps1` | prova que o wrapper não traduz "morreu" em "aprovou" | Criar (Task 4) |
 | os 11 `.cmd` de `plugin\percus-review\hooks\` | trocar `-Command` por `-File`, preservando fim de linha | Modificar (Task 5) |
 
@@ -36,7 +36,7 @@ A Task 5 (wrapper barulhento) **depois** da Task 2 (arquivos consertados). Inver
 **Files:**
 - Create: `D:\Claud Automations\percus-kit\plugin\percus-review\tests\ps51-compat.tests.ps1`
 
-- [ ] **Step 1: Escrever o teste**
+- [x] **Step 1: Escrever o teste**
 
 Criar `plugin\percus-review\tests\ps51-compat.tests.ps1`:
 
@@ -87,7 +87,7 @@ Get-ChildItem $raiz -Recurse -Include *.ps1 -File -ErrorAction SilentlyContinue 
 }
 ```
 
-- [ ] **Step 2: Rodar e ver falhar, com a lista dos 16**
+- [x] **Step 2: Rodar e ver falhar, com a lista dos 16**
 
 ```powershell
 cd "D:\Claud Automations\percus-kit\plugin\percus-review"
@@ -96,7 +96,7 @@ Invoke-Pester -Path "tests\ps51-compat.tests.ps1" -Output Detailed
 
 Esperado: **FAIL** listando 16 arquivos. Os três primeiros por gravidade operacional são `hooks\external-action-guard.ps1` (10 erros), `hooks\auth-import-pre-commit.ps1` (7) e `hooks\types-check-pre-commit.ps1` (7) — as guardas wired. Se aparecer número diferente de 16, **pare**: o Anexo A do spec foi medido em 2026-07-30 e divergência significa que outra coisa mudou.
 
-- [ ] **Step 3: Review + commit (vermelho, de propósito)**
+- [x] **Step 3: Review + commit (vermelho, de propósito)**
 
 ```bash
 cd "/d/Claud Automations/percus-kit"
@@ -132,7 +132,7 @@ MSG
 
 > **Escopo revisado em execução:** era 16. A revisão de qualidade da Task 1 mostrou que parse-only enxerga só metade da armadilha; ver o bloco de escopo no §2 do spec.
 
-- [ ] **Step 1: Gravar o BOM por bytes**
+- [x] **Step 1: Gravar o BOM por bytes**
 
 **Nunca** por `Set-Content`/`Out-File`/editor: os arquivos estão com fim de linha **LF** e o repo tem `core.autocrlf=true` sem `.gitattributes`. Via texto, o fim de linha é reescrito (medido: `Set-Content -Encoding utf8BOM` no pwsh 7 já acrescenta um CRLF final, 4098 → 4103 bytes) e o diff vira arquivo inteiro.
 
@@ -170,7 +170,7 @@ foreach ($alvo in $alvos) {
 
 Esperado: `alvos: 34`, 34 linhas `OK`, nenhuma `ERRO`, nenhuma `JA TEM BOM`.
 
-- [ ] **Step 2: Provar que o diff é de uma linha por arquivo**
+- [x] **Step 2: Provar que o diff é de uma linha por arquivo**
 
 ```bash
 cd "/d/Claud Automations/percus-kit" && git diff --stat
@@ -186,7 +186,7 @@ cd "/d/Claud Automations/percus-kit" && git diff --numstat -- '*.ps1' | awk '$1!
 
 Esperado: **nenhuma linha de saída**. Qualquer arquivo com número diferente de `1 1` teve o fim de linha reescrito — desfaça com `git checkout -- <arquivo>` e refaça por bytes. Para inspecionar um caso, `git diff --stat` mais `cat -A` mostram a troca sendo só `#requires` → `M-oM-;M-?#requires` com terminação `$` (LF) preservada.
 
-- [ ] **Step 3: Rodar o teste da Task 1 e ver os DOIS `It` passarem**
+- [x] **Step 3: Rodar o teste da Task 1 e ver os DOIS `It` passarem**
 
 ```powershell
 cd "D:\Claud Automations\percus-kit\plugin\percus-review"
@@ -195,7 +195,7 @@ Invoke-Pester -Path "tests\ps51-compat.tests.ps1" -Output Detailed
 
 Esperado: **2 PASS** — o de parse (era 16 falhas) e o de invariante (era 34).
 
-- [ ] **Step 4: Rodar a suíte inteira (o BOM toca 11 arquivos de teste)**
+- [x] **Step 4: Rodar a suíte inteira (o BOM toca 11 arquivos de teste)**
 
 ```powershell
 cd "D:\Claud Automations\percus-kit\plugin\percus-review"
@@ -204,7 +204,7 @@ Invoke-Pester -Path "tests" | Select-String "Tests Passed"
 
 Esperado: `Failed: 0`. O total cresce com o teste novo — não afira número exato.
 
-- [ ] **Step 5: Review + commit**
+- [x] **Step 5: Review + commit**
 
 ```bash
 cd "/d/Claud Automations/percus-kit"
@@ -248,7 +248,7 @@ Sem alteração de arquivo. Existe porque o pre-mortem do conselho apontou "cons
 
 **Files:** nenhum.
 
-- [ ] **Step 1: Exercitar as três guardas com payload representativo**
+- [x] **Step 1: Exercitar as três guardas com payload representativo**
 
 O hook recebe o JSON do `PreToolUse` por stdin; o campo que importa é `tool_input.command`.
 
@@ -269,7 +269,7 @@ foreach ($c in $casos) {
 }
 ```
 
-- [ ] **Step 2: Ler o resultado com a expectativa certa**
+- [x] **Step 2: Ler o resultado com a expectativa certa**
 
 Nenhum `exit` é "errado" por si só — este passo **mede**, não afere. O que interessa:
 
@@ -277,7 +277,7 @@ Nenhum `exit` é "errado" por si só — este passo **mede**, não afere. O que 
 - Qualquer `exit` não-zero: anote o hook, o comando e a mensagem. É exatamente o que vai surpreender alguém amanhã.
 - **Erro de parse em qualquer um deles significa que a Task 2 não fechou** — volte pra ela.
 
-- [ ] **Step 3: Registrar o achado**
+- [x] **Step 3: Registrar o achado**
 
 Se algum hook barrar, leve a linha (hook + comando + mensagem + escape) para o corpo do commit da Task 5 e para o aviso ao time. Se nenhum barrar, registre isso também — é a informação de que a revivência é silenciosa e não vai gerar atrito.
 
@@ -290,7 +290,7 @@ Sem commit nesta task.
 **Files:**
 - Create: `D:\Claud Automations\percus-kit\plugin\percus-review\tests\hook-wrapper-fail-loud.tests.ps1`
 
-- [ ] **Step 1: Escrever o teste**
+- [x] **Step 1: Escrever o teste**
 
 Criar `plugin\percus-review\tests\hook-wrapper-fail-loud.tests.ps1`:
 
@@ -362,7 +362,7 @@ Describe "wrapper .cmd nao engole falha do .ps1" {
 }
 ```
 
-- [ ] **Step 2: Rodar e ver falhar**
+- [x] **Step 2: Rodar e ver falhar**
 
 ```powershell
 cd "D:\Claud Automations\percus-kit\plugin\percus-review"
@@ -371,7 +371,7 @@ Invoke-Pester -Path "tests\hook-wrapper-fail-loud.tests.ps1" -Output Detailed
 
 Esperado: **2 FAIL, 1 PASS**. Falham "não parseia" e "ausente" (ambos devolvem `0` hoje); passa o "propaga exit 2", porque o `-Command` já acerta esse caso — e é justamente o que a Task 5 não pode quebrar.
 
-- [ ] **Step 3: Review + commit (vermelho, de propósito)**
+- [x] **Step 3: Review + commit (vermelho, de propósito)**
 
 ```bash
 cd "/d/Claud Automations/percus-kit"
@@ -407,7 +407,7 @@ MSG
 
 **Pré-requisito rígido:** a Task 2 tem que estar commitada e o teste da Task 1 verde. Wrapper barulhento com guarda quebrada bloqueia todo `PreToolUse` Bash, incluindo o commit deste plano.
 
-- [ ] **Step 1: Trocar só a linha, preservando o resto dos bytes**
+- [x] **Step 1: Trocar só a linha, preservando o resto dos bytes**
 
 4 dos 11 `.cmd` estão com CRLF e 7 com LF (medido). Reescrever o arquivo inteiro normalizaria fim de linha em 7 deles; o comando abaixo troca apenas a linha do `powershell.exe`. O `MatchEvaluator` existe porque `$` na string de substituição é metacaractere de regex — o mesmo defeito que o review pegou em `renomear-kit-local.ps1`.
 
@@ -427,7 +427,7 @@ foreach ($c in (Get-ChildItem $h -Filter *.cmd | Sort-Object Name)) {
 
 Esperado: 11 linhas `ok:`, nenhuma `NAO CASOU`. (Dry-run já feito em 2026-07-30: 11/11 casaram e o fim de linha ficou preservado nos dois estilos.)
 
-- [ ] **Step 2: Provar que só a linha mudou**
+- [x] **Step 2: Provar que só a linha mudou**
 
 ```bash
 cd "/d/Claud Automations/percus-kit" && git diff --stat plugin/percus-review/hooks/
@@ -435,7 +435,7 @@ cd "/d/Claud Automations/percus-kit" && git diff --stat plugin/percus-review/hoo
 
 Esperado: `11 files changed, 11 insertions(+), 11 deletions(-)`. Número maior significa fim de linha reescrito — desfaça com `git checkout -- plugin/percus-review/hooks/` e refaça.
 
-- [ ] **Step 3: Rodar o teste da Task 4 e ver passar**
+- [x] **Step 3: Rodar o teste da Task 4 e ver passar**
 
 ```powershell
 cd "D:\Claud Automations\percus-kit\plugin\percus-review"
@@ -444,7 +444,7 @@ Invoke-Pester -Path "tests\hook-wrapper-fail-loud.tests.ps1" -Output Detailed
 
 Esperado: **3 PASS**.
 
-- [ ] **Step 4: Provar que os 11 hooks reais continuam rodando**
+- [x] **Step 4: Provar que os 11 hooks reais continuam rodando**
 
 ```powershell
 $h = "D:\Claud Automations\percus-kit\plugin\percus-review\hooks"
@@ -457,7 +457,7 @@ foreach ($c in (Get-ChildItem $h -Filter *.cmd | Sort-Object Name)) {
 
 Esperado: 11 linhas `ok`, nenhum `ERRO DE PARSE`. `exit` não-zero aqui é resultado legítimo (guarda barrando `git status`? improvável, mas se acontecer é comportamento real, não falha do wrapper) — o que **não** pode aparecer é `ERRO DE PARSE`.
 
-- [ ] **Step 5: Suíte inteira**
+- [x] **Step 5: Suíte inteira**
 
 ```powershell
 cd "D:\Claud Automations\percus-kit\plugin\percus-review"
@@ -466,7 +466,7 @@ Invoke-Pester -Path "tests" | Select-String "Tests Passed"
 
 Esperado: `Failed: 0`.
 
-- [ ] **Step 6: Review + commit**
+- [x] **Step 6: Review + commit**
 
 ```bash
 cd "/d/Claud Automations/percus-kit"
@@ -505,24 +505,24 @@ MSG
 
 **Files:** nenhum (só leitura), exceto o Step 3.
 
-- [ ] **Step 1: Provar as duas camadas de uma vez, do zero**
+- [x] **Step 1: Provar as duas camadas de uma vez, do zero**
 
 ```powershell
 cd "D:\Claud Automations\percus-kit\plugin\percus-review"
 Invoke-Pester -Path "tests\ps51-compat.tests.ps1","tests\hook-wrapper-fail-loud.tests.ps1" -Output Detailed
 ```
 
-Esperado: **4 PASS, 0 FAIL** (1 do parse + 3 do wrapper).
+Esperado: **6 PASS, 0 FAIL** — 2 do `ps51-compat` (parse + invariante de BOM) e 4 do `hook-wrapper-fail-loud` (não-parseia, propaga `exit 2`, ausente, e o invariante dos 11 wrappers).
 
-- [ ] **Step 2: Conferir que o repo está limpo e o diff é o esperado**
+- [x] **Step 2: Conferir que o repo está limpo e o diff é o esperado**
 
 ```bash
 cd "/d/Claud Automations/percus-kit" && git status --short && git log --oneline -5
 ```
 
-Esperado: `git status` sem nada de `plugin/percus-review/hooks/` nem dos 16 `.ps1`. (O arquivo `conhecimento/COMO_RESOLVER.md` pode aparecer modificado — é trabalho de outra sessão, não toque.)
+Esperado: `git status` sem nada de `plugin/percus-review/hooks/` nem dos 34 `.ps1`. (O arquivo `conhecimento/COMO_RESOLVER.md` pode aparecer modificado — é trabalho de outra sessão, não toque.)
 
-- [ ] **Step 3: Anotar no plano da migração que a versão 6.32.0 precisa citar isto**
+- [x] **Step 3: Anotar no plano da migração que a versão 6.32.0 precisa citar isto**
 
 O bump de versão e o changelog são da **Task 8 do plano `2026-07-29-migracao-percus-kit-casa-unica.md`**, que ainda está pendente. Este plano não mexe em `CANON_VERSION.md`, `plugin.json`, `.percus-version` nem `marketplace.json` — dois planos disputando os mesmos 4 arquivos é conflito garantido.
 
@@ -553,7 +553,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 MSG
 ```
 
-- [ ] **Step 4: Avisar o time**
+- [x] **Step 4: Avisar o time**
 
 O que precisa chegar às outras máquinas, em uma frase: *"as guardas `external-action-guard`, `auth-import-pre-commit` e `types-check-pre-commit` estavam mortas respondendo verde desde antes de 2026-07-30 e voltaram a funcionar — commit que passava pode começar a barrar; escape por guarda é `PERCUS_EXTERNAL_OVERRIDE=1`, escape geral é `PERCUS_HOOKS_DISABLED=1`"*, mais o que a Task 3 tiver medido.
 
