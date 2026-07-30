@@ -43,9 +43,17 @@ Script que não parseia **nunca roda** → `$LASTEXITCODE` fica nulo → `exit` 
 | Todo hook passa por `powershell.exe` | os 11 `.cmd` usam `powershell.exe`, que é o 5.1 — nunca o pwsh 7 |
 | A suíte não veria nada disso | ela roda em **pwsh 7**, que lê UTF-8 por default |
 
-## 2. Camada 1 — o gatilho: BOM nos 16
+## 2. Camada 1 — o gatilho: BOM nos 34
 
-Adicionar BOM (3 bytes) aos 16 arquivos, **conteúdo intacto**. Escolhido sobre "ASCII puro" porque o
+> **Escopo revisado em execução (2026-07-30), de 16 para 34.** A revisão de qualidade do teste da
+> Task 1 mostrou que parse-only só enxerga metade da armadilha: mojibake que **quebra** sintaxe vira
+> erro de parse (os 16), mas acento dentro de string que continua sintaticamente válido **passa
+> verde** e o hook apenas imprime lixo. Medido: **34** `.ps1` do kit têm caractere não-ASCII sem BOM;
+> 16 quebram hoje, 18 estão armados. Dois dos 18 são hooks wired — `pre-commit-check.ps1` e
+> `on-stop-check.ps1`. Como a operação é a mesma (prepend de 3 bytes, verificado byte-a-byte),
+> fechar 34 custa o mesmo trabalho e entrega o invariante de verdade em vez da promessa do §7.
+
+Adicionar BOM (3 bytes) aos 34 arquivos, **conteúdo intacto**. Escolhido sobre "ASCII puro" porque o
 diff é de uma linha por arquivo, não há prosa pra eu errar, e as mensagens ao operador mantêm os
 acentos corretos.
 
@@ -132,8 +140,15 @@ código provaria uma causa; o que precisa ser provado é que o artefato **roda**
 
 | Teste | O que prova | O que teria pego |
 |---|---|---|
-| `ps51-compat.tests.ps1` | todo `.ps1` do kit parseia sob o `powershell.exe` real | os 16 |
+| `ps51-compat.tests.ps1`, `It` de parse | todo `.ps1` do kit parseia sob o `powershell.exe` real | os 16 que quebram |
+| `ps51-compat.tests.ps1`, `It` de invariante | `.ps1` com byte > `0x7F` **tem** BOM | os 34 — inclusive os 18 que passam no parse e só imprimem lixo |
 | `hook-wrapper-fail-loud.tests.ps1` | `.cmd` com `.ps1` quebrado sai **não-zero**, e `.ps1` sadio com `exit 2` continua devolvendo 2 | o amplificador |
+
+O `It` de invariante existe porque o de parse é cego para metade da classe (ver §2). Ele também
+protege o próprio `ps51-compat` de passar verde por varredura vazia: o auxiliar reporta quantos
+arquivos viu e o teste exige um piso, senão arquivo movido ou erro de ACL engolido deixaria a
+varredura vazia satisfazendo `Should -BeNullOrEmpty` — guarda que não guarda, a mesma classe que
+este spec conserta.
 
 **Como `ps51-compat` afere, exatamente:** invoca o `powershell.exe` real e pede **só o parse**, sem
 executar o script — `[System.Management.Automation.Language.Parser]::ParseFile($caminho, [ref]$null,
@@ -168,8 +183,12 @@ também não roda os `.cmd` — o hook é irrelevante ali.
 - **Consumidor externo do BOM.** Verifiquei os consumidores **dentro** do kit. Não tenho como
   enumerar com honestidade quem, fora dele, lê `.ps1` do kit. Rede: suíte completa (196 testes) mais
   execução dos 11 `.cmd` depois da mudança. O BOM é invisível para o próprio PowerShell.
-- **Os 13 `.ps1` restantes que hoje parseiam** podem receber um em dash amanhã. É exatamente o que o
-  `ps51-compat.tests.ps1` passa a barrar.
+- **`.ps1` novo entrando sem BOM.** Coberto pelo `It` de invariante, que barra byte > `0x7F` sem BOM
+  — não só o que quebra o parse. Era aqui que a versão anterior deste spec prometia mais do que
+  entregava: ela dizia que o teste de parse barrava a classe, e ele não barrava.
+- **`.ps1` novo em ASCII puro que depois recebe acento por edição.** Aí o invariante pega no momento
+  da edição, não antes. É o comportamento desejado — não há o que fazer em arquivo que ainda está
+  correto.
 
 ## 8. Registro do conselho
 

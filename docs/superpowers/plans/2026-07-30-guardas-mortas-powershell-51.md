@@ -125,37 +125,37 @@ MSG
 
 ---
 
-### Task 2: BOM nos 16 — o teste da Task 1 fica verde
+### Task 2: BOM nos 34 — os dois `It` da Task 1 ficam verdes
 
 **Files:**
-- Modify: os 16 `.ps1` listados no Anexo A do spec (3 em `plugin\percus-review\hooks\`, 2 em `scripts\` e `plugin\percus-review\scripts\`, 11 em `plugin\percus-review\tests\`)
+- Modify: os 34 `.ps1` do kit com byte > `0x7F` e sem BOM (os 16 do Anexo A que quebram o parse, mais 18 que passam no parse e só imprimem lixo — entre eles os hooks wired `pre-commit-check.ps1` e `on-stop-check.ps1`)
+
+> **Escopo revisado em execução:** era 16. A revisão de qualidade da Task 1 mostrou que parse-only enxerga só metade da armadilha; ver o bloco de escopo no §2 do spec.
 
 - [ ] **Step 1: Gravar o BOM por bytes**
 
 **Nunca** por `Set-Content`/`Out-File`/editor: os arquivos estão com fim de linha **LF** e o repo tem `core.autocrlf=true` sem `.gitattributes`. Via texto, o fim de linha é reescrito (medido: `Set-Content -Encoding utf8BOM` no pwsh 7 já acrescenta um CRLF final, 4098 → 4103 bytes) e o diff vira arquivo inteiro.
 
 ```powershell
+Os alvos **não são listados à mão**: são exatamente os que o `It` de invariante da Task 1 acusa —
+todo `.ps1` do kit com byte > `0x7F` e sem BOM, fora de `.git\` e `node_modules\`. Descobrir pela
+mesma regra que o teste usa elimina a chance de a lista e o teste divergirem.
+
+```powershell
 $kit = "D:\Claud Automations\percus-kit"
-$alvos = @(
-  "plugin\percus-review\hooks\external-action-guard.ps1"
-  "plugin\percus-review\hooks\auth-import-pre-commit.ps1"
-  "plugin\percus-review\hooks\types-check-pre-commit.ps1"
-  "scripts\percus-review-auto.ps1"
-  "plugin\percus-review\scripts\deepseek-review.ps1"
-  "plugin\percus-review\tests\state-drift-check.tests.ps1"
-  "plugin\percus-review\tests\hardening-2026-05-19.tests.ps1"
-  "plugin\percus-review\tests\council-code-injection.tests.ps1"
-  "plugin\percus-review\tests\router-sensitive-paths.tests.ps1"
-  "plugin\percus-review\tests\pre-commit-path-resolution.tests.ps1"
-  "plugin\percus-review\tests\mock-scan.tests.ps1"
-  "plugin\percus-review\tests\gate-conhecimento.tests.ps1"
-  "plugin\percus-review\tests\hardening-2026-05-18.tests.ps1"
-  "plugin\percus-review\tests\version-alignment.tests.ps1"
-  "plugin\percus-review\tests\crud-evidence-warn.tests.ps1"
-  "plugin\percus-review\tests\fact-check-triage-integration.tests.ps1"
-)
-foreach ($rel in $alvos) {
-  $f = Join-Path $kit $rel
+$alvos = Get-ChildItem $kit -Recurse -Include *.ps1 -File -ErrorAction SilentlyContinue |
+  Where-Object { $_.FullName -notmatch '\\(\.git|node_modules)\\' } |
+  Where-Object {
+    $b = [IO.File]::ReadAllBytes($_.FullName)
+    $temNaoAscii = $false
+    foreach ($x in $b) { if ($x -gt 0x7F) { $temNaoAscii = $true; break } }
+    $comBom = ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF)
+    $temNaoAscii -and -not $comBom
+  }
+"alvos: $($alvos.Count)"   # esperado: 34
+foreach ($alvo in $alvos) {
+  $f = $alvo.FullName
+  $rel = $f.Replace("$kit\", "")
   $b = [IO.File]::ReadAllBytes($f)
   if ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) {
     "JA TEM BOM (pulado): $rel"; continue
@@ -168,7 +168,7 @@ foreach ($rel in $alvos) {
 }
 ```
 
-Esperado: 16 linhas `OK`, nenhuma `ERRO`, nenhuma `JA TEM BOM`.
+Esperado: `alvos: 34`, 34 linhas `OK`, nenhuma `ERRO`, nenhuma `JA TEM BOM`.
 
 - [ ] **Step 2: Provar que o diff é de uma linha por arquivo**
 
@@ -176,16 +176,16 @@ Esperado: 16 linhas `OK`, nenhuma `ERRO`, nenhuma `JA TEM BOM`.
 cd "/d/Claud Automations/percus-kit" && git diff --stat
 ```
 
-Esperado: `16 files changed, 16 insertions(+)` — sem deleções. Qualquer deleção significa fim de linha reescrito: **desfaça com `git checkout -- <arquivo>` e refaça por bytes.**
+Esperado: `34 files changed, 34 insertions(+)` — sem deleções. Qualquer deleção significa fim de linha reescrito: **desfaça com `git checkout -- <arquivo>` e refaça por bytes.**
 
-- [ ] **Step 3: Rodar o teste da Task 1 e ver passar**
+- [ ] **Step 3: Rodar o teste da Task 1 e ver os DOIS `It` passarem**
 
 ```powershell
 cd "D:\Claud Automations\percus-kit\plugin\percus-review"
 Invoke-Pester -Path "tests\ps51-compat.tests.ps1" -Output Detailed
 ```
 
-Esperado: **PASS**.
+Esperado: **2 PASS** — o de parse (era 16 falhas) e o de invariante (era 34).
 
 - [ ] **Step 4: Rodar a suíte inteira (o BOM toca 11 arquivos de teste)**
 
