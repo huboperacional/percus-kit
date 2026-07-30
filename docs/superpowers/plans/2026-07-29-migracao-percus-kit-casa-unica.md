@@ -52,6 +52,14 @@ intacto. A porta "JSON inválido depois da troca" também passou a rolar back, m
 para o resultado da substituição quebrar o JSON, o `-NomeNovo` precisaria conter `"` ou `\`, e aí o
 `Rename-Item` falha antes (caractere inválido em nome de arquivo no Windows). É guarda defensiva.
 
+**Entrou depois (2026-07-30), precisa constar no changelog da 6.32.0:** três guardas `PreToolUse`
+(`external-action-guard`, `auth-import-pre-commit`, `types-check-pre-commit`) estavam respondendo
+verde **sem rodar** — 34 `.ps1` sem BOM que o PowerShell 5.1 lia como ANSI, mais os 11 wrappers
+`.cmd` que traduziam "script morreu" em `exit 0`. Consertado no plano
+`docs/superpowers/plans/2026-07-30-guardas-mortas-powershell-51.md` (commits `12912fc` e `e06e839`).
+**Mudança de comportamento a anunciar:** `external-action-guard` voltou a barrar `git push` e
+`gh pr comment` com `exit 2` (R20); escape é `PERCUS_EXTERNAL_OVERRIDE=1`.
+
 ---
 
 ## Estrutura de arquivos
