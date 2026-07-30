@@ -27,8 +27,8 @@ Branch: **`migracao-percus-kit-fase1`** (o kit está em `main`; nada foi mergead
 | 7 — roteamento (era arquivamento) | ✅ fechada — escopo reduzido por decisão do operador | `244fd6e`, `7a018b5` · ver §3.1 do spec; patch do move em `scratchpad/task7-arquivamento.patch` |
 | 5 — rename da pasta | ✅ **fechada** (executada pelo operador em 2026-07-30 ~09:00) | 4 famílias de ponteiro consertadas: pasta, 2 env vars de usuário, `settings.json` (16 ocorrências), 4 projetos vizinhos (18) |
 | 8 — versão 6.32.0 | ✅ **fechada** | `ee6eb87` · 4 arquivos + changelog · publicada e instalada (`/plugin update` → 6.32.0 no cache) |
-| 6 — gate anti-path-legado | ⏸️ **pendente — próxima** | já dá pra rodar (o rename aconteceu). Alvo conhecido: `v2/gates/instalar-gates.sh` ainda cita `_Novo_Projeto` numa mensagem de erro |
-| 9 — apagar `_Novo_Projeto_V2` | ⏸️ pendente | último, depois de tudo verde. A pasta e o `.rar` dela seguem em `D:\Claud Automations\` |
+| 6 — gate anti-path-legado | ✅ **fechada** (2026-07-30) | `c156466` · 3 testes novos · 34 arquivos vivos corrigidos · suíte 208/208 · ver §"Como a Task 6 fechou" abaixo |
+| 9 — apagar `_Novo_Projeto_V2` | ⏸️ **pendente — próxima** | último, depois de tudo verde. A pasta e o `.rar` dela seguem em `D:\Claud Automations\`. **Atenção:** o gate da Task 6 poupa `_Novo_Projeto_V2` por desenho (lookahead `(?!_V2)`), então ele **não** vai apontar as referências vivas a essa pasta — há 1 em `v2/MIGRACAO.md:9`. Varra à mão ao fechar |
 
 **Arco não previsto que entrou em 2026-07-30 e fechou:** três guardas `PreToolUse` estavam
 respondendo verde **sem rodar** (34 `.ps1` sem BOM que o PowerShell 5.1 lia como ANSI + 11 wrappers
@@ -43,7 +43,9 @@ o `renomear-kit-local.ps1` quebrou na mão do operador.
 | `.git/percus-v2-dir` apontando pro caminho morto | **12 repos** desta máquina. Só morde quando `PERCUS_CANON_V2_DIR` está vazia. Conserto por repo: `sh "$PERCUS_CANON_V2_DIR/gates/instalar-gates.sh"` |
 | Gate dizer *"o canon parece ter sido movido de X para Y"* em vez de só *"caminho errado?"* | sugestão do time Plexco Tasks, em `docs/cross-product/` daquele repo |
 | `git pull` do kit continua manual | o `autoUpdate` liga o plugin em cache, não a cópia de trabalho de onde os gates leem |
-| `conhecimento/COMO_RESOLVER.md` com trabalho não-commitado de outra sessão | 121 linhas, 2 verbetes sem índice e sem `tags:` — **barra o gate de qualquer commit neste repo** até serem fechados (4 linhas) |
+| ~~`conhecimento/COMO_RESOLVER.md` com trabalho não-commitado de outra sessão~~ | ✅ **fechada** em `c156466`: índice + linha `tags:` para os 2 verbetes órfãos. O stash-por-commit acabou |
+| Env var do **processo** ≠ env var de **usuário** | A de usuário está certa (`percus-kit`); processos abertos antes do rename carregam o path morto e fazem `hardening-2026-05-18` falhar. Antes de rodar a suíte numa sessão antiga: `$env:PERCUS_CANON_DIR = [Environment]::GetEnvironmentVariable('PERCUS_CANON_DIR','User')` (idem `PERCUS_CANON_V2_DIR`) |
+| R11 (TTL 5 min) × conselho 3-membros | o dispatch do Cross-Claude leva ~5 min e **sozinho estoura o TTL** do review que o pediu. Na prática: rode a suíte **antes** do review, e commite imediatamente depois dele |
 
 **Ordem ajustada em execução:** 1 → 2 → 3 → 4 → 7 → **5 (rename)** → 6 → 8 → 9. Motivo: renomear a
 pasta no meio do voo quebra os caminhos que a sessão e os subagents usam, e a allowlist de diretórios
@@ -74,6 +76,39 @@ verde **sem rodar** — 34 `.ps1` sem BOM que o PowerShell 5.1 lia como ANSI, ma
 `docs/superpowers/plans/2026-07-30-guardas-mortas-powershell-51.md` (commits `12912fc` e `e06e839`).
 **Mudança de comportamento a anunciar:** `external-action-guard` voltou a barrar `git push` e
 `gh pr comment` com `exit 2` (R20); escape é `PERCUS_EXTERNAL_OVERRIDE=1`.
+
+### Como a Task 6 fechou (2026-07-30, `c156466`)
+
+O rascunho do teste no corpo da Task (abaixo) **não** foi usado como está. Três coisas só
+apareceram ao rodar, e o arquivo final difere do texto:
+
+1. **"Vivo" virou `git ls-files --cached --others --exclude-standard`**, não `Get-ChildItem -Recurse`.
+   Varredura de disco precisa de uma lista de pastas-lixo escrita à mão (`node_modules`, `.deepseek`,
+   `__pycache__`, `.pytest_cache`) que apodrece calada e pinta vermelho numa máquina e verde na outra.
+   De quebra, o teste caiu de varrer 56M para 0,4s.
+2. **Dois falsos positivos medidos**, ambos fechados com prova própria: `Select-String` é
+   case-insensitive por padrão e acusava `CHECKLIST_AUTH_NOVO_PROJETO.md`; e `_Novo_Projeto` é
+   **prefixo** de `_Novo_Projeto_V2`. Sem `-CaseSensitive` + lookahead `(?!_V2)`, o gate empurraria
+   quem lê a corromper link que estava certo.
+3. **Arquivo ilegível conta como não-verificado**, não como limpo (finding de risco do Cross-Claude).
+   `-ErrorAction SilentlyContinue` tirava o arquivo de `$hits` sem uma palavra. Provado por mutação
+   com ACL negando leitura. Somado ao piso `VISTOS > 150`, que barra varredura vazia passando por
+   kit limpo.
+
+A allowlist ganhou **`renomear-kit-local.ps1` e seu teste** — lá o nome antigo é o **assunto**
+(o script renomeia *a partir* dele), e são guardados por um `It` de invariante **positivo**:
+se alguém "consertar" o nome ali, o script para de casar a pasta que existe pra renomear e falha
+calado, porque nada pra renomear é sucesso.
+
+Uma linha foi **parafraseada em vez de substituída**: o changelog de v6.5.0 em
+`AMBIENTE_LOCAL_OPERADOR.md` citava o path de maio. Trocar o literal faria a entrada afirmar algo
+falso sobre o passado; allowlistar o arquivo inteiro cegaria o gate para as instruções vivas dele.
+
+**Fora do escopo, medido e não consertado:** `plugin/percus-review/hooks/on-stop-check.sh:48` e
+`plugin/percus-review/scripts/tracking_audit.py:8` seguem com path absoluto hardcoded. A troca de
+nome não introduziu o hardcode; de-hardcodar pede teste próprio. Efeito colateral notado: o path
+primário do `catalog-publish` estava **morto** desde o rename (caía num fallback inexistente), e
+voltou a existir.
 
 ---
 

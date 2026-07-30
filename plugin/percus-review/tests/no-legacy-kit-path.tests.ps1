@@ -50,10 +50,25 @@ Describe "nenhum arquivo VIVO referencia o path legado do kit" {
         # falso-verde que os 34 .ps1 sem BOM produziram em 2026-07-30.
         $vivos.Count | Should -BeGreaterThan 150 -Because "o kit tem centenas de arquivos vivos; varredura curta e varredura quebrada, nao kit limpo"
 
-        $hits = $vivos |
-            Where-Object { $f = $_; -not ($script:permitido | Where-Object { $f -match $_ }) } |
-            Where-Object { Select-String -LiteralPath $_ -Pattern $script:legado -CaseSensitive -Quiet -ErrorAction SilentlyContinue } |
-            ForEach-Object { $_.Replace($script:kitRoot + '\', '') }
+        # Arquivo que o gate nao CONSEGUIU ler (path > 260 chars sem long-path no 5.1, lock de
+        # outro processo, ACL) conta como NAO-VERIFICADO, nunca como limpo. Engolir a excecao
+        # com -ErrorAction SilentlyContinue tiraria o arquivo de $hits sem uma palavra -- e o
+        # teste ficaria verde justamente sobre o arquivo que ele nao olhou.
+        $ilegiveis = @()
+        $hits      = @()
+        foreach ($f in $vivos) {
+            if ($script:permitido | Where-Object { $f -match $_ }) { continue }
+            $rel = $f.Replace($script:kitRoot + '\', '')
+            try {
+                if (Select-String -LiteralPath $f -Pattern $script:legado -CaseSensitive -Quiet -ErrorAction Stop) {
+                    $hits += $rel
+                }
+            } catch {
+                $ilegiveis += "$rel  --  $($_.Exception.Message)"
+            }
+        }
+
+        @($ilegiveis) | Should -BeNullOrEmpty -Because "arquivo vivo ilegivel e arquivo nao-verificado; da-lo por limpo e o falso-verde que este teste existe pra impedir:`n$($ilegiveis -join "`n")"
 
         @($hits) | Should -BeNullOrEmpty -Because "arquivo vivo apontando pro nome antigo quebra em silencio -- troque por 'percus-kit':`n$($hits -join "`n")"
     }
