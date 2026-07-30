@@ -32,7 +32,10 @@ Describe "percus-gate.sh — higiene de conhecimento" {
             param([string]$Repo)
             $bash = Get-BashExe
             Push-Location $Repo
-            try { & $bash $script:gate 2>&1 | Out-Null; return $LASTEXITCODE } finally { Pop-Location }
+            try {
+                $saida = & $bash $script:gate 2>&1 | Out-String
+                return [pscustomobject]@{ Exit = $LASTEXITCODE; Saida = $saida.Trim() }
+            } finally { Pop-Location }
         }
     }
 
@@ -48,7 +51,9 @@ Describe "percus-gate.sh — higiene de conhecimento" {
             '> Modelo pra copiar:', '> ```', '> ## Exemplo {#exemplo}', '> ```', '',
             '## Sem tags {#sem-tags}', '', '**Sintoma:** invisivel pra busca.'
         )
-        Invoke-Gate -Repo $repo | Should -Be 1 -Because "o verbete sem tags vem depois e precisa ser visto"
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "o verbete sem tags vem depois e precisa ser visto. Saida do gate: $($r.Saida)"
+        $r.Saida | Should -Match 'sem linha tags'
     }
 
     It "enxerga verbete depois de UM fence espurio impar (a dessincronizacao real)" {
@@ -63,7 +68,9 @@ Describe "percus-gate.sh — higiene de conhecimento" {
             '> ```', '',
             '## Sem tags {#sem-tags}', '', '**Sintoma:** precisa ser acusada mesmo vindo depois.'
         )
-        Invoke-Gate -Repo $repo | Should -Be 1 -Because "um fence espurio nao pode apagar o resto do arquivo"
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "um fence espurio nao pode apagar o resto do arquivo. Saida do gate: $($r.Saida)"
+        $r.Saida | Should -Match 'sem linha tags'
     }
 
     It "BARRA arquivo com bloco de codigo aberto e nunca fechado" {
@@ -73,7 +80,9 @@ Describe "percus-gate.sh — higiene de conhecimento" {
             '## Boa {#boa}', '', '`tags: a`', '', '**Sintoma:** ok.', '',
             '```', 'bloco aberto e nunca fechado'
         )
-        Invoke-Gate -Repo $repo | Should -Be 1 -Because "cegueira silenciosa e pior que falso positivo"
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "cegueira silenciosa e pior que falso positivo. Saida do gate: $($r.Saida)"
+        $r.Saida | Should -Match 'nunca fechado'
     }
 
     It "NAO acusa titulo de exemplo dentro de bloco de codigo" {
@@ -85,7 +94,8 @@ Describe "percus-gate.sh — higiene de conhecimento" {
             'Exemplo de como escrever um verbete:', '',
             '```markdown', '## Titulo de exemplo {#exemplo-em-bloco}', '`tags: x`', '```'
         )
-        Invoke-Gate -Repo $repo | Should -Be 0 -Because "exemplo em bloco de codigo nao e verbete"
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 0 -Because "exemplo em bloco de codigo nao e verbete. Saida do gate: $($r.Saida)"
     }
 
     It "aceita tags: SEM crase (18 de ~105 verbetes escrevem assim e sao encontraveis)" {
@@ -93,7 +103,8 @@ Describe "percus-gate.sh — higiene de conhecimento" {
             '# T', '', '## Indice', '', '- [Boa](#boa)', '', '---', '',
             '## Boa {#boa}', '', 'tags: a, b', '', '**Sintoma:** ok.'
         )
-        Invoke-Gate -Repo $repo | Should -Be 0
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 0 -Because "Saida do gate: $($r.Saida)"
     }
 
     It "NAO acusa o bloco-modelo em blockquote (falso positivo de 2026-07-27)" {
@@ -102,7 +113,8 @@ Describe "percus-gate.sh — higiene de conhecimento" {
             '## Boa {#boa}', '', '`tags: a`', '', '**Sintoma:** ok.', '',
             '> Modelo pra copiar:', '> ## <sintoma curto> {#ancora-kebab}', '> `tags:` ...'
         )
-        Invoke-Gate -Repo $repo | Should -Be 0
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 0 -Because "Saida do gate: $($r.Saida)"
     }
 
     It "barra ancora que nao esta no indice" {
@@ -111,12 +123,37 @@ Describe "percus-gate.sh — higiene de conhecimento" {
             '## Boa {#boa}', '', '`tags: a`', '', '**Sintoma:** ok.', '',
             '## Orfa {#orfa}', '', '`tags: c`', '', '**Sintoma:** fora do indice.'
         )
-        Invoke-Gate -Repo $repo | Should -Be 1
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "Saida do gate: $($r.Saida)"
+        $r.Saida | Should -Match 'nao esta no indice'
+    }
+
+    It "NAO acusa verbete cujo tags: vem depois de linhas de citacao" {
+        # Blockquote nao pode consumir a janela de 4 linhas do tags: -- senao o gate
+        # bloqueia commit legitimo, e gate que bloqueia demais ensina a desliga-lo.
+        $repo = New-KnowledgeRepo @(
+            '# T', '', '## Indice', '', '- [Boa](#boa)', '', '---', '',
+            '## Boa {#boa}', '', '> Nota 1', '> Nota 2', '> Nota 3', '> Nota 4', '',
+            '`tags: a, b`', '', '**Sintoma:** ok.'
+        )
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 0 -Because "o verbete TEM tags, so estao depois da citacao. Saida do gate: $($r.Saida)"
+    }
+
+    It "acusa ancora fora do padrao kebab (antes escapava dos dois checks)" {
+        $repo = New-KnowledgeRepo @(
+            '# T', '', '## Indice', '', '- [Boa](#boa)', '', '---', '',
+            '## Boa {#boa}', '', '`tags: a`', '', '**Sintoma:** ok.', '',
+            '## Ruim {#AncoraRuim}', '', '**Sintoma:** sem tags e com ancora fora do padrao.'
+        )
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "ancora fora do padrao ficava invisivel aos dois checks. Saida do gate: $($r.Saida)"
     }
 
     It "roda limpo no canon de verdade (exit 0) — e enxergando os 105 verbetes" {
         $reais = @(Select-String -Path (Join-Path $script:kitRoot "conhecimento\COMO_RESOLVER.md") -Pattern '^## .*\{#').Count
         $reais | Should -BeGreaterThan 100 -Because "sanity: o arquivo tem ~105 verbetes"
-        Invoke-Gate -Repo $script:kitRoot | Should -Be 0
+        $r = Invoke-Gate -Repo $script:kitRoot
+        $r.Exit | Should -Be 0 -Because "Saida do gate: $($r.Saida)"
     }
 }

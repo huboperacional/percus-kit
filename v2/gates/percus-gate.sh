@@ -77,6 +77,9 @@ if [ -n "$NUCLEO" ]; then
 fi
 
 # ---------- 2. Verbete de conhecimento orfao do indice ----------
+# NOTA de manutencao: o criterio de fence estrito (^``` na coluna 0) se repete nos
+# blocos 2, 3 e 3b. Extrair em funcao POSIX sh custa mais legibilidade do que paga
+# aqui -- mas se o criterio mudar de novo, mude nos TRES blocos.
 for f in conhecimento/*.md referencia/conhecimento/*.md; do
   [ -f "$f" ] || continue
   # Verbete real = linha de TITULO (^## ) fora de bloco de codigo.
@@ -84,8 +87,8 @@ for f in conhecimento/*.md referencia/conhecimento/*.md; do
   # dentro de blockquote, o toggle dessincronizava e o gate ficava CEGO do ponto em
   # diante — medido 2026-07-29: via 33 de 105 verbetes e saia exit 0 por nao olhar.
   # ^## ja exclui blockquote por construcao (linha comeca com '>').
-  orfaos=$(awk '/^```/{f=!f; next} f{next} /^## .*\{#/{print}' "$f" 2>/dev/null \
-           | grep -oE '\{#[a-z0-9-]+\}' | tr -d '{}#' | sort -u \
+  orfaos=$(awk '/^```/{fence=!fence; next} fence{next} /^## .*\{#/{print}' "$f" 2>/dev/null \
+           | grep -oE '\{#[^}]+\}' | tr -d '{}#' | sort -u \
            | while read -r a; do grep -qF "(#$a)" "$f" || echo "$a"; done)
   for a in $orfaos; do
     violacao "$f -- verbete #$a existe mas nao esta no indice (escrito e invisivel)"
@@ -95,13 +98,21 @@ done
 # ---------- 3. Verbete sem linha tags: (invisivel a busca) ----------
 for f in conhecimento/*.md referencia/conhecimento/*.md; do
   [ -f "$f" ] || continue
+  # Skip de blockquote (^[[:space:]]*>) fica SO neste bloco: sem ele, linhas de
+  # citacao antes do tags: real consomem a janela de 4 linhas e o gate acusa "sem
+  # tags:" um verbete que TEM tags -- bloqueio de commit legitimo (achado do review,
+  # 2026-07-29). O que cegava o gate era o FENCE, nao o blockquote; o fence estrito
+  # ja resolve isso sozinho.
   sem_tags=$(awk '
     /^```/ { fence = !fence; next }
     fence { next }
+    /^[[:space:]]*>/ { next }
     /^## .*\{#/ { if (p != "") print p; p=$0; c=0; next }
+    # Crase em tags: e OPCIONAL de proposito ("`?"): 18 dos ~105 verbetes reais
+    # escrevem "tags:" sem crase e sao encontraveis. Nao tire o "?" achando sobra.
     p != "" { c++; if ($0 ~ /^`?tags:/) p=""; else if (c >= 4) { print p; p="" } }
     END { if (p != "") print p }
-  ' "$f" | grep -oE '\{#[a-z0-9-]+\}' | tr -d '{}#')
+  ' "$f" | grep -oE '\{#[^}]+\}' | tr -d '{}#')
   for a in $sem_tags; do
     violacao "$f -- verbete #$a sem linha tags: (a busca de conhecimento nao acha)"
   done
