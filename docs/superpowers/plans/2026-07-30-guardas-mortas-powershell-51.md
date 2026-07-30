@@ -214,17 +214,21 @@ sh scripts/percus-review-auto.sh
 
 ```bash
 cd "/d/Claud Automations/percus-kit" && PERCUS_CANON_V2_DIR="/d/Claud Automations/percus-kit/v2" git commit -F - <<'MSG'
-kit: BOM nos 16 .ps1 -- 3 guardas de PreToolUse voltam a rodar
+kit: BOM nos 34 .ps1 -- 3 guardas de PreToolUse voltam a rodar
 
 Windows PowerShell 5.1 le .ps1 sem BOM como ANSI. Um em dash dentro de string vira
 aspa curva em ANSI, e o PowerShell aceita aspa curva como delimitador -- a string
 fecha antes da hora e o arquivo inteiro desanda. Com BOM ele le UTF-8 e parseia.
 
+34, nao 16: parse-only enxerga so metade da armadilha. Os 16 quebram hoje; os outros
+18 tem o mesmo caractere sem BOM e passam no parse imprimindo lixo -- entre eles os
+hooks WIRED pre-commit-check.ps1 e on-stop-check.ps1, que nenhum teste enxergava.
+
 Gravado por bytes, nao por Set-Content: os arquivos estao com LF e o repo tem
 core.autocrlf=true sem .gitattributes, entao via texto o fim de linha seria
-reescrito e o diff viraria arquivo inteiro. Provado: conteudo apos o BOM
-byte-identico ao original em cada arquivo, e git diff --stat com 16 insercoes e
-zero delecoes.
+reescrito. Provado: conteudo apos o BOM byte-identico ao original em cada arquivo,
+e git diff --numstat com 1 1 em TODOS os 34 -- o BOM cola na primeira linha
+existente, entao o git registra modificacao de linha, nao insercao pura.
 
 ATENCAO -- as guardas voltam a guardar: external-action-guard barra gh pr comment
 e git push sem PERCUS_EXTERNAL_OVERRIDE=1; types-check-pre-commit barra erro de
