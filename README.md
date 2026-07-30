@@ -4,6 +4,22 @@
 
 **Estado atual:** Fase 7. A **versão canônica autoritativa e o changelog completo vivem em `CANON_VERSION.md`** (single-source, R25 — esta README não duplica o changelog).
 
+> ## Por onde um agente entra
+>
+> **`v2/`** é a porta: `v2/CONSTITUICAO.md` (invariantes — sempre carregada) + `v2/loops/` (procedimento,
+> **um** loop por situação) + `v2/referencia/` (detalhe de stack). É pra lá que o
+> `templates/CLAUDE.template.md` roteia os projetos.
+>
+> Os documentos numerados (`01..06_*.md`), `comandos/` e `checklists/` são **referência pendente de
+> migração** — não são camada "morta". Medido em 2026-07-29: a camada viva (incluindo o próprio
+> `v2/referencia/`, os templates e as skills do plugin) aponta pra eles **89 vezes**. Arquivá-los hoje
+> criaria um diretório chamado "archive" que os agentes precisariam ler — foi por isso que o
+> arquivamento foi **revertido** e virou fase própria de migração de conteúdo (não `git mv`):
+> infra/auth/tracking → `v2/referencia/`, `comandos/SETUP_*` → loop ou referência.
+>
+> Consulte um numerado quando o loop mandar. Não os leia "por completude" — 942 linhas de regra para
+> consultar uma foi o custo que o `v2/` existe para cortar.
+
 ---
 
 ## O que é isto

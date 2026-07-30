@@ -50,7 +50,19 @@ hoje, no mesmo dia em que custaram trabalho real:
 
 - `D:\Claud Automations\_Novo_Projeto` → **`D:\Claud Automations\percus-kit`**.
 - `_Novo_Projeto_V2`: o conteúdo exclusivo é trazido para `percus-kit/v2/`; a pasta é **apagada**.
-- Camada velha (`01..06_*.md`, `comandos/`, `checklists/`) → `.archive/`, com ponteiro no `README.md`.
+- ~~Camada velha (`01..06_*.md`, `comandos/`, `checklists/`) → `.archive/`~~ — **revertido em execução,
+  2026-07-29.** O arquivamento foi feito, medido e desfeito: a camada viva aponta pra ela **89 vezes**
+  (`01_REGRAS` 25×, `02_INFRA` 17×, `03_TRACKING` 7×, mais 20 arquivos), e quem aponta inclui
+  `templates/CLAUDE.template.md` (origem do `CLAUDE.md` dos 12 projetos), as skills do plugin, os hooks
+  e — decisivo — o **próprio `v2/referencia/README.md`**. Depois do move, o README declarava "nada em
+  `.archive/` é lido por agente" enquanto o canon novo lia de lá: contradição na mesma árvore.
+  **Diagnóstico:** `v2/` é hoje uma casca fina sobre a camada anterior; ela não está aposentada, está
+  **pendente de migração** — o que o próprio `v2/MIGRACAO.md` já dizia ("infra/tracking ⏸️ aponta").
+  Aposentar é **migrar conteúdo** (infra/auth/tracking → `v2/referencia/`; `comandos/SETUP_*` → loop ou
+  referência), não `git mv`. Vira fase própria, um plano por bloco.
+  No lugar disso, esta fase só **corrige o roteamento**: `README.md` e `00_LEIA_PRIMEIRO.md` mandam pro
+  `v2/` primeiro e declaram os numerados como referência pendente. O patch do arquivamento está
+  preservado em `scratchpad/task7-arquivamento.patch` para quando a migração de conteúdo acontecer.
 - **Não** aterrissar em `_Novo_Projeto_V2`: a pasta avulsa tem 8 commits, enquanto o kit carrega o
   histórico do canon (48 versões de changelog). Landar no repo de 8 commits joga esse histórico fora
   ou exige cirurgia de merge, e o remote que as 10 máquinas puxam é o do kit.
@@ -127,7 +139,9 @@ desativado **no mesmo commit**. Nunca os dois vivos ao mesmo tempo.
      (e) faz backup datado do settings. Rodar em cada máquina no primeiro `git pull` após o rename.
      **Enquanto uma máquina não rodar, ela continua funcionando com o nome antigo** — o script é o
      único jeito de o rename não virar drift entre máquinas.
-3. **Arquivar a camada velha** em `.archive/` com ponteiro.
+3. **Corrigir o roteamento** (era "arquivar a camada velha" — ver §3.1): `README.md` e
+   `00_LEIA_PRIMEIRO.md` passam a mandar pro `v2/` antes da tabela antiga, e declaram os numerados como
+   referência **pendente de migração**, com o número medido (89 ponteiros vivos). Nada é movido.
 4. **Migrar os 11 hooks** pro `settings.json` — um hook por commit, com o equivalente do plugin
    desativado no mesmo commit. Começa por `pre-commit-check` e `external-action-guard`.
    O pre-mortem chamou este passo de "desativa todo o enforcement sem alarme". Então a ordem **dentro

@@ -14,6 +14,47 @@
 
 ---
 
+## ESTADO DA EXECUÇÃO (atualizado 2026-07-29, antes do `/clear`)
+
+Branch: **`migracao-percus-kit-fase1`** (o kit está em `main`; nada foi mergeado).
+
+| Task | Estado | Commits / evidência |
+|---|---|---|
+| 1 — gate de conhecimento | ✅ **fechada**, aprovada nos 2 estágios de review | `5486e2d`, `9ac75d7`, `951ab30` · 10 testes · gate enxerga 105/105 verbetes (antes: 33) |
+| 2 — `.percus-review.json` no loop | ✅ fechada (revisada inline) | `bc9f19e` · loop em 35/60 linhas, fence par |
+| 3 — `.percus/` no `.gitignore` | ✅ fechada (revisada inline) | `b637bfe` · provado com `git status` vazio |
+| 4 — `renomear-kit-local.ps1` | ⚠️ **implementada, review REPROVOU 2ª vez** | `b8c96ee`, `14cfb9b` · 9 testes · ver "pendência" abaixo |
+| 7 — roteamento (era arquivamento) | 🔨 **em curso** — escopo reduzido por decisão do operador | ver §3.1 do spec; patch do move em `scratchpad/task7-arquivamento.patch` |
+| 5 — rename da pasta | ⏸️ pendente | muda `PERCUS_CANON_DIR` e a allowlist da sessão; exige aval do operador na hora |
+| 6 — gate anti-path-legado | ⏸️ pendente | só passa **depois** do rename |
+| 8 — versão 6.32.0 | ⏸️ pendente | 4 arquivos + changelog |
+| 9 — apagar `_Novo_Projeto_V2` | ⏸️ pendente | último, depois de tudo verde |
+
+**Ordem ajustada em execução:** 1 → 2 → 3 → 4 → 7 → **5 (rename)** → 6 → 8 → 9. Motivo: renomear a
+pasta no meio do voo quebra os caminhos que a sessão e os subagents usam, e a allowlist de diretórios
+do harness aponta pro nome antigo.
+
+### PENDÊNCIA BLOQUEANTE da Task 4 (fazer antes de seguir pro 5)
+
+A re-revisão reprovou: o fix fechou **uma** das três portas para o mesmo estado quebrado. `Copy-Item`
+(backup) e `[IO.File]::WriteAllText` (escrita final) rodam **depois** do `Rename-Item` e não têm
+proteção — provado por execução (ACL negando o `.bak`; `settings.json` somente-leitura). Nos dois
+casos a pasta fica renomeada, o settings aponta pro caminho morto, e a mensagem é a exceção crua do
+.NET, sem instrução de recuperação.
+
+**Correção decidida (não é remendo de mensagem):** `try/catch` envolvendo **tudo** que acontece após o
+rename e, no `catch`, **rollback** — renomear a pasta de volta, deixando a máquina no estado original;
+se o rollback também falhar, dizer exatamente em que estado ficou e qual `-KitAtual` usar pra retomar.
+Mais dois testes: falha na escrita final (arquivo somente-leitura) e falha no backup, ambos aferindo
+que a pasta voltou ao nome antigo.
+
+### Nota operacional
+
+O limite de sessão da API foi atingido em 2026-07-29 ~21:5x (reseta 22:10, Cuiabá) e derrubou um
+subagent no meio da Task 7. Enquanto não resetar, executar **inline**; subagent falha.
+
+---
+
 ## Estrutura de arquivos
 
 | Arquivo | Responsabilidade | Ação |
@@ -711,7 +752,27 @@ MSG
 
 ---
 
-### Task 7: Arquivar a camada velha
+### Task 7 (REESCRITA em execução): Corrigir o roteamento — sem mover nada
+
+**Por que mudou:** o arquivamento foi executado, medido e **revertido**. A camada "velha" é apontada
+**89 vezes** pela camada viva, incluindo o próprio `v2/referencia/README.md`. Detalhe e evidência na
+§3.1 do spec. Aposentar de verdade é migrar conteúdo, e isso virou fase própria.
+
+**Files:**
+- Modify: `README.md` — bloco "Por onde um agente entra": `v2/` é a porta; numerados são referência
+  **pendente de migração**, com o número medido e o motivo da reversão.
+- Modify: `00_LEIA_PRIMEIRO.md` — seção "Antes da tabela: comece pelo `v2/`", com a ordem
+  CONSTITUICAO → loop da situação → referência → só então a tabela antiga.
+
+**Não fazer:** `git mv` de `01..06`, `comandos/`, `checklists/`. O patch do arquivamento está em
+`scratchpad/task7-arquivamento.patch` para a fase de migração de conteúdo.
+
+**Verificação:** gate `exit 0`; suíte `Failed: 0`; e `grep` provando que nenhum ponteiro vivo passou a
+apontar pra `.archive/camada-v1/` (o move foi desfeito).
+
+---
+
+### Task 7 — versão ORIGINAL (não executar; mantida como registro do que foi tentado)
 
 **Files:**
 - Create: `D:\Claud Automations\percus-kit\.archive\camada-v1\` (destino)

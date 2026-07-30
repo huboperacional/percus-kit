@@ -13,6 +13,23 @@ ultima-atualizacao: 2026-06-25
 
 ---
 
+## Antes da tabela: comece pelo `v2/`
+
+O canon tem duas camadas convivendo, e a ordem importa:
+
+1. **`v2/CONSTITUICAO.md`** — invariantes (como se comportar). Sempre carregada, 80 linhas de teto.
+2. **`v2/loops/<situacao>.md`** — o procedimento da situação em que você está, **um** por vez
+   (`grilling`, `spec`, `conselho`, `tdd`, `review`, `deploy`, `checkpoint`, `drift`).
+3. **`v2/referencia/`** — detalhe de stack, quando o loop pedir.
+4. **Só então** a tabela abaixo, que roteia para a camada numerada (`01..06`), `comandos/` e
+   `checklists/` — hoje **referência pendente de migração**, ainda apontada 89 vezes pela camada viva
+   (medido 2026-07-29). Não é material morto; é material que ainda não mudou de casa.
+
+**Não leia um numerado inteiro para consultar uma regra.** Carregar `01_REGRAS_INEGOCIAVEIS.md`
+completo (942 linhas) por causa de uma dúvida é exatamente o custo que o `v2/` corta.
+
+---
+
 ## Roteamento por situação
 
 | Situação | Leia, nesta ordem |
