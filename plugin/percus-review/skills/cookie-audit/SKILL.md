@@ -87,8 +87,8 @@ Se nenhum achado: `[cookie-audit] OK — N chamadas auditadas, todas conformes`.
 
 ## Referencias
 
-- Canon: `_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md` R7 (cookies subset).
-- Padrao SSO: `_Novo_Projeto/02_INFRA_E_STACK_PERCUS.md` secao "Auth multi-domain".
+- Canon: `percus-kit/01_REGRAS_INEGOCIAVEIS.md` R7 (cookies subset).
+- Padrao SSO: `percus-kit/02_INFRA_E_STACK_PERCUS.md` secao "Auth multi-domain".
 - Implementacao referencia: `auth-service/services/api/app/routers/login.py` (usar como template).
 
 ## Auto-trigger

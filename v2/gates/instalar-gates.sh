@@ -15,7 +15,7 @@ V2DIR="${PERCUS_CANON_V2_DIR:-}"
 
 if [ -z "$V2DIR" ]; then
   echo "ERRO: defina PERCUS_CANON_V2_DIR apontando para a pasta do canon V2." >&2
-  echo "  ex.: export PERCUS_CANON_V2_DIR='/d/Claud Automations/_Novo_Projeto/v2'" >&2
+  echo "  ex.: export PERCUS_CANON_V2_DIR='/d/Claud Automations/percus-kit/v2'" >&2
   exit 2
 fi
 

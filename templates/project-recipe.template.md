@@ -2,7 +2,7 @@
 # Template — Recipe de projeto (workflow composto)
 # Copiar para: skills/recipes/recipe-{workflow}/RECIPE.md
 # Baseado em: github.com/lucianfialho/gmp-cli (skills/recipe-* pattern)
-# Ref completo: _Novo_Projeto/comandos/SETUP_PROJECT_SKILLS.md
+# Ref completo: percus-kit/comandos/SETUP_PROJECT_SKILLS.md
 
 name: recipe-{workflow}     # kebab-case; prefix "recipe-" obrigatório
 version: 1.0.0

@@ -1,6 +1,6 @@
 ---
 name: council:drift-detect
-description: Detecta divergencia entre o canon Percus (_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md + 02-06) e como o projeto atual realmente implementa. Conselho 3-membros aponta drift, sem fazer fix automatico.
+description: Detecta divergencia entre o canon Percus (percus-kit/01_REGRAS_INEGOCIAVEIS.md + 02-06) e como o projeto atual realmente implementa. Conselho 3-membros aponta drift, sem fazer fix automatico.
 ---
 
 # /council:drift-detect
@@ -139,4 +139,4 @@ Roda mensalmente, custo agregado < $0.20/projeto/ano.
 ## Referencias
 
 - Canon: `${env:PERCUS_CANON_DIR}\01_REGRAS_INEGOCIAVEIS.md`
-- ADR pattern: `_Novo_Projeto/templates/adr-0000-template.md`
+- ADR pattern: `percus-kit/templates/adr-0000-template.md`

@@ -47,7 +47,7 @@ Mudanças relevantes:
 
 Se o projeto tem login custom:
 
-- Comparar com `_Novo_Projeto/templates/login-ui/` — identificar drift
+- Comparar com `percus-kit/templates/login-ui/` — identificar drift
 - Se o login custom tem bug, está hardcoded com product name, ou não usa tenant detection, **substituir pelo template**:
 
 ```pwsh
@@ -103,14 +103,14 @@ skills/
 - [ ] `CLAUDE.md` atualizado com seção "Skills locais"
 - [ ] `HANDOFF.md` atualizado com entrada de inicialização
 
-**Referência completa:** `D:\Claud Automations\_Novo_Projeto\comandos\SETUP_PROJECT_SKILLS.md`
+**Referência completa:** `D:\Claud Automations\percus-kit\comandos\SETUP_PROJECT_SKILLS.md`
 
 ---
 
 ## Refs
 
-- Spec da v6.8: `D:\Claud Automations\_Novo_Projeto\docs\superpowers\specs\2026-05-19-sprint-v6.8-auth-canonization-design.md`
-- Changelog: `D:\Claud Automations\_Novo_Projeto\CANON_VERSION.md`
-- Templates: `D:\Claud Automations\_Novo_Projeto\templates\login-ui\README.md`
-- Skills locais: `D:\Claud Automations\_Novo_Projeto\comandos\SETUP_PROJECT_SKILLS.md`
-- Upgrade skills: `D:\Claud Automations\_Novo_Projeto\comandos\UPGRADE_ADICIONAR_SKILLS.md`
+- Spec da v6.8: `D:\Claud Automations\percus-kit\docs\superpowers\specs\2026-05-19-sprint-v6.8-auth-canonization-design.md`
+- Changelog: `D:\Claud Automations\percus-kit\CANON_VERSION.md`
+- Templates: `D:\Claud Automations\percus-kit\templates\login-ui\README.md`
+- Skills locais: `D:\Claud Automations\percus-kit\comandos\SETUP_PROJECT_SKILLS.md`
+- Upgrade skills: `D:\Claud Automations\percus-kit\comandos\UPGRADE_ADICIONAR_SKILLS.md`

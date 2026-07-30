@@ -61,6 +61,6 @@ write_percus_block "auth-import" \
     "encontrados ${#findings[@]} import(s) de auth providers vetados (R7)." \
     "${findings[@]}" \
     "Migre pra percus-auth ou GET https://auth.huboperacional.com.br/." \
-    "Ver _Novo_Projeto/02_INFRA_E_STACK_PERCUS.md secao 'Auth'." \
+    "Ver percus-kit/02_INFRA_E_STACK_PERCUS.md secao 'Auth'." \
     "Skip (raro): PERCUS_SKIP_AUTH_IMPORT=1"
 exit 2

@@ -126,7 +126,7 @@ Edite `checklist.yaml`. Schema validado em build. NAO modifique runner pra adici
 
 ## Referencias
 
-- Spec: `_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md` R14-R19.
+- Spec: `percus-kit/01_REGRAS_INEGOCIAVEIS.md` R14-R19.
 - Decisao de formato: `Painel Gestao e Afiliados/.deepseek/council-log/20260516-175328-consult.jsonl` (3/3 conselho voto Opcao D).
 - Skill irma: `cookie-audit` (subset R7), `tracking-audit` (R2 contra-parte).
 - Runner: `scripts/security_audit.py`.

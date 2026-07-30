@@ -6,7 +6,7 @@
 Describe "Hardening 2026-05-18 — incident regression prevention" {
     BeforeAll {
         if (-not $env:PERCUS_CANON_DIR) {
-            $env:PERCUS_CANON_DIR = "D:\Claud Automations\_Novo_Projeto"
+            $env:PERCUS_CANON_DIR = "D:\Claud Automations\percus-kit"
         }
         $script:routerPath = Join-Path $PSScriptRoot ".." "scripts" "review-router.ps1"
         # v6.31.0: os padroes sairam do fonte do router pra scripts/sensitive-paths.txt

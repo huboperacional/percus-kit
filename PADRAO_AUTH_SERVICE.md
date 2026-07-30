@@ -518,7 +518,7 @@ Plexco Tasks tem template Next.js 15 + shadcn/ui de OTP em 6-boxes que é refer�
 - Validações inline + estado `notFound` separado de erro genérico
 - Pré-fill via query string: `?channel=email&dest=foo@bar.com`
 
-Boilerplate em `_Novo_Projeto/templates/login-ui/` (referência copy-paste atual). **Pilar 3 (v2 — Seção L)** promove esses componentes à lib versionada **`@percus/auth-ui`** (`<LoginForm/>`/`<SignupForm/>`/`<CountrySelector/>`/`<PhoneInput/>`, branding data-driven via `getTenantConfig()`); reference = 9 arquivos do Plexco Tasks (cross-repo, read-only). **Status:** ⬜ Sprint C — lib **ainda não publicada**; até lá, `templates/login-ui/` é a referência. **Gate visual** (claude.ai/design) antes de codar o componente novo.
+Boilerplate em `percus-kit/templates/login-ui/` (referência copy-paste atual). **Pilar 3 (v2 — Seção L)** promove esses componentes à lib versionada **`@percus/auth-ui`** (`<LoginForm/>`/`<SignupForm/>`/`<CountrySelector/>`/`<PhoneInput/>`, branding data-driven via `getTenantConfig()`); reference = 9 arquivos do Plexco Tasks (cross-repo, read-only). **Status:** ⬜ Sprint C — lib **ainda não publicada**; até lá, `templates/login-ui/` é a referência. **Gate visual** (claude.ai/design) antes de codar o componente novo.
 
 ### friendlyError translation pattern
 

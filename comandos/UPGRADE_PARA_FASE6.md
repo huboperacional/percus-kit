@@ -198,7 +198,7 @@ Próximos passos:
 - ❌ Pular Passo 0 — diagnóstico revela inconsistências antes de tentar upgrade.
 - ❌ Aplicar upgrade em pasta sensível sem `AGENTS.md` atualizado — hooks ainda passam, mas conselho revisa cego.
 - ❌ "Vou colocar GROQ_API_KEY depois" — sem ela, conselho fica 2 membros (degrada pra Fase 5).
-- ❌ Esquecer de bump `_Novo_Projeto` git tag pra `v6.0.0` ao concluir adoção em projetos suficientes.
+- ❌ Esquecer de bump `percus-kit` git tag pra `v6.0.0` ao concluir adoção em projetos suficientes.
 
 ## Próximo passo após Fase 6
 

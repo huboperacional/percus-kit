@@ -146,10 +146,10 @@ Abrir `CHECKLIST_AUTH.md` no projeto (gerado pelo script) e completar:
 
 ### 4.3 Refs
 
-- Spec auth completa: [_Novo_Projeto/PADRAO_AUTH_SERVICE.md](../PADRAO_AUTH_SERVICE.md)
-- R7 canon: [_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md#R7](../01_REGRAS_INEGOCIAVEIS.md)
-- R15 (phone normalization JWT/DB): [_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md#R15](../01_REGRAS_INEGOCIAVEIS.md)
-- Templates: [_Novo_Projeto/templates/login-ui/README.md](../templates/login-ui/README.md)
+- Spec auth completa: [percus-kit/PADRAO_AUTH_SERVICE.md](../PADRAO_AUTH_SERVICE.md)
+- R7 canon: [percus-kit/01_REGRAS_INEGOCIAVEIS.md#R7](../01_REGRAS_INEGOCIAVEIS.md)
+- R15 (phone normalization JWT/DB): [percus-kit/01_REGRAS_INEGOCIAVEIS.md#R15](../01_REGRAS_INEGOCIAVEIS.md)
+- Templates: [percus-kit/templates/login-ui/README.md](../templates/login-ui/README.md)
 
 ---
 

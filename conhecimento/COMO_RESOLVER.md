@@ -42,6 +42,7 @@
 - [Hook fica lento e trava os commits: diretorio de estado que so cresce](#estado-append-only-trava-hook)
 - [Tag de plano aberta que já foi entregue sob OUTRO número de migration](#migration-numero-reciclado)
 - [Teste que nunca falhou embarca fóssil: o red importa mais que o green](#red-nunca-visto-embarca-fossil)
+- [Guarda que lê o FONTE some junto com a string que ela procura (falso-negativo silencioso)](#guarda-fonte-strip-string)
 - [`testIgnore`/`testMatch` de PROJETO substitui o do config raiz — não soma](#playwright-testignore-projeto-sobrescreve)
 - [Spec vermelha há semanas: o elemento não sumiu, a PÁGINA não abre (guard de perfil)](#spec-vermelha-rota-inacessivel-por-perfil)
 - [Declarei hook/gate "instalado" sem rodar no cenario real -> passou defeito](#verificar-runtime-nao-estrutura)
@@ -134,6 +135,8 @@
 - [`service update` diz "converged" mas o serviço continua na imagem VELHA (rollback silencioso)](#swarm-converged-e-rollback)
 - [`alembic upgrade head` não vê a migration nova: ela mora DENTRO da imagem](#alembic-head-mora-na-imagem)
 - [CHECK bicondicional ACEITA a linha proibida quando o discriminante é NULL (UNKNOWN passa)](#check-bicondicional-unknown)
+- [Preflight CORS recusado: o serviço fica verde e só o browser do usuário quebra](#preflight-cors-falha-silenciosa)
+- [A mutação sobreviveu: o código está certo e a prova de que precisa estar não existe](#mutacao-sobrevive-predicado-quase-certo)
 
 ---
 
@@ -290,7 +293,7 @@ problema localmente e confirme a causa observada — não a inferida. Reproduzir
 `tags: cross-repo, canon, write, commit, outro projeto, protocolo, caixa de texto, conhecimento, mover arquivo, exceção`
 
 **Contexto:** uma sessão de um projeto (ex.: Coach, tiatendo) precisa propagar algo pra outro repo —
-outro produto, ou o canon (`_Novo_Projeto`).
+outro produto, ou o canon (`percus-kit`).
 
 **Regra geral:** pra escrever em **qualquer outro repo**, NÃO edite o repo de destino direto —
 entregue **texto numa caixa ou num arquivo** pro outro projeto aplicar nele mesmo. Leitura cross-repo
@@ -298,7 +301,7 @@ entregue **texto numa caixa ou num arquivo** pro outro projeto aplicar nele mesm
 nunca faz `git mv/cp/rm` pra fora dele).
 
 ⚠️ **Exceção única (operador, 2026-07-23):** os **arquivos comuns entre projetos que ficam em
-`D:\Claud Automations\_Novo_Projeto\conhecimento\`** — esses qualquer sessão **escreve e commita
+`D:\Claud Automations\percus-kit\conhecimento\`** — esses qualquer sessão **escreve e commita
 direto**. É onde mora o conhecimento cross-projeto (R23: este `COMO_RESOLVER.md`), sincronizado via
 `git pull`; obrigar caixa de texto pro próprio repositório de aprendizado só perderia o aprendizado.
 **A exceção é a pasta `conhecimento\`, NÃO o canon inteiro** — a raiz do canon
@@ -3233,3 +3236,129 @@ e você começa a reescrever ponteiro de skill, template e hook pra apontar pra 
 **Ref:** kit Percus 2026-07-29 — 89 ponteiros vivos (`01_REGRAS` 25×, `02_INFRA` 17×), incluindo o
 `v2/referencia/README.md`; move revertido, virou fase de migração de conteúdo. Relacionado:
 [[regra-duplicada-ps1-sh]].
+
+## Guarda que lê o FONTE some junto com a string que ela procura {#guarda-fonte-strip-string}
+
+tags: teste-guarda, guarda estrutural, regex no source, tokenize, docstring, falso-negativo,
+mutation testing, anti-regressão, python, ast, teste-espelho
+
+**Sintoma.** Você escreve um teste-guarda que lê o código-fonte e reprova a reintrodução de um
+padrão proibido. Ele passa. Você reintroduz o defeito de propósito — e **ele continua passando**.
+Falso-negativo silencioso: a guarda existe, dá verde, e não guarda nada.
+
+**Contexto.** Guarda de fonte quase sempre precisa ignorar comentário e docstring, senão ela reprova
+pela **explicação** do defeito que mora ao lado do código (e a reação natural de quem vê o vermelho é
+apagar a documentação para "consertar"). A forma óbvia de ignorar é tokenizar e descartar
+`tokenize.COMMENT` e `tokenize.STRING`.
+
+**Causa raiz.** O padrão proibido normalmente **contém uma string literal** — `headers.get("referer")`,
+`os.environ["PROD"]`, `execute("DROP ...")`. Descartar todo token `STRING` remove justamente o
+argumento que a regex procura. A guarda passa a olhar `headers . get ( , )`.
+
+Uma segunda armadilha na mesma família: reconstruir o fonte por `tok.line` **não** remove nada —
+`.line` devolve a **linha física inteira**, então o comentário volta de carona em qualquer outro token
+da mesma linha.
+
+**Solução.**
+1. Reconstrua a partir de `tok.string`, nunca de `tok.line`.
+2. Descarte `COMMENT` sempre, mas descarte `STRING` **só quando for docstring** — string sozinha numa
+   linha lógica: o token significativo anterior é `NEWLINE`/`NL`/`INDENT`/`DEDENT`/`ENCODING` e o
+   seguinte é `NEWLINE`. String usada como **argumento** fica.
+3. **Prove por mutação, sempre:** reintroduza o defeito, veja o vermelho, restaure, veja o verde.
+   E prove o outro lado: confirme que a guarda **passa** com o comentário explicativo presente.
+   Guarda que nunca foi vista reprovando não é guarda — e esta classe de defeito só aparece assim.
+
+**Ref.** Achado em 2026-07-29 em `Paid Midia Automation`, `services/tracking/tests/test_guarda_referer_header.py`
+(guarda contra a volta do fallback do header `Referer`). Ver também `#red-nunca-visto-embarca-fossil`.
+
+## Preflight CORS recusado: o serviço fica verde e só o browser do usuário quebra {#preflight-cors-falha-silenciosa}
+
+tags: cors, preflight, OPTIONS, CORSMiddleware, access-control-allow-origin, origin recusada,
+400 Disallowed CORS origin, curl esconde, healthcheck verde, falha invisivel, browser bloqueia
+
+**Sintoma.** "Os usuários não conseguem entrar" / "o app não fala com o serviço central" — enquanto
+todo monitor diz que está tudo bem: serviço `healthy`, `/health` 200, log do serviço limpo, backend
+próprio intacto, build e testes do frontend passando.
+
+**Causa.** O `CORSMiddleware` está recusando a origin: `OPTIONS` (preflight) devolve
+`400 Disallowed CORS origin` **sem** `access-control-allow-origin`. O browser bloqueia antes de
+enviar o body — nenhuma request chega ao handler, então **nada erra em lugar nenhum que se monitore**.
+`curl` normal esconde: sem `Origin` + `Access-Control-Request-Method` você recebe 200 e conclui que
+está bem.
+
+**Diagnóstico (2 comandos).**
+```bash
+# 1) o preflight real
+curl -s -o /dev/null -w "%{http_code}" -X OPTIONS <url> \
+  -H "Origin: <sua-origin>" -H "Access-Control-Request-Method: POST"     # 200 esperado; 400 = recusada
+
+# 2) o CONTROLE — uma origin de OUTRO produto que você sabe que funciona
+#    passa? => a lista está recortada.  falha também? => o middleware/serviço é que quebrou.
+```
+No browser, da origin real: `fetch(...)` com `TypeError: Failed to fetch` **sem status** = bloqueado
+no preflight; com status legível = chegou.
+
+**Correções.** A causa mais comum é env sobrepondo o default versionado do código
+(`CORS_ALLOWED_ORIGINS` no service spec). Estado correto costuma ser **sem** o env:
+`docker service update --env-rm CORS_ALLOWED_ORIGINS <servico>`.
+
+**Duas armadilhas que custaram horas (caso real 2026-07-30, 6 produtos fora por ~11h):**
+
+1. **Falso-verde por população errada.** O smoke de CORS de um dos produtos rodou durante o incidente
+   e devolveu **15/15 verde** — foi reportado como prova de saúde. Ele não errou no que mediu: mediu
+   **só os origins dele**. O modo de falha perigoso de um smoke não é errar um item, é **acertar todos
+   os itens da lista errada e imprimir PASS**. Regras: mudança em serviço compartilhado se verifica
+   pela lista do **dono do serviço**; lista vazia é **FATAL**, nunca "0/0 passou"; exigir `ACAO`
+   **ecoando a origin** (`*` deve reprovar — com `Authorization` o browser recusa wildcard).
+2. **Gate pós-deploy não cobre regressão que chega sem deploy.** O incidente entrou por um
+   `docker service update` disparado de fora, num dia sem deploy do serviço. Um gate pós-deploy teria
+   ficado mudo o incidente inteiro. Cobertura real exige verificação **periódica**.
+
+**Corolário.** Resposta de erro (401/422) **sem** `ACAO` quando a origin é permitida é sintoma do
+mesmo bug, não comportamento separado do middleware — e enquanto durar, o cliente **não consegue
+distinguir "sessão morta" de "falha de rede"**, o que quebra qualquer regra do tipo "só descarte o
+refresh token em 401".
+
+---
+
+## A mutação sobreviveu: o código está certo e a prova de que precisa estar não existe {#mutacao-sobrevive-predicado-quase-certo}
+
+tags: mutation testing, mutacao sobrevive, predicado quase certo, cobertura cega, OPEN_CONDITION,
+enfraquecer predicado, prova por mutacao, dado que nao distingue, TDD
+
+**Sintoma.** Você escreve o teste antes do fix (vermelho), aplica o fix (verde), e por hábito roda a
+prova por mutação. Mas em vez de só **apagar** a linha de produção, você a troca pelo **"quase
+certo"** — um predicado mais fraco que resolve o mesmo caso. E a suíte **continua verde**.
+
+**Caso real (Plexco Tasks, s157, RF-9).** O `GET /levas/{id}` passou a excluir tarefa terminal pelo
+predicado canônico `OPEN_CONDITION` (`completed_at IS NULL AND cancelled_at IS NULL`). Dois testes
+novos, escritos antes do fix, tinham falhado pelo motivo certo. Trocando `OPEN_CONDITION` por
+`completed_at IS NULL` sozinho: **11 passed**. A mutação não morreu.
+
+**Por quê.** O caminho que os testes exercitavam (`mark_terminal(cancelled=True)`) carimba **os
+dois** marcadores. Então, para aqueles dados, os dois predicados são indistinguíveis. O código
+escolhido estava certo — e o teste não sabia disso.
+
+**Por que isso importa mais do que parece.** Um teste que não distingue o predicado correto do
+"quase certo" **autoriza a simplificação errada no futuro**. A próxima pessoa olha
+`completed_at IS NULL AND cancelled_at IS NULL`, acha redundante, simplifica, roda a suíte, vê verde
+e commita. O defeito volta em dado legado ou em qualquer caminho que carimbe só um marcador.
+
+**Como resolver.** Não basta apagar a linha: **enfraqueça** o predicado e veja se algo morre. Se
+nada morrer, o buraco não é o código — é a cobertura. Feche com um teste que **semeie diretamente o
+estado que só o predicado forte distingue**, mesmo que nenhum caminho de produção o gere hoje:
+
+```python
+meia_cancelada.cancelled_at = datetime.now(timezone.utc)
+meia_cancelada.completed_at = None   # estado que o modelo PERMITE
+```
+
+Documente **no próprio teste** por que aquele estado importa (colunas nullable e independentes, +
+a docstring do predicado canônico que diz checar as duas), senão alguém o apaga como "impossível".
+
+**Regra prática.** Onde houver predicado canônico com mais de uma condição, a bateria de mutação
+tem que incluir **cada condição removida isoladamente** — não só o predicado inteiro apagado.
+Predicado composto com teste que só exercita o caso "ambos verdadeiros" é teste vácuo numa dimensão.
+
+**Relacionado:** [#404-por-design-esconde-tenancy] (erro que parece feature) ·
+[#guarda-fonte-strip-string] (guarda que some com o que procura).

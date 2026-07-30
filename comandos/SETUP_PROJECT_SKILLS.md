@@ -97,7 +97,7 @@ PASSO 5 — Registrar no CLAUDE.md do projeto:
 
    ## Skills locais do projeto (skills/)
    > Complementam o plugin percus-review com conhecimento específico deste projeto.
-   > Ref: _Novo_Projeto/comandos/SETUP_PROJECT_SKILLS.md
+   > Ref: percus-kit/comandos/SETUP_PROJECT_SKILLS.md
    - `skills/{domain}/SKILL.md` — {descrição 1 linha}
    - `skills/recipes/recipe-{workflow}/RECIPE.md` — {descrição}
    - `skills/personas/persona-{role}/PERSONA.md` — {descrição}
@@ -134,7 +134,7 @@ Cobrem **capacidades específicas** que o agente precisa exercer repetidamente n
 - Instruções genéricas que cabem melhor no `CLAUDE.md` do projeto.
 - Procedimentos one-shot (escreva no HANDOFF.md; skill é para repetição).
 
-**Template:** `D:\Claud Automations\_Novo_Projeto\templates\project-skill.template.md`
+**Template:** `D:\Claud Automations\percus-kit\templates\project-skill.template.md`
 
 ---
 
@@ -153,7 +153,7 @@ A diferença entre recipe e checklist: recipe tem **ordem obrigatória** + **abo
 | `recipe-deploy-staging` | build → tests → tracking-audit → pages-scan → push → smoke E2E |
 | `recipe-milestone-close` | close-milestone → HANDOFF update → catalog-publish |
 
-**Template:** `D:\Claud Automations\_Novo_Projeto\templates\project-recipe.template.md`
+**Template:** `D:\Claud Automations\percus-kit\templates\project-recipe.template.md`
 
 ---
 
@@ -175,7 +175,7 @@ Uma boa persona tem 4 elementos obrigatórios: **leitura obrigatória** (o que l
 **decisões autorizadas** (o que pode decidir sozinho) + **escalada obrigatória** (o que vai ao
 operador) + **restrições rígidas** (o que não toca).
 
-**Template:** `D:\Claud Automations\_Novo_Projeto\templates\project-persona.template.md`
+**Template:** `D:\Claud Automations\percus-kit\templates\project-persona.template.md`
 
 ---
 
@@ -213,9 +213,9 @@ Skills locais e skills do plugin são complementares:
 ## Referências
 
 - Inspiração: https://github.com/lucianfialho/gmp-cli (skills/ com recipe-*, persona-* pattern)
-- Templates: `D:\Claud Automations\_Novo_Projeto\templates\project-skill.template.md`
-- Templates: `D:\Claud Automations\_Novo_Projeto\templates\project-recipe.template.md`
-- Templates: `D:\Claud Automations\_Novo_Projeto\templates\project-persona.template.md`
-- Projeto novo: `D:\Claud Automations\_Novo_Projeto\comandos\COMANDO_PROJETO_NOVO.md` (passo 2.7)
-- Upgrade existentes: `D:\Claud Automations\_Novo_Projeto\comandos\UPGRADE_ADICIONAR_SKILLS.md`
-- Plugin skills: `D:\Claud Automations\_Novo_Projeto\plugin\percus-review\skills\`
+- Templates: `D:\Claud Automations\percus-kit\templates\project-skill.template.md`
+- Templates: `D:\Claud Automations\percus-kit\templates\project-recipe.template.md`
+- Templates: `D:\Claud Automations\percus-kit\templates\project-persona.template.md`
+- Projeto novo: `D:\Claud Automations\percus-kit\comandos\COMANDO_PROJETO_NOVO.md` (passo 2.7)
+- Upgrade existentes: `D:\Claud Automations\percus-kit\comandos\UPGRADE_ADICIONAR_SKILLS.md`
+- Plugin skills: `D:\Claud Automations\percus-kit\plugin\percus-review\skills\`

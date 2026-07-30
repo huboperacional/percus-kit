@@ -468,7 +468,7 @@ Commitar e "rodar review depois" — derrota o propósito. Interceptar **antes**
 - DeepSeek API down → router faz fallback automático pra Cross-Claude (declarar em voz alta)
 - Plugin `@percus/review` indisponível — declarar e marcar TODO de "revisar retroativamente"
 
-### Kit Percus (`_Novo_Projeto/`) — sem exceção a R11
+### Kit Percus (`percus-kit/`) — sem exceção a R11
 
 O kit de iniciação (`${env:PERCUS_CANON_DIR}/`) segue R11 **como qualquer projeto** — mudanças nele (regras, templates, comandos, scripts, plugin, hooks) passam pelo mesmo gate de review cross-provider de qualquer commit.
 

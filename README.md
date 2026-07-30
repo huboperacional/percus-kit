@@ -68,7 +68,7 @@ Faça healthcheck deste projeto, conforme `${env:PERCUS_CANON_DIR}\comandos\HEAL
 ## Estrutura de pastas
 
 ```
-_Novo_Projeto/                       ← raiz do canon (canon + plugin = "percus-kit", versionados juntos)
+percus-kit/                          ← raiz do canon (canon + plugin = "percus-kit", versionados juntos)
 │
 ├── 00_LEIA_PRIMEIRO.md              ← roteamento e índice mestre
 ├── 01_REGRAS_INEGOCIAVEIS.md        ← regras universais (constituição Percus)

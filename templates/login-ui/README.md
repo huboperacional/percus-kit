@@ -74,4 +74,4 @@ Script faz steps 1-4 automaticamente.
 
 ## Versionamento
 
-Esta versão alinha-se ao canon Percus v6.8.0. Mudanças breaking em versões futuras serão refletidas em `_Novo_Projeto/CANON_VERSION.md`.
+Esta versão alinha-se ao canon Percus v6.8.0. Mudanças breaking em versões futuras serão refletidas em `percus-kit/CANON_VERSION.md`.

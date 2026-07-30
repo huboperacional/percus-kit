@@ -129,6 +129,6 @@ Apos sintese, mostre na conversa:
 
 ## Referencias
 
-- Spec: `_Novo_Projeto/06_CONSELHO_PERCUS.md` Modo 2.
+- Spec: `percus-kit/06_CONSELHO_PERCUS.md` Modo 2.
 - Registry: `providers/_registry.json`.
 - Logs: `.deepseek/council-log/`.

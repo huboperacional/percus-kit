@@ -2,7 +2,7 @@
 
 Regra do V2: **aditivo, não paralelo.** Nada é copiado do V1. O que não migrou é **apontado** daqui.
 
-Raiz do V1: `${env:PERCUS_CANON_DIR}` → `_Novo_Projeto/`
+Raiz do V1: `${env:PERCUS_CANON_DIR}` → `percus-kit/`
 
 | Assunto | Onde está (V1) | Migra quando |
 |---|---|---|

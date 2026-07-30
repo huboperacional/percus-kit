@@ -100,7 +100,7 @@ alembic upgrade head
 Ciclo CRUD testado: **criar → F5 → editar → F5 → deletar → F5**, tudo persistindo no banco.
 Build passando não conta. Tela abrindo não conta. Endpoint OK no Postman não conta.
 
-Detalhes em `01_REGRAS_INEGOCIAVEIS.md` R1 (na pasta `_Novo_Projeto`).
+Detalhes em `01_REGRAS_INEGOCIAVEIS.md` R1 (na pasta `percus-kit`).
 
 ## Tracking de features
 
@@ -121,7 +121,7 @@ Auditoria em `docs/mock-audit.md`, atualizada toda sessão com frontend.
 
 ## Workflow obrigatório para features novas
 
-Ver `checklists/CHECKLIST_FEATURE_NOVA.md` (na pasta `_Novo_Projeto`).
+Ver `checklists/CHECKLIST_FEATURE_NOVA.md` (na pasta `percus-kit`).
 
 Resumo: brainstorming → plano → TDD → execução vertical [0]→[5-T] → `/percus-review:review` → commit.
 

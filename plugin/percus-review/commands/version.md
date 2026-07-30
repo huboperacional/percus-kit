@@ -20,11 +20,11 @@ Leia `${CLAUDE_PLUGIN_ROOT}/plugin.json`. Extraia:
 
 ## Passo 2 — Sincronia com o canon (se alcançável)
 
-O canon (`_Novo_Projeto`) é a fonte de verdade da versão. Tente localizá-lo:
+O canon (`percus-kit`) é a fonte de verdade da versão. Tente localizá-lo:
 
 1. Se `$env:PERCUS_CANON_DIR` está setado e existe, use-o.
-2. Senão, procure `D:\Claud Automations\_Novo_Projeto` (Windows) ou
-   `~/Claud Automations/_Novo_Projeto`.
+2. Senão, procure `D:\Claud Automations\percus-kit` (Windows) ou
+   `~/Claud Automations/percus-kit`.
 3. Se não achar, pule este passo (reporte "canon não alcançável — só versão do plugin").
 
 Achando o canon, leia:

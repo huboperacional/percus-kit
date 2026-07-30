@@ -163,10 +163,10 @@ Wiring canônico (ref: `CONSUMIR_AUTH_SERVICE.md` no canon + `CONSUMER_QUICKSTAR
 
 ## Referências
 
-- Guia hands-on: `_Novo_Projeto/CONSUMIR_AUTH_SERVICE.md`.
+- Guia hands-on: `percus-kit/CONSUMIR_AUTH_SERVICE.md`.
 - Manual completo: `auth-service/docs/CONSUMER_QUICKSTART.md` (read-only, cross-repo).
 - Padrão + auto-auditoria: `auth-service/docs/padrao-login-percus-conformidade.md` (read-only).
-- Canon: `_Novo_Projeto/PADRAO_AUTH_SERVICE.md` (B.2 early-202, B.4 identidade, B.5 whatsapp/check).
+- Canon: `percus-kit/PADRAO_AUTH_SERVICE.md` (B.2 early-202, B.4 identidade, B.5 whatsapp/check).
 - Regras: `01_REGRAS_INEGOCIAVEIS.md` (R7 cookies, R16 SSO, R17 magic, R19 identidade).
 - Skills irmãs: `security-audit` (service-side R14-R19), `cookie-audit` (R7).
 - Runner: `scripts/security_audit.py --checklist skills/auth-consumer/checklist.yaml --label auth-consumer`.

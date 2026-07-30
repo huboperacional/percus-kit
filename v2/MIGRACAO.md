@@ -4,12 +4,12 @@
 > Tudo que ainda não migrou **aponta para o V1** (a raiz deste repo) — não se copia nada.
 > Copiar é herdar a acumulação de 3.262 linhas que motivou o greenfield.
 
-**Casa canônica (desde 2026-07-20): `_Novo_Projeto/v2/`** — dobrado pra dentro do percus-kit
+**Casa canônica (desde 2026-07-20): `percus-kit/v2/`** — dobrado pra dentro do percus-kit
 pra pegar carona no `git pull` que já alcança as 10 máquinas. A pasta avulsa
 `_Novo_Projeto_V2/` virou arquivo histórico do experimento; não edite lá.
 
 **Binding nos projetos:** `PERCUS_CANON_V2_DIR` → aponte pra `<clone>/v2` (ex.:
-`D:/Claud Automations/_Novo_Projeto/v2`). A `PERCUS_CANON_DIR` continua na raiz.
+`D:/Claud Automations/percus-kit/v2`). A `PERCUS_CANON_DIR` continua na raiz.
 
 **V1 está CONGELADO** durante o piloto: sem feature nova lá. Correção de bug crítico, sim.
 

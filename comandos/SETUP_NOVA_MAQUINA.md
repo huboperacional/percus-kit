@@ -26,7 +26,7 @@ fase-introducao: v6.5.0
 
 ```powershell
 # 1. Escolher onde clonar o canon. Defaults sugeridos:
-#    - Operador principal (D: dedicado a projetos): D:\Claud Automations\_Novo_Projeto
+#    - Operador principal (D: dedicado a projetos): D:\Claud Automations\percus-kit
 #    - Outras máquinas: $env:USERPROFILE\percus-kit (= C:\Users\<você>\percus-kit)
 $canonDir = "$env:USERPROFILE\percus-kit"   # ajuste se quiser outro path
 
@@ -129,7 +129,7 @@ Se alguma estiver `MISSING`, volte ao passo correspondente do bootstrap.
 ## Anti-padrões
 
 - ❌ **Skip do reload de VS Code/PowerShell.** Env vars persistentes só carregam em processos **novos**. Sem reload, qualquer comando de projeto continua falhando com `MISSING`.
-- ❌ **Hardcode de `D:\Claud Automations\_Novo_Projeto` em comandos novos.** Todos os comandos do canon usam `${env:PERCUS_CANON_DIR}` desde v6.5.0 — siga o padrão.
+- ❌ **Hardcode de `D:\Claud Automations\percus-kit` em comandos novos.** Todos os comandos do canon usam `${env:PERCUS_CANON_DIR}` desde v6.5.0 — siga o padrão.
 - ❌ **Comitar `.env` com as keys** em qualquer repo. Keys ficam no User-scope, não em arquivos versionados.
 - ❌ **Esquecer de `git pull`** mensalmente — canon evolui, projetos consumidores ficam com refs antigas se você não atualiza.
 

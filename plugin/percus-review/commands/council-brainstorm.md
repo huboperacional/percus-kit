@@ -118,6 +118,6 @@ Brainstorm tipico tem 5-10 perguntas → custo total ~$0.01-0.02, latencia +20s 
 
 ## Referencias
 
-- Spec: `_Novo_Projeto/06_CONSELHO_PERCUS.md` Modo 4.
+- Spec: `percus-kit/06_CONSELHO_PERCUS.md` Modo 4.
 - Skill upstream: `superpowers:brainstorming`.
 - Logs: `.deepseek/council-log/<ts>-consult.jsonl`.

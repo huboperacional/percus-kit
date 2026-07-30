@@ -2,7 +2,7 @@
 # Template — Skill de domínio de projeto
 # Copiar para: skills/{domain-name}/SKILL.md
 # Baseado em: github.com/lucianfialho/gmp-cli (skills/ pattern)
-# Ref completo: _Novo_Projeto/comandos/SETUP_PROJECT_SKILLS.md
+# Ref completo: percus-kit/comandos/SETUP_PROJECT_SKILLS.md
 
 name: {skill-name}          # kebab-case, único dentro deste projeto
 version: 1.0.0

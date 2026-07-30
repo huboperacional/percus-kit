@@ -45,7 +45,7 @@ if [ -z "${PERCUS_SKIP_CATALOG_PUBLISH:-}" ]; then
   done < "$TRANSCRIPT"
 
   if [ $CATALOG_EDITED -eq 1 ] && [ -f "catalog-info.yaml" ]; then
-    PUBLISH_SCRIPT="/d/Claud Automations/_Novo_Projeto/plugin/percus-review/scripts/catalog_publish.py"
+    PUBLISH_SCRIPT="/d/Claud Automations/percus-kit/plugin/percus-review/scripts/catalog_publish.py"
     # Suporta tambem path Linux/macOS
     [ ! -f "$PUBLISH_SCRIPT" ] && PUBLISH_SCRIPT="$HOME/.claude-plugins/percus-tools/percus-review/scripts/catalog_publish.py"
     if [ -f "$PUBLISH_SCRIPT" ]; then

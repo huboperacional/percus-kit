@@ -125,7 +125,7 @@ Adicionar ao fim do `CLAUDE.md`:
 ## Skills locais do projeto (skills/)
 
 > Complementam o plugin percus-review com conhecimento específico deste projeto.
-> Ref: _Novo_Projeto/comandos/SETUP_PROJECT_SKILLS.md
+> Ref: percus-kit/comandos/SETUP_PROJECT_SKILLS.md
 
 - `skills/{domain}/SKILL.md` — {descrição 1 linha}
 - `skills/recipes/recipe-{workflow}/RECIPE.md` — {descrição}
@@ -167,7 +167,7 @@ git commit -m "feat(skills): adicionar skills/recipes/personas locais (padrão g
 - skills/recipes/recipe-{workflow}/RECIPE.md — {o que encadeia}
 - skills/personas/persona-{role}/PERSONA.md — {role}
 
-Ref: _Novo_Projeto/comandos/UPGRADE_ADICIONAR_SKILLS.md (v6.18.0)"
+Ref: percus-kit/comandos/UPGRADE_ADICIONAR_SKILLS.md (v6.18.0)"
 ```
 
 ---

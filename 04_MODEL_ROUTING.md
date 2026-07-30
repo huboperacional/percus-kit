@@ -332,8 +332,8 @@ Marker pro Agent tool dispatch passa a incluir bloco `---MODEL-HINT---<model>---
 
 ## Referências cruzadas
 
-- Wrapper implementador: `_Novo_Projeto/scripts/deepseek-impl.ps1` + `.sh`
-- Wrappers reviewer auto-trigger: `_Novo_Projeto/scripts/percus-review-auto.{ps1,sh}` + `percus-milestone-review-auto.{ps1,sh}`
+- Wrapper implementador: `percus-kit/scripts/deepseek-impl.ps1` + `.sh`
+- Wrappers reviewer auto-trigger: `percus-kit/scripts/percus-review-auto.{ps1,sh}` + `percus-milestone-review-auto.{ps1,sh}`
 - Regra: `01_REGRAS_INEGOCIAVEIS.md` R13
 - Revisor cross-provider: `comandos/SETUP_REVIEW_ROUTING.md` + R11
 - Design (não-DeepSeek): `comandos/DESIGN_WORKFLOW.md`

@@ -16,7 +16,7 @@ ultima-atualizacao: 2026-05-02
 
 ## Objetivo
 
-Habilitar o **DeepSeek V4** como **implementador delegado** para tarefas de implementação mecânica (scaffolding, refactor, boilerplate). Saída do DeepSeek é sempre revisada por Claude e pelo revisor cross-provider (R11) antes de virar commit. Detalhes em `_Novo_Projeto/04_MODEL_ROUTING.md`.
+Habilitar o **DeepSeek V4** como **implementador delegado** para tarefas de implementação mecânica (scaffolding, refactor, boilerplate). Saída do DeepSeek é sempre revisada por Claude e pelo revisor cross-provider (R11) antes de virar commit. Detalhes em `percus-kit/04_MODEL_ROUTING.md`.
 
 **Escopo da Fase 2:** DeepSeek **NÃO** decide arquitetura, **NÃO** entra em pasta sensível (auth/payment/migrations). Só executa plano explícito em arquivos nomeados.
 
@@ -192,8 +192,8 @@ Próximos passos:
 
 ## Referências
 
-- **Playbook operacional:** `_Novo_Projeto/04_MODEL_ROUTING.md` (matriz + 6 passos do "Como delegar")
-- **Regra:** `_Novo_Projeto/01_REGRAS_INEGOCIAVEIS.md` R13
-- **Wrapper:** `_Novo_Projeto/scripts/deepseek-impl.ps1` + `.sh`
-- **Revisor cross-provider (DeepSeek+Cross-Claude):** `_Novo_Projeto/comandos/SETUP_REVIEW_ROUTING.md` + R11
+- **Playbook operacional:** `percus-kit/04_MODEL_ROUTING.md` (matriz + 6 passos do "Como delegar")
+- **Regra:** `percus-kit/01_REGRAS_INEGOCIAVEIS.md` R13
+- **Wrapper:** `percus-kit/scripts/deepseek-impl.ps1` + `.sh`
+- **Revisor cross-provider (DeepSeek+Cross-Claude):** `percus-kit/comandos/SETUP_REVIEW_ROUTING.md` + R11
 - **API DeepSeek:** https://api.deepseek.com (modelo: `deepseek-chat` = V3.1/V4)

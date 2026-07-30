@@ -62,5 +62,5 @@ Hook `pre-plan-exit` (instalado por plugin v6.1.0+) intercepta `ExitPlanMode` qu
 
 ## Referencias
 
-- Spec: `_Novo_Projeto/06_CONSELHO_PERCUS.md` Modo 3.
+- Spec: `percus-kit/06_CONSELHO_PERCUS.md` Modo 3.
 - Hook: `hooks/pre-plan-exit.{ps1,sh}`.

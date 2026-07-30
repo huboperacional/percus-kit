@@ -5,7 +5,7 @@ Skill: tracking-audit. Decisao Opcao C (hibrido grep + E2E condicional, threshol
 explicito) validada por conselho 3-membros
 (Painel/.deepseek/council-log/20260516-174848-consult.jsonl).
 
-Spec dos 15 campos: D:\\Claud Automations\\_Novo_Projeto\\03_TRACKING_ATTRIBUITION.md.
+Spec dos 15 campos: D:\\Claud Automations\\percus-kit\\03_TRACKING_ATTRIBUITION.md.
 
 Threshold explicito:
     TOTAL >= 80% AND helper_detectado AND migration_ok => PASS

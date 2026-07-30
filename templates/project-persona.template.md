@@ -2,7 +2,7 @@
 # Template — Persona de agente especializado
 # Copiar para: skills/personas/persona-{role}/PERSONA.md
 # Baseado em: github.com/lucianfialho/gmp-cli (skills/persona-* pattern)
-# Ref completo: _Novo_Projeto/comandos/SETUP_PROJECT_SKILLS.md
+# Ref completo: percus-kit/comandos/SETUP_PROJECT_SKILLS.md
 
 name: persona-{role}        # kebab-case; prefix "persona-" obrigatório
 version: 1.0.0
