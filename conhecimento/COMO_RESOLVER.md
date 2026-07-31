@@ -17,6 +17,13 @@
 
 ## Índice
 
+- [Ferramenta de monitoramento roda INERTE com os testes verdes: `source` de outro script clobrou o entry point](#source-clobra-entry-point)
+- [Como saber se um cron/monitor MORREU: batimento periódico não serve — só dead-man's switch](#deadman-switch-nao-batimento)
+- [Auditar SPA em produção de fora: bata na ROTA INTERNA, nunca em `/`](#auditar-spa-rota-interna)
+- [Lição escrita em prosa não impede reincidência — o conserto tem que morar num gate](#licao-em-prosa-reincide)
+- [Alarme falso treina todo mundo a ignorar o alarme de verdade](#alarme-falso-mata-o-alarme)
+- [O aviso promete o que o gate não entrega (promessa e decisão em módulos diferentes)](#promessa-e-decisao-separadas)
+- [Mock de função de BANCO no arquivo de mocks de REDE → erro que não fala do seu problema](#mock-de-banco-em-arquivo-de-rede)
 - [Parser de "1/2" nascido numa pergunta numerada lê quantidade como sim/não no texto livre](#token-lista-numerada-vaza)
 - [Fact-check da review marca finding REAL como "INFUNDADO" porque não conseguiu verificar](#fact-check-infundado-e-nao-verificado)
 - [Review volta vazia parecendo limpa: o revisor ABORTOU por causa de um binário no diff](#revisor-aborta-com-binario)
@@ -3569,3 +3576,176 @@ que não aponta pra aspas em lugar nenhum — parece erro de schema.
   **parâmetros** (`$1`, `$2` no asyncpg / `%s` no psycopg) ou use aspas duplas no Python.
 - **Sintoma-assinatura:** o banco reclama de uma **coluna com o nome do seu valor**. Se o "nome da
   coluna" do erro é um dado seu, são as aspas.
+
+---
+
+## Lição escrita em prosa não impede reincidência — o conserto tem que morar num gate {#licao-em-prosa-reincide}
+
+`tags: e2e, playwright, teste que escreve em producao, afterEach, globalTeardown, cleanup, licao aprendida, post-mortem, reincidencia, dado de cliente, lixo de teste`
+
+**Origem:** Família Milionária, 2026-07-28 → 2026-07-31 (a mesma falha, duas vezes, a segunda pior).
+
+Em 28/07 o e2e autenticado deixou lixo em produção e o post-mortem registrou a lição certa: *"spec de
+CRUD contra prod precisa de cleanup em `afterEach`, não no fim do corpo do teste"*. O lixo foi
+limpo. **Em 31/07 aconteceu de novo, maior**: 62 lançamentos falsos somando R$ 162.000 na conta do
+operador, contra R$ 84.000 de dado real — e **56 deles nem foram criados pelo teste**, foram
+materializados pelo scheduler a partir de 4 recorrências que sobreviveram a um teste vermelho.
+
+A lição estava escrita e mesmo assim reincidiu, porque **dependia de alguém lembrar**.
+
+- **A regra:** quando a mesma falha reincide, não reescreva a lição — mude o lugar dela. Cleanup
+  pertence ao **config** (`globalTeardown`, que roda passando ou falhando e cobre até spec que ainda
+  não existe), não a um hábito por spec. Doc não é enforcement.
+- **Ordem importa no sweep:** apague o **template de recorrência ANTES** dos lançamentos. Enquanto o
+  template vive, o scheduler repõe o que você acabou de apagar.
+- **O filtro que autoriza apagar em produção é o código mais perigoso do repo** — isole numa função
+  própria, com teste próprio, afirmando contra os **nomes REAIS** do banco. Use `startsWith`, não
+  `includes`: é a diferença entre limpar teste e destruir dado de cliente.
+- **Sintoma-assinatura:** o dashboard do dono mostra dado com prefixo de teste; o volume do lixo
+  supera o real; e a conta "cresce sozinha" entre rodadas (é recorrência materializando).
+- **A doença por trás do sintoma:** suíte autenticada apontando pra **produção** com token de gente
+  real. Cleanup é curativo; usuário de teste em faixa reservada é a cura.
+
+---
+
+## Alarme falso treina todo mundo a ignorar o alarme de verdade {#alarme-falso-mata-o-alarme}
+
+`tags: playwright, globalTeardown, config.projects, --project, falso positivo, ruido, storageState, mtime, deteccao de rodada`
+
+**Origem:** Família Milionária, 2026-07-31 — pego na própria verificação do fix acima.
+
+A 1ª versão do teardown gritava *"🚨 ficou lixo em PRODUÇÃO"* ao fim de uma rodada
+`--project=publico`, que **não cria nada**. Um alerta que dispara quando não há problema treina o
+time a ignorá-lo — e foi assim que uma suíte morta passou 3 semanas despercebida.
+
+- **Gotcha concreto:** `config.projects` no `globalTeardown` **NÃO** é filtrado por `--project` —
+  numa rodada `--project=publico` ele ainda lista o `chromium`. Não serve pra saber o que rodou.
+- **O sinal honesto:** o **mtime do `storageState`**. Só o `auth.setup` o escreve, e só o projeto
+  autenticado depende dele; reescrito depois que o processo subiu = a rodada autenticada aconteceu
+  agora. De quebra separa token expirado **antes** (nada rodou, nada criado) de expirado **no meio**
+  (aí há lixo órfão, e o alarme é legítimo).
+- **A regra:** antes de escrever um alerta, pergunte "quando ele dispara sem haver problema?". Se a
+  resposta não for "nunca", ele nasce ruidoso e morre ignorado.
+
+---
+
+## O aviso promete o que o gate não entrega (promessa e decisão em módulos diferentes) {#promessa-e-decisao-separadas}
+
+`tags: feature que mente, copy, enforcement, gate, bonus, acesso, paywall, billing, admin, classe de defeito`
+
+**Origem:** Família Milionária — bot em 28/07, billing em 31/07. A **mesma classe**, em camadas diferentes.
+
+O painel admin tinha um botão *bonificar* que estendia `familias.acesso_bonus_ate` e mandava no
+WhatsApp *"🎁 sua família ganhou N meses de acesso bônus"*. Mas o **único** gate de acesso
+(`familiaTemAcesso`, usado pelo 402 da API e pelo paywall do bot) lia só `Subscription.status`. O
+campo era enfeite na listagem do admin. O usuário recebia a promessa e continuava bloqueado.
+
+Três dias antes, no bot: o card dizia *"me diz o que tá errado pra eu corrigir"* e o handler só sabia
+corrigir 3 dos 5 campos.
+
+- **Onde procurar essa classe:** todo lugar que **escreve uma promessa** (copy, aviso, card, e-mail)
+  sem que o mesmo commit toque o código que **decide**. Quando promessa e decisão moram em módulos
+  diferentes (admin escreve, billing decide), nada acusa a divergência — nem tipo, nem teste.
+- **Agravante:** o model até documentava a verdade (*"overlay visual — não altera a subscription"*),
+  enquanto o texto ao usuário dizia o contrário. **Comentário honesto não conserta aviso mentiroso.**
+- **Teste que pega:** afirme o EFEITO, não a escrita. "Depois de bonificar, o usuário CONSEGUE
+  escrever" — não "o campo foi gravado".
+
+---
+
+## Mock de função de BANCO no arquivo de mocks de REDE → erro que não fala do seu problema {#mock-de-banco-em-arquivo-de-rede}
+
+`tags: pytest, fixture, mock, outbound, FOREIGN KEY constraint failed, sqlite, uuid fake, harness de teste, erro enganoso`
+
+**Origem:** Família Milionária, 2026-07-29 — mordeu 7 arquivos de teste antes de alguém arrumar a causa.
+
+`tests/harness/outboundPatches.py` existe pra mockar o que sai pra **rede**. Alguém pôs ali
+`catService.getOutrosId` — que é uma função de **banco** — devolvendo um UUID fixo
+(`00000000-…-0001`) que não existe como linha. Resultado: todo teste que gravasse a entidade morria
+com `FOREIGN KEY constraint failed`, um erro que **não menciona categoria nenhuma**.
+
+Cada um dos 6 arquivos anteriores contornou localmente (re-mockando pro id real) em vez de remover o
+mock. E um deles chegou a **abrir mão de uma asserção** por causa disso — a armadilha custou
+cobertura, não só tempo.
+
+- **A regra:** arquivo de mocks tem um escopo declarado. Função que não bate com o escopo não entra —
+  e quando o contorno local aparece pela 2ª vez, o problema é a causa, não o contorno.
+- **Sintoma-assinatura:** erro de integridade referencial que não cita a entidade que você está
+  criando + vários arquivos de teste com o mesmo `monkeypatch` defensivo copiado.
+
+---
+
+## Ferramenta de monitoramento roda INERTE com os testes verdes: `source` de outro script clobrou o entry point {#source-clobra-entry-point}
+
+`tags: bash, source, shell, funcao sobrescrita, main, monitor inerte, cron, teste unitario passa, falso verde, colisao de nomes`
+
+**Origem:** auth-service, 2026-07-30 — o vigia de CORS subiu quebrado e só apareceu ao rodar na VPS.
+
+`cors-watch.sh` faz `. cors-smoke.sh` no fim (pra reusar uma função) e **depois** chama `main`. Só
+que os dois arquivos definiam `main()`. Como o `source` vem **depois** das definições, a `main` do
+smoke sobrescreveu a do watch: o cron rodava o smoke e ia embora — **sem estado, sem alerta, sem
+log**. Os 20 testes unitários passavam porque carregam **só** o watch, onde não há colisão.
+
+- **A regra:** script que faz `source` de outro é dono de um namespace compartilhado. Nome genérico
+  (`main`, `log`, `init`, `run`, `cleanup`) é colisão esperando acontecer — prefixe o entry point
+  (`watch_main`) e **teste a ausência de colisão**, não só o comportamento.
+- **O assert que pega a classe inteira** (não só a ocorrência):
+  ```sh
+  _funcs_of() { bash -c 'set +u; source "$1" >/dev/null 2>&1; declare -F' _ "$1" | awk '{print $3}' | sort; }
+  comm -12 <(_funcs_of a.sh) <(_funcs_of b.sh)   # tem que sair VAZIO
+  ```
+- **Sintoma-assinatura:** o script "roda" (exit 0) e produz a saída do arquivo **sourceado**, mas
+  nenhum efeito colateral próprio (arquivo de estado não criado, log próprio ausente).
+- **Lição de método:** teste unitário que carrega um só arquivo **não** exercita o wiring. Rode a
+  ferramenta pelo caminho real (o do cron) antes de chamar de pronta.
+
+---
+
+## Como saber se um cron/monitor MORREU: batimento periódico não serve — só dead-man's switch {#deadman-switch-nao-batimento}
+
+`tags: cron, watchdog, monitor, heartbeat, batimento, dead man switch, silencio, alerta, quem vigia o vigia, observabilidade`
+
+**Origem:** auth-service, 2026-07-30/31 — desenho corrigido pelo time Micro Investors antes de virar código.
+
+Um monitor que só fala quando algo quebra tem um modo de falha invisível: **monitor morto e monitor
+saudável são indistinguíveis**, porque os dois são silenciosos. Um `crontab -e` distraído, ou um
+`git pull` de deploy abortando em working tree suja, e ninguém sabe.
+
+**A correção intuitiva está errada.** "O monitor manda um resumo periódico (vivo, N ciclos)" **não**
+resolve: se ele morre, o resumo simplesmente **não chega** — e "não chegou nada" é indistinguível de
+"semana tranquila". Move o problema de *silêncio parece saúde* para *silêncio parece saúde, com mais
+passos*.
+
+- **O desenho que funciona (dead-man's switch):** o monitor **carimba** (arquivo, chave, endpoint) e
+  **outro processo** alerta quando o carimbo passa da validade.
+- **Por quê:** alertar na **presença** de um evento falha aberto (evento não veio = silêncio);
+  alertar na **ausência** exige alguém contando o tempo — é o único desenho em que **morrer gera
+  sinal**.
+- **Regra dura:** quem alerta tem que ser processo **diferente** do que pode morrer. O monitor
+  auto-verificando-se é justamente o processo que pode não estar rodando.
+- **Implementação barata:** um watchdog que já existe checa o `mtime` do arquivo de estado
+  (`age > 3 ciclos` = morto). Não crie infra nova — e **peça** ao dono do watchdog em vez de editar
+  a ferramenta de outro produto.
+
+---
+
+## Auditar SPA em produção de fora: bata na ROTA INTERNA, nunca em `/` {#auditar-spa-rota-interna}
+
+`tags: SPA, deploy, 404, chunks, bundle, landing page, Next.js, Vite, auditoria externa, curl, falso alarme`
+
+**Origem:** auth-service → Micro Investors, 2026-07-31 — quase virou alarme de "produção fora do ar".
+
+Ao conferir se um fix está no ar, testei `https://app2.<produto>.com/` e achei **os 12 chunks JS
+retornando 404**. Conclusão aparente: app quebrado. Errado — `/` era uma **landing Next.js** (SSR,
+por isso o conteúdo aparecia) e o app é um **SPA Vite em `/dashboard`**, cujos 6 assets resolvem
+`200` normalmente. Dois apps no mesmo host, roteados por path.
+
+- **A regra:** o host raiz frequentemente não é o app. Bata em rota que só existe logado
+  (`/dashboard`, `/app`) e confira o **shell** que volta (SPA costuma ser um HTML de ~1-2 KB com
+  `<div id="root">`).
+- **Sinal de que você está na página errada:** HTML grande com muito texto renderizado (SSR/marketing)
+  + chunks que não resolvem; ou `_next/image` respondendo 200 enquanto `_next/static/*` dá 404.
+- **Antes de alarmar outro time:** repita com User-Agent de browser, em coletas consecutivas, e
+  cheque um segundo host/rota. Alarme falso custa credibilidade — ver [#alarme-falso-mata-o-alarme].
+- **Complementar:** pra auditar o **código** de outro repo use a ref publicada
+  ([#auditar-outro-repo-ref-publicada]); pra auditar o que está **no ar**, use a rota interna.
