@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.34.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.34.1`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
 >
@@ -18,6 +18,22 @@
 > onde os gates de commit leem.
 >
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
+
+---
+
+## Changelog v6.34.1 — 2026-07-31
+
+**A versão aparece no painel de plugins.** As `description` do `plugin.json` e da entrada no
+`marketplace.json` passam a abrir com `v<versão> | …`. Pedido do operador: o painel do VSCode mostra
+só a description, então não havia como saber qual versão estava instalada sem abrir arquivo.
+
+Duplicar dado é convite para drift, então a duplicação vem amarrada: `version-alignment.tests.ps1`
+passa a exigir que **as duas descriptions comecem com a versão atual**. Bumpar e esquecer de
+atualizar vira falha vermelha, não divergência silenciosa — número errado no painel seria pior que
+número nenhum, porque número errado parece informação.
+
+O que continua fora da description é o **changelog**, que vive só aqui (R25, single-source). Número
+de versão não é changelog.
 
 ---
 

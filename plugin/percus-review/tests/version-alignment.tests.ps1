@@ -44,6 +44,27 @@ Describe "versao do kit — os 4 arquivos concordam" {
         $entry.version | Should -Be $script:pluginVersion -Because "esta versao vira o NOME DA PASTA no install; atrasada, o republish nasce errado"
     }
 
+    It "as DESCRICOES comecam com a versao atual -- e o que aparece no painel de plugins" {
+        # A versao passou a abrir a description porque o painel de plugins do VSCode mostra so a
+        # description: sem ela, nao da pra saber qual versao esta instalada sem abrir arquivo.
+        #
+        # Duplicar dado e convite pra drift, e por isso este It existe: bumpar e esquecer de
+        # atualizar a description vira falha VERMELHA, nao divergencia silenciosa. Sem esta
+        # amarra, a melhoria viraria uma mentira no painel -- pior que nao ter numero nenhum,
+        # porque numero errado parece informacao.
+        #
+        # O que NAO entra na description continua nao entrando: o changelog vive so no
+        # CANON_VERSION.md (R25, single-source). Numero da versao nao e changelog.
+        if (-not $script:canonRoot) { Set-ItResult -Skipped -Because "rodando fora do repo do canon"; return }
+
+        $pj = Get-Content (Join-Path $script:canonRoot "plugin\percus-review\plugin.json") -Raw | ConvertFrom-Json
+        $pj.description | Should -BeLike "v$($script:pluginVersion) |*" -Because "plugin.json: a description tem que abrir com a versao atual"
+
+        $mk = Get-Content (Join-Path $script:canonRoot ".claude-plugin\marketplace.json") -Raw | ConvertFrom-Json
+        $entry = @($mk.plugins) | Where-Object { $_.name -eq "percus-review" } | Select-Object -First 1
+        $entry.description | Should -BeLike "v$($script:pluginVersion) |*" -Because "marketplace.json: e ESTA a description que o painel de plugins mostra"
+    }
+
     It ".percus-version tem a MESMA versao do plugin.json" {
         if (-not $script:canonRoot) { Set-ItResult -Skipped -Because "rodando fora do repo do canon"; return }
         (Get-Content (Join-Path $script:canonRoot ".percus-version") -Raw).Trim() |
