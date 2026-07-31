@@ -17,6 +17,8 @@
 
 ## Índice
 
+- [Guarda de ação externa barra o COMMIT porque a MENSAGEM cita a ação](#guarda-casa-a-mensagem-nao-a-acao)
+- [Hook que sai 0 não consegue avisar ninguém: stderr e stdout são invisíveis no caminho de sucesso](#hook-que-sai-zero-nao-avisa)
 - [Guard CERTO sem caminho alternativo produz o OPOSTO do que protege](#guard-sem-caminho-alternativo)
 - [Teste que passa EM CIMA do defeito: o exemplo escolhido é o único em que o bug não aparece](#teste-passa-em-cima-do-defeito)
 - [Rótulo curto casa DENTRO de outra palavra e escolhe a coisa errada (no caminho do dinheiro)](#rotulo-casa-dentro-de-palavra)
@@ -4089,3 +4091,68 @@ em `D:\Claud Automations\tiatendo\CONTEXT.md`; commits `5c8363f` (5 guards de um
 `4f369ca` (zonas de entrega). Irmãos: [#guarda-destrutiva-testar-com-perguntas],
 [#fail-open-esconde-teste-vacuo], [#guarda-redundante-tesoura-ou-morta],
 [#degrade-gracioso-esconde-noauth], [#provider-none-vira-entrega], [#gate-confirmacao-dead-end].
+
+---
+
+## Guarda de ação externa barra o COMMIT porque a MENSAGEM cita a ação {#guarda-casa-a-mensagem-nao-a-acao}
+
+`tags: hook, PreToolUse, external-action-guard, R20, push, commit, heredoc, mensagem de commit, falso positivo, matcher, tool_input.command, bloqueio inesperado, uso vs mencao`
+
+**Origem:** percus-kit, 2026-07-31 — um `git commit` foi barrado por uma guarda de push. E depois,
+para fechar o círculo, ela barrou também a **escrita deste verbete**, porque o texto aqui contém o
+literal que ela casa.
+
+O `external-action-guard` casa padrões (push, `gh pr comment`, `slack-cli`, …) contra
+`tool_input.command`, que é a **string inteira** do comando — o corpo do heredoc de `-F -` incluído.
+Uma mensagem de commit que *descreve* uma ação externa é, para a guarda, indistinguível de
+*executar* uma. Falar sobre a ação vira fazer a ação.
+
+- **Sintoma:** commit bloqueado com `BLOCK (R20)`, e o campo `Comando:` do erro mostra o corpo
+  inteiro da mensagem, não um comando externo.
+- **Contorno imediato:** reformular ("a mesma ação externa barrada pela tool Bash" em vez do literal),
+  ou escrever o arquivo pelo editor em vez de heredoc no shell. O commit é legítimo; quem está
+  errado é o casamento.
+- **A regra geral:** guarda que casa por regex na linha de comando inteira não distingue **uso** de
+  **menção**. Vale para qualquer payload que carregue prosa: `-F -`, `<<EOF`, `-m "..."`. O conserto
+  de verdade é casar só o **comando efetivo**, não o corpo.
+- **Por que passa despercebido até morder:** o bloqueio parece correto à primeira vista — a string
+  *está* ali. Só relendo o `Comando:` inteiro fica claro que ela está dentro do texto.
+
+**Relacionado:** [#fail-open-esconde-teste-vacuo] — o par simétrico: lá a guarda não vê o que devia,
+aqui ela vê o que não é.
+
+---
+
+## Hook que sai 0 não consegue avisar ninguém: stderr e stdout são invisíveis no caminho de sucesso {#hook-que-sai-zero-nao-avisa}
+
+`tags: hook, PreToolUse, exit 0, stderr, stdout, invisivel, aviso que ninguem le, SessionStart, health check, Claude Code, settings.json, canal visivel, bash, auto-lockout`
+
+**Origem:** percus-kit, 2026-07-31 — medido com sondas, ao desenhar um fallback "barulhento" que
+teria sido barulho no vácuo.
+
+Duas sondas registradas no mesmo evento `PreToolUse`, uma escrevendo em **stderr** e outra em
+**stdout**, ambas saindo **0**. A chamada seguinte rodou normal e **nenhuma das duas apareceu** — nem
+na saída da ferramenta, nem como aviso. Só a terceira sonda, que escrevia num arquivo, deixou rastro.
+
+| Caminho | A saída aparece? |
+|---|---|
+| hook `PreToolUse` que sai **0** | **não** — nem stderr, nem stdout |
+| hook `PreToolUse` que sai **2** | sim (é como um BLOCK se mostra) |
+| hook `SessionStart` | sim (é como um gate de início se mostra) |
+
+- **A regra:** aviso no caminho de sucesso **não existe**. Se um hook precisa dizer algo sem
+  bloquear, o lugar é `SessionStart` (ou um arquivo que alguém leia depois), nunca uma escrita antes
+  de um `exit 0`.
+- **Como isso vira bug:** você escreve o aviso, confere lendo o código, conclui que "avisa", e o
+  usuário nunca vê. Pior que não avisar — porque você para de procurar outro canal.
+- **Como confirmar em 2 min:** registre duas sondas triviais (uma em stderr, outra em stdout, ambas
+  `exit 0`) no `settings.json` do projeto e dispare uma ferramenta. Mudança em `settings.json` de
+  projeto vale na hora, sem reiniciar a sessão.
+- **Atenção:** o shell que executa o `command` de um hook (nesta máquina) é **`/usr/bin/bash`**, não
+  PowerShell nem cmd — a doc oficial diz PowerShell no Windows e não foi o observado. Sonda em
+  sintaxe errada devolve erro de sintaxe do bash, e `command` malformado sai não-zero, o que em
+  `PreToolUse` **bloqueia a ferramenta inteira** (auto-lockout observado; a saída é por uma tool que
+  o matcher não cubra).
+
+**Relacionado:** [#plugin-cache-nao-recebe-fix] — o mesmo desenho de "parece que está ligado e não
+está", uma camada abaixo.
