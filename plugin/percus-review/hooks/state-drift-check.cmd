@@ -1,3 +1,11 @@
 @echo off
 if "%PERCUS_HOOKS_DISABLED%"=="1" exit /b 0
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0state-drift-check.ps1"
+set "PERCUS_HOOK_PS1=%~dp0state-drift-check.ps1"
+if not defined PERCUS_CANON_DIR goto :percus_roda
+if not exist "%PERCUS_CANON_DIR%\plugin\percus-review\hooks\state-drift-check.ps1" goto :percus_roda
+set "PERCUS_HOOK_PS1=%PERCUS_CANON_DIR%\plugin\percus-review\hooks\state-drift-check.ps1"
+:percus_roda
+set "PERCUS_HOOK_TAM=999999"
+for %%A in ("%PERCUS_HOOK_PS1%") do if not "%%~zA"=="" set "PERCUS_HOOK_TAM=%%~zA"
+if %PERCUS_HOOK_TAM% LSS 200 exit /b 1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PERCUS_HOOK_PS1%"

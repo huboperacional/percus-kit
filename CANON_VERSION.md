@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.32.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.33.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
 >
@@ -18,6 +18,71 @@
 > onde os gates de commit leem.
 >
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
+
+---
+
+## Changelog v6.33.0 — 2026-07-31
+
+**O código dos hooks passa a vir do kit. Fix de hook agora chega por `git pull`.**
+
+Os 11 wrappers `.cmd` ganharam um trampolim: quando `PERCUS_CANON_DIR` aponta para uma cópia de
+trabalho que tem o hook, é o `.ps1` **do kit** que executa; senão, cai no `.ps1` vizinho, como antes.
+Vale para os 11 — as 8 guardas e os 3 observadores —, porque aplicar só nas guardas seria a
+meia-correção que já deixou três delas mortas sem ninguém ver.
+
+**Mudança de comportamento a anunciar:** a partir desta versão, editar um `.ps1` em
+`plugin/percus-review/hooks/` no kit muda o comportamento na máquina **sem publicar nada**. Isso é o
+objetivo — e também significa que uma cópia de trabalho no meio de um rebase, ou numa branch errada,
+passa a valer.
+
+**`PERCUS_CANON_DIR` virou uma fronteira de confiança.** Quem controla essa variável passa a
+controlar qual código roda como enforcement nos 11 hooks. Diferente de `PERCUS_HOOKS_DISABLED`, que o
+canon exige declarar em voz alta, e dos escapes por hook, que são documentados um a um, apontar a
+variável para outra árvore troca o código das 8 guardas **em silêncio** — sem log, sem motivo
+declarado, sem aparecer no canário. Antes desta versão a superfície equivalente exigia escrita no
+diretório do plugin instalado; agora basta a variável de ambiente. É custo aceito, não efeito
+colateral esquecido: sem essa resolução não há entrega por `git pull`.
+
+**O que dimensiona esse custo:** quem consegue escrever nas variáveis de usuário da máquina já
+consegue setar `PERCUS_HOOKS_DISABLED=1` e desligar as três camadas de enforcement de uma vez — e já
+consegue executar código como você por vias que não passam por hook nenhum. A fronteira de confiança
+não é nova; ela é a **sessão do operador**, e sempre foi. O que muda é que agora ela também decide
+*qual* código de enforcement roda, não só *se* roda. Por isso a mitigação certa não é validar
+assinatura do `.ps1` (máquina nova, que precisaria ela própria ser provada): é o health check da
+Task 7 **dizer, no início de cada sessão, de onde o código veio** — tornando a troca visível em vez
+de tentar torná-la impossível.
+
+**O que o fail-closed cobre, e o que não cobre.** Kit com `.ps1` que não parseia **barra** (exit 2),
+e kit com `.ps1` vazio ou só-BOM também **barra** — os dois provados por teste. O segundo caso só
+apareceu porque `powershell.exe -File` de um arquivo de 0 bytes sai **0**: script vazio não é
+"quebrado" para o parser, é um script válido que não faz nada, e sem checagem a guarda traduziria
+isso em "aprovado". Daí o piso de 200 bytes no wrapper (o menor hook real tem 1883 bytes; um teste
+amarra essa folga). **Não coberto:** truncamento no meio do arquivo que ainda parseie. O resíduo é
+pequeno porque os 11 hooks têm o corpo inteiro dentro de um `try{...}catch{}` — truncar no meio
+deixa chave desbalanceada e cai no caminho de parse, que barra. Declarado por ser resíduo conhecido,
+não por ser impossível.
+
+Esta é a única publicação do plano 2. Depois dela, o canal de publicação deixa de ser o caminho por
+onde conserto de hook viaja.
+
+**O que sustenta isso:**
+
+- `hooks/hooks-manifest.json` — fonte única da verdade dos 11 hooks (evento, matcher, forma,
+  assinatura de stderr, escape) + o órfão `canon-version-check`, que existe em disco, tem teste
+  próprio e nunca esteve em registro nenhum. O `hooks.json` deixou de ser a fonte da verdade dos
+  testes porque é ele que a migração do registro esvazia.
+- `docs/superpowers/medicoes/2026-07-31-semantica-hooks-harness.md` — 11 itens de semântica do
+  harness medidos por observação, com a versão registrada junto, e `scripts/revalidar-medicao.ps1`
+  para gritar quando o ambiente mudar e a medição envelhecer.
+
+**Três coisas medidas que contrariam a documentação oficial e valem para quem escreve hook:**
+
+1. O shell que executa o `command` de um hook do `settings.json` nesta máquina é **`/usr/bin/bash`**
+   (Git Bash), não PowerShell. `${VAR}` expande por expansão de shell; `$env:VAR` e `%VAR%` não.
+2. **Saída de hook que sai 0 é invisível** — stderr e stdout. Só o caminho de bloqueio (`exit 2`) e o
+   `SessionStart` têm canal visível. Hook que "avisa" no caminho de sucesso não avisa ninguém.
+3. Hook de plugin e hook de `settings.json` **coexistem: os dois rodam**, concorrentes, e qualquer
+   `exit 2` bloqueia. Não há precedência.
 
 ---
 
