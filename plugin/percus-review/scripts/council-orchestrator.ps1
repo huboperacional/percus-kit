@@ -469,6 +469,22 @@ $logDir = Join-Path (Get-Location) ".deepseek\council-log"
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
 $logFile = Join-Path $logDir "$(Get-Date -Format 'yyyyMMdd-HHmmss')-$Mode.jsonl"
 
+# "providers_called" nao e "providers que responderam", e ler um pelo outro ja custou caro:
+# em 2026-07-31 o pre-mortem chamou 3 pernas, o DeepSeek voltou VAZIO e o Cross-Claude voltou
+# CORTADO, e os dois foram reportados como "ok" porque o HTTP tinha dado 200. Quem lesse o log
+# concluiria "3 perspectivas" quando havia uma. Os providers agora classificam a propria
+# resposta (ver providers/_resposta.ps1); aqui o agregado passa a DIZER a conta, em vez de
+# deixar quem le derivar dela.
+$usaveis   = @($responses | Where-Object { "$($_.status)" -ceq "ok" })
+$degradados = @($responses | Where-Object { "$($_.status)" -cne "ok" } | ForEach-Object {
+    "$($_.provider): $($_.status)$(if ($_.aviso) { " -- $($_.aviso)" })"
+})
+if ($degradados.Count -gt 0) {
+    [Console]::Error.WriteLine("[council-orchestrator] ATENCAO: $($usaveis.Count) de $($responses.Count) pernas responderam. Degradadas:")
+    foreach ($d in $degradados) { [Console]::Error.WriteLine("  - $d") }
+    [Console]::Error.WriteLine("  Perna vazia ou cortada NAO conta como perspectiva. Nao trate isto como consenso.")
+}
+
 $result = @{
     mode             = $Mode
     timestamp        = (Get-Date -Format 'o')
@@ -476,6 +492,8 @@ $result = @{
     system_prompt    = $SystemPrompt
     providers_called = $wanted
     responses        = $responses
+    respostas_usaveis = $usaveis.Count
+    respostas_degradadas = $degradados
     total_latency_ms = $totalLatency
     cross_claude_pending = ($wantsCrossClaude -and (-not $crossClaude))
     truncated        = $trunc.truncated

@@ -12,10 +12,11 @@ param(
     [string]$PromptFile,
     [string]$SystemPrompt = "Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos.",
     [double]$Temperature = 0.2,
-    [int]$MaxTokens = 1024,
+    [int]$MaxTokens = 2048,
     [string]$Model = "llama-3.3-70b-versatile",
     [string]$Endpoint = "https://api.groq.com/openai/v1/chat/completions"
 )
+. (Join-Path $PSScriptRoot "_resposta.ps1")
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -73,11 +74,16 @@ try {
     $content = $resp.choices[0].message.content
     $latency = [int]((Get-Date) - $start).TotalMilliseconds
 
+    # HTTP 200 nao quer dizer que houve resposta -- ver _resposta.ps1.
+    $cls = Get-StatusResposta -Conteudo $content -FinishReason $resp.choices[0].finish_reason -Usage $resp.usage
+    if ($cls.Aviso) { [Console]::Error.WriteLine("[groq-llama] $($cls.Aviso)") }
+
     @{
         provider   = "groq-llama"
         model      = $Model
-        status     = "ok"
+        status     = $cls.Status
         content    = $content
+        aviso      = $cls.Aviso
         latency_ms = $latency
         usage      = $resp.usage
     } | ConvertTo-Json -Depth 10 -Compress

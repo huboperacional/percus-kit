@@ -4,7 +4,7 @@ set -eo pipefail
 
 SYSTEM_PROMPT="Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
 TEMPERATURE="0.2"
-MAX_TOKENS="1024"
+MAX_TOKENS="2048"
 MODEL="llama-3.3-70b-versatile"
 ENDPOINT="https://api.groq.com/openai/v1/chat/completions"
 PROMPT_FILE=""

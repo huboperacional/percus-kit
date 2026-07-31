@@ -10,7 +10,7 @@ set -eo pipefail
 SYSTEM_PROMPT=""
 SYSTEM_PROMPT_EXPLICIT=0
 TEMPERATURE="0.2"
-MAX_TOKENS="1024"
+MAX_TOKENS="4096"
 MODEL="claude-sonnet-4-6"
 ENDPOINT="https://api.anthropic.com/v1/messages"
 PROMPT_FILE=""

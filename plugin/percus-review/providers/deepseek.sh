@@ -6,7 +6,7 @@ set -eo pipefail
 
 SYSTEM_PROMPT="Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
 TEMPERATURE="0.2"
-MAX_TOKENS="1024"
+MAX_TOKENS="8192"
 MODEL="deepseek-v4-pro"
 ENDPOINT="https://api.deepseek.com/v1/chat/completions"
 PROMPT_FILE=""

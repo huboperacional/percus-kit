@@ -40,12 +40,13 @@
 param(
     [string]$PromptFile,
     [string]$SystemPrompt,
-    [int]$MaxTokens = 1024,
+    [int]$MaxTokens = 4096,
     [string]$Model = "claude-sonnet-4-6",
     [string]$Endpoint = "https://api.anthropic.com/v1/messages",
     [ValidateSet("consult","review","pre-mortem","analyze")]
     [string]$Mode = "consult"
 )
+. (Join-Path $PSScriptRoot "_resposta.ps1")
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -134,10 +135,18 @@ try {
     $content = $resp.content[0].text
     $latency = [int]((Get-Date) - $start).TotalMilliseconds
 
+    # A API da Anthropic chama de stop_reason, e "max_tokens" e o equivalente de "length".
+    # Traduzido aqui pra o classificador ser um so pros tres providers. Medido em 2026-07-31:
+    # esta perna voltou CORTADA no meio da frase e mesmo assim foi reportada como "ok".
+    $finish = if ($resp.stop_reason -ceq "max_tokens") { "length" } else { "$($resp.stop_reason)" }
+    $cls = Get-StatusResposta -Conteudo $content -FinishReason $finish -Usage $resp.usage
+    if ($cls.Aviso) { [Console]::Error.WriteLine("[cross-claude] $($cls.Aviso)") }
+
     @{
         provider   = "cross-claude"
         model      = $resp.model
-        status     = "ok"
+        status     = $cls.Status
+        aviso      = $cls.Aviso
         content    = $content
         latency_ms = $latency
         usage      = @{
