@@ -127,7 +127,7 @@ Describe "wrapper .cmd tem a forma do seu evento" {
         Invoke-Wrapper -Cmd $bloqueia | Should -Be 2 -Because "o bloqueio que o PROPRIO hook decide emitir tem que sobreviver ao wrapper"
     }
 
-    It "TODOS os 11 wrappers .cmd tem a forma do SEU evento em hooks.json (8 guarda / 3 observador)" {
+    It "TODOS os 11 wrappers .cmd tem a forma do SEU evento no manifesto (8 guarda / 3 observador)" {
         # Os It anteriores provam o comportamento em UM wrapper de cada forma. Sem este, a
         # correcao poderia acertar so alguns dos 11 e a suite ficaria verde -- exatamente o tipo
         # de meia-correcao que deixou 3 guardas mortas sem ninguem ver.
@@ -135,23 +135,31 @@ Describe "wrapper .cmd tem a forma do seu evento" {
         # Aqui e inspecao de forma, e nao comportamento, de proposito: rodar os 11 wrappers de
         # verdade dispararia hook real (git, rede, escrita) como efeito colateral de teste.
         #
-        # A forma esperada e DERIVADA do evento declarado em hooks.json, nunca de uma lista de
-        # nomes escrita aqui: lista de nomes envelhece calada, e foi generalizar "todo wrapper e
-        # guarda" que trancou o stop e a compactacao. hooks.json e a mesma fonte que o harness le.
+        # A forma esperada e DERIVADA do evento declarado, nunca de uma lista de nomes escrita
+        # aqui: lista de nomes envelhece calada, e foi generalizar "todo wrapper e guarda" que
+        # trancou o stop e a compactacao.
+        #
+        # A fonte passou a ser hooks-manifest.json, e nao hooks.json, porque o hooks.json e
+        # justamente o arquivo que a migracao do registro ESVAZIA (Task 6 do plano 2). Se ele
+        # continuasse sendo a fonte, este It iria afirmando cada vez menos ate nao afirmar nada,
+        # em silencio, no ultimo commit da migracao -- a garantia de forma ficaria sem dono
+        # exatamente quando mais precisa existir.
         #
         # A assercao e POSITIVA (forma exata esperada) e nao negativa (ausencia de '-Command').
         # Medido: a versao negativa era furada -- '-c' e abreviacao valida de -Command e passava
         # verde, e '-File' seguido de 'exit /b 0' engole a falha igual. So a forma inteira,
         # linha a linha e com o nome do proprio arquivo no %~dp0, fecha essas frestas.
-        $hooksJson = Get-Content (Join-Path $script:hooksDir "hooks.json") -Raw | ConvertFrom-Json
+        $manifesto = Get-Content (Join-Path $script:hooksDir "hooks-manifest.json") -Raw | ConvertFrom-Json
+
+        # registrado=false e o orfao (canon-version-check): existe .ps1, nao existe .cmd. Entra
+        # no manifesto pra deixar de ser invisivel, e fica fora da conta dos wrappers.
+        $vivos = @($manifesto.hooks | Where-Object { $_.registrado })
 
         $evento = @{}
-        foreach ($ev in $hooksJson.hooks.PSObject.Properties) {
-            foreach ($matcher in @($ev.Value)) {
-                foreach ($h in @($matcher.hooks)) {
-                    if ($h.command -match '([^/\\"]+)\.cmd') { $evento[$matches[1]] = $ev.Name }
-                }
-            }
+        $formaDeclarada = @{}
+        foreach ($h in $vivos) {
+            $evento[$h.nome]         = $h.evento
+            $formaDeclarada[$h.nome] = $h.forma
         }
 
         $cmds = @(Get-ChildItem $script:hooksDir -Filter *.cmd | Sort-Object Name)
@@ -160,14 +168,20 @@ Describe "wrapper .cmd tem a forma do seu evento" {
         # e a migracao dos hooks pro settings.json (spec sec. 9) esvazia exatamente esta pasta.
         $cmds.Count | Should -Be 11 -Because "piso de contagem: It que passa vazio nao guarda nada"
 
-        # .cmd nao declarado em hooks.json nao tem evento -- e a forma dele seria ADIVINHADA.
+        # .cmd nao declarado no manifesto nao tem evento -- e a forma dele seria ADIVINHADA.
         # Adivinhar e o erro que este It existe pra impedir, entao aqui e falha, nao default.
         $orfaos = @($cmds | Where-Object { -not $evento.ContainsKey([IO.Path]::GetFileNameWithoutExtension($_.Name)) })
-        @($orfaos.Name) | Should -BeNullOrEmpty -Because "sem evento em hooks.json nao da pra saber se e guarda ou observador"
+        @($orfaos.Name) | Should -BeNullOrEmpty -Because "sem evento no manifesto nao da pra saber se e guarda ou observador"
+
+        # E o caminho inverso: hook declarado no manifesto sem .cmd em disco. Sem esta, apagar um
+        # wrapper passaria como "nao ha divergencia" -- ausencia lendo como acordo.
+        $semWrapper = @($vivos | Where-Object { -not (Test-Path (Join-Path $script:hooksDir ($_.nome + '.cmd'))) })
+        @($semWrapper.nome) | Should -BeNullOrEmpty -Because "manifesto declara hook registrado que nao tem wrapper em disco"
 
         $nGuarda = 0
         $nObservador = 0
         $fora = @()
+        $formaMentida = @()
         foreach ($c in $cmds) {
             $base = [IO.Path]::GetFileNameWithoutExtension($c.Name)
             $ev   = $evento[$base]
@@ -184,11 +198,22 @@ Describe "wrapper .cmd tem a forma do seu evento" {
                 $esperado += @('if %ERRORLEVEL%==0 exit /b 0', 'exit /b 2')
                 $nGuarda++
                 $forma = "GUARDA (evento $ev)"
+                $formaDerivada = 'guarda'
             } else {
                 # OBSERVADOR: sem traducao de codigo. .ps1 morto devolve 1 (grita, nao tranca) e
                 # o exit 2 que o proprio hook decide emitir passa direto e continua bloqueando.
                 $nObservador++
                 $forma = "OBSERVADOR (evento $ev)"
+                $formaDerivada = 'observador'
+            }
+
+            # O manifesto declara a forma E o evento. Se os dois discordarem, o manifesto esta
+            # mentindo -- e como ele e a fonte da verdade de tudo que vem depois (registro,
+            # canario, health check), mentira aqui se propaga calada. A forma continua sendo
+            # DERIVADA do evento; o campo declarado e conferido contra a derivacao, nunca usado
+            # no lugar dela.
+            if ($formaDeclarada[$base] -cne $formaDerivada) {
+                $formaMentida += ("{0}: manifesto declara forma='{1}' mas o evento '{2}' deriva '{3}'" -f $base, $formaDeclarada[$base], $ev, $formaDerivada)
             }
 
             $linhas = @((Get-Content $c.FullName) | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
@@ -203,6 +228,8 @@ Describe "wrapper .cmd tem a forma do seu evento" {
         # a forma mais provavel deste teste apodrecer, entao os dois numeros sao afirmados.
         $nGuarda     | Should -Be 8 -Because "8 wrappers de PreToolUse tem que estar na forma GUARDA"
         $nObservador | Should -Be 3 -Because "on-stop-check + state-drift-check (Stop) e pre-compact-checkpoint (PreCompact)"
+
+        @($formaMentida) | Should -BeNullOrEmpty -Because "manifesto com forma divergente do evento propaga classificacao errada pro registro, pro canario e pro health check:`n$($formaMentida -join "`n")"
 
         @($fora) | Should -BeNullOrEmpty -Because "wrapper na forma errada pro evento dele bloqueia o que nao devia, ou nao bloqueia o que devia:`n$($fora -join "`n`n")"
     }

@@ -1,0 +1,127 @@
+{
+  "_comentario": "FONTE UNICA DA VERDADE dos hooks de enforcement Percus. O hooks.json do plugin, a secao hooks do settings.json e os testes de forma de wrapper sao todos derivados ou verificados contra este arquivo. Existe porque a migracao do registro esvazia o hooks.json -- que hoje e a fonte da verdade do teste de forma -- e sem este manifesto a garantia ficaria sem dono no ultimo commit. Task 2 do plano 2.",
+  "versao_manifesto": 1,
+  "campos": {
+    "nome": "nome base; o wrapper e <nome>.cmd e o script e <nome>.ps1, irmaos no mesmo diretorio",
+    "evento": "evento do harness: PreToolUse | Stop | PreCompact | SessionStart",
+    "matcher": "matcher do registro vivo; null quando o evento nao usa matcher. Medido em 2026-07-31: matcher e case-sensitive e aceita alternancia (Bash|PowerShell)",
+    "forma": "guarda = wrapper traduz nao-zero em exit 2 (fail-closed). observador = wrapper repassa o codigo cru",
+    "assinatura": "string que o hook imprime em stderr quando age. E o que permite ao canario CONTAR execucoes em vez de so observar bloqueio -- comando bloqueado e comando bloqueado, nao se ve 'duas vezes'. Nao ha convencao unica: registrado como e, nao como deveria ser",
+    "escape": "env var que desliga so este hook; null quando so o escape geral PERCUS_HOOKS_DISABLED vale",
+    "registrado": "false = existe em disco e nao esta em nenhum registro vivo. Nao e erro: e visibilidade"
+  },
+  "escape_geral": "PERCUS_HOOKS_DISABLED",
+  "hooks": [
+    {
+      "nome": "pre-plan-exit",
+      "evento": "PreToolUse",
+      "matcher": "ExitPlanMode",
+      "forma": "guarda",
+      "assinatura": "[percus:hook pre-plan-exit]",
+      "escape": "PERCUS_PREMORTEM_OVERRIDE",
+      "registrado": true
+    },
+    {
+      "nome": "pre-commit-check",
+      "evento": "PreToolUse",
+      "matcher": "Bash",
+      "forma": "guarda",
+      "assinatura": "[percus:hook pre-commit]",
+      "escape": null,
+      "registrado": true
+    },
+    {
+      "nome": "mock-scan-pre-commit",
+      "evento": "PreToolUse",
+      "matcher": "Bash",
+      "forma": "guarda",
+      "assinatura": "[percus:hook mock-scan]",
+      "escape": "PERCUS_SKIP_MOCK_SCAN",
+      "registrado": true
+    },
+    {
+      "nome": "auth-import-pre-commit",
+      "evento": "PreToolUse",
+      "matcher": "Bash",
+      "forma": "guarda",
+      "assinatura": "[percus:hook auth-import]",
+      "escape": "PERCUS_SKIP_AUTH_IMPORT",
+      "registrado": true
+    },
+    {
+      "nome": "migration-check-pre-commit",
+      "evento": "PreToolUse",
+      "matcher": "Bash",
+      "forma": "guarda",
+      "assinatura": "[percus:hook migration-check]",
+      "escape": "PERCUS_SKIP_MIGRATION_CHECK",
+      "registrado": true
+    },
+    {
+      "nome": "types-check-pre-commit",
+      "evento": "PreToolUse",
+      "matcher": "Bash",
+      "forma": "guarda",
+      "assinatura": "[percus:hook types-check]",
+      "escape": "PERCUS_SKIP_TYPES_CHECK",
+      "registrado": true
+    },
+    {
+      "nome": "external-action-guard",
+      "evento": "PreToolUse",
+      "matcher": "Bash",
+      "forma": "guarda",
+      "assinatura": "[percus:hook external-action-guard]",
+      "escape": "PERCUS_EXTERNAL_OVERRIDE",
+      "registrado": true
+    },
+    {
+      "nome": "crud-evidence-warn",
+      "evento": "PreToolUse",
+      "matcher": "Bash",
+      "forma": "guarda",
+      "assinatura": "[percus:warn crud-evidence]",
+      "escape": "PERCUS_SKIP_CRUD_WARN",
+      "registrado": true,
+      "warn_only": true,
+      "_nota": "forma=guarda descreve o WRAPPER (fail-closed, derivado do evento PreToolUse), nao a politica do hook. Por logica propria ele NUNCA bloqueia: R2 diz warn-only e o .ps1 termina em catch { exit 0 }. So um PowerShell que falhasse ao nem iniciar acionaria o fail-closed do wrapper. Quem construir o canario (Task 5) e o health check (Task 7) sobre o campo forma nao pode inferir daqui que este hook esta autorizado a bloquear por regra de negocio."
+    },
+    {
+      "nome": "on-stop-check",
+      "evento": "Stop",
+      "matcher": null,
+      "forma": "observador",
+      "assinatura": "[percus:hook on-stop]",
+      "escape": "PERCUS_SKIP_HANDOFF",
+      "registrado": true
+    },
+    {
+      "nome": "state-drift-check",
+      "evento": "Stop",
+      "matcher": null,
+      "forma": "observador",
+      "assinatura": "[percus:hook state-drift]",
+      "escape": "PERCUS_SKIP_DRIFT_CHECK",
+      "registrado": true
+    },
+    {
+      "nome": "pre-compact-checkpoint",
+      "evento": "PreCompact",
+      "matcher": null,
+      "forma": "observador",
+      "assinatura": "[percus:PreCompact]",
+      "escape": "PERCUS_SKIP_PRECOMPACT",
+      "registrado": true
+    },
+    {
+      "nome": "canon-version-check",
+      "evento": "SessionStart",
+      "matcher": null,
+      "forma": "observador",
+      "assinatura": "[percus:hook canon-version]",
+      "escape": null,
+      "registrado": false,
+      "_nota": "ORFAO. Tem .ps1 e teste proprio, nao tem .cmd e nunca esteve em registro nenhum -- avisa sobre versao de canon divergente e nunca avisou ninguem. Listado aqui para deixar de ser invisivel; o evento declarado e a intencao, nao um registro vivo. A Task 7 decide se ele e absorvido pelo health check ou registrado."
+    }
+  ]
+}
