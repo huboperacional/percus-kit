@@ -46,6 +46,7 @@ o `renomear-kit-local.ps1` quebrou na mão do operador.
 | ~~`conhecimento/COMO_RESOLVER.md` com trabalho não-commitado de outra sessão~~ | ✅ **fechada** em `c156466`: índice + linha `tags:` para os 2 verbetes órfãos. O stash-por-commit acabou |
 | Env var do **processo** ≠ env var de **usuário** | A de usuário está certa (`percus-kit`); processos abertos antes do rename carregam o path morto e fazem `hardening-2026-05-18` falhar. Antes de rodar a suíte numa sessão antiga: `$env:PERCUS_CANON_DIR = [Environment]::GetEnvironmentVariable('PERCUS_CANON_DIR','User')` (idem `PERCUS_CANON_V2_DIR`) |
 | R11 (TTL 5 min) × conselho 3-membros | o dispatch do Cross-Claude leva ~5 min e **sozinho estoura o TTL** do review que o pediu. Na prática: rode a suíte **antes** do review, e commite imediatamente depois dele |
+| `PreToolUse` só enxerga a tool `Bash` — a tool `PowerShell` passa livre | **7 hooks**, não um: `hooks.json:15` tem matcher `"Bash"` e sob ele estão `pre-commit-check`, `mock-scan-pre-commit`, `auth-import-pre-commit`, `migration-check-pre-commit`, `types-check-pre-commit`, `external-action-guard` e `crud-evidence-warn`. Todos são invisíveis pro caminho PowerShell. Foi por aí que o `git push` de 2026-07-30 saiu sem ser barrado (com aval do operador). Ver §"O matcher Bash-only" abaixo |
 
 **Ordem ajustada em execução:** 1 → 2 → 3 → 4 → 7 → **5 (rename)** → 6 → 8 → 9. Motivo: renomear a
 pasta no meio do voo quebra os caminhos que a sessão e os subagents usam, e a allowlist de diretórios
@@ -133,6 +134,30 @@ Windows recusa apagar o diretório corrente de um processo vivo (`being used by 
 Some sozinho quando a sessão fechar; ou, de outra sessão:
 `Remove-Item -Force "D:\Claud Automations\_Novo_Projeto_V2"`. O `.rar` segue ao lado, intocado —
 apagá-lo é decisão do operador, não deste plano.
+
+### O matcher Bash-only (medido 2026-07-31, sem conserto ainda)
+
+`plugin/percus-review/hooks/hooks.json:15` registra **um** bloco `PreToolUse` com matcher `"Bash"`,
+e é sob ele que vivem os 7 hooks de commit/ação externa. O harness expõe **duas** tools de shell —
+`Bash` e `PowerShell` — e o matcher só nomeia a primeira. Consequência medida: qualquer `git commit`
+ou `git push` disparado pela tool `PowerShell` não passa por nenhuma das 7 guardas. Foi assim que o
+push de 2026-07-30 saiu; o operador tinha dado aval, então nada quebrou — mas a guarda não foi o que
+segurou. **R20 Layer 1 cobre hoje um caminho de dois.**
+
+O conserto é barato e não toca script nenhum: `external-action-guard.ps1:15` lê
+`$inputObj.tool_input.command`, e `tool_input.command` é o **mesmo campo** que a tool `PowerShell`
+preenche. Basta o matcher passar a casar as duas (`"Bash|PowerShell"`).
+
+O que **não** é barato, e é o motivo de isto virar trabalho e não um patch de uma linha: o teste tem
+que provar a guarda barrando pelos **dois** caminhos, senão a metade nova volta a ser a metade não
+verificada — exatamente a falha que o plano `2026-07-30-guardas-mortas-powershell-51.md` já pagou uma
+vez (guarda respondendo verde sem rodar). O formato de invocar o wrapper de verdade e aferir o exit
+code está em `plugin/percus-review/tests/hook-wrapper-fail-loud.tests.ps1`; as asserções de bloqueio
+R20 estão em `plugin/percus-review/tests/external-action-guard.tests.ps1`.
+
+**Onde isso encosta no próximo plano:** a migração dos 11 hooks pro `settings.json` (§4.4 do spec)
+reescreve justamente esses matchers. Consertar aqui e lá separadamente é escrever a mesma linha duas
+vezes — decidir qual dos dois planos é o dono antes de mexer.
 
 ---
 
