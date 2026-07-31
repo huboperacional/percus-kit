@@ -17,6 +17,18 @@
 
 ## Índice
 
+- [Guard CERTO sem caminho alternativo produz o OPOSTO do que protege](#guard-sem-caminho-alternativo)
+- [Teste que passa EM CIMA do defeito: o exemplo escolhido é o único em que o bug não aparece](#teste-passa-em-cima-do-defeito)
+- [Rótulo curto casa DENTRO de outra palavra e escolhe a coisa errada (no caminho do dinheiro)](#rotulo-casa-dentro-de-palavra)
+- [`alias.coluna` vira `funcao(alias)` e o erro mente sobre a causa (GROUP BY sem agregado)](#alias-coluna-vira-funcao)
+- [Ausência por design não é falha — e o teste sintético não distingue as duas](#ausencia-por-design-vs-falha)
+- [O ponteiro estava no PLANO e eu não o segui: improvisar spec sobre design já aprovado](#ponteiro-no-plano-nao-seguido)
+- [Conselho: `status: ok` NÃO significa que o membro respondeu (irmão do teto de tokens)](#conselho-status-ok-content-vazio)
+- [Pre-mortem de plano: mande o revisor LER o código, não só o plano](#pre-mortem-revisor-le-o-codigo)
+- [Org de teste limpa não expõe topologia — só comportamento](#org-limpa-nao-expoe-topologia)
+- [Marcar uma entidade como "fora do padrão": filtre os EMISSORES, não só os leitores](#marca-varre-emissores-e-leitores)
+- [Brief de design que cita a fonte pelo NOME propaga erro invisível](#brief-cita-token-nao-nome)
+- [Layout que depende de menu lateral colapsável: `@container`, não media query](#container-query-menu-colapsavel)
 - [Conselho devolve "3 providers ok" com uma perna vazia e outra cortada (teto de tokens × modelo de raciocínio)](#conselho-perna-vazia-teto-tokens)
 - [Ferramenta de monitoramento roda INERTE com os testes verdes: `source` de outro script clobrou o entry point](#source-clobra-entry-point)
 - [Como saber se um cron/monitor MORREU: batimento periódico não serve — só dead-man's switch](#deadman-switch-nao-batimento)
@@ -1133,8 +1145,26 @@ vivem no que só o ambiente real sabe:
   (`name`, `name var`, `name [var]`, `name (var)`), nunca substring (`in`) — "coca" bateria em
   "Coca-Cola Zero" e colaria no item errado.
 
+**Reincidência 2026-07-31 (tiatendo, 3 deploys num dia) — e o que ela acrescenta:** **6088 testes
+verdes**, **conselho de 3 membros**, **2 rodadas de review R11** (que bloquearam e acharam defeito
+real), e ainda assim **2 defeitos só apareceram quando uma frase de gente de verdade entrou por um
+WhatsApp de verdade** — cada um **minutos depois** do deploy anterior:
+- `0.267.0` → o smoke achou o bot **reperguntando o bairro que estava na frase**, no caminho de
+  **troca** de endereço, que **tinha nascido naquele mesmo lote**. Código novo violando a invariante
+  do próprio lote é ponto cego estrutural: a suíte foi escrita olhando o caminho novo, não o velho.
+- `0.268.0` → o smoke achou o **primeiro** defeito vindo do interpretador LLM: ele entendeu o pedido
+  **certo** e mesmo assim duplicou o rótulo de tamanho num campo de texto livre, que virou pergunta
+  órfã e **engoliu o "pode fechar"** do cliente.
+
+Corolário de cadência: **smoke não é a última linha do checklist, é etapa de descoberta.** Se cada
+deploy do dia rendeu um defeito no smoke seguinte, o ciclo é `deploy → smoke com frase de gente →
+fix → deploy`, e "acabou" é o smoke que **não** achou nada — não a suíte verde. E confira o payload
+**no destino final** (aqui: a linha na tabela `pendency`), não a resposta que o bot mandou.
+
 **Ref:** tiatendo D16/B7 Fase 2 (2026-07-16→17). Fixes `4dd5bd5` (`_deferToFlow` + guard estrutural),
-`e27834f` (`_refMatchesItem`). Memórias `feedback-smoke-prod-pega-o-que-teste-e-conselho-nao-pegam`,
+`e27834f` (`_refMatchesItem`). Reincidência de 2026-07-31: commits `4f369ca`, `bcd8ccf` (PROD
+`0.268.0`/`0.269.0`), ADR-0014 do tiatendo. Memórias
+`feedback-smoke-prod-pega-o-que-teste-e-conselho-nao-pegam`,
 `project-4-frentes-e1-i1-reaper-d16-0222-2026-07-16`. Irmão: renderizar template sem DB p/ `[5-T]`
 de tela, e pg efêmero p/ testes de DB que pulam em silêncio.
 
@@ -1997,7 +2027,7 @@ tags: logging, uvicorn, fastapi, root logger, lastResort, log.info sumiu, observ
 ---
 
 <a id="fail-open-esconde-import-errado"></a>
-## Guard `try/except` fail-open esconde import errado: a feature vira no-op silencioso
+## Guard `try/except` fail-open esconde import errado: a feature vira no-op silencioso {#fail-open-esconde-import-errado}
 
 tags: fail-open, try except, import errado, no-op silencioso, review cross-provider, teste de wiring, migration aplicada, testes verdes
 
@@ -2014,7 +2044,7 @@ tags: fail-open, try except, import errado, no-op silencioso, review cross-provi
 ---
 
 <a id="handoff-mudo-sem-salvaguarda"></a>
-## Conversa escalada pra humano fica MUDA e ninguém percebe (54 msgs em 34 min)
+## Conversa escalada pra humano fica MUDA e ninguém percebe (54 msgs em 34 min) {#handoff-mudo-sem-salvaguarda}
 
 tags: handoff, bot_paused, escalonamento, atendente, reaper, virada de dia, cliente orfao, alerta unico, anti-spam whatsapp
 
@@ -2032,7 +2062,7 @@ tags: handoff, bot_paused, escalonamento, atendente, reaper, virada de dia, clie
 **Ref:** tiatendo mig 104, `execution/engine/handoffNudge.py`, `execution/engine/handoffCleanup.py` (2026-07-25).
 
 <a id="fixture-uniforme-esconde-irregular"></a>
-## Feature vira no-op DETERMINÍSTICO num caso comum e a suíte inteira fica verde
+## Feature vira no-op DETERMINÍSTICO num caso comum e a suíte inteira fica verde {#fixture-uniforme-esconde-irregular}
 
 tags: fixture uniforme, caso irregular, dia fechado, feriado, no-op semanal, cobertura falsa, business hours, lookback curto, folga semanal
 
@@ -2051,7 +2081,7 @@ tags: fixture uniforme, caso irregular, dia fechado, feriado, no-op semanal, cob
 ---
 
 <a id="guarda-redundante-tesoura-ou-morta"></a>
-## "Cinto de segurança" extra CORTA o caso legítimo — e alargá-lo vira guarda morta
+## "Cinto de segurança" extra CORTA o caso legítimo — e alargá-lo vira guarda morta {#guarda-redundante-tesoura-ou-morta}
 
 tags: guarda redundante, defensive programming, limiar, teto, janela temporal, codigo morto, falsa protecao, cap
 
@@ -2071,7 +2101,7 @@ tags: guarda redundante, defensive programming, limiar, teto, janela temporal, c
 ---
 
 <a id="down-migration-view-select-star"></a>
-## `DROP COLUMN` no rollback falha: uma view `SELECT *` depende da coluna nova
+## `DROP COLUMN` no rollback falha: uma view `SELECT *` depende da coluna nova {#down-migration-view-select-star}
 
 tags: migration down, rollback, drop column, view depends on column, select star, cascade, orders_real, downgrade nao testado
 
@@ -2088,7 +2118,7 @@ tags: migration down, rollback, drop column, view depends on column, select star
 ---
 
 <a id="janela-reintroduz-vies-sobrevivencia"></a>
-## Relatório com JANELA de período re-introduz viés de sobrevivência que você "já consertou"
+## Relatório com JANELA de período re-introduz viés de sobrevivência que você "já consertou" {#janela-reintroduz-vies-sobrevivencia}
 
 tags: relatorio, janela, periodo, vies de sobrevivencia, dado censurado, media, mediana, gargalo, badge, etapa terminal, permanencia aberta, funil, cycle time
 
@@ -2125,7 +2155,7 @@ no docstring), `backend/tests/test_stage_funnel.py`. Parente de
 ---
 
 <a id="build-dir-compartilhado-tag-nova"></a>
-## Deploy sobe código VELHO com tag NOVA: diretório de build compartilhado entre serviços
+## Deploy sobe código VELHO com tag NOVA: diretório de build compartilhado entre serviços {#build-dir-compartilhado-tag-nova}
 
 tags: deploy, build on vps, docker, tag unica, git archive, diretorio compartilhado, codigo velho, rollout falso, frontend backend
 
@@ -2149,7 +2179,7 @@ Parente de [#verificar-runtime-nao-estrutura](#verificar-runtime-nao-estrutura).
 ---
 
 <a id="aspa-simples-ssh-bash-c"></a>
-## Args com aspa simples atravessando `ssh` + `bash -c` selecionam a coisa ERRADA, sem erro
+## Args com aspa simples atravessando `ssh` + `bash -c` selecionam a coisa ERRADA, sem erro {#aspa-simples-ssh-bash-c}
 
 tags: ssh, bash -c, aspas, quoting, pytest -k, selecao de testes, falso verde, paramiko, payload
 
@@ -2170,7 +2200,9 @@ onde deviam ser 3) que revelou o problema.
 [#json-sed-aspas](#json-sed-aspas).
 
 <a id="fix-vira-defeito-seguinte"></a>
-## O fix vira o defeito seguinte: 3 CRITICALs em 5 rodadas, cada um filho da correção anterior
+## O fix vira o defeito seguinte: 3 CRITICALs em 5 rodadas, cada um filho da correção anterior {#fix-vira-defeito-seguinte}
+
+`tags: review, CRITICAL em cascata, fix vira defeito, remedio generico, COALESCE, dupla escrita, intencao vs valor, credencial revogada, espelho stale, rodadas de revisao`
 
 **Sintoma:** cada rodada de review acha um CRITICAL, você corrige, a rodada seguinte acha outro
 CRITICAL **na sua correção**. Três das cinco vezes seguidas. Parece azar ou revisor implicante; não é.
@@ -2199,7 +2231,9 @@ chamou**. Se for, nenhuma regra sobre o valor vai fechar.
 **Ref:** Paid Media Automation, fatia 1 de multiplicidade de destinos (2026-07-26), commit `6c1b635`.
 
 <a id="skew-lib-imagem-vs-local"></a>
-## Suíte verde e boot morto: a versão da lib na IMAGEM não é a da sua máquina
+## Suíte verde e boot morto: a versão da lib na IMAGEM não é a da sua máquina {#skew-lib-imagem-vs-local}
+
+`tags: skew de versao, imagem vs local, boot morto, suite verde, FastAPI, response_model, status_code 204, from __future__ import annotations, ForwardRef, docker, swarm, container removido, smoke docker run`
 
 **Sintoma:** 818 testes passam local, o review aprova, e a task **morre no boot em produção**. O log
 do serviço não ajuda porque o container falhou e o swarm já o removeu.
@@ -2407,7 +2441,9 @@ Visto em: tiatendo, correção do "número solto no bot admin" (2026-07-27).
 
 ---
 
-## Ausência por design não é falha — e o teste sintético não distingue as duas
+## Ausência por design não é falha — e o teste sintético não distingue as duas {#ausencia-por-design-vs-falha}
+
+`tags: teste sintetico, crawler, varredura automatizada, evento nao disparou, dedupe por sessao, sessionStorage, exclusao deliberada, validacao HTML5, GA4, conversao, dado real, falso negativo, silencio`
 
 **Sintoma:** uma varredura automatizada clica CTAs e submete formulários de um site, e o relatório
 volta dizendo que N deles "não dispararam evento". Conclusão natural, e errada: a instrumentação
@@ -2436,7 +2472,9 @@ Visto em: Paid Media Automation, diagnóstico do funil da Imobiliária Uni (2026
 
 ---
 
-## O ponteiro estava no PLANO e eu não o segui: improvisar spec sobre design já aprovado
+## O ponteiro estava no PLANO e eu não o segui: improvisar spec sobre design já aprovado {#ponteiro-no-plano-nao-seguido}
+
+`tags: plano, ponteiro nao seguido, spec duplicada, handoff de design, retrabalho, gitignore esconde artefato, ler o PLANO antes, conselho, artefato ja aprovado`
 
 **Sintoma:** escrevi do zero uma spec de feature — com requisitos, riscos e critério de pronto — e
 rodei conselho nela. Depois o operador apontou que já existia um **handoff de design em alta
@@ -2462,7 +2500,9 @@ Visto em: Paid Media Automation, funil da jornada (2026-07-27).
 
 ---
 
-## Conselho: `status: ok` NÃO significa que o membro respondeu
+## Conselho: `status: ok` NÃO significa que o membro respondeu {#conselho-status-ok-content-vazio}
+
+`tags: conselho, council-orchestrator, status ok, content vazio, deepseek mudo, reasoning_tokens, llama tautologia, finding falso, cross-claude, N de 3 responderam, quorum`
 
 O `council-orchestrator` marca `status: "ok"` quando a chamada HTTP deu certo — **mesmo com
 `content: ""`**. Numa sessão o **DeepSeek devolveu conteúdo vazio 3 vezes seguidas** (analyze de
@@ -2487,11 +2527,17 @@ a produção sem mudar nada.
 **Reporte sempre "N de 3 responderam".** Conselho parcial apresentado como completo é pior que
 conselho nenhum.
 
+**Relacionado (mesma classe, medição posterior e mais completa):**
+[#conselho-perna-vazia-teto-tokens] — a causa do `content` vazio é o **teto de `max_tokens`** contra
+um modelo de raciocínio. Leia os dois como um só: aqui está o sintoma no consumidor, lá está a conta.
+
 Visto em: Plexco Tasks, s151 (2026-07-27).
 
 ---
 
-## Pre-mortem de plano: mande o revisor LER o código, não só o plano
+## Pre-mortem de plano: mande o revisor LER o código, não só o plano {#pre-mortem-revisor-le-o-codigo}
+
+`tags: pre-mortem, conselho, plano, revisor, ler o codigo, arquivos vizinhos, cross-claude, tool use, teste que passa com bug vivo, funcao isolada, caminho real`
 
 Um plano de 5 tasks para "a transcrição parar de sumir" estava **correto em tudo que afirmava** e
 ainda assim **não mudaria nada em produção**. Ele consertava o truncamento em dois lugares que
@@ -2515,7 +2561,9 @@ Visto em: Plexco Tasks, s151 (2026-07-27).
 
 ---
 
-## Org de teste limpa não expõe topologia — só comportamento
+## Org de teste limpa não expõe topologia — só comportamento {#org-limpa-nao-expoe-topologia}
+
+`tags: E2E, org de teste, seed, dado limpo, topologia, grafo, reentrada, hierarquia, ciclo, coleção vazia, item orfao, falso verde, dado adverso`
 
 Uma tela de grafo passou no E2E autenticado (org descartável, dados semeados) e estava **quebrada
 na org real do operador**: setas com coordenadas negativas apontando para fora do canvas e a pílula
@@ -2538,7 +2586,9 @@ Visto em: Plexco Tasks, s151 (2026-07-27).
 
 ---
 
-## Marcar uma entidade como "fora do padrão": filtre os EMISSORES, não só os leitores
+## Marcar uma entidade como "fora do padrão": filtre os EMISSORES, não só os leitores {#marca-varre-emissores-e-leitores}
+
+`tags: flag, marcar entidade, fora do padrao, conversa administrativa, tenant de teste, leitores, emissores, broadcast, reengajamento, varredura dupla, medir no banco, silenciar sem devolver, horario comercial`
 
 Ao criar uma flag do tipo "esta linha não é do tipo normal" (conversa administrativa, usuário
 interno, tenant de teste, conta de sistema), a varredura óbvia é a dos **leitores**: métricas,
@@ -2569,7 +2619,9 @@ Visto em: tiatendo, 2026-07-28 (`0.254.0`/`0.255.0`).
 
 ---
 
-## Brief de design que cita a fonte pelo NOME propaga erro invisível
+## Brief de design que cita a fonte pelo NOME propaga erro invisível {#brief-cita-token-nao-nome}
+
+`tags: design, brief, handoff de design, fonte, tipografia, token, ff-sans, comentario desatualizado, mockup, altura do componente, documentacao nao testada`
 
 Um brief de redesenho dizia "Space Grotesk + JetBrains Mono". Eu copiei isso de um **comentário
 desatualizado** no template base; o produto carregava **Geist** havia muito tempo. O designer
@@ -2587,7 +2639,9 @@ Visto em: tiatendo, 2026-07-28 (rodada 1 do card recusada; brief corrigido para 
 
 ---
 
-## Layout que depende de menu lateral colapsável: `@container`, não media query
+## Layout que depende de menu lateral colapsável: `@container`, não media query {#container-query-menu-colapsavel}
+
+`tags: css, container query, container-type, inline-size, media query, menu lateral, sidebar colapsavel, largura util, preview mente, responsivo, layout`
 
 Um componente precisava rearranjar-se quando ficava estreito. O reflexo é `@media (max-width: …)` —
 e estaria **errado metade das vezes**: a tela tinha menu lateral de largura variável (68px recolhido
@@ -3862,3 +3916,176 @@ reportado como `ok`. Duas das três pernas degradadas, zero sinal.
 
 **Relacionado:** [Fact-check marca REAL como INFUNDADO](#fact-check-infundado-e-nao-verificado) — a
 mesma confusão entre "não consegui" e "não tem", uma camada acima.
+
+---
+
+## `alias.coluna` vira `funcao(alias)` e o erro mente sobre a causa {#alias-coluna-vira-funcao}
+
+`tags: postgres, group by, notacao funcional, coluna inexistente, count, must appear in the GROUP BY clause, erro que mente, information_schema, sql`
+
+**Sintoma:** um `SELECT` trivial, sem nenhum agregado à vista, falha com
+`column "t.id" must appear in the GROUP BY clause or be used in an aggregate function`.
+
+```sql
+-- isto parece uma consulta comum e não é
+SELECT t.id, t.name, c.signal, c.count, c.checked_at
+FROM crm_signal_state c JOIN tenants t ON t.id = c.tenant_id
+```
+
+**A causa:** o Postgres trata `alias.nome` e `nome(alias)` como **equivalentes** (notação funcional).
+Quando `count` **não existe** como coluna de `c`, o parser não desiste — ele resolve `c.count` como
+`count(c)`, que é o **agregado**. A consulta passa a ter um agregado, e o Postgres reclama, com toda
+a razão, que `t.id` não está no `GROUP BY`.
+
+**Por que isso engana:** o erro aponta para `t.id`, que está perfeito, e não menciona `c.count`, que é
+o culpado. Ninguém procura nome de coluna inexistente quando o erro fala de `GROUP BY` — o instinto é
+mexer no agrupamento, e mexer no agrupamento faz a consulta rodar devolvendo outra coisa.
+
+- **A regra:** erro de `GROUP BY` em consulta que não tem agregado ⇒ **suspeite de nome de coluna que
+  colide com função** (`count`, `min`, `max`, `sum`, `avg`, `length`, `abs`, `left`, `right`,
+  `upper`, `lower`, `now`...). Confira a coluna **no catálogo** antes de tocar no agrupamento.
+- **Como confirmar em um passo:**
+  `SELECT column_name FROM information_schema.columns WHERE table_name = '<tabela>'`.
+  Se o nome não estiver lá, era isto.
+- **Prevenção barata:** ao explorar tabela desconhecida, comece por `SELECT *` e leia as colunas de
+  verdade, em vez de escrever a lista de memória. Foi assim que o caso real apareceu: a coluna
+  chamava-se `measured_count`, não `count`.
+- **Vale além do Postgres:** a mesma notação funcional existe em qualquer engine que a suporte. O que
+  não varia é a lição — **a mensagem de erro do banco aponta onde ele tropeçou, não onde você errou.**
+
+---
+
+## Rótulo curto casa DENTRO de outra palavra e escolhe a coisa errada (no caminho do dinheiro) {#rotulo-casa-dentro-de-palavra}
+
+`tags: substring, fronteira de palavra, word boundary, regex, lookaround, match de rotulo, alias, sinonimo, tamanho, variante, catalogo, falso positivo, dicionario de excecoes, matcher, ILIKE, includes, indexOf, nlp`
+
+**Sintoma:** o sistema escolhe um item/opção/rótulo que o usuário **não** citou, sem erro nenhum no
+log. O texto do usuário "contém" o rótulo — mas por acidente, dentro de outra palavra.
+
+**Caso real (tiatendo, 2026-07-31, `sabor-do-teste`):** o rótulo de variante *Torre* casou dentro de
+"tor**resmo**". A frase *"quero retirar o torresmo da feijoada"* **adicionou** *Feijoada Torre —
+R$ 80,00* ao carrinho, calada. Mesma classe, outras formas: "G" dentro de "**G**uaraná", "Cola"
+dentro de "e**scola**", "coca" dentro de "Coca-Cola Zero", "info" dentro de "sentry**info**@".
+
+**Causa raiz:** teste de pertinência de string cru — `rotulo in texto`, `ILIKE '%x%'`, `.includes()`,
+`indexOf() >= 0` — entre **texto livre do usuário** e **rótulo curto de catálogo**. Quanto mais curto
+o rótulo, maior a chance; rótulo de tamanho tem **uma letra**.
+
+**Solução:**
+1. **Fronteira de palavra, nunca substring.** Isso mata a **classe**. A alternativa — lista de
+   exceções ("torresmo não é Torre") — **nunca fica pronta**: cada catálogo, tenant e idioma traz
+   palavras novas, e a lista só cresce depois de cada prejuízo.
+2. **Prefira lookarounds a `\b`** quando o rótulo pode terminar em caractere não-word ("P+", "1L?",
+   "500ml."): `re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", hay)`. Com `\b`, um rótulo terminado
+   em `+` **inverte o sentido do limite** e o match aparece/some onde você não espera.
+3. **Falhe FECHADO:** dúvida devolve "não casou" e o sistema **pergunta**, em vez de escolher — o
+   custo de um turno a mais é menor que o de cobrar item que ninguém pediu.
+4. **Prefixo não é grupo.** Declare rótulos como chaves **distintas** ("torre" × "torre e meia"),
+   senão o hint de um casa o rótulo do outro. Se hoje funciona por acidente (a função devolve `None`
+   pros dois), amanhã quebra: transforme o acidente em invariante travada por teste.
+5. **Normalização interna não pode vazar pro usuário.** Se você colapsa "torre e meia" → `torreemeia`
+   para sobreviver ao separador de chunks, **restaure** antes de ecoar — o cliente leu "torreemeia"
+   na pergunta do bot.
+
+**Como caçar:** `grep -rn " in \|ILIKE '%\|\.includes(\|\.indexOf(\|LIKE '%"` restrito aos módulos que
+comparam entrada do usuário com nome/rótulo/alias de catálogo. Toda ocorrência é suspeita até provar
+que os dois lados são vocabulário fechado.
+
+**Ref:** tiatendo, `_wholeWordIn` em
+`D:\Claud Automations\tiatendo\execution\engine\restaurantOrderFlow.py:154`, commit `c1ced5b`,
+PROD `0.266.0`. Irmãos: [#guarda-destrutiva-testar-com-perguntas] (a mesma armadilha num guard de
+remoção), [#smoke-prod-feature-llm] (conjunto fechado de formas aceitas para ref vinda de LLM),
+[#classificar-formato-corrompe].
+
+---
+
+## Teste que passa EM CIMA do defeito: o exemplo escolhido é o único em que o bug não aparece {#teste-passa-em-cima-do-defeito}
+
+`tags: teste vacuo, teste decorativo, exemplo escolhido, fixture, mutacao, prova por mutacao, reverter o fix, suite verde mentirosa, regressao, red green, TDD, cobertura cega, nome do teste, review nao pega`
+
+**Sintoma:** existe um teste que **nomeia exatamente** o comportamento em questão, ele está **verde**,
+e o defeito está **vivo em produção**. Ninguém desconfia dele justamente porque o nome é bom.
+
+**Causa raiz:** o teste escolheu o exemplo em que o **mecanismo do defeito não pode disparar**. O
+assert está certo; o dado é que desvia da armadilha.
+
+**Casos reais (tiatendo — três no MESMO dia, 2026-07-31).** O mais didático: um teste "provava" que,
+ao trocar de endereço, a **rua nova** era preservada — e usava a **única rua fora da lista de
+endereços salvos**. O defeito era exatamente *a rua salva casar antes de o número novo ser lido*; com
+uma rua que não está na lista, ele **não tem como acontecer**. Em produção, *"hoje é na Rua Major
+Capile, 500"* entregava no **2680**. Os outros dois tinham a mesma assinatura: fixture sempre com o
+YAML preenchido (o fallback nunca via YAML vazio) e asserção sobre o caminho feliz de um guard cuja
+falha morava no caminho não previsto.
+
+**Detecção — só um método funciona: mutação.**
+1. Reverta o fix (ou enfraqueça a linha) e rode **apenas** os testes que dizem proteger aquilo.
+2. Se continuarem **verdes**, o teste é decoração — não protege nada e ainda **autoriza a regressão**,
+   porque o próximo leitor confia no nome.
+3. Faça isso **no momento em que escreve o fix**, não numa auditoria futura: é quando custa 30
+   segundos.
+
+**Por que review e conselho não pegam:** ambos leem o **nome** e o **assert**, que estão corretos. A
+distância entre o exemplo e o mecanismo do defeito não está no diff — está no dado.
+
+**Regra prática:** ao escrever teste que "prova" que X é preservado/escolhido/ignorado, escolha o
+exemplo **em que o mecanismo do defeito está ativo** (a rua que ESTÁ na lista, o apartamento que
+colide, o rótulo que é prefixo de outro, o YAML vazio). O exemplo fácil entra como **segundo** caso,
+nunca como único.
+
+**Ref:** tiatendo 2026-07-31, commits `4039f7a` (round 1 do review R11 achou o teste da rua) e
+`c1ced5b` ("2 testes que passavam EM CIMA do defeito que diziam proteger"). Vizinhos, com recortes
+diferentes: [#red-nunca-visto-embarca-fossil] (teste que nunca ficou vermelho),
+[#mutacao-sobrevive-predicado-quase-certo] (mutação no **predicado**, não no exemplo),
+[#fixture-uniforme-esconde-irregular] (fixture uniforme escondendo o caso irregular do lado da
+produção), [#xfail-que-xpassa-anuncia-defeito-que-nao-demonstra].
+
+---
+
+## Guard CERTO sem caminho alternativo produz o OPOSTO do que protege {#guard-sem-caminho-alternativo}
+
+`tags: guard, guarda, except Exception, or vazio, fallback, degradar pro neutro, ausencia de prova, prova de ausencia, fail-open, fail-closed, lado da falha, par assimetrico, acao destrutiva, pausa, blip de banco, classe de defeito, varredura`
+
+**Sintoma:** um guard revisado, aprovado e **correto no caso previsto** é a causa do pior estrago do
+sistema — e a fala/ação dele é a mais errada possível **sobre justamente o domínio que ele protege**.
+
+**A forma abstrata:** guard correto no caso previsto cuja reação ao caso **NÃO previsto** (`except`,
+`else`, `or []`, `None`) produz o **OPOSTO** do que ele protege, em vez de **degradar pro neutro**.
+Quase sempre: **ausência de prova tratada como prova de ausência**.
+
+**Casos medidos (tiatendo — 4 reincidências só em 2026-07-31):**
+- Guard que impede o LLM de inventar dinheiro, **sem** caminho determinístico para "quanto fica meu
+  pedido?" → respondia *"seu pedido ainda não foi fechado"* a quem perguntou o total.
+- Guard que apaga o refresh cookie quando o auth diz que a sessão morreu; `None` também acontecia em
+  **timeout** → destruía sessão de 30 dias **viva**.
+- **Forma nova, a mais cara:** falha de leitura das zonas de entrega (`except` tratado igual a "zero
+  linhas", com `or []`) fazia o bot **afirmar** *"esse endereço está fora da minha área de entrega"*,
+  **pausar o bot** e **limpar o checkout**. O mesmo era dito quando o bot simplesmente **não entendeu
+  a frase**. Ou seja: *o guard produziu a afirmação factual mais errada possível sobre a própria área
+  de cobertura* — e ainda executou o destrutivo em cima dela.
+
+**Como achar (greps que rendem, em ordem de retorno):**
+1. **`except Exception`** — o de maior retorno. Leia o que vem **depois**, não o log.
+2. `or []` / `or {}` / `?? []` colado em leitura de banco/API — "não consegui ler" virando "não
+   existe".
+3. Cliente de API que devolve `None`/`null` no erro e é usado como **valor de negócio**.
+4. Toda **ação destrutiva ou irreversível** (pausar, limpar, apagar, cobrar, cancelar, banir) — e
+   **suba** dali: quem chega aqui com dado incompleto?
+5. **Par assimétrico:** um `if` que trata como um só dois casos de custo oposto ("não atendemos ali"
+   × "não deu pra saber"). Esses dois precisam de ramos diferentes, sempre.
+6. **O NOME do teste:** um teste chamado `..._cai_no_fallback` costuma **cimentar** o defeito em vez
+   de proteger — cf. [#teste-passa-em-cima-do-defeito].
+
+**Solução:**
+- **Separe os casos:** "zero linhas" ≠ "exceção". Só o primeiro autoriza o fallback.
+- No caso não previsto, **degrade pro neutro**: perguntar, repetir, escalar — e **nunca** executar o
+  destrutivo nem **afirmar** fato sobre o domínio.
+- **Escreva no código o lado para o qual o guard falha** e o custo aceito. Sem isso, o próximo leitor
+  "conserta" o que era deliberado.
+- Achou um, **varra a classe**: o padrão vem em cacho (uma varredura rendeu 5 de uma vez).
+
+**Ref:** tiatendo — catálogo em
+`D:\Claud Automations\tiatendo\docs\auditoria-guard-sem-caminho-alternativo-2026-07-29.md`, verbete
+em `D:\Claud Automations\tiatendo\CONTEXT.md`; commits `5c8363f` (5 guards de uma vez), `4039f7a` e
+`4f369ca` (zonas de entrega). Irmãos: [#guarda-destrutiva-testar-com-perguntas],
+[#fail-open-esconde-teste-vacuo], [#guarda-redundante-tesoura-ou-morta],
+[#degrade-gracioso-esconde-noauth], [#provider-none-vira-entrega], [#gate-confirmacao-dead-end].
