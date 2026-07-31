@@ -114,6 +114,16 @@
       "registrado": true
     },
     {
+      "nome": "enforcement-health",
+      "evento": "SessionStart",
+      "matcher": null,
+      "forma": "observador",
+      "assinatura": "[percus:health]",
+      "escape": null,
+      "registrado": true,
+      "_nota": "Diz no inicio de cada sessao se o enforcement esta ligado e DE ONDE o codigo vem. Absorve a intencao do orfao canon-version-check (versao instalada x versao do kit). Sempre exit 0: health check que tranca a sessao troca um problema por outro pior."
+    },
+    {
       "nome": "canon-version-check",
       "evento": "SessionStart",
       "matcher": null,

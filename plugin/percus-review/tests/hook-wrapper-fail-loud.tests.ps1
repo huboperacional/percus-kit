@@ -281,7 +281,7 @@ Describe "wrapper .cmd tem a forma do seu evento" {
         }
     }
 
-    It "TODOS os 11 wrappers .cmd tem a forma do SEU evento no manifesto (8 guarda / 3 observador)" {
+    It "TODOS os 12 wrappers .cmd tem a forma do SEU evento no manifesto (8 guarda / 4 observador)" {
         # Os It anteriores provam o comportamento em UM wrapper de cada forma. Sem este, a
         # correcao poderia acertar so alguns dos 11 e a suite ficaria verde -- exatamente o tipo
         # de meia-correcao que deixou 3 guardas mortas sem ninguem ver.
@@ -320,7 +320,7 @@ Describe "wrapper .cmd tem a forma do seu evento" {
 
         # Piso de contagem: sem ele, uma pasta VAZIA faz este It passar sem verificar nada --
         # e a migracao dos hooks pro settings.json (spec sec. 9) esvazia exatamente esta pasta.
-        $cmds.Count | Should -Be 11 -Because "piso de contagem: It que passa vazio nao guarda nada"
+        $cmds.Count | Should -Be 12 -Because "piso de contagem: It que passa vazio nao guarda nada"
 
         # .cmd nao declarado no manifesto nao tem evento -- e a forma dele seria ADIVINHADA.
         # Adivinhar e o erro que este It existe pra impedir, entao aqui e falha, nao default.
@@ -405,7 +405,7 @@ Describe "wrapper .cmd tem a forma do seu evento" {
         # wrapper em silencio e este It seguiria verde medindo a coisa errada. Contagem errada e
         # a forma mais provavel deste teste apodrecer, entao os dois numeros sao afirmados.
         $nGuarda     | Should -Be 8 -Because "8 wrappers de PreToolUse tem que estar na forma GUARDA"
-        $nObservador | Should -Be 3 -Because "on-stop-check + state-drift-check (Stop) e pre-compact-checkpoint (PreCompact)"
+        $nObservador | Should -Be 4 -Because "on-stop-check + state-drift-check (Stop), pre-compact-checkpoint (PreCompact) e enforcement-health (SessionStart)"
 
         @($formaMentida) | Should -BeNullOrEmpty -Because "manifesto com forma divergente do evento propaga classificacao errada pro registro, pro canario e pro health check:`n$($formaMentida -join "`n")"
 

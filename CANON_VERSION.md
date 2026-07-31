@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.33.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.34.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
 >
@@ -18,6 +18,36 @@
 > onde os gates de commit leem.
 >
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
+
+---
+
+## Changelog v6.34.0 — 2026-07-31
+
+**O enforcement passa a denunciar a própria ausência.** Hook novo `enforcement-health` em
+`SessionStart`: no início de cada sessão ele diz, em uma linha, se o enforcement está ligado, quantos
+hooks estão registrados, **de onde vem o código** (kit ou cache) e qual a versão. Sempre `exit 0` —
+observador, nunca guarda; um health check que tranca a sessão troca um problema por outro pior.
+
+**Ele fala mesmo quando está tudo certo**, e isso não é ruído: health check que só fala em caso de
+erro é indistinguível de health check que não rodou, que é exatamente a classe de bug que ele existe
+para fechar. O que ele denuncia: código vindo do cache em vez do kit, hook do manifesto ausente do
+registro vivo, `command` apontando para arquivo inexistente, versão instalada diferente da do kit, e
+`PERCUS_HOOKS_DISABLED` setada como variável de **usuário** — porque aí o escape de emergência virou
+estado permanente e desligou três camadas sem ninguém lembrar.
+
+**Por que ele é necessário e não apenas útil.** A 6.33.0 fez o código dos hooks vir do kit, mas
+abriu uma ausência silenciosa nova: numa máquina sem `PERCUS_CANON_DIR`, o trampolim cai na cópia
+velha do cache **sem dizer nada**. O lugar óbvio para avisar seria o próprio trampolim, e ele não
+serve — foi medido que saída de hook que sai 0 é invisível, stderr e stdout. `SessionStart` é o único
+canal com visibilidade provada.
+
+Absorve a intenção do órfão `canon-version-check` (versão instalada × versão do kit), que existia em
+disco, tinha teste próprio e nunca esteve em registro nenhum.
+
+**Por que houve uma segunda publicação.** O plano 2 previa uma só. Não sobreviveu ao contato, e o
+motivo é o próprio argumento da migração pendente: sob o regime do `hooks.json`, **adicionar
+qualquer hook custa uma publicação**, porque registro só vale depois de publicado. Quando o registro
+migrar para o `settings.json`, hook novo passa a chegar por `git pull` como o código já chega.
 
 ---
 
