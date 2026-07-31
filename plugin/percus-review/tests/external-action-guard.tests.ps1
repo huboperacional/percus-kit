@@ -71,4 +71,22 @@ Describe "external-action-guard.ps1 hook" {
         $result = "" | & pwsh -NoProfile -File $hookPath 2>&1
         $LASTEXITCODE | Should -Be 0
     }
+
+    It "barra a mesma acao vinda de QUALQUER tool -- <Tool>" -ForEach @(
+        @{ Tool = "Bash" }
+        @{ Tool = "PowerShell" }
+    ) {
+        # Ate 2026-07-31 o matcher era "Bash" e mais nada, e o harness expoe DUAS tools de shell.
+        # Medido no mesmo instante e na mesma maquina: a mesma acao externa barrada pela tool Bash
+        # e livre pela tool PowerShell. Foi por esse caminho que o push de 2026-07-30 saiu.
+        #
+        # O conserto e no matcher (Task 4), nao aqui: este hook nunca olhou tool_name, sempre leu
+        # tool_input.command, que as duas tools preenchem. Este It amarra esse "sempre" -- se
+        # alguem introduzir ramificacao por tool_name, o matcher entregaria a chamada e o hook a
+        # descartaria em silencio, e o teste do matcher sozinho seguiria verde.
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_name":"' + $Tool + '","tool_input":{"command":"git push origin main"}}'
+        $null = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $LASTEXITCODE | Should -Be 2 -Because "acao externa pela tool $Tool tem que barrar igual"
+    }
 }

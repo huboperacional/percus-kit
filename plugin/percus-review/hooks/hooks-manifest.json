@@ -24,7 +24,7 @@
     {
       "nome": "pre-commit-check",
       "evento": "PreToolUse",
-      "matcher": "Bash",
+      "matcher": "Bash|PowerShell",
       "forma": "guarda",
       "assinatura": "[percus:hook pre-commit]",
       "escape": null,
@@ -33,7 +33,7 @@
     {
       "nome": "mock-scan-pre-commit",
       "evento": "PreToolUse",
-      "matcher": "Bash",
+      "matcher": "Bash|PowerShell",
       "forma": "guarda",
       "assinatura": "[percus:hook mock-scan]",
       "escape": "PERCUS_SKIP_MOCK_SCAN",
@@ -42,7 +42,7 @@
     {
       "nome": "auth-import-pre-commit",
       "evento": "PreToolUse",
-      "matcher": "Bash",
+      "matcher": "Bash|PowerShell",
       "forma": "guarda",
       "assinatura": "[percus:hook auth-import]",
       "escape": "PERCUS_SKIP_AUTH_IMPORT",
@@ -51,7 +51,7 @@
     {
       "nome": "migration-check-pre-commit",
       "evento": "PreToolUse",
-      "matcher": "Bash",
+      "matcher": "Bash|PowerShell",
       "forma": "guarda",
       "assinatura": "[percus:hook migration-check]",
       "escape": "PERCUS_SKIP_MIGRATION_CHECK",
@@ -60,7 +60,7 @@
     {
       "nome": "types-check-pre-commit",
       "evento": "PreToolUse",
-      "matcher": "Bash",
+      "matcher": "Bash|PowerShell",
       "forma": "guarda",
       "assinatura": "[percus:hook types-check]",
       "escape": "PERCUS_SKIP_TYPES_CHECK",
@@ -69,7 +69,7 @@
     {
       "nome": "external-action-guard",
       "evento": "PreToolUse",
-      "matcher": "Bash",
+      "matcher": "Bash|PowerShell",
       "forma": "guarda",
       "assinatura": "[percus:hook external-action-guard]",
       "escape": "PERCUS_EXTERNAL_OVERRIDE",
@@ -78,7 +78,7 @@
     {
       "nome": "crud-evidence-warn",
       "evento": "PreToolUse",
-      "matcher": "Bash",
+      "matcher": "Bash|PowerShell",
       "forma": "guarda",
       "assinatura": "[percus:warn crud-evidence]",
       "escape": "PERCUS_SKIP_CRUD_WARN",

@@ -207,6 +207,41 @@ Describe "hooks-manifest.json" {
         @($divergencias) | Should -BeNullOrEmpty -Because "manifesto e registro vivo tem que contar a mesma historia:`n$($divergencias -join "`n")"
     }
 
+    It "as guardas de comando cobrem os DOIS shells, nao so o Bash" {
+        # O buraco que abriu o plano 2: o matcher era "Bash" e mais nada, enquanto o harness expoe
+        # DUAS tools de shell. Observado em 2026-07-31, mesma maquina e mesmo instante: a mesma
+        # acao externa barrada pela tool Bash e livre pela tool PowerShell.
+        #
+        # Medido junto (item 4): o matcher e regex e aceita alternancia, e e CASE-SENSITIVE --
+        # escrever "bash" produziria uma guarda que nunca dispara, que e a ausencia silenciosa que
+        # este plano existe pra matar. Por isso a assercao e exata, e nao "contem bash".
+        $deComando = @($script:vivos | Where-Object { $_.evento -ceq 'PreToolUse' -and $_.matcher -and $_.matcher -cne 'ExitPlanMode' })
+        $deComando.Count | Should -Be 7 -Because "piso: sao 7 guardas de comando (a oitava, pre-plan-exit, casa ExitPlanMode)"
+        foreach ($h in $deComando) {
+            $h.matcher | Should -BeExactly 'Bash|PowerShell' -Because "$($h.nome) precisa cobrir as duas tools de shell, com a caixa exata"
+        }
+    }
+
+    It "nenhuma GUARDA DE COMANDO decide pelo NOME da tool -- o payload das duas traz o comando no mesmo campo" {
+        # O conserto e so no matcher justamente porque nenhuma guarda de comando olha tool_name:
+        # todas leem tool_input.command, campo que as duas tools preenchem. Se alguma passasse a
+        # ramificar por tool_name, o matcher novo entregaria a chamada e o hook a descartaria em
+        # silencio -- e o teste do matcher, sozinho, seguiria verde.
+        #
+        # O escopo e so as 7 de comando, e essa fronteira foi ENSINADA por este teste falhando:
+        # pre-plan-exit.ps1:14 checa 'tool_name -ne ExitPlanMode' e sai 0, o que e legitimo -- ele
+        # confere por dentro o proprio matcher, que nao tem nada a ver com shell. Generalizar
+        # "nenhum hook olha tool_name" teria proibido uma pratica correta.
+        $olhamNome = @()
+        foreach ($h in @($script:vivos | Where-Object { $_.matcher -ceq 'Bash|PowerShell' })) {
+            $ps1 = Join-Path $script:hooksDir ($h.nome + ".ps1")
+            if (-not (Test-Path $ps1)) { continue }
+            $vivas = @(Get-Content $ps1 | Where-Object { -not "$_".TrimStart().StartsWith('#') })
+            if ($vivas -match 'tool_name') { $olhamNome += $h.nome }
+        }
+        @($olhamNome) | Should -BeNullOrEmpty -Because "hook que ramifica por tool_name precisa de teste proprio nos dois caminhos:`n$($olhamNome -join ', ')"
+    }
+
     It "o orfao declarado nao tem wrapper -- e isso e o que o torna orfao" {
         # Invariante POSITIVO sobre o orfao: se um dia alguem criar canon-version-check.cmd,
         # ele deixou de ser orfao e o manifesto precisa parar de dizer que e. Sem este It, o
