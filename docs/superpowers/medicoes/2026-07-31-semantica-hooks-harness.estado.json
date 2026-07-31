@@ -1,0 +1,31 @@
+{
+  "_comentario": "Snapshot legivel por maquina do ambiente em que 2026-07-31-semantica-hooks-harness.md foi medido. Consumido por scripts/revalidar-medicao.ps1. Se algo aqui divergir do observado hoje, a medicao foi feita contra outro ambiente e nao vale mais sem revisao.",
+  "medido_em": "2026-07-31",
+  "plano": "plano 2 -- enforcement que nao consegue sumir calado",
+  "medicao": "docs/superpowers/medicoes/2026-07-31-semantica-hooks-harness.md",
+  "ambiente": {
+    "claude_code": "2.1.191",
+    "percus_review_instalado": {
+      "version": "6.32.0",
+      "installPathLeaf": "6.32.0",
+      "gitCommitSha": "ee6eb87b447ec2f76d3f5cd7b41510bc048340a9"
+    },
+    "cache_dirs": [
+      "6.28.0",
+      "6.29.0",
+      "6.32.0"
+    ]
+  },
+  "itens_dependentes": {
+    "versao_do_plugin": [
+      "1 -- qual cache o CLAUDE_PLUGIN_ROOT resolve",
+      "2 -- coexistencia plugin x settings.json"
+    ],
+    "versao_do_harness": [
+      "3 -- expansao de env var em command",
+      "4 -- matcher: alternancia e case-sensitivity",
+      "7 -- heranca de stdin via .cmd",
+      "8 -- SessionStart dispara"
+    ]
+  }
+}
