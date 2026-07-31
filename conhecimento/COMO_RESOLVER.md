@@ -17,6 +17,10 @@
 
 ## Índice
 
+- [Parser de "1/2" nascido numa pergunta numerada lê quantidade como sim/não no texto livre](#token-lista-numerada-vaza)
+- [Fact-check da review marca finding REAL como "INFUNDADO" porque não conseguiu verificar](#fact-check-infundado-e-nao-verificado)
+- [Review volta vazia parecendo limpa: o revisor ABORTOU por causa de um binário no diff](#revisor-aborta-com-binario)
+- [Postgres reclama de "column X does not exist" onde X é um VALOR seu (aspas comidas pelo ssh)](#ssh-heredoc-come-aspas)
 - [404 "por design" transforma erro de tenancy em bug invisível: 3 orgs homônimas e um link que nunca abre](#404-por-design-esconde-tenancy)
 - [Módulo fail-open: "quebrado" e "corretamente desligado" ficam idênticos de fora, e o teste passa nos dois](#fail-open-esconde-teste-vacuo)
 - [`ORDER BY created_at` não ordena um lote: `now()` é hora da TRANSAÇÃO](#created-at-nao-ordena-lote)
@@ -3472,3 +3476,96 @@ porque o preflight volta 400 sem `access-control-allow-origin`).
 
 **Relacionado:** [#preflight-cors-falha-silenciosa] — mesmo P0, visto do outro lado: lá está **como
 diagnosticar** o preflight recusado; aqui, **por que o env chegou nesse estado**.
+
+---
+
+## Parser de "1/2" nascido numa pergunta numerada lê quantidade como sim/não no texto livre {#token-lista-numerada-vaza}
+
+`tags: parser, sim/nao, yes/no, isYes, isNo, opcao numerada, lista numerada, texto livre, quantidade, numero da casa, falso positivo, helper reusado, opt-in, acao destrutiva, endereco apagado, par assimetrico`
+
+**Origem:** tiatendo, 2026-07-31 — o bot descartou o endereço de um cliente porque ele pediu
+"uma coca cola **2** litros".
+
+Um parser de sim/não nasceu para uma pergunta com **opções numeradas** ("Responda: 1️⃣ Sim  2️⃣ Não")
+e por isso tinha `"1"` em `_YES` e `"2"` em `_NO`. O mesmo helper passou a ser usado num fluxo de
+**texto livre**, onde 1 e 2 não são opções — são quantidade, número de casa e nome de rua:
+
+    isNo("quero uma coca cola 2 litros") -> True     isNo("rua 2 de setembro")  -> True
+    isNo("apartamento 2")               -> True     isYes("1 marmita G")       -> True
+
+- **A regra:** token de **opção numerada** só vale dentro da pergunta que **imprimiu a lista**. Fora
+  dela, "2" é o número dois. Faça o modo numerado ser **opt-in** (`numbered=True`), nunca o default —
+  assim o caller novo nasce seguro em vez de herdar a armadilha.
+- **Como caçar:** não procure o helper; procure os **prompts numerados**
+  (`grep -rn "1️⃣" --include=*.py`) e cruze com quem responde a eles. Depois varra os callers do
+  helper no **repo inteiro** (inclusive `scripts/` e testes), não só no módulo.
+- **Por que passa despercebido:** o dano não é exceção nem log — é uma decisão **plausível** tomada
+  com a palavra errada. No caso medido, virou ação **destrutiva** (apagar endereço já coletado).
+- **Espelho:** o mesmo projeto já tinha corrigido a direção oposta (o "1" do admin colidindo com a
+  rotina matinal) e não olhou o outro lado. Corrigiu-se um lado do par assimétrico.
+
+**Relacionado:** [Guarda contra ação destrutiva](#guarda-destrutiva-testar-com-perguntas) — aqui o token errado ALIMENTA um guard cuja reação
+ao "não" é destrutiva; os dois juntos transformam um pedido de bebida em perda de dado.
+
+---
+
+## Fact-check da review marca finding REAL como "INFUNDADO" porque não conseguiu verificar {#fact-check-infundado-e-nao-verificado}
+
+`tags: fact-check, F3, INFUNDADO, nao verificado, finding filtrado, review, cross-provider, deepseek, latest.jsonl, bloco Audit, falso negativo, escopo de mudanca, cp1252, PYTHONIOENCODING`
+
+**Origem:** tiatendo, 2026-07-31 — 4 findings de review cross-provider filtrados numa sessão; **2
+eram reais** e viraram código.
+
+O pipeline de fact-check (F3) classifica findings e **remove do output principal** os que marca como
+`INFUNDADO`. O motivo mais comum não é "a alegação é falsa" — é **"não foi possível verificar (sem
+path verificável ou arquivo ausente)"**. São coisas diferentes, e o filtro trata igual.
+
+- **A regra:** *"não consegui verificar"* ≠ *"infundado"*. **Sempre leia o bloco Audit** e os findings
+  filtrados antes de commitar. O custo de ler 4 parágrafos é minúsculo perto do de perder o achado.
+- **Onde ficam:** `.deepseek/reviews/latest.jsonl` (o campo `findings` traz o texto integral).
+  ⚠️ No Windows, `print` estoura em `cp1252` — use `PYTHONIOENCODING=utf-8` +
+  `sys.stdout.reconfigure(errors="replace")`.
+- **Padrão dos que sobrevivem ao filtro:** findings sobre **escopo de mudança** ("você trocou a
+  semântica de X, varreu todos os callers?") e sobre **ambiguidade de entrada** — justamente os que
+  exigem olhar fora do diff, que é o que o verificador automático não consegue fazer.
+
+**Relacionado:** [Review que aborta com binário](#revisor-aborta-com-binario) — outro jeito de a review sair vazia parecendo
+limpa.
+
+---
+
+## Review volta vazia parecendo limpa: o revisor ABORTOU por causa de um binário no diff {#revisor-aborta-com-binario}
+
+`tags: review, deepseek, abort, binario, mp3, asset, diff, review vazia, sem findings, falso verde, commit separado, codigo nao revisado`
+
+**Origem:** tiatendo, 2026-07-31.
+
+O revisor cross-provider (DeepSeek) tem regra de **recusar diffs que contenham binários**. Ao incluir
+3 `.mp3` num commit, ele abortou a revisão inteira e devolveu **um único finding procedural** — o
+código do mesmo commit **não foi revisado**, e o resultado tinha a aparência de uma review limpa.
+
+- **A regra:** asset binário vai em **commit separado**. Código e binário no mesmo diff = código sem
+  revisão, silenciosamente.
+- **Sintoma:** review devolve só um finding falando do próprio binário/da própria regra, sem citar
+  nenhuma linha de código. Isso é abort, não aprovação.
+
+---
+
+## Postgres reclama de "column X does not exist" onde X é um VALOR seu (aspas comidas pelo ssh) {#ssh-heredoc-come-aspas}
+
+`tags: ssh, heredoc, aspas simples, single quote, shell quoting, postgres, UndefinedColumnError, column does not exist, asyncpg, psycopg, parametro, erro que parece de schema`
+
+**Origem:** tiatendo, 2026-07-31 — ~20 min perdidos com um erro que não parecia de aspas.
+
+`ssh host 'python - <<"EOF" ... EOF'` — o corpo vai dentro de uma string **single-quoted** do shell
+local. Toda aspa simples do Python/SQL é **comida**, e `status='active'` chega ao servidor como
+`status=active`. O Postgres então reclama:
+
+    UndefinedColumnError: column "active" does not exist
+
+que não aponta pra aspas em lugar nenhum — parece erro de schema.
+
+- **A regra:** dentro de `ssh '...'`, nunca use literal de string com aspa simples. Passe valores como
+  **parâmetros** (`$1`, `$2` no asyncpg / `%s` no psycopg) ou use aspas duplas no Python.
+- **Sintoma-assinatura:** o banco reclama de uma **coluna com o nome do seu valor**. Se o "nome da
+  coluna" do erro é um dado seu, são as aspas.
