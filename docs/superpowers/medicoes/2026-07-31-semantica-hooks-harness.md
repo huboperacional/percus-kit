@@ -73,11 +73,20 @@ POST duplicado. A ordem por risco do plano continua necessária.
 
 ## Item 3 — Expansão de variável no campo `command`
 
-**Resposta: `${VAR}` EXPANDE, e a expansão é do harness, não do shell.**
+> **CORREÇÃO (mesma data, medição posterior).** A primeira redação deste item concluía que "a
+> expansão é do harness, não do shell". **Está errada.** Uma sonda seguinte revelou o shell (item 9)
+> e com ele o mecanismo: quem expande é o **bash**, fazendo expansão de shell comum. O resultado
+> prático não muda — `${PERCUS_CANON_DIR}` funciona — mas o motivo, e portanto os caveats, mudam:
+> depende da variável estar **no ambiente do processo do hook**, e a sintaxe válida é a do bash
+> (`$VAR` e `${VAR}`), não uma substituição proprietária do harness. Registrado como correção em vez
+> de reescrito porque a conclusão errada já tinha sido usada para decidir o ramo da Task 6, e apagar
+> o erro apagaria a razão de a decisão continuar valendo.
 
-Isto **contradiz** a doc oficial (que só documenta `${CLAUDE_PROJECT_DIR}`, `${CLAUDE_PLUGIN_ROOT}` e
-`${CLAUDE_PLUGIN_DATA}`) e contradiz o que eu havia afirmado antes de medir. Sonda com as três
-sintaxes na mesma linha:
+**Resposta: `${VAR}` EXPANDE — por expansão de shell do bash.**
+
+O resultado abaixo também **contradiz** a doc oficial, que documenta só `${CLAUDE_PROJECT_DIR}`,
+`${CLAUDE_PLUGIN_ROOT}` e `${CLAUDE_PLUGIN_DATA}` como expansíveis. Sonda com as três sintaxes na
+mesma linha:
 
 ```
 command: echo SONDA-P1 chaves=${PERCUS_CANON_DIR} dolarenv=$env:PERCUS_CANON_DIR porcento=%PERCUS_CANON_DIR% >> "…"
@@ -87,8 +96,8 @@ saída:   SONDA-P1 chaves=D:\Claud Automations\percus-kit dolarenv=:PERCUS_CANON
 
 | Sintaxe | Resultado | Leitura |
 |---|---|---|
-| `${PERCUS_CANON_DIR}` | **expandiu** para o caminho | o harness substitui env var arbitrária, não só os placeholders documentados |
-| `$env:PERCUS_CANON_DIR` | virou `:PERCUS_CANON_DIR` | o harness consumiu `$env` como nome de variável (vazia) e o shell **não** reinterpretou o resto |
+| `${PERCUS_CANON_DIR}` | **expandiu** para o caminho | expansão de shell do bash, lendo o ambiente do processo do hook |
+| `$env:PERCUS_CANON_DIR` | virou `:PERCUS_CANON_DIR` | bash expandiu `$env` (variável inexistente, vazia) e deixou `:PERCUS_CANON_DIR` literal — sintaxe PowerShell não vale aqui |
 | `%PERCUS_CANON_DIR%` | literal | **não é `cmd.exe`** executando o `command` |
 
 **Consequência para a Task 6:** `${PERCUS_CANON_DIR}` é utilizável. O erro do spec (design.md:85) não
@@ -153,6 +162,60 @@ leia primeiro pra saber estado atual e proximos passos. Se eh canon/lib/tooling,
 É prova **positiva** — o evento disparou e produziu saída visível —, não "quebrei e ele gritou". O
 risco nº 1 do pre-mortem (o health check nascer morto) está retirado.
 
+## Item 9 — Qual shell executa o `command`? (não estava na Task; a Task 3 exigiu)
+
+**Resposta: `/usr/bin/bash` 5.2.37 (Git Bash). Não é PowerShell, não é `cmd.exe`.**
+
+A doc oficial diz "PowerShell on Windows". **Não é o que acontece nesta máquina.** Descoberto sem
+querer, do jeito mais direto possível: uma sonda escrita em sintaxe PowerShell devolveu
+
+```
+/usr/bin/bash: -c: line 1: syntax error near unexpected token `'SONDA-STDERR-COM-EXIT-ZERO''
+```
+
+e a sonda seguinte, já em bash, confirmou por dentro:
+
+```
+SHELL=/usr/bin/bash  BASH=5.2.37(1)-release
+CANON=D:\Claud Automations\percus-kit
+ENVTEST=:PERCUS_CANON_DIR
+```
+
+É isto que explica o item 3 inteiro, e por isso ele levou correção: não há substituição proprietária
+do harness — há um bash fazendo expansão de shell.
+
+## Item 10 — Saída de hook que sai 0 é mostrada?
+
+**Resposta: NÃO. Nem stderr, nem stdout.**
+
+Duas sondas registradas no mesmo evento, uma escrevendo em stderr e outra em stdout, ambas saindo 0.
+A chamada `Bash` seguinte rodou normalmente e **nenhuma das duas apareceu** — nem na saída da
+ferramenta, nem como aviso. Só a terceira sonda, que escrevia num arquivo, deixou rastro.
+
+Contraste com o que já estava observado: stderr de hook que sai **2** aparece (é como o
+`external-action-guard` mostra o BLOCK), e saída de `SessionStart` aparece (é como o `[GATE INICIO]`
+chega). O canal existe — mas não no caminho de sucesso.
+
+**Consequência para a Task 3, e é uma mudança de projeto:** o "fallback barulhento" que o pre-mortem
+exigiu **não pode morar no trampolim**. Uma guarda que resolve para o cache e depois sai 0 escreveria
+para ninguém — barulho no vácuo é indistinguível de silêncio, que é exatamente o que o plano existe
+para matar. O anúncio muda de lugar: vai para o health check da Task 7, em `SessionStart`, que é o
+único canal provadamente visível. Isso promove a Task 7 de "peça que fecha a classe" para
+**pré-requisito do valor da Task 3** — sem ela, a origem resolvida não tem como ser dita.
+
+## Item 11 — `command` malformado: o que acontece?
+
+**Resposta: bloqueia a ferramenta. Observado por auto-lockout.**
+
+Uma sonda com erro de sintaxe fez o bash sair não-zero; como `PreToolUse` trata não-zero-não-2 como
+erro e 2 como bloqueio, **toda chamada `Bash` passou a ser barrada** — inclusive a que eu usaria para
+consertar a sonda. Saída pela tool `PowerShell`, que o matcher não cobria.
+
+Isto é fail-closed funcionando, e é também uma armadilha operacional real: hook mal escrito no
+`settings.json` global tranca a máquina inteira, e o conserto exige um caminho que o matcher não
+cubra. **Consequência para a Task 6:** o instalador valida o JSON *e* a existência de cada `command`
+em disco antes de salvar, e o backup datado é o que resta quando nem isso bastou.
+
 ## Achado extra, não previsto na Task
 
 **Mudança em `settings.json` de projeto vale na hora, sem reiniciar a sessão.** As sondas foram
@@ -171,6 +234,9 @@ não é preciso reiniciar entre registrar e observar.
 | 6 · campo `async` | ⛔ não medido — não emitir |
 | 7 · stdin via `.cmd` | ✅ medido — herda íntegro |
 | 8 · `SessionStart` | ✅ medido — dispara, prova positiva |
+| 9 · qual shell roda o `command` | ✅ medido — **`/usr/bin/bash` 5.2.37**, não PowerShell como a doc diz |
+| 10 · saída de hook que sai 0 | ✅ medido — **invisível**, stderr e stdout. Move o anúncio da Task 3 para a Task 7 |
+| 11 · `command` malformado | ✅ medido — bloqueia a ferramenta; auto-lockout observado e desfeito pela outra tool |
 
 **Ramo da Task 6 decidido pela medição:** coexistência é definida (os dois rodam; qualquer `exit 2`
 bloqueia) e há sintaxe de caminho confiável. Pela regra fixada antes de medir, **o registro vai para o

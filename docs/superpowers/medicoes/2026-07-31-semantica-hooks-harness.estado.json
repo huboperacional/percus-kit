@@ -22,10 +22,13 @@
       "2 -- coexistencia plugin x settings.json"
     ],
     "versao_do_harness": [
-      "3 -- expansao de env var em command",
+      "3 -- expansao de env var em command (por bash, ver item 9)",
       "4 -- matcher: alternancia e case-sensitivity",
       "7 -- heranca de stdin via .cmd",
-      "8 -- SessionStart dispara"
+      "8 -- SessionStart dispara",
+      "9 -- qual shell executa o command (/usr/bin/bash, nao PowerShell)",
+      "10 -- saida de hook que sai 0 e invisivel (stderr e stdout)",
+      "11 -- command malformado bloqueia a ferramenta"
     ]
   }
 }
