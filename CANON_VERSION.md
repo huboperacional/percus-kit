@@ -65,6 +65,21 @@ não por ser impossível.
 Esta é a única publicação do plano 2. Depois dela, o canal de publicação deixa de ser o caminho por
 onde conserto de hook viaja.
 
+**Vai junto, e afeta todos os projetos: o conselho parou de chamar perna vazia de "ok".** Os três
+providers gravavam `status = "ok"` sempre que a chamada HTTP não lançava exceção, **sem nunca olhar o
+conteúdo**. Combinado com `max_tokens = 1024`, isso produziu duas falhas silenciosas na mesma rodada
+de pre-mortem: o DeepSeek gastou os 1024 tokens **raciocinando** (em modelos de raciocínio os
+`reasoning_tokens` contam dentro de `completion_tokens`) e devolveu string vazia; o Cross-Claude bateu
+no mesmo teto e devolveu texto **cortado no meio de uma frase**. As duas foram reportadas como
+sucesso, e o log dizia "3 providers chamados" quando havia uma perspectiva só.
+
+Agora há três estados em vez de dois — `ok`, `empty`, `truncated` —, o aviso nomeia a causa em vez do
+sintoma, os tetos subiram por natureza do modelo (deepseek 8192, cross-claude 4096, groq-llama 2048),
+e o orquestrador emite `respostas_usaveis: N de M`. **Se você usa `/council:*` em qualquer projeto,
+esta é a correção que mais te afeta nesta versão** — decisões tomadas com base em "consenso" de
+rodadas anteriores podem ter sido consenso de uma perna só. Verbete
+`#conselho-perna-vazia-teto-tokens`.
+
 **O que sustenta isso:**
 
 - `hooks/hooks-manifest.json` — fonte única da verdade dos 11 hooks (evento, matcher, forma,
