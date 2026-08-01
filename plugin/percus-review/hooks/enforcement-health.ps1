@@ -18,6 +18,13 @@
 # SessionStart e o unico canal provadamente visivel -- e a prova e positiva, nao inferida: o hook
 # [GATE INICIO] deste kit aparece na abertura de toda sessao.
 #
+# CORRECAO (2026-07-31, mesma sessao que fechou a Task 7 -- e reabriu):
+# a prova acima so cobria STDOUT. Este hook falava por [Console]::Error (stderr), seguindo a
+# convencao de assinatura-em-stderr das guardas -- e medido na sessao real, stderr de um hook
+# SessionStart que sai 0 NAO aparece, exatamente como o item 10 ja tinha achado pra outro evento.
+# O [GATE INICIO] e o hook do superpowers que aparecem usam stdout; este usava stderr e nunca foi
+# visto. Por isso Falar fala por stdout agora -- e nao por convencao, por medicao.
+#
 # CONTRATO
 #
 # OBSERVADOR, sempre exit 0. Nunca bloqueia. Health check que tranca a sessao troca um problema
@@ -32,7 +39,7 @@ $ErrorActionPreference = "Continue"
 $ASSINATURA = "[percus:health]"
 $achados = New-Object System.Collections.Generic.List[string]
 
-function Falar($msg) { [Console]::Error.WriteLine("$ASSINATURA $msg") }
+function Falar($msg) { [Console]::Out.WriteLine("$ASSINATURA $msg") }
 
 try {
     # O manifesto viaja ao lado deste script, sempre -- self-relative, igual aos outros hooks.

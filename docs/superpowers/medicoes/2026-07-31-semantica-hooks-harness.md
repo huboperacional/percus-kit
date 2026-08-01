@@ -216,6 +216,31 @@ Isto é fail-closed funcionando, e é também uma armadilha operacional real: ho
 cubra. **Consequência para a Task 6:** o instalador valida o JSON *e* a existência de cada `command`
 em disco antes de salvar, e o backup datado é o que resta quando nem isso bastou.
 
+## Item 12 — Dentro de `SessionStart` que sai 0, stdout e stderr têm o MESMO destino?
+
+**Resposta: NÃO. Stdout aparece. Stderr, mesmo saindo 0, não aparece.** Não estava na Task — a Task 7
+"fechou" (`8a9ab1f`) assumindo que sim, com base no Item 8, e essa suposição foi o que a derrubou.
+
+Medido lendo o `.jsonl` bruto de uma sessão real (não inferido do que apareceu na tela), comparando os
+3 hooks de `SessionStart` que rodaram na mesma abertura:
+
+| Hook | Canal | `content` do `hook_success` | Visível pro assistente? |
+|---|---|---|---|
+| `[GATE INICIO]` (settings.json do projeto, `echo`) | stdout | populado | ✅ sim |
+| `run-hook.cmd session-start` (superpowers, JSON `hookSpecificOutput`) | stdout | populado (vira `additionalContext`) | ✅ sim |
+| `enforcement-health.cmd` | **stderr** (`[Console]::Error.WriteLine`) | **vazio** — a mensagem foi pro campo `stderr` do registro, não pro `content` | ❌ não |
+
+O terceiro hook rodou, saiu 0, e a mensagem gravada no `stderr` do registro era a certa (`ATENCAO --
+versao instalada (6.34.0) diferente da do kit (6.34.1)`) — só nunca chegou a mim.
+
+**Consequência para a Task 7:** o Item 8 provou que `SessionStart` produz saída visível — usando um
+hook que fala por **stdout** (`echo`). Nunca testou stderr nesse evento. `enforcement-health.ps1`
+falava por stderr, seguindo a convenção de assinatura-em-stderr que as 8 guardas usam (faz sentido lá:
+Item 10 já tinha achado que stderr de um `exit 2` aparece). Pra um observador que sempre sai 0, essa
+convenção é o próprio silêncio que o plano existe pra matar. Conserto: `Falar` passou a escrever em
+`[Console]::Out`. A Task 7 tinha sido dada como fechada sem essa distinção — reaberta e reconsertada
+na mesma sessão que a testou de verdade.
+
 ## Achado extra, não previsto na Task
 
 **Mudança em `settings.json` de projeto vale na hora, sem reiniciar a sessão.** As sondas foram
@@ -233,10 +258,11 @@ não é preciso reiniciar entre registrar e observar.
 | 5 · exit 2 em Stop/PreCompact | ⛔ não medido — irrelevante por projeto (health check sai 0) |
 | 6 · campo `async` | ⛔ não medido — não emitir |
 | 7 · stdin via `.cmd` | ✅ medido — herda íntegro |
-| 8 · `SessionStart` | ✅ medido — dispara, prova positiva |
+| 8 · `SessionStart` | ✅ medido — dispara, prova positiva **(só provava stdout — ver item 12)** |
 | 9 · qual shell roda o `command` | ✅ medido — **`/usr/bin/bash` 5.2.37**, não PowerShell como a doc diz |
 | 10 · saída de hook que sai 0 | ✅ medido — **invisível**, stderr e stdout. Move o anúncio da Task 3 para a Task 7 |
 | 11 · `command` malformado | ✅ medido — bloqueia a ferramenta; auto-lockout observado e desfeito pela outra tool |
+| 12 · stdout vs stderr dentro de `SessionStart` (exit 0) | ✅ medido — **stdout aparece, stderr não**, mesmo saindo 0. Derrubou a Task 7 e foi consertado na mesma sessão |
 
 **Ramo da Task 6 decidido pela medição:** coexistência é definida (os dois rodam; qualquer `exit 2`
 bloqueia) e há sintaxe de caminho confiável. Pela regra fixada antes de medir, **o registro vai para o

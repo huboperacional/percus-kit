@@ -6,7 +6,7 @@
     "evento": "evento do harness: PreToolUse | Stop | PreCompact | SessionStart",
     "matcher": "matcher do registro vivo; null quando o evento nao usa matcher. Medido em 2026-07-31: matcher e case-sensitive e aceita alternancia (Bash|PowerShell)",
     "forma": "guarda = wrapper traduz nao-zero em exit 2 (fail-closed). observador = wrapper repassa o codigo cru",
-    "assinatura": "string que o hook imprime em stderr quando age. E o que permite ao canario CONTAR execucoes em vez de so observar bloqueio -- comando bloqueado e comando bloqueado, nao se ve 'duas vezes'. Nao ha convencao unica: registrado como e, nao como deveria ser",
+    "assinatura": "string que o hook imprime quando age -- em stderr pras guardas (PreToolUse), em stdout pro enforcement-health (excecao medida: stderr num SessionStart que sai 0 e invisivel, mesmo silencio do item 10 so que noutro evento). E o que permite ao canario CONTAR execucoes em vez de so observar bloqueio -- comando bloqueado e comando bloqueado, nao se ve 'duas vezes'. Nao ha convencao unica: registrado como e, nao como deveria ser",
     "escape": "env var que desliga so este hook; null quando so o escape geral PERCUS_HOOKS_DISABLED vale",
     "registrado": "false = existe em disco e nao esta em nenhum registro vivo. Nao e erro: e visibilidade"
   },
@@ -121,7 +121,7 @@
       "assinatura": "[percus:health]",
       "escape": null,
       "registrado": true,
-      "_nota": "Diz no inicio de cada sessao se o enforcement esta ligado e DE ONDE o codigo vem. Absorve a intencao do orfao canon-version-check (versao instalada x versao do kit). Sempre exit 0: health check que tranca a sessao troca um problema por outro pior."
+      "_nota": "Diz no inicio de cada sessao se o enforcement esta ligado e DE ONDE o codigo vem. Absorve a intencao do orfao canon-version-check (versao instalada x versao do kit). Sempre exit 0: health check que tranca a sessao troca um problema por outro pior. Fala por STDOUT, nao stderr -- unico hook do manifesto que quebra a convencao, porque medido: stderr de SessionStart que sai 0 nao aparece (achado 2026-07-31, apos a Task 7 ter sido dada como fechada com o hook falando em stderr e nunca aparecendo)."
     },
     {
       "nome": "canon-version-check",
@@ -131,7 +131,7 @@
       "assinatura": "[percus:hook canon-version]",
       "escape": null,
       "registrado": false,
-      "_nota": "ORFAO. Tem .ps1 e teste proprio, nao tem .cmd e nunca esteve em registro nenhum -- avisa sobre versao de canon divergente e nunca avisou ninguem. Listado aqui para deixar de ser invisivel; o evento declarado e a intencao, nao um registro vivo. A Task 7 decide se ele e absorvido pelo health check ou registrado."
+      "_nota": "ORFAO. Tem .ps1 e teste proprio, nao tem .cmd e nunca esteve em registro nenhum -- avisa sobre versao de canon divergente e nunca avisou ninguem. Listado aqui para deixar de ser invisivel; o evento declarado e a intencao, nao um registro vivo. A Task 7 decide se ele e absorvido pelo health check ou registrado. CUIDADO se for registrado como esta: ele fala por [Console]::Error (stderr), o mesmo bug que o enforcement-health tinha e foi consertado em 2026-07-31 (ver #sessionstart-stderr-nunca-aparece) -- teria que trocar pra stdout antes de virar registro vivo."
     }
   ]
 }

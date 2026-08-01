@@ -23,9 +23,9 @@ caminho de dois. Mover de lugar não fecha essa classe — só troca o lugar do 
 | 3c — prova de ponta a ponta | ✅ **fechada** | com grupo de controle (ver abaixo) |
 | 4 — matcher `Bash\|PowerShell` | ✅ **fechada** | `ed774dd` · na mesma publicação, porque matcher é registro |
 | — conserto do conselho (fora do plano) | ✅ **fechada** | `9b28e65` · perna vazia/cortada deixou de ser `ok` |
-| 7 — health check `SessionStart` | ✅ **fechada** | `8a9ab1f` · publicada 6.34.0 |
+| 7 — health check `SessionStart` | 🔁 **reaberta e reconsertada** | `8a9ab1f` fechou cedo demais; canário observacional nesta própria sessão achou que o hook falava por stderr e nunca aparecia — ver "Task 7 reaberta" abaixo |
 | — versão no painel de plugins | ✅ **fechada** | `5d70914` · 6.34.1 |
-| **5 — canário** | ⏳ **pendente** | metade automatizável feita nos testes; a **observacional exige restart do VSCode** |
+| **5 — canário** | ✅ **metade observacional fechada** | a ação real (abertura desta sessão) achou defeito real — é exatamente o que o canário existe pra fazer. Falta só a assinatura **contada** (múltiplos eventos), não medida ainda |
 | **6 — registro pro `settings.json`** | ⏳ **pendente** | é o que faz hook novo parar de custar publicação |
 
 **Suíte:** 253/253. **Gate V2:** `exit 0`. **Instalado:** 6.34.0 (o 6.34.1 aguarda push).
@@ -82,18 +82,28 @@ uma publicação**, porque registro só vale depois de publicado. O trampolim re
 
 ## O QUE FALTA
 
-### Pendente de operação: reiniciar o VSCode
+### Task 7 reaberta: o banner não apareceu, e a causa é medida, não suposta
 
-A sessão que fez o trabalho carregou o plugin antigo em memória. Ao reabrir, a linha esperada na
-abertura é:
+O canário observacional rodou nesta própria sessão (6.34.0 já instalado, sem precisar de restart —
+`installed_plugins.json` mostrava `installedAt` já dentro da janela desta sessão). O banner esperado
+não apareceu. Em vez de supor motivo, o `.jsonl` da própria sessão foi lido direto: dos 3 hooks de
+`SessionStart` que rodaram, **2 usavam stdout e apareceram** (`[GATE INICIO]` do projeto, o
+`additionalContext` do superpowers), e **1 usava stderr e não apareceu** — o `enforcement-health.cmd`,
+que rodou, saiu 0, e escreveu a mensagem certa (`ATENCAO -- versao instalada (6.34.0) diferente da do
+kit (6.34.1)`) — só que em `[Console]::Error`, que o registro do `hook_success` da sessão grava mas
+não expõe como `content` visível.
 
-```
-[percus:health] enforcement ok -- 12 hooks, codigo vindo do kit, versao 6.34.x
-```
+O Item 8 da medição só provou stdout visível em `SessionStart` (o exemplo era um `echo`). Nunca
+testou stderr nesse evento especificamente — e `enforcement-health.ps1` falava por stderr, seguindo a
+convenção de assinatura-em-stderr das guardas. Consertado nesta sessão: `Falar` em
+`plugin/percus-review/hooks/enforcement-health.ps1` passou a escrever em `[Console]::Out`. Testes
+(que capturam `2>&1` combinado) continuam verdes sem alteração; confirmado por invocação manual com
+stdout/stderr capturados **separadamente**.
 
-**Se aparecer**, ficam provados de uma vez, pelo caminho real do harness: o `SessionStart` novo está
-fiado, o trampolim serve código do kit, e o enforcement passou a dizer o que é. **Se não aparecer**,
-o health check nasceu morto — o risco nº 1 do pre-mortem — e a Task 7 não fecha de verdade.
+**Lição:** "SessionStart dispara e produz saída visível" (Item 8) era verdade só pra metade do canal.
+Um "✅ fechada" baseado numa prova que cobre stdout não cobre um hook que fala por stderr — a mesma
+classe de ausência silenciosa que o Item 10 já tinha achado, só que num evento diferente. Candidato a
+verbete novo em `conhecimento/COMO_RESOLVER.md`.
 
 ### Task 5 — canário
 

@@ -167,6 +167,9 @@
 - [Auditar código de OUTRO repo: leia a ref publicada, nunca o working tree](#auditar-outro-repo-ref-publicada)
 - [Config que só o browser vê: env stale sobrepondo o default do código](#env-stale-sobrepondo-default)
 - [Consumer novo "não consegue enviar OTP": audience nunca foi registrada no auth-service](#audience-nao-registrada-otp-falha)
+- ["Atualizei a credencial e continua falhando": env var herdada vence o .env, em silêncio](#env-var-vence-dotenv)
+- [Banco novo para um segundo tenant quando a cadeia de migrations não roda do zero](#tenant-novo-cadeia-migrations-quebrada)
+- [Task dada como "fechada" com prova que só cobria metade do canal: hook fala por stderr num `SessionStart` que sai 0, e nunca aparece](#sessionstart-stderr-nunca-aparece)
 
 ---
 
@@ -4138,7 +4141,8 @@ na saída da ferramenta, nem como aviso. Só a terceira sonda, que escrevia num 
 |---|---|
 | hook `PreToolUse` que sai **0** | **não** — nem stderr, nem stdout |
 | hook `PreToolUse` que sai **2** | sim (é como um BLOCK se mostra) |
-| hook `SessionStart` | sim (é como um gate de início se mostra) |
+| hook `SessionStart` que sai 0, escrevendo em **stdout** | sim (é como um gate de início se mostra) |
+| hook `SessionStart` que sai 0, escrevendo em **stderr** | **não** — ver [#sessionstart-stderr-nunca-aparece] |
 
 - **A regra:** aviso no caminho de sucesso **não existe**. Se um hook precisa dizer algo sem
   bloquear, o lugar é `SessionStart` (ou um arquivo que alguém leia depois), nunca uma escrita antes
@@ -4156,3 +4160,121 @@ na saída da ferramenta, nem como aviso. Só a terceira sonda, que escrevia num 
 
 **Relacionado:** [#plugin-cache-nao-recebe-fix] — o mesmo desenho de "parece que está ligado e não
 está", uma camada abaixo.
+
+---
+
+## "Atualizei a credencial e continua falhando": env var herdada vence o .env, em silêncio {#env-var-vence-dotenv}
+
+`tags: credencial, .env, variavel de ambiente, DEEPSEEK_API_KEY, api key invalida, precedencia, dotenv, User scope, Windows, atribuicao errada, rotacao de token`
+
+**Origem:** Micro Investors, 2026-07-31 — revisor DeepSeek fora do ar por horas, com a causa
+diagnosticada errada duas vezes antes de alguém comparar as fontes.
+
+O revisor falhava com `Authentication Fails, Your api key: ****6032 is invalid`. O operador
+rotacionou a chave e atualizou o `.env` do projeto. **Nada mudou.** O carregador faz
+`if (-not $env:CHAVE) { <carrega .env> }` — ou seja, **o arquivo só é lido quando a variável não
+existe**. A sessão tinha herdado a chave velha da variável de ambiente **do usuário no Windows**, que
+vencia o arquivo sem dizer nada. Como a variável é a mesma em toda a casa, o revisor estava quebrado
+em **todos** os projetos, não só naquele.
+
+- **A regra:** "env var tem precedência sobre `.env`" é o padrão quase universal (dotenv,
+  pydantic-settings, docker compose) e é o que se quer em produção — mas inverte a intuição de quem
+  debuga: você edita o arquivo, vê o valor certo lá, e o processo segue usando outro.
+- **Como diagnosticar em 30s, sem imprimir segredo** — compare os últimos 4 caracteres e o
+  comprimento das **três** fontes:
+  ```powershell
+  $env:X.Substring($env:X.Length-4)                                   # o que o processo usa
+  ((Select-String .env -Pattern '^X=').Line -split '=',2)[1].Trim()   # o que o arquivo diz
+  foreach ($s in 'Process','User','Machine') { [Environment]::GetEnvironmentVariable('X',$s) }
+  ```
+- **Conserto:** na **origem** (`SetEnvironmentVariable(...,'User')`), não só no arquivo — senão
+  volta na próxima sessão. O processo em execução mantém o valor antigo no escopo `Process`, então
+  dentro da sessão corrente ainda é preciso sobrepor inline a cada chamada.
+- **A armadilha de atribuição:** o plugin tinha se auto-atualizado no mesmo intervalo, e a versão
+  nova virou "a causa" por pura coincidência de horário. **Antes de culpar o que mudou junto,
+  compare as fontes da credencial** — é mais barato e mata a hipótese errada na hora.
+
+**Relacionado:** [#hook-que-sai-zero-nao-avisa] — mesma família: o que está configurado não é o que
+está rodando.
+
+---
+
+## Banco novo para um segundo tenant quando a cadeia de migrations não roda do zero {#tenant-novo-cadeia-migrations-quebrada}
+
+`tags: multi-tenant, duplicacao, pg_dump schema-only, migrations nao replayam, _migrations seed, GRANT matview, ALTER DEFAULT PRIVILEGES, REVOKE CONNECT PUBLIC, isolamento, least-privilege, Postgres`
+
+**Origem:** Micro Investors, 2026-07-31 — provisionamento do 2º tenant por duplicação total.
+
+Produto single-tenant precisava servir um segundo cliente com **separação física** (banco próprio +
+stack própria). O caminho `tenant_id` em todas as tabelas foi descartado no pre-mortem. O primeiro
+obstáculo foi inesperado: **as migrations não sobem um banco do zero** — a cadeia inicial referenciava
+um schema (`auth`) que uma migration posterior **dropou**, então replayar quebra no meio.
+
+**Receita que funcionou:**
+1. `pg_dump --schema-only --no-owner --no-privileges` do banco vivo. **Os dois flags são o ponto:**
+   sem eles o dump carrega os GRANTs da role do tenant A, e a credencial de um alcança o banco do
+   outro — matando a separação que motivou o trabalho.
+2. Role própria por tenant, com os mesmos grants. **`GRANT` nominal nas matviews:**
+   `ALTER DEFAULT PRIVILEGES ... ON TABLES` **não cobre** `MATERIALIZED VIEW` (relkind `m`) — matview
+   nova nasce ilegível e a falha só aparece no runtime da app.
+3. **Semear a tabela de controle de migrations** com o que já foi aplicado, senão o runner considera
+   o banco virgem e tenta replayar a cadeia que não roda.
+4. **Re-aplicar o endurecimento que não vem no dump.** Tudo que foi feito com `GRANT`/`REVOKE` direto
+   em produção (e não como migration) desaparece com `--no-privileges`. Se existe nota do tipo "se o
+   DB for recriado, re-aplicar", é agora.
+5. **`REVOKE CONNECT ON DATABASE ... FROM PUBLIC` nos DOIS bancos.** No Postgres o `PUBLIC` tem
+   `CONNECT` por padrão: sem isso, **toda role de login do cluster** abre sessão no banco de todos.
+   Ler não consegue (sem grant de tabela), mas enumera catálogo e consome slot.
+
+**Como provar o isolamento (e não só afirmar):** teste as duas direções com **credenciais válidas**.
+Testar com senha errada devolve `password authentication failed` e não prova nada sobre permissão — o
+verde esperado é `FATAL: permission denied for database`. Fecha com a sentinela em
+`pg_stat_activity`: cada API na sua base, com a sua role.
+
+**Custos a assumir por escrito:** todo deploy sai em dose dupla; a migration precisa rodar nos dois
+bancos (runner com o banco hardcoded vira dívida imediata); não existe visão consolidada entre
+tenants; e o frontend, se assar config no build, precisa de **uma imagem por tenant** — com gate
+**fail-closed** no build, porque o modo de falha silencioso é o frontend de um cliente falando com a
+API do outro.
+
+**Relacionado:** [#env-var-vence-dotenv] — as duas mordem por "o que está no arquivo não é o que está
+valendo".
+
+---
+
+## Task dada como "fechada" com prova que só cobria metade do canal: hook fala por stderr num `SessionStart` que sai 0, e nunca aparece {#sessionstart-stderr-nunca-aparece}
+
+`tags: SessionStart, hook, stderr, stdout, exit 0, health check, canario observacional, hook_success, transcript jsonl, Claude Code, prova incompleta, assinatura em stderr`
+
+**Origem:** percus-kit, 2026-07-31 — canário observacional de um health check que tinha sido dado
+como fechado numa sessão anterior.
+
+Um health check em `SessionStart` (sempre `exit 0`, por contrato — nunca pode travar a sessão) tinha
+sido validado com a prova "`SessionStart` produz saída visível", baseada num hook `echo` de exemplo
+que falava por **stdout**. O health check em si falava por **stderr**, seguindo a convenção de
+assinatura-em-stderr usada pelas guardas (`PreToolUse` que sai 2 mostra stderr — faz sentido lá). Na
+sessão seguinte o banner esperado não apareceu. A tentação é reabrir o restart e torcer; em vez disso,
+o `.jsonl` da própria sessão foi lido direto (`~/.claude/projects/<projeto>/<session_id>.jsonl` ou o
+equivalente sob `CLAUDE_CONFIG_DIR`), procurando os registros `"type":"hook_success"` com
+`"hookEvent":"SessionStart"`.
+
+- **O que os registros brutos mostram, campo a campo:** cada `hook_success` tem `stdout`, `stderr`,
+  `content` e `exitCode` **separados**. Comparando os 3 hooks que rodaram na mesma abertura: os 2 que
+  escreviam em `stdout` tinham `content` populado (e apareceram); o que escrevia em `stderr` saiu 0,
+  com a mensagem certa gravada no campo `stderr` do registro — e `content` vazio. `content` vazio é o
+  que decide se aparece pra quem lê a sessão; não é o `exitCode`.
+- **Por que a prova original não pegou isso:** ela testava "o evento dispara e o texto aparece" com
+  UM exemplo (stdout). Generalizar de "stdout aparece" pra "SessionStart aparece" pulou a variável que
+  importava. A mesma classe do item já registrado em [#hook-que-sai-zero-nao-avisa] (stderr é
+  invisível em sucesso) — só que ali a medição parou em `PreToolUse` e a suposição vazou pra
+  `SessionStart` sem reteste.
+- **Como confirmar em 2 min, sem esperar reabrir nada:** rode o hook manualmente com stdout/stderr
+  redirecionados pra arquivos separados (`comando 1>out.txt 2>err.txt`); se a mensagem cai em
+  `err.txt`, ela não vai aparecer em `SessionStart` mesmo saindo 0. Ou leia o `.jsonl` da sessão atual
+  e confira o campo `content` do `hook_success`, não só se o processo rodou.
+- **Conserto:** hooks observadores de `SessionStart` (contrato: sempre exit 0, nunca bloqueiam) devem
+  falar por stdout. A convenção de assinatura-em-stderr fica só pras guardas (`PreToolUse`/exit 2),
+  onde o canal é comprovadamente visível.
+
+**Relacionado:** [#hook-que-sai-zero-nao-avisa] — mesma família, um nível mais fundo: nem todo canal
+"visível" é visível igual.
