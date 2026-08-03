@@ -176,6 +176,8 @@
 - [Função de "abandonar/encerrar" duplicada sem os irmãos: grava o status terminal mas esquece a trilha E o estado efêmero associado](#abandonar-duplicado-sem-trilha-e-estado-efemero)
 - [CLAUDE.md aponta pro caminho ANTIGO do canon (`_Novo_Projeto`) — script não existe mais, renomeado pra `percus-kit`](#claudemd-caminho-canon-stale)
 - [Python `round()` (half-to-even) e JS `Math.round()` (half-up) divergem em empate exato — "fonte única" que só cobre a tabela, não a função](#python-js-round-tie-diverge)
+- [`Agent` com `isolation:worktree` pode nascer dezenas de commits atrás da `main` — nunca confie no HEAD sem checar](#isolation-worktree-nasce-stale)
+- [Loop de "esperar Postgres ficar pronto" pode declarar sucesso durante o servidor TEMPORÁRIO do entrypoint oficial, e falhar segundos depois no restart](#pg-isready-race-entrypoint-restart)
 
 ---
 
@@ -4524,3 +4526,70 @@ tratar o sinal à parte).
 **Ref:** revisão final holística (subagent), sessão tiatendo 2026-08-03, calculadora de demora
 (S4) — `execution/dashboard/publicContent.py::roundToNearestTen` vs
 `execution/dashboard/static/js/calculadoraPedidoPerdido.js`, fix no commit `a355e1a`.
+
+---
+
+## `Agent` com `isolation:worktree` pode nascer dezenas de commits atrás da `main` — nunca confie no HEAD sem checar {#isolation-worktree-nasce-stale}
+
+`tags: agent tool, isolation worktree, subagent-driven-development, git worktree, stale, cache, harness, claude code, worktree antigo, dezenas de commits atras, ff-only`
+
+**Contexto:** duas ondas de subagents paralelos (`Agent` tool, `isolation: "worktree"`) contra o
+repo tiatendo, sessão 2026-08-03 — 17 tasks no total.
+
+**Sintoma:** **10 dos 17 worktrees nasceram dezenas a ~90 commits atrás da `main` real** — um
+chegou a faltar 250 arquivos / +39079 linhas (migrations inteiras, features inteiras). Agentes
+sem instrução explícita descobriram sozinhos (comparando `git log --oneline -3` com o que a
+tarefa descrevia — números de linha não batiam, funções-modelo que a tarefa citava como "já
+corrigidas" ainda não existiam naquela forma) e se autocorrigiram com `git merge main --ff-only`
+antes de trabalhar — sempre fast-forward limpo, sem commits divergentes pra perder (nenhum
+worktree tinha trabalho próprio ainda).
+
+**Causa raiz:** o mecanismo de `isolation: worktree` do harness aparentemente pode reaproveitar
+um worktree/branch em cache de sessão anterior em vez de sempre partir do HEAD atual da `main`.
+Comportamento observado da ferramenta, não bug do projeto nem do git.
+
+**Solução:** ao escrever prompts para `Agent` com `isolation: "worktree"` em qualquer repo com
+histórico ativo, inclua como **PASSO 0 obrigatório, antes de qualquer leitura de código**:
+`git log --oneline -3` seguido de `git merge main --ff-only` (fast-forward puro — seguro por
+padrão, só aborta se houver commits locais divergentes, o que não deveria acontecer numa worktree
+recém-criada sem trabalho prévio). Isso eliminou o problema por completo na 2ª onda de 11 agentes
+desta sessão (todos já chegaram atualizados ou se autocorrigiram sem intervenção). Ao revisar o
+retorno de um subagent que trabalhou em worktree isolado, sempre conferir `git log --oneline -3`
+do worktree antes de montar/aplicar o patch dele.
+
+**Ref:** sessão tiatendo 2026-08-03, backlog cirúrgico + auditoria da classe (17 fixes,
+subagent-driven-development).
+
+---
+
+## Loop de "esperar Postgres ficar pronto" pode declarar sucesso durante o servidor TEMPORÁRIO do entrypoint oficial, e falhar segundos depois no restart {#pg-isready-race-entrypoint-restart}
+
+`tags: postgres, pg_isready, docker entrypoint, initdb, restart, race condition, ephemeral postgres, no response, wait for ready, docker-entrypoint.sh`
+
+**Contexto:** script de Postgres efêmero pra TDD (`scratchpad/dbTestsEphemeral.sh`, tiatendo),
+usado por múltiplos subagents concorrentes na mesma sessão 2026-08-03.
+
+**Sintoma:** `docker run` do Postgres reportado como `Up`, mas o script de espera desiste com
+"no response" mesmo com retry de até 120s — e uma inspeção manual 10-20s depois mostra o mesmo
+container perfeitamente saudável e aceitando conexões. Reproduzido ao vivo duas vezes na mesma
+sessão (por dois subagents diferentes, independentemente).
+
+**Causa raiz:** o `docker-entrypoint.sh` oficial da imagem Postgres, quando o volume de dados
+nasce vazio, faz: (1) sobe um servidor TEMPORÁRIO (via unix socket) só pra rodar `initdb`/scripts
+de init (ex. `CREATE DATABASE`), (2) **derruba esse servidor temporário**, (3) só então sobe o
+servidor DEFINITIVO (TCP 0.0.0.0:5432). Um loop de espera que testa `pg_isready` e **quebra no
+primeiro sucesso** pode pegar esse sucesso durante a fase (1) — aí a checagem seguinte (ou a
+tentativa de conexão real da aplicação) cai exatamente na janela entre (2) e (3), onde NADA está
+escutando, e reporta falha mesmo com o banco "logo ali" saudável segundos depois.
+
+**Solução:** não trate o primeiro `pg_isready` bem-sucedido como definitivo — ele pode ser o
+servidor temporário do próprio init. Depois do loop principal, adicione um **segundo loop de
+confirmação curto** (ex. mais 10-15 tentativas de 1s) antes de declarar falha real; só desista se
+a checagem falhar consistentemente por essa segunda janela também. Alternativa mais robusta:
+aguardar uma marca no log do container (`docker logs | grep "database system is ready to accept
+connections"` contada 2×, já que a mensagem aparece uma vez pro temporário e uma vez pro
+definitivo) em vez de só `pg_isready`.
+
+**Ref:** sessão tiatendo 2026-08-03, `scratchpad/dbTestsEphemeral.sh` — fix aplicado ao script
+(retry de confirmação de 15s após o loop principal de 120s). Tema irmão (setup de Postgres
+efêmero em geral, não esta race específica): `#pg-efemero-testes-destrutivos`.
