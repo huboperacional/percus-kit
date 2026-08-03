@@ -17,6 +17,7 @@
 
 ## Índice
 
+- [`Response`/`fetch` com corpo em status 204/205/304 lança TypeError — mesmo ArrayBuffer vazio não é `null`](#response-204-corpo-lanca-typeerror)
 - [Guarda de ação externa barra o COMMIT porque a MENSAGEM cita a ação](#guarda-casa-a-mensagem-nao-a-acao)
 - [Hook que sai 0 não consegue avisar ninguém: stderr e stdout são invisíveis no caminho de sucesso](#hook-que-sai-zero-nao-avisa)
 - [Guard CERTO sem caminho alternativo produz o OPOSTO do que protege](#guard-sem-caminho-alternativo)
@@ -42,6 +43,8 @@
 - [Parser de "1/2" nascido numa pergunta numerada lê quantidade como sim/não no texto livre](#token-lista-numerada-vaza)
 - [Fact-check da review marca finding REAL como "INFUNDADO" porque não conseguiu verificar](#fact-check-infundado-e-nao-verificado)
 - [Review volta vazia parecendo limpa: o revisor ABORTOU por causa de um binário no diff](#revisor-aborta-com-binario)
+- [Teste que verifica ESTADO FINAL não pega regressão de ORDEM entre duas chamadas assíncronas](#teste-estado-final-nao-pega-ordem)
+- [Reusar "o mesmo discriminador" de uma função irmã sem copiar TODOS os ramos reintroduz o bug que a irmã já corrigiu](#discriminador-parcial-reintroduz-bug)
 - [Postgres reclama de "column X does not exist" onde X é um VALOR seu (aspas comidas pelo ssh)](#ssh-heredoc-come-aspas)
 - [404 "por design" transforma erro de tenancy em bug invisível: 3 orgs homônimas e um link que nunca abre](#404-por-design-esconde-tenancy)
 - [Módulo fail-open: "quebrado" e "corretamente desligado" ficam idênticos de fora, e o teste passa nos dois](#fail-open-esconde-teste-vacuo)
@@ -4332,3 +4335,132 @@ um caminho de cleanup diferente — caixa/checkout web) fazia **só a primeira**
 **Relacionado:** [#flag-ja-processei-que-mente] — parente de padrão: os dois casos são uma
 única causa raiz produzindo dois sintomas que parecem não-relacionados até alguém seguir o
 CAMINHO em vez do sintoma. Aqui a causa raiz é "função irmã incompleta"; lá é "flag que mente".
+Também [#discriminador-parcial-reintroduz-bug] — mesma classe ("reusar a lógica da irmã sem
+copiar TODOS os passos/ramos"), achada 1 dia depois no MESMO projeto, desta vez num guard de
+confirmação de endereço em vez de num cleanup de pedido abandonado.
+
+---
+
+## `Response`/`fetch` com corpo em status 204/205/304 lança TypeError — mesmo ArrayBuffer vazio não é `null` {#response-204-corpo-lanca-typeerror}
+
+`tags: fetch, Response, NextResponse, 204 No Content, 205, 304, passthrough, proxy, BFF, TypeError, null body status, ArrayBuffer vazio, ArrayBuffer.byteLength zero nao e null`
+
+**Contexto:** um BFF/proxy genérico que repassa qualquer resposta de upstream (`new Response(body,
+{status: upstream.status, ...})`, `body = await upstream.arrayBuffer()`) funciona para todo status
+que os callers existentes exercitam (200, 4xx, 5xx) — e quebra só quando um NOVO caller passa por um
+endpoint que devolve **204/205/304**. O bug fica latente por meses: o helper compartilhado nunca foi
+testado nesse caminho porque nenhum caller anterior batia nele.
+
+**Sintoma:** `TypeError: Response constructor: Invalid response status code 204` (ou mensagem
+equivalente em runtimes diferentes) ao construir `new Response(buf, {status: 204})` — mesmo quando
+`buf` é um `ArrayBuffer` de **0 bytes**. A mensagem de erro não deixa óbvio que o problema é "corpo
+presente", porque um buffer vazio não parece "ter corpo" pra quem lê o código.
+
+**Causa raiz:** o Fetch spec proíbe corpo em respostas com status 204/205/304 ("null body status").
+A implementação do `Response`/`NextResponse` verifica se `body !== null` — um `ArrayBuffer(0)` **não
+é** `null`, é um valor válido (só que vazio), então a checagem de "tem corpo" dispara mesmo sem
+nenhum byte de conteúdo. `body: undefined` também conta como presente em alguns runtimes; só `null`
+explícito passa.
+
+**Solução:** no passthrough genérico, checar o status ANTES de decidir o que passar como body:
+
+```ts
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+return new NextResponse(NULL_BODY_STATUSES.has(upstream.status) ? null : body, {
+  status: upstream.status,
+  statusText: upstream.statusText,
+  headers: respHeaders,
+});
+```
+
+Teste que prova (não só documenta) o fix: construir um `Response(null, {status: 204})` real e passar
+pelo passthrough, sem mock do `Response` nativo — o bug só aparece com a implementação real do
+runtime, um mock ingênuo de `Response` não reproduz a checagem do spec.
+
+**Como achar isso ANTES de escrever código novo:** se você está criando um caller novo pra um
+endpoint que pode devolver 204 (DELETE, PUT sem corpo de retorno) através de um helper de
+passthrough JÁ EXISTENTE e compartilhado por outros callers, pergunte "algum caller anterior desse
+helper já bateu em 204/205/304?" — se não, é caminho morto não coberto, não caminho testado.
+
+**Ref:** achado no Task 6 da fatia "multiplicidade de destinos" (Paid Media Automation, 2026-08-03) —
+`DELETE /destinations/[did]` e `PUT /destinations/[did]/secret` foram os primeiros callers de
+`passthroughResponse` (`web/src/lib/tracking-client-auth.ts`) a devolver 204; `crm/signals` e
+`excluded-domains` (callers anteriores) só bateram 200/4xx/5xx.
+
+---
+
+## Teste que verifica ESTADO FINAL não pega regressão de ORDEM entre duas chamadas assíncronas {#teste-estado-final-nao-pega-ordem}
+
+`tags: teste, ordem de chamada, call order, mock, AsyncMock, side_effect, estado final, race, regressao silenciosa, park antes de consumir, TDD, subagent-driven-development`
+
+**Sintoma:** um teste assíncrono mocka duas funções (A e B) chamadas em sequência dentro da função
+sob teste, e só verifica o ESTADO FINAL de um dict/contexto compartilhado (ex.: "o valor X foi
+gravado?") — não a ORDEM em que A e B rodaram. O teste passa mesmo se a implementação trocar a
+ordem das duas chamadas, porque o efeito do mock (`dict.update()`) acumula independente de
+sequência.
+
+**Causa raiz:** quando o efeito colateral do mock é cumulativo (um dicionário que recebe
+`.update()` de múltiplas chamadas), a asserção de estado final é insensível a QUAL chamada rodou
+primeiro — só prova que ambas rodaram, não em que ordem. Se a correção depende de ordem (ex.:
+"parkear o valor ANTES de chamar a função que vai consumi-lo"), esse teste não é uma trava real
+contra a regressão que ele nomeia no docstring.
+
+**Solução:** trocar a asserção de estado final por uma asserção de ORDEM, usando uma lista
+compartilhada e `side_effect` que anexa um marcador em cada mock:
+```python
+ordem = []
+async def _upd(cid, customerContext=None):
+    if customerContext and customerContext.get("chave_alvo"):
+        ordem.append("park")
+async def _consome(*a, **kw):
+    ordem.append("consome")
+    return [...]
+# patch com AsyncMock(side_effect=_upd) / AsyncMock(side_effect=_consome)
+assert ordem == ["park", "consome"]
+```
+Prova real da trava: troque as duas linhas da implementação de lugar (mutação manual) e confirme
+que o teste fica vermelho antes de aceitar como pronto — se ficar verde com a ordem trocada, a
+asserção não protege nada.
+
+**Ref:** revisão de qualidade da Task 6, plano C11/C12 (tiatendo, 2026-08-03) —
+`test_metodo_de_pagamento_ja_escolhido_sobrevive_a_troca` em
+`tests/restaurant/test_handleModeSwitchC1220260803.py`; achado por um code-quality-reviewer
+subagent que mutation-testou a asserção antes de aprovar.
+
+---
+
+## Reusar "o mesmo discriminador" de uma função irmã sem copiar TODOS os ramos reintroduz o bug que a irmã já corrigiu {#discriminador-parcial-reintroduz-bug}
+
+`tags: discriminador, guard, confirmacao unica, endereco, address confirmed, reuso parcial, 4 vias vira 2 vias, regressao silenciosa, RF29, mode switch, funcao irma`
+
+**Contexto:** uma função nova (`_handleModeSwitch`, tiatendo) precisava decidir se um endereço já
+conhecido exige nova confirmação do cliente. O docstring dizia "reusa o MESMO discriminador que a
+função-irmã (`_awaitConfirm`) já usa" — mas o código de fato só copiou 2 dos 4 ramos da irmã
+(`validated OR formatted → pergunta`), sem a trava "já confirmado pra ESTE pedido"
+(`_ADDR_CONFIRMED_KEY == draft.id`) que a irmã tinha nos outros 2 ramos.
+
+**Causa raiz:** "reusar o mesmo discriminador" foi entendido como "usar as mesmas duas condições
+de teste" (`validated`/`formatted`), não "replicar a MÁQUINA DE ESTADOS inteira" (validated+
+confirmado / validated+não-confirmado / formatted+não-confirmado / formatted+confirmado). A trava
+de confirmação-única-por-pedido vivia justamente na dimensão que ficou de fora. Resultado: um
+cliente que troca de modo IDA E VOLTA dentro do mesmo pedido (A→B→A) seria perguntado a confirmar
+de novo um endereço que ele já tinha confirmado — exatamente o defeito que a função-irmã foi
+escrita para evitar, reintroduzido pela função nova.
+
+**Solução:** ao declarar "reuso do mesmo discriminador" de uma função existente, copiar/chamar a
+LÓGICA COMPLETA (todos os ramos, não só a condição de entrada), ou fatorar a lógica compartilhada
+num helper único que as duas chamam. Revisão que pega isso: comparar as duas funções LADO A LADO,
+ramo por ramo — não só "elas testam a mesma variável?", mas "elas têm o MESMO NÚMERO de ramos?".
+Teste que prova a correção: construir o cenário "já confirmado para este pedido" explicitamente e
+assertar que a função nova NÃO pede confirmação de novo (não só que ela pede quando
+não-confirmado).
+
+**Ref:** revisão de qualidade da Task 6, plano C11/C12 (tiatendo, 2026-08-03) —
+`_handleModeSwitch` vs `_awaitConfirm` em `execution/engine/restaurantOrderFlow.py`; fix no commit
+`0611949`.
+
+**Relacionado:** [#abandonar-duplicado-sem-trilha-e-estado-efemero] — mesma classe, achada 1 dia
+antes no mesmo projeto: uma função nova/irmã que reusa "a mesma lógica" de outra mas só copia
+PARTE dos passos/ramos, reintroduzindo o bug que a lógica completa já evitava. Lá era um cleanup
+de pedido abandonado (3 passos, uma função só fazia 1); aqui é um discriminador de confirmação de
+endereço (4 ramos, a função nova só cobria 2).
