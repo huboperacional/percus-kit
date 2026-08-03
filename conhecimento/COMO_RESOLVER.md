@@ -174,6 +174,8 @@
 - [Banco novo para um segundo tenant quando a cadeia de migrations não roda do zero](#tenant-novo-cadeia-migrations-quebrada)
 - [Task dada como "fechada" com prova que só cobria metade do canal: hook fala por stderr num `SessionStart` que sai 0, e nunca aparece](#sessionstart-stderr-nunca-aparece)
 - [Função de "abandonar/encerrar" duplicada sem os irmãos: grava o status terminal mas esquece a trilha E o estado efêmero associado](#abandonar-duplicado-sem-trilha-e-estado-efemero)
+- [CLAUDE.md aponta pro caminho ANTIGO do canon (`_Novo_Projeto`) — script não existe mais, renomeado pra `percus-kit`](#claudemd-caminho-canon-stale)
+- [Python `round()` (half-to-even) e JS `Math.round()` (half-up) divergem em empate exato — "fonte única" que só cobre a tabela, não a função](#python-js-round-tie-diverge)
 
 ---
 
@@ -4464,3 +4466,61 @@ antes no mesmo projeto: uma função nova/irmã que reusa "a mesma lógica" de o
 PARTE dos passos/ramos, reintroduzindo o bug que a lógica completa já evitava. Lá era um cleanup
 de pedido abandonado (3 passos, uma função só fazia 1); aqui é um discriminador de confirmação de
 endereço (4 ramos, a função nova só cobria 2).
+
+---
+
+## CLAUDE.md aponta pro caminho ANTIGO do canon (`_Novo_Projeto`) — script não existe mais, renomeado pra `percus-kit` {#claudemd-caminho-canon-stale}
+
+`tags: canon renomeado, CLAUDE.md desatualizado, percus-review-auto.ps1, caminho stale, _Novo_Projeto, percus-kit, script nao encontrado, pwsh file nao reconhecido`
+
+**Contexto:** CLAUDE.md de projetos (ex.: tiatendo) instrui rodar `pwsh -File
+"D:\Claud Automations\_Novo_Projeto\scripts\percus-review-auto.ps1"` antes de cada commit (R11).
+O diretório `_Novo_Projeto` não existe mais — o canon foi renomeado pra
+`D:\Claud Automations\percus-kit` em 30/07 (já registrado na memória de projeto
+`feedback-projeto-escreve-no-canon-e-normal`), mas o CLAUDE.md de pelo menos um projeto não foi
+atualizado pra refletir isso.
+
+**Causa raiz:** renomear o diretório do canon é uma mudança cross-repo que não dispara atualização
+automática nos `CLAUDE.md` de cada projeto individual — cada um tem a cópia do caminho antigo
+hardcoded, e ela só é descoberta quando alguém tenta rodar o comando de verdade.
+
+**Solução:** se `pwsh -File "...\_Novo_Projeto\scripts\..."` falhar com "The argument '...' is not
+recognized as the name of a script file", o caminho real é
+`D:\Claud Automations\percus-kit\scripts\<mesmo nome>`. Todos os scripts
+(`percus-review-auto.ps1`, `percus-milestone-review-auto.ps1`, e as versões `.sh`) migraram
+juntos. Vale a pena, ao achar isso num projeto, também corrigir o `CLAUDE.md` dele pra não repetir
+a busca na próxima sessão.
+
+**Ref:** sessão tiatendo, 2026-08-03, frente calculadora de demora (S4) — descoberto ao tentar
+rodar o wrapper R11 pela primeira vez na sessão.
+
+---
+
+## Python `round()` (half-to-even) e JS `Math.round()` (half-up) divergem em empate exato — "fonte única" que só cobre a tabela, não a função {#python-js-round-tie-diverge}
+
+`tags: banker's rounding, half to even, half up, Math.round, python round, arredondamento, empate exato, tie, dual language, fonte unica incompleta, calculadora`
+
+**Contexto:** feature client-side (calculadora tiatendo) com fórmula "fonte única" — a tabela de
+taxas vive em Python e é injetada como JSON pro JS ler, evitando 2 cópias divergentes da TABELA.
+Mas a função de arredondamento (`roundToNearestTen`) foi escrita separadamente nas 2 linguagens,
+com a MESMA lógica pretendida (`round(v/10)*10`). Um caso de QA manual real (20 pedidos/dia ×
+R$20,50 × 15% × 30 = R$1.845,00 exato) revelou: Python devolvia R$1.840, o navegador mostrava
+R$1.850 — a mesma fórmula, dois resultados.
+
+**Causa raiz:** `round()` do Python usa banker's rounding (round-half-to-even): `round(184.5)` =
+184 (par mais próximo). `Math.round()` do JS sempre arredonda empate pra CIMA: `Math.round(184.5)`
+= 185. "Fonte única" cobriu a TABELA (dado), não a FUNÇÃO (lógica) — o mesmo número de entrada
+produz saídas diferentes em cada linguagem sempre que o valor intermediário cai num múltiplo exato
+de 5 (não só de 10) — bem mais comum do que parece com valores de ticket médio "redondos".
+
+**Solução:** ao portar uma função (não só uma tabela) pra 2 linguagens, teste especificamente o
+CASO DE EMPATE (`valor / divisor` terminando em `.5`), não só casos "arredondados por sorte" —
+testes com números aleatórios raramente batem numa fração exata de coincidência. Se as 2
+linguagens precisam concordar, escolha explicitamente UMA convenção e implemente a MESMA fórmula
+nas duas (ex.: `floor(v/10 + 0.5)*10` é half-up em ambas, sem depender do `round()`/`Math.round()`
+nativo de nenhuma — assume `v >= 0`; pra domínio com valor negativo, half-up-away-from-zero exige
+tratar o sinal à parte).
+
+**Ref:** revisão final holística (subagent), sessão tiatendo 2026-08-03, calculadora de demora
+(S4) — `execution/dashboard/publicContent.py::roundToNearestTen` vs
+`execution/dashboard/static/js/calculadoraPedidoPerdido.js`, fix no commit `a355e1a`.
