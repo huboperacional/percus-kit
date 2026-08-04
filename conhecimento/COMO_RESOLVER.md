@@ -178,6 +178,12 @@
 - [Python `round()` (half-to-even) e JS `Math.round()` (half-up) divergem em empate exato — "fonte única" que só cobre a tabela, não a função](#python-js-round-tie-diverge)
 - [`Agent` com `isolation:worktree` pode nascer dezenas de commits atrás da `main` — nunca confie no HEAD sem checar](#isolation-worktree-nasce-stale)
 - [Loop de "esperar Postgres ficar pronto" pode declarar sucesso durante o servidor TEMPORÁRIO do entrypoint oficial, e falhar segundos depois no restart](#pg-isready-race-entrypoint-restart)
+- [Duas sessões trabalham na mesma spec sem saber uma da outra — plano completo já existia, commitado num worktree isolado](#duas-sessoes-plano-duplicado-worktree)
+- [`sed` de redação de segredo falha quando a entrada vem de `grep -B`/`-A` (prefixo de número de linha quebra o padrão)](#sed-redact-falha-com-grep-contexto)
+- [Teste "travado" via túnel SSH pode ser lento de verdade, não hang — e o túnel morre sob carga sustentada](#tunel-ssh-lento-vs-hang-e-morre-sob-carga)
+- [Fix de guard dependente de sinal do LLM passa 100% dos testes (mockados) e reproduz em PROD — o mock provou a hipótese ERRADA sobre o que o LLM extrai](#mock-sig-llm-hipotese-errada-precisa-smoke-real)
+- [`[5-T]` manual mostra página vazia/velha: `netstat` mente sobre qual PID escuta a porta, servidor local zumbi de sessão anterior](#servidor-dev-zumbi-porta-netstat-mente)
+- [Subagent commita só os arquivos do PRÓPRIO task — docs/spec editados fora do escopo de nenhuma task ficam esquecidos no disco](#docs-fora-escopo-task-ficam-nao-commitados)
 
 ---
 
@@ -4593,3 +4599,241 @@ definitivo) em vez de só `pg_isready`.
 **Ref:** sessão tiatendo 2026-08-03, `scratchpad/dbTestsEphemeral.sh` — fix aplicado ao script
 (retry de confirmação de 15s após o loop principal de 120s). Tema irmão (setup de Postgres
 efêmero em geral, não esta race específica): `#pg-efemero-testes-destrutivos`.
+
+---
+
+## Duas sessões trabalham na mesma spec sem saber uma da outra — plano completo já existia, commitado num worktree isolado {#duas-sessoes-plano-duplicado-worktree}
+
+`tags: git worktree, sessao paralela, subagent-driven-development, plano duplicado, checkpoint, HANDOFF desatualizado, council-pre-mortem, reconciliacao, ps aux`
+
+**Contexto:** sessão Scraper-prospeccao 2026-08-03. Pedido: "escreva o plano técnico" pra uma spec
+já aprovada. Comecei a escrever um plano do zero, achei uma cópia solta (não-commitada) do MESMO
+plano no meio do caminho — assumi que era rascunho de sessão anterior interrompida, li e
+reconciliei contra ela, rodei council-pre-mortem, atualizei HANDOFF/PLANO como se estivesse tudo
+pronto pra execução a partir dali.
+
+**Sintoma:** quando o operador perguntou "não sei mais o que estamos rodando aqui e na outra
+sessão", `git worktree list` revelou um worktree isolado (`.worktrees/<nome>`, branch própria) com
+**Task 1 e 2 de 12 já commitadas** e seu PRÓPRIO council-pre-mortem já rodado — 2 rounds, achando
+problemas diferentes dos que eu tinha achado na cópia solta. `ps aux` confirmou um processo Python
+rodando DENTRO do worktree no momento da checagem — execução real, não histórico. A cópia solta que
+eu vinha editando desapareceu do disco no meio da investigação (causa não identificada, sem perda
+real — o conteúdo autoritativo sempre esteve commitado no worktree).
+
+**Causa raiz:** o protocolo de início de sessão (ler `HANDOFF.md` + `docs/PLANO.md`) não inclui
+checar `git worktree list`. Um worktree isolado criado por uma sessão anterior (padrão
+"subagent-driven plan execution", já documentado no próprio repo num commit
+`chore: ignore .worktrees/`) é invisível pra quem só lê os arquivos de tracking da branch
+principal — o worktree tem seu PRÓPRIO `HANDOFF.md`/`docs/PLANO.md`, nunca sincronizado de volta
+pra branch principal até o merge final.
+
+**Solução:** antes de escrever um plano técnico novo (ou qualquer trabalho de escopo grande),
+rodar `git worktree list` — não só `git log`/`git status` da branch atual. Se existir um worktree
+com branch relacionada ao tema, ler o `docs/PLANO.md`/`HANDOFF.md` DENTRO dele (arquivos
+separados, não compartilhados) antes de qualquer coisa. `ps aux | grep <nome-do-worktree>`
+confirma se há execução ativa AGORA (não só histórico de commits) — evita editar em cima de um
+processo em andamento. Ao reconciliar achados de duas fontes paralelas, aplicar as correções
+DENTRO do worktree real (ele é a fonte da verdade), nunca só documentar na branch principal como
+se fosse lá que a execução acontece.
+
+**Ref:** sessão Scraper-prospeccao 2026-08-03, frente "motor de coleta multi-provider" — commits
+`77fc204` (correção aplicada no worktree real) e `b30a906` (correção do HANDOFF/PLANO da branch
+principal, virando ponteiro em vez de descrever estado falso).
+
+---
+
+## `sed` de redação de segredo falha quando a entrada vem de `grep -B`/`-A` (prefixo de número de linha quebra o padrão) {#sed-redact-falha-com-grep-contexto}
+
+`tags: bash, sed, redact, segredo, api key, grep contexto, vazamento, tool output, secret exposure`
+
+**Contexto:** sessão Scraper-prospeccao 2026-08-03, tentando localizar um comentário acima de uma
+env var sem expor o VALOR da var no output da ferramenta.
+
+**Sintoma:** `grep -n -B3 "^GOOGLE_PLACES_API_KEY=" .env | sed -E 's/=.+/=<redacted>/'` — o `sed`
+não redigiu a linha do match; o valor real da API key saiu em texto puro no resultado da
+ferramenta (e portanto no histórico/log da sessão). O padrão `s/=.+/=<redacted>/` parecia correto
+isolado, mas `grep -n -B3` prefixa a linha de match com `N:` e as linhas de contexto com `N-` — a
+linha real (`33:GOOGLE_PLACES_API_KEY=AIzaSy...`) não batia com um padrão testado só contra a
+string SEM esse prefixo, e passou inalterada.
+
+**Causa raiz:** testar um padrão de redação contra uma string sintética (sem o prefixo que
+`grep -n` com contexto sempre adiciona) e assumir que generaliza. Qualquer regex de redação
+ancorada em `^` quebra silenciosamente quando a entrada vem de `grep` com `-A`/`-B`/`-C`.
+
+**Solução:** nunca usar `sed`/regex ancorado em `^` pra redigir segredo vindo de `grep` com
+contexto. Alternativas seguras: (1) `grep -c` ou `cut -d'=' -f1` pra confirmar só a
+EXISTÊNCIA/nome da variável, nunca o valor; (2) extrair o valor pra uma variável de shell DENTRO
+do mesmo processo (nunca via `echo`/print) e usá-lo só em redirecionamento de arquivo (`>>`),
+nunca em stdout que vira output de ferramenta; (3) validar formato/conteúdo (é JSON válido? tem o
+campo esperado?) rodando um script que imprime só um veredito booleano, nunca o dado em si. Se o
+vazamento já aconteceu: risco baixo quando a chave já é restrita (IP allowlist, escopo de API) —
+mas considerar rotação por precaução, e nunca repetir o mesmo comando "pra confirmar".
+
+**Ref:** sessão Scraper-prospeccao 2026-08-03, checkpoint de configuração de
+`GOOGLE_PLACES_ACCOUNTS` (conta `moacir`).
+
+---
+
+## Teste "travado" via túnel SSH pode ser lento de verdade, não hang — e o túnel morre sob carga sustentada {#tunel-ssh-lento-vs-hang-e-morre-sob-carga}
+
+`tags: ssh tunnel, postgres, asyncpg, timeout, hang, teste lento, faulthandler, connection refused, sqlalchemy nullpool`
+
+**Contexto:** sessão Scraper-prospeccao 2026-08-03/04, Task 11 do plano "motor de coleta
+multi-provider". `pytest tests/test_places_worker.py::test_places_query_uses_grid_search_when_target_exceeds_google_cap`
+ficava sem nenhum output novo por 10-16 minutos — parecia travado.
+
+**Sintoma:** processo pytest vivo, ~0-2% de CPU (não é loop infinito, é espera de I/O), sem
+avançar. Diagnóstico ingênuo ("deve ser deadlock no código") levaria a caçar bug de concorrência
+que não existe (o worker é sequencial, sem `asyncio.gather`).
+
+**Causa raiz — duas coisas empilhadas, cada uma real:** (1) um bug genuíno no MOCK do teste
+(`get_details` com `return_value` fixo em vez de `side_effect` variando por `place_id`) fazia ~90
+resultados de grid colapsarem em upserts repetidos contra o MESMO contato — não travava, mas era
+lento à toa e não testava o que alegava. (2) mesmo corrigido, o teste ainda fazia ~180 commits
+reais sequenciais via túnel SSH pro Postgres do VPS, a ~1,5-2s cada (medido com script standalone
+`faulthandler.dump_traceback_later(N)` + prints de progresso por chamada) — genuinely lento
+(~5-8min), não hang. Por fim, sob carga sustentada de HORAS (múltiplas rodadas de suíte grandes
+na mesma sessão), o processo `ssh -f -N -L` do túnel **morreu de verdade** 3 vezes (`ssh: connect
+... Connection timed out` do lado do cliente; depois disso qualquer `asyncpg.connect()` novo falha
+com `TimeoutError`/`ConnectionRefusedError` em cascata pro resto da suíte).
+
+**Solução:** (1) antes de assumir "travou", instrumentar com
+`faulthandler.dump_traceback_later(N, exit=False)` + prints de progresso por chamada num script
+standalone que replica o cenário fora do pytest — isola rápido se é hang real (stack parado no
+mesmo ponto) ou I/O genuinamente lento (progresso visível, só devagar). (2) medir latência real de
+round-trip com um engine `NullPool` isolado (`SELECT 1` × N) antes de suspeitar do código — se o
+round-trip isolado também está lento/alto, é o túnel, não a lógica. (3) se o processo `ssh` do
+túnel sumiu (`Get-Process -Id <pid>` vazio) ou uma nova tentativa de conexão dá "Connection timed
+out" na porta 22 (não "refused" — timed out é rede, refused é o daemon recusando), religar:
+`ssh -f -N -L 15432:<host-vps>:5432 root@<vps>` e confirmar com `Test-NetConnection` + 1 round-trip
+antes de retomar. (4) NUNCA rodar 2 suítes/scripts pesados em paralelo contra o mesmo túnel —
+agrava a lentidão real a ponto de parecer travamento. (5) pra suítes de ~900 testes que legitimamente
+levam horas, aceitar que o túnel pode cair NO MEIO — se 670+ testes já rodaram verdes antes da
+queda e o resto são só `TimeoutError`/`ConnectionRefusedError` em cascata (não asserções falhas
+distintas), é 1 evento de infra, não N bugs — não precisa relançar a suíte inteira de novo se cada
+arquivo relevante já foi verificado individualmente com túnel saudável.
+
+**Ref:** sessão Scraper-prospeccao 2026-08-03/04, Task 11+review final do plano "motor de coleta
+multi-provider" (commits `e217451`, `5585791`).
+
+---
+
+## Fix de guard dependente de sinal do LLM passa 100% dos testes (mockados) e reproduz em PROD — o mock provou a hipótese ERRADA sobre o que o LLM extrai {#mock-sig-llm-hipotese-errada-precisa-smoke-real}
+
+`tags: llm, sig, mock, tdd, teste mockado, hipotese errada, root cause, guard, cancelamento,
+desired cart, structured output, tool call, smoke real, reproduzir em prod, deterministico,
+backstop, contrato mockado nao substitui sistema vivo`
+
+**Contexto:** tiatendo, 2026-08-03. Achado no smoke (C14): `"mudei de ideia, vou retirar"` no
+meio de um pedido abandonava o rascunho inteiro em vez de trocar o modo de entrega. 1ª hipótese:
+o guard de cancelamento (`sig["cancel"]`) não checava se `sig["delivery"]`/`sig["payment"]`
+também vieram no mesmo turno — fix aplicado, TDD com `sig[]` mockado à mão (`DesiredCart(cancel=
+True, delivery="takeout")`), suíte inteira verde (2510 passed), deployado. **Re-smoke ao vivo em
+PROD reproduziu o bug de novo, idêntico.**
+
+**Causa raiz:** o teste mockava um `sig` que **nunca acontece de verdade**. Medido ao vivo (logs +
+banco): pra essa frase o LLM devolve `cancelar_pedido=true` com `entrega`/`pagamento` **VAZIOS** —
+ele não ignora o segundo sinal, ele nunca tenta extraí-lo, porque pra ele a frase inteira já É
+cancelamento. O teste RED/GREEN provou que o CÓDIGO fazia o que o mock mandava — não provou nada
+sobre o que o LLM realmente manda. TDD com contrato mockado é necessário mas não suficiente
+quando o próprio LLM é a fonte do dado que o teste assume.
+
+⚠️ **Achado colateral que atrasou o diagnóstico:** a evidência de banco (`actor='system:restart'`,
+`reason='cliente reiniciou pedido (draft ocioso)'`) parecia apontar pro reset de draft ocioso —
+mas essa string está **hardcoded dentro da função de abandono, igual pra QUALQUER caller**
+(idade do draft não provava nada; o reset de idade exige horas, o draft tinha 1 minuto). Quando
+uma função de auditoria/trilha é compartilhada por múltiplos callers com o MESMO texto fixo, a
+trilha não distingue QUAL caminho disparou — é preciso ler o código dos callers, não inferir do
+texto da trilha.
+
+**Solução:** pra sinal que depende de extração do LLM E cuja ausência é ambígua (o LLM pode não
+extrair por escolha, não por erro), prefira um **backstop DETERMINÍSTICO no texto cru** —
+independente do que o LLM decidiu extrair — em vez de confiar só no `sig` estruturado. Aqui:
+`detectDeliveryPref(text)`/`_matchPaymentMethod(text, methods)`, as mesmas funções regex que o
+caminho sem-LLM já usa. E **todo fix que depende de comportamento do LLM precisa de smoke real
+em produção antes de ser declarado fechado** — suíte verde com `sig[]` mockado não é prova
+suficiente quando a premissa do teste é sobre o próprio LLM.
+
+**Relacionado:** [#reproduzir-antes-de-fixar] — mesma disciplina geral (reproduzir > teorizar),
+aplicada especificamente ao caso onde "reproduzir" significa medir um LLM ao vivo, não só rodar
+o comando de novo.
+
+**Ref:** tiatendo, sessão 2026-08-03, commits `7fc88d0` (1ª correção, insuficiente) → `9096377`
+(causa raiz real), smoke real em PROD `0.281.0`→`0.282.0`.
+
+---
+
+## `[5-T]` manual mostra página vazia/velha: `netstat` mente sobre qual PID escuta a porta, servidor local zumbi de sessão anterior {#servidor-dev-zumbi-porta-netstat-mente}
+
+`tags: uvicorn, reload, watchfiles, multiprocessing, zombie process, porta presa, netstat mente,
+5-T manual, servidor dev, TestClient diverge do browser, PID errado, Windows taskkill`
+
+**Contexto:** tiatendo, 2026-08-03. Ao fazer o `[5-T]` manual de `/roadmap` (`SKIP_DB_BOOT=1
+REDESIGN_V2=1 python run.py`, porta 3110), o browser (via Playwright) e `curl` mostravam as 3
+seções novas da página **completamente vazias** — só eyebrow/lede, zero fases/features/radar.
+Um `TestClient` fresco no MESMO processo Python, importando o app diretamente, mostrava o
+conteúdo **correto e completo**. Isso provou que o código estava certo e o servidor rodando
+estava servindo outra coisa.
+
+**Causa raiz:** uvicorn com `--reload` roda 2+ processos (reloader + worker, e o worker pode ter
+filhos `multiprocessing.spawn`). Uma sessão anterior no mesmo dia tinha deixado processos presos
+na porta 3110 sem morrer de verdade. `taskkill //F //PID <X>` no PID que `netstat -ano | grep
+3110` reportava **não resolvia** — depois de matar, `netstat` continuava mostrando a MESMA porta
+LISTENING, às vezes com o MESMO PID reportado (Windows reaproveita/cacheia essa informação de
+forma não-confiável neste ambiente Git-Bash/Windows híbrido). O processo real que estava servindo
+a request já tinha um PID diferente do que `netstat` mostrava.
+
+**Solução:** não confie em `netstat -ano` sozinho pra achar o processo certo. Use
+`Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Select ProcessId,CommandLine`
+(PowerShell) pra ver a **command line completa** de cada processo — isso revela: (a) qual é
+literalmente `python.exe run.py`, (b) quais são filhos `multiprocessing.spawn(parent_pid=X)` —
+e X aponta pro PID pai que também precisa morrer, mesmo que ele já não apareça mais no
+`tasklist`/`netstat` (processo pai pode ter saído mas deixado filho órfão vivo, ou vice-versa).
+Mate a ÁRVORE inteira (todos os PIDs relacionados, não só o primeiro que `netstat` apontar),
+espere 1-2s, e SÓ ENTÃO confirme porta livre e suba um servidor novo — validando com `curl`
+direto (bypassa cache de browser) antes de abrir o Playwright.
+
+**Sinal de alerta pra generalizar:** sempre que um `[5-T]` manual via browser/curl mostrar
+resultado DIFERENTE de um teste automatizado que testa a mesma rota (`TestClient` em processo),
+suspeite primeiro de servidor local desatualizado/zumbi antes de suspeitar do código — é mais
+barato de descartar (kill + restart + `curl` de novo) do que investigar um "bug" que não existe.
+
+**Ref:** tiatendo, sessão 2026-08-03/04, `[5-T]` de `/roadmap` por fases, PIDs 51468/54036/60736/
+41148/32520/48836 numa sequência de kills até a árvore inteira morrer.
+
+---
+
+## Subagent commita só os arquivos do PRÓPRIO task — docs/spec editados fora do escopo de nenhuma task ficam esquecidos no disco {#docs-fora-escopo-task-ficam-nao-commitados}
+
+`tags: subagent-driven-development, git add seletivo, checkpoint, docs esquecidos, spec nao
+commitado, orquestrador, branch compartilhada, git status`
+
+**Contexto:** tiatendo, 2026-08-03/04. Numa frente conduzida via `subagent-driven-development`
+(controller principal escreve spec/plano, dispara um subagent por task), cada subagent seguiu à
+risca a instrução de "stage APENAS os arquivos desta task" (disciplina correta pra branch
+compartilhada — evita puxar arquivo de outra sessão pro commit). Só que os arquivos de **spec e
+plano** (`docs/superpowers/specs/*.md`, `docs/superpowers/plans/*.md`) e uma edição em
+`docs/diferenciais.md` foram escritos pelo **controller**, não por nenhum subagent — e como
+nenhuma task individual "possuía" esses arquivos no seu escopo declarado, ninguém os commitou.
+Ficaram editados no disco por uma sessão inteira (4 tasks + revisões) até o checkpoint seguinte
+rodar `git status` no repo inteiro e achar 5 arquivos com trabalho real, nunca versionados.
+
+**Causa raiz:** a disciplina de "stage seletivo por task" (necessária e correta) tem um ponto
+cego estrutural: ela protege contra commitar arquivo ALHEIO, mas não garante que TODO arquivo
+PRÓPRIO seja commitado — se um arquivo não pertence ao escopo de nenhuma task individual (porque
+foi escrito pelo orquestrador antes/entre as tasks), ele cai fora da rede de nenhum dos commits
+parciais.
+
+**Solução:** o orquestrador (quem escreve a spec/plano antes de disparar os subagents) é
+responsável por commitar os PRÓPRIOS artefatos que ele mesmo criou — não delegar isso a nenhum
+subagent, já que nenhum subagent tem esse arquivo no seu escopo. E antes de considerar uma frente
+fechada (ou num checkpoint), rodar `git status --short` no repo INTEIRO (não só `git diff
+--cached` de cada commit já feito) e perguntar explicitamente: "todo arquivo que EU editei nesta
+sessão está commitado, ou só o que os subagents tocaram?"
+
+**Relacionado:** [#duas-sessoes-plano-duplicado-worktree] — outra classe de problema de
+coordenação entre múltiplos agentes/sessões escrevendo no mesmo repo, mesma lição de fundo:
+verificar o estado real do git, não assumir que "rodou sem erro" implica "está tudo salvo".
+
+**Ref:** tiatendo, sessão 2026-08-03/04, commit `2ba8f09` (5 arquivos: `docs/diferenciais.md` +
+4 specs/planos de S5-cardápio-do-dia e roadmap-por-fases, commitados só no checkpoint seguinte).
