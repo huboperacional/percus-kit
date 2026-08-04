@@ -40,6 +40,26 @@ ADR/PLANO): `${env:PERCUS_CANON_DIR}/v2/artefatos/`.
 
 {2-3 linhas descrevendo propósito, público, problema que resolve}
 
+### Gatilhos de projeto (preencher no dia 1, antes de codar)
+
+Adotado seletivamente de metodologias de especificação externas (MDS — ver
+`06_CONSELHO_PERCUS.md` seção "Mapeamento MDS ↔ Percus"). Cada linha é S/N + 1 motivo — gatilho
+que não dispara exige o N/A com motivo, não fica em branco. Não é checklist bloqueante (nenhum
+hook trava por isto): é o registro que transforma silêncio em decisão datada. Mudar estratégia de
+tenant **depois** que o produto já está em produção custa caro mesmo quando a decisão original foi
+deliberada — ver o caso real em `COMO_RESOLVER.md#tenant-novo-cadeia-migrations-quebrada`.
+
+| Gatilho | S/N | Motivo (1 linha) |
+|---|---|---|
+| Tem persistência (banco, arquivo, estado entre sessões)? | {S/N} | {motivo} |
+| É (ou pode virar) multi-tenant — mais de um cliente/organização no mesmo código? | {S/N} | {motivo} |
+| Trata dado regulado (LGPD/HIPAA/PCI — CPF, saúde, cartão, dado financeiro)? | {S/N} | {motivo} |
+| Tem endpoint público (webhook, API externa, rota sem auth)? | {S/N} | {motivo} |
+
+Gatilho que já causou retrabalho comprovado em algum projeto Percus (registrado em
+`conhecimento/COMO_RESOLVER.md`) pode ser promovido pra esta tabela — não adicionar linha
+especulativa "porque pode ser útil".
+
 ## Stack
 
 - **Frontend:** {Vite + React 19 + TS / Next.js 15 + RSC}

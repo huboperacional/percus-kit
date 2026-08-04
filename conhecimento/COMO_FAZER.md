@@ -18,6 +18,8 @@
 - [Decompor trabalho grande em frentes](#decompor-frentes) — retomada barata + paralelismo real
 - [Build Docker frio/lento (Next.js): cache incremental + fontes self-hosted](#deploy-build-cache) — opt-in, pilotar antes de adotar
 - [Antes de construir andaime de login, veja se o MCP de browser já está logado](#mcp-browser-perfil-persistente) — 2 navegações no lugar de magic-link server-side
+- [Preencher os gatilhos S/N no dia 1 de projeto novo](#gatilhos-dia-1) — transforma silêncio em decisão datada
+- [Priorizar perguntas no `grilling` com P0-P4 e camadas](#priorizacao-grilling-p0-p4) — P0/P1 antes de acabamento
 
 ---
 
@@ -218,6 +220,60 @@ para revisão de densidade/estética** — tela vazia dá leitura falsa; para ju
 org real, com dado real.
 
 **Ref:** Plexco Tasks s156 (deep-dive ClickUp × Plexco, 28 capturas em 2 produtos autenticados).
+
+---
+
+## Preencher os gatilhos S/N no dia 1 de projeto novo {#gatilhos-dia-1}
+
+`tags: gatilhos, discovery, multi-tenant, dado regulado, LGPD, persistencia, endpoint publico, CLAUDE.md, greenfield, MDS`
+
+**Quando:** passo 2 de `comandos/COMANDO_PROJETO_NOVO.md`, ao gerar `CLAUDE.md` a partir do
+template — antes de qualquer código.
+
+**Passos:**
+1. Responda as 4 linhas da mini-tabela "Gatilhos de projeto" em `CLAUDE.md` (herdada de
+   `templates/CLAUDE.template.md`): persistência? multi-tenant? dado regulado (LGPD/HIPAA/PCI)?
+   endpoint público?
+2. Gatilho que não dispara **exige** "N/A, motivo em 1 linha" — nunca deixe em branco.
+3. Use `v2/loops/grilling.md` (camada "Gatilhos estruturais", `v2/referencia/discovery-camadas.md`)
+   se a resposta não for óbvia de cara.
+
+**Armadilhas:** decidir de cabeça sem escrever — o valor inteiro do gatilho é a decisão **datada**,
+não a decisão em si. Caso real que ancora o custo de mudar tenancy tarde (não de "decisão
+silenciosa" — a decisão original foi deliberada, o caro foi mudar depois de já estar em
+produção): Micro Investors precisou provisionar um 2º tenant por duplicação física de banco,
+meses depois do produto já estar rodando single-tenant (ver
+`COMO_RESOLVER.md#tenant-novo-cadeia-migrations-quebrada`). Não adicione gatilho novo à tabela
+por especulação — só depois de retrabalho comprovado uma vez.
+
+**Ref:** `06_CONSELHO_PERCUS.md` seção "Mapeamento MDS ↔ Percus".
+
+---
+
+## Priorizar perguntas no `grilling` com P0-P4 e camadas {#priorizacao-grilling-p0-p4}
+
+`tags: grilling, elicitacao, discovery, prioridade, P0, P1, camadas, rodadas, cobertura, escopo`
+
+**Quando:** qualquer sessão de `v2/loops/grilling.md` — feature não-trivial ou projeto novo.
+
+**Passos:**
+1. Antes de perguntar, classifique a categoria da pergunta usando o catálogo de 14 camadas em
+   `v2/referencia/discovery-camadas.md` (Problema, Atores, Aposta/Horizonte, Escala/Porte,
+   Gatilhos estruturais, Fluxo, Regras de negócio, Estados, Exceções, Integrações, Operação,
+   Segurança, Critérios de aceite — mais Objetivo/Resultado).
+2. Priorize por `Impacto × Incerteza × Risco ÷ Custo`: P0 (muda arquitetura) e P1 (pode causar
+   retrabalho) sempre antes de P3/P4 (acabamento/preferência).
+3. Agrupe em rodadas de 5-8 perguntas com objetivo de 1 frase declarado.
+4. Pare quando: cobertura ≥85% das camadas relevantes, zero lacunas P0, riscos P1 com decisão ou
+   mitigação registrada, fluxo principal descritível ponta-a-ponta.
+
+**Armadilhas:** tratar "já perguntei bastante" como critério de parada — é sensação, não medida.
+Pular P0/P1 pra chegar mais rápido nas perguntas de acabamento é o erro mais caro: uma pergunta
+de alto impacto respondida por último custa retrabalho se a resposta já tiver sido pressuposta
+em decisões anteriores da mesma conversa.
+
+**Ref:** `v2/referencia/discovery-camadas.md`; framework de origem discutido pelo operador com
+GPT, cross-validado contra o MDS na mesma sessão (2026-08-04).
 
 ---
 

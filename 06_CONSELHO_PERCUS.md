@@ -177,6 +177,40 @@ canon adota **seletivamente** o front-end (specify/clarify/analyze) e mantém o 
 
 ---
 
+## Mapeamento MDS ↔ Percus (adoção seletiva)
+
+O **MDS** (Modular Development Style, Modulareasy) é um template de especificação com 15 blocos
+(`0`, `A`–`N`) e 86 campos, cada um rotulado BLOCO-BASE (sempre obrigatório) / BLOCO-PLUGIN
+(obrigatório se um gatilho S/N disparar) / BLOCO-STACK (incremental). O canon adota
+**seletivamente** o único pedaço sem equivalente funcional — os gatilhos estruturais do dia 1 —
+e mantém o resto por caminhos próprios, já mais granulares na maioria dos blocos:
+
+| MDS | Percus (equivalente) | Status |
+|---|---|---|
+| Bloco 0/A/B (elicitação, identidade, atores) | `v2/loops/grilling.md` + `docs/scope-council/scope-draft.md` | Gap real → **Novo**: mini-tabela de gatilhos em `CLAUDE.template.md` |
+| Bloco C/D (RF/RNF) | `templates/spec.template.md` (EARS, FR/SC, gate `[S]`) | Já temos |
+| BASE/PLUGIN/STACK por campo | Taxonomia 🤖/🔧/📖 por regra (`01_REGRAS_INEGOCIAVEIS.md:17-50`) | Reaproveitado, sem 3º vocabulário |
+| Bloco G (arquitetura/stack) | `docs/PLANO.md` + Etapa 1 do `SCOPE_COUNCIL.md` | Já temos |
+| Bloco H/I (specs, TDD, validação) | Pipeline `[0]→[5-T]` | Já temos (mais granular) |
+| Bloco L/M (entitlement, automação/IA-gen) | `PADRAO_AUTH_SERVICE.md`, `04_MODEL_ROUTING.md`/R13 | Já temos, escopo calibrado ao portfólio |
+| 11 documentos canônicos | Cada um já tem dono próprio no canon | Não duplicar |
+
+**Não adotamos:** os 86 campos/15 blocos como estrutura universal (colide com "tamanho é
+contrato", Constituição §8), "tudo é entitlement via UI admin" como regra geral (a maioria do
+portfólio Percus é pequena — o próprio MDS chama isso de contra-exemplo), "cadastro progressivo
+nunca bloqueante" como regra geral (colide com os gates deliberadamente bloqueantes que já
+fecharam incidentes reais). Detalhe completo: ver a análise que gerou esta seção
+(`.claude-home/plans/encontrei-uma-metodologia-que-soft-barto.md`, sessão 2026-08-04).
+
+**Terceira convergência (framework de entrevista de requisitos, mesma data):** um framework de
+elicitação discutido pelo operador com GPT (14 camadas, priorização P0-P4, rodadas, estado
+estruturado) mapeia quase 1:1 nos blocos do MDS — terceira fonte independente na mesma forma.
+Adotado como catálogo de referência do `grilling.md`: ver `v2/referencia/discovery-camadas.md`.
+Não adotado: o estado em JSON validado por API (útil só com uma segunda IA auditando via
+endpoint — não é o caso de uma conversa Percus).
+
+---
+
 ## Tabela de automação (níveis de decisão)
 
 Resposta concreta à dúvida operacional "o que o conselho passa a decidir SEM pedir confirmação":

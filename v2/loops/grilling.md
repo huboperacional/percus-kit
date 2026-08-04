@@ -6,7 +6,7 @@
 
 ## O loop
 
-1. **Entreviste até haver entendimento compartilhado.** Não é questionário fixo: percorra a árvore de decisão resolvendo dependências na ordem — decisão que trava outras vem primeiro.
+1. **Entreviste até haver entendimento compartilhado.** Não é questionário fixo: percorra a árvore de decisão resolvendo dependências na ordem — decisão que trava outras vem primeiro. Priorize por `Impacto × Incerteza × Risco ÷ Custo de perguntar` (P0 muda arquitetura → sempre antes de P4 preferência estética). Rodadas de 5-8 perguntas com objetivo declarado, não uma lista solta. Catálogo de categorias + rubrica completa: `v2/referencia/discovery-camadas.md`.
 2. **Uma pergunta por vez.** Espere a resposta antes da próxima. Várias juntas confundem, e o operador responde só a última.
 3. **Toda pergunta vem com a sua recomendação.** "Eu faria (a), porque X." Confirmar ou corrigir é muito mais barato que redigir do zero.
 4. **Fato você descobre; decisão você pergunta.** Se dá para responder lendo o código, o `.env`, o git ou a API — leia. Perguntar o que você podia descobrir queima a paciência do operador e o crédito das perguntas que importam.
@@ -22,10 +22,11 @@ Grilling não termina em conversa — termina em artefato:
 | Termo de domínio ambíguo que vocês fixaram | `CONTEXT.md` |
 | O que construir, com critério de pronto | spec (`loops/spec.md`) |
 | O que ficou fora | spec, seção "não-objetivos" |
+| Gatilho S/N com impacto arquitetural (persistência/multi-tenant/dado regulado/endpoint público) | mini-tabela em `CLAUDE.md` — nunca fica implícito |
 
 ## Armadilhas
 
-- **Parar cedo.** Se após 3 perguntas você "já sabe o que fazer", provavelmente entendeu o problema raso. Sessões reais chegam a 30-50 perguntas.
+- **Parar cedo.** Se após 3 perguntas você "já sabe o que fazer", provavelmente entendeu o problema raso. Sessões reais chegam a 30-50 perguntas. Critério mensurável de parada (não "sensação de pronto"): cobertura ≥85% das camadas relevantes, zero lacunas P0, riscos P1 com decisão ou mitigação registrada.
 - **Perguntar o óbvio para parecer diligente.** Treina o operador a responder no automático — e aí a pergunta que importava passa batida.
 - **Aceitar termo vago.** "Cadastro", "conta", "cancelamento": se o termo tem duas leituras possíveis, fixe agora ou pague depois.
 

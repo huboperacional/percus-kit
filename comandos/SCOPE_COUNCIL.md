@@ -71,7 +71,9 @@ GATE — pergunta inicial:
 Se ambas SIM, prossiga. Se uma das duas NÃO, reporta isso ao usuário e pergunta se quer pular o council e seguir greenfield default.
 
 ETAPA 1 — Análise solo Claude principal (~10 min, $0):
-Lê CLAUDE.md, AGENTS.md, HANDOFF.md, docs/PLANO.md (estados iniciais).
+Lê CLAUDE.md (inclusive a mini-tabela "Gatilhos de projeto" — persistência/multi-tenant/dado
+regulado/endpoint público, preenchida no passo 2 do fluxo greenfield), AGENTS.md, HANDOFF.md,
+docs/PLANO.md (estados iniciais).
 Produz análise estruturada em docs/scope-council/scope-draft.md com:
 1. MVP em 1 mês: 3-4 features no máximo (justifique cada uma)
 2. Stack proposta + motivação por trade-off (alternativas consideradas)

@@ -44,7 +44,9 @@ FLUXO GREENFIELD:
    - Rodar `${env:PERCUS_CANON_DIR}/checklists/CHECKLIST_INICIO_SESSAO.md` (5 passos).
 
 2. Usar templates em `${env:PERCUS_CANON_DIR}/templates/` pra criar:
-   - `CLAUDE.md` (de `CLAUDE.template.md`)
+   - `CLAUDE.md` (de `CLAUDE.template.md`) — preencher junto a mini-tabela "Gatilhos de projeto"
+     (persistência? multi-tenant? dado regulado? endpoint público?) via `v2/loops/grilling.md`;
+     gatilho que não dispara leva N/A com motivo em 1 linha, nunca fica em branco
    - `AGENTS.md` slim (de `AGENTS.template.md`, ~4-5 KB cross-provider)
    - `HANDOFF.md` (de `HANDOFF.template.md`)
    - `docs/PLANO.md` (de `PLANO.template.md`)
