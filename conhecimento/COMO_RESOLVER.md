@@ -185,6 +185,8 @@
 - [`[5-T]` manual mostra página vazia/velha: `netstat` mente sobre qual PID escuta a porta, servidor local zumbi de sessão anterior](#servidor-dev-zumbi-porta-netstat-mente)
 - [Subagent commita só os arquivos do PRÓPRIO task — docs/spec editados fora do escopo de nenhuma task ficam esquecidos no disco](#docs-fora-escopo-task-ficam-nao-commitados)
 - [Script de teste "só código" (.py/.sql) contra Postgres efêmero derruba TUDO que renderiza template ou lê YAML de tenant — 138 falsas-falhas de uma vez](#ephemeral-test-script-so-py-sql-esconde-templates-yaml)
+- [Hook R11 (`PreToolUse` de review antes de commit) tem enforcement inconsistente pra subagents via Agent/Task tool](#r11-hook-inconsistente-subagents)
+- [`docker stack deploy` atualiza labels do Traefik mas não recria o container quando a tag da imagem não muda — precisa `service update --force` depois](#stack-deploy-nao-recria-container-tag-igual)
 
 ---
 
@@ -4890,3 +4892,86 @@ depois do 1º fix, não assumir que as duas contribuíam.
 `scratchpad/dbTestsEphemeral.sh`) + achado colateral de 1 bug de produto real no meio da limpeza
 (criar item de cardápio COM variações pelo painel admin dava 500 — `aliases` perdido numa chamada
 Python direta que não passa pela injeção de dependências do FastAPI, commit `61cd12c`).
+
+---
+
+## Hook R11 (`PreToolUse` de review antes de commit) tem enforcement inconsistente pra subagents via Agent/Task tool {#r11-hook-inconsistente-subagents}
+
+`tags: R11, pre-commit hook, PreToolUse, subagent-driven-development, plugin hooks, enforcement gap`
+
+**Contexto:** ADS4PROS-Site, sessão 2026-08-04, executando `superpowers:subagent-driven-development`
+(8 tasks + 3 fixes, cada uma com implementer subagent + spec-review + quality-review, todos
+commitando via `git commit` dentro do próprio subagent). O hook R11 (`hooks/hooks.json` do plugin
+`percus-review`, `PreToolUse` casando `Bash|PowerShell` → `pre-commit-check.cmd`) bloqueia a
+**sessão principal** de forma confiável — já tinha acontecido 2x na mesma sessão antes disso, sempre
+exigindo `/percus-review:review` fresco (<5min) pra destravar. Ao dispatchar subagents pra
+implementar+commitar cada task do plano, o comportamento foi **inconsistente**: dois subagents
+seguidos, no mesmo repo, mesmo hook instalado — um teve o `git commit` bloqueado normalmente
+("review too old", teve que rodar fresco antes de conseguir), outro passou direto sem o hook
+disparar nenhuma vez.
+
+**Causa raiz:** não identificada com certeza (não investigado a fundo pra não desviar do objetivo
+da sessão). Hipóteses não descartadas: hooks `PreToolUse` registrados via plugin podem não propagar
+de forma garantida pro contexto de execução de subagents dispatchados via Agent/Task tool
+(dependendo de como o harness isola/herda o processo do subagent), OU há uma condição de corrida
+entre subagents concorrentes/dispatch rápido que faz o hook não disparar em alguns casos.
+
+**Sinal de alerta pra generalizar:** ao orquestrar subagents que commitam código em qualquer repo
+com hook de pre-commit obrigatório (Percus ou não), **não assumir que o hook é um gate garantido**
+só porque funciona de forma confiável na sessão principal — testar (ou instruir explicitamente o
+subagent a rodar a review manualmente de qualquer forma, review-ou-não-review) antes de confiar
+nessa camada como única linha de defesa.
+
+**Solução:** instruir todo subagent que vai commitar a rodar `/percus-review:review` (ou o wrapper
+DeepSeek/cross-claude direto) explicitamente ANTES do `git commit`, independente do hook — às vezes
+vai ser redundante (o hook bloquearia mesmo), às vezes é a única camada real de defesa que roda. E
+pedir pro subagent colar o **output bruto** da review no relatório de volta (não só a conclusão
+"passou"/"falso positivo"), pra o controller poder auditar achados de segurança dispensados sem
+confiar cegamente no auto-julgamento do subagent.
+
+**Relacionado:** memória de projeto `feedback_r11_hook_nao_propaga_subagentes` (ADS4PROS-Site).
+
+**Ref:** ADS4PROS-Site, sessão 2026-08-04, feature `assinatura.ads4pros.com` (commits `9e58c17`
+bloqueado normalmente vs. commit da Task 5/CopyButton passando sem o hook disparar).
+
+---
+
+## `docker stack deploy` atualiza labels do Traefik mas não recria o container quando a tag da imagem não muda — precisa `service update --force` depois {#stack-deploy-nao-recria-container-tag-igual}
+
+`tags: docker swarm, stack deploy, service update --force, image tag latest, rolling update, traefik labels`
+
+**Contexto:** ADS4PROS-Site, sessão 2026-08-04, deploy de uma feature nova (`assinatura.ads4pros.com`)
+que exigia mudança em `docker-compose.yml` (novo host + middleware Traefik) E uma imagem nova
+(código novo, mesma tag `ads4pros-lp:latest`). Fluxo: `docker build` local na VPS (gera imagem nova
+com hash diferente, mesma tag) → `docker stack deploy -c docker-compose.yml ads4pros-lp`. O deploy
+"funcionou" (sem erro), `docker service inspect` confirmou que os labels novos do Traefik (a regra
+de host nova) foram aplicados corretamente — mas `docker service ps` continuava mostrando a MESMA
+task ID de 3 dias atrás, e `docker inspect` do container confirmou: `Created` continuava sendo de 3
+dias antes. A imagem nova (com o código da feature) nunca chegou a rodar.
+
+**Causa raiz:** Docker Swarm compara a SPEC do serviço pra decidir se recria o task. Mudança de
+labels é, sim, uma mudança de spec — e nesse caso específico ela FOI aplicada (confirmado via
+`docker service inspect`). Mas Swarm não detecta automaticamente que uma tag de imagem já conhecida
+(`ads4pros-lp:latest`) agora aponta pra um conteúdo diferente — ele não resolve o digest de novo só
+porque a tag já está "resolvida" no seu cache de spec. `docker service update --force` existe
+exatamente pra esse caso: força Swarm a re-resolver a referência de imagem e recriar o task, mesmo
+com a string da tag inalterada.
+
+**Sinal de alerta pra generalizar:** depois de QUALQUER `docker stack deploy` que envolve build local
+de imagem com tag fixa (`:latest` ou qualquer tag reaproveitada, sem digest/registry), **não confiar
+que "o comando rodou sem erro" implica "o container novo está rodando"** — checar
+`docker inspect <container> --format '{{.Created}}'` (ou `docker service ps` com atenção ao timestamp
+"Running X ago") pra confirmar que a recriação realmente aconteceu antes de considerar o deploy
+concluído.
+
+**Solução:** depois de `docker build` + `docker stack deploy` com tag fixa reaproveitada, sempre
+rodar `docker service update --force <service>` em seguida (não é redundante — trata exatamente esse
+gap) e só então validar `Created`/timestamp do container antes de dar o deploy como confirmado.
+Cuidado com o aviso já documentado em [[reference_deploy_sequence]] (memória de projeto): não
+combinar `service update --force` com `stack deploy` NA MESMA invocação/rodada (dá "update out of
+sequence") — rodar em sequência, um depois do outro, é seguro; simultâneo/mesma chamada não.
+
+**Ref:** ADS4PROS-Site, sessão 2026-08-04, deploy de `assinatura.ads4pros.com` — task
+`9tahrhjf9rou251m8j5q4mce7` continuou "Running 3 days ago" após `stack deploy` sozinho; resolvido
+com `docker service update --force ads4pros-lp_app` na sequência, container recriado com timestamp
+correto e feature nova confirmada em produção.
