@@ -187,6 +187,9 @@
 - [Script de teste "só código" (.py/.sql) contra Postgres efêmero derruba TUDO que renderiza template ou lê YAML de tenant — 138 falsas-falhas de uma vez](#ephemeral-test-script-so-py-sql-esconde-templates-yaml)
 - [Hook R11 (`PreToolUse` de review antes de commit) tem enforcement inconsistente pra subagents via Agent/Task tool](#r11-hook-inconsistente-subagents)
 - [`docker stack deploy` atualiza labels do Traefik mas não recria o container quando a tag da imagem não muda — precisa `service update --force` depois](#stack-deploy-nao-recria-container-tag-igual)
+- [Prefill de checkbox-group via URL param em form embutido de terceiro (GHL) marca a opção ERRADA, não "não funciona"](#ghl-checkbox-prefill-url-inconsistente)
+- [CSS Grid `auto-fit` estica item único/par pra largura total quando sobram poucos itens](#css-grid-autofit-estica-item-unico)
+- [CTA novo pra path interno perde `gclid`/`fbclid`/`utm_*` porque `<KeepQuery/>` nunca foi MONTADO nessa página](#keepquery-precisa-estar-montado)
 
 ---
 
@@ -4975,3 +4978,104 @@ sequence") — rodar em sequência, um depois do outro, é seguro; simultâneo/m
 `9tahrhjf9rou251m8j5q4mce7` continuou "Running 3 days ago" após `stack deploy` sozinho; resolvido
 com `docker service update --force ads4pros-lp_app` na sequência, container recriado com timestamp
 correto e feature nova confirmada em produção.
+
+---
+
+## Prefill de checkbox-group via URL param em form embutido de terceiro (GHL) marca a opção ERRADA, não "não funciona" {#ghl-checkbox-prefill-url-inconsistente}
+
+`tags: GoHighLevel, GHL, iframe, form embutido, prefill, URL param, checkbox-group, terceiro`
+
+**Contexto:** ads4agencies-site, sessão 2026-08-04, AutoWorx v2 — o CTA de fechamento de cada
+subpágina de serviço deveria levar pro form de quote (`/quote`, iframe GHL
+`link.ads4pros.com/widget/form/<id>`) já com o serviço marcado. GHL documenta prefill de campo
+simples via URL param (`?first_name=John`) — a suposição natural foi que o mesmo mecanismo
+funciona pra um campo checkbox-group (múltipla escolha), passando `?<field_key>=<valor>`.
+
+**Causa raiz:** testado ao vivo (`browser_navigate` direto na URL do widget + `browser_evaluate`
+lendo `checked`/`value` de cada `input[type="checkbox"]` real do DOM), o prefill por URL num
+checkbox-group do GHL é **inconsistente**: um valor marcou a PRIMEIRA opção da lista (não a
+pedida), outro valor não marcou nenhuma. Sem param, nada vem marcado (comportamento base correto).
+Não é "não funciona" nem "funciona certo" — é **funciona errado às vezes**, o pior dos três, porque
+empurra o lead pro serviço errado em silêncio.
+
+**Sinal de alerta pra generalizar:** qualquer prefill de campo MÚLTIPLA-ESCOLHA (checkbox-group,
+multi-select) via URL param em form embutido de terceiro é candidato — a documentação genérica do
+provider costuma cobrir só campo de texto/single-value; nunca assumir que o mesmo mecanismo
+generaliza pra múltipla escolha sem testar.
+
+**Solução:** não tente pré-marcar campo múltiplo-escolha dentro do iframe de terceiro. Controle o
+que dá pra controlar de verdade — a página que hospeda o iframe: mostrar aviso em texto claro
+("Interessado em: **X** — selecione abaixo pra confirmar") acima do form, deixar o visitante marcar
+manualmente. Pra testar antes de prometer qualquer prefill de form de terceiro: `browser_navigate`
+direto na URL do widget/iframe (fora do site) com e sem o param candidato, `browser_evaluate`
+lendo `checked`/`value` de cada input real — nunca confiar na documentação genérica do provider.
+
+**Ref:** ads4agencies-site, `WTV2ServiceDetailPage.tsx` + `/quote`, sessão 2026-08-04, form GHL
+`gNR1no6QKMlI369FN80d`.
+
+---
+
+## CSS Grid `auto-fit` estica item único/par pra largura total quando sobram poucos itens {#css-grid-autofit-estica-item-unico}
+
+`tags: CSS Grid, auto-fit, auto-fill, minmax, galeria, grid-template-columns, layout quebrado`
+
+**Contexto:** ads4agencies-site, sessão 2026-08-04, `WTV2ProofGallery.tsx` (galeria "More From Our
+Shop" de cada subpágina de serviço) — quando sobravam só 1-2 fotos depois de tirar a 1ª pro slot de
+destaque, a foto restante renderizava ocupando a largura INTEIRA do container (ou 2 fotos gigantes),
+parecendo foto quebrada, não "grid com poucas fotos". Reportado 2x pelo operador na mesma sessão
+("já te expliquei").
+
+**Causa raiz:** `grid-template-columns:repeat(auto-fit,minmax(Npx,1fr))` — `auto-fit` colapsa as
+colunas implícitas VAZIAS (as que caberiam mas não têm conteúdo) e redistribui o espaço delas pras
+colunas que TÊM conteúdo, porque o `1fr` do `minmax` reparte o espaço livre entre as faixas que
+sobram. Com 6 colunas cabendo e só 1 item real, as outras 5 colapsam e a 1ª cresce pra ocupar as 6.
+`auto-fill` faz a mesma conta de quantas colunas cabem, mas NÃO colapsa as vazias — ficam lá sem
+conteúdo, o item real fica no tamanho normal, sobra espaço em branco ao lado.
+
+**Sinal de alerta pra generalizar:** qualquer `repeat(auto-fit,minmax(...,1fr))` aplicado a um grid
+cujo número de itens VARIA e pode legitimamente ser 1 (ex.: lista derivada tirando a 1ª entrada pro
+slot de destaque) é candidato — testar especificamente o caso de 1 item antes de considerar pronto.
+
+**Solução:** trocar `auto-fit` → `auto-fill` quando a intenção é "cada item no tamanho normal, não
+importa quantos couberem" (típico de galeria/proof-gallery). Manter `auto-fit` só quando a intenção
+REALMENTE é "os itens existentes devem crescer pra preencher a largura toda" (ex.: grid de cards de
+preço onde 3 cards devem ocupar a largura inteira igualmente).
+
+**Ref:** ads4agencies-site, `WTV2ProofGallery.tsx`, sessão 2026-08-04 (AutoWorx v2).
+
+---
+
+## CTA novo pra path interno perde `gclid`/`fbclid`/`utm_*` porque `<KeepQuery/>` nunca foi MONTADO nessa página {#keepquery-precisa-estar-montado}
+
+`tags: KeepQuery, tracking, ad params, gclid, fbclid, utm, data-attribute, contrato de 2 lados, Next.js`
+
+**Contexto:** ads4agencies-site, sessão 2026-08-04, AutoWorx v2 — o CTA de fechamento de cada
+subpágina de serviço, antes `tel:`, virou link interno `/quote?service=<nome>`. O componente que
+renderiza o botão já marca `data-keep-query` corretamente (condicional em `href.startsWith('/')`),
+mas o param de anúncio (`gclid`/`fbclid`/`utm_*`) sumia ao clicar. Achado por review Cross-Claude
+(subagente independente) ANTES do deploy, não pelo autor original da mudança.
+
+**Causa raiz:** `data-keep-query` é um MARCADOR, não o mecanismo — quem faz o trabalho de verdade é
+o `useEffect` do componente `<KeepQuery/>` (`components/window-tint-v2/KeepQuery.tsx`) rodando na
+PÁGINA, reescrevendo o `href` de todo `<a data-keep-query>` com os params da URL de entrada. É um
+contrato entre DOIS lugares: o componente que renderiza o link (marca o atributo) e o componente no
+topo da página (executa a reescrita). Adicionar um link novo com o atributo certo não implica que o
+segundo lado existe naquela página específica — `<KeepQuery/>` não é provider/contexto global, cada
+rota tem que montá-lo individualmente. O próprio arquivo já documentava a lacuna em comentário
+("mounted only on Home/About/Contact/FAQ... has the same latent gap") — só não tinha virado ação até
+o review pegar.
+
+**Sinal de alerta pra generalizar:** qualquer padrão "atributo marcador + componente que faz o
+trabalho de verdade em outro lugar da árvore" (não só KeepQuery) quebra em silêncio quando alguém
+adiciona o marcador numa página nova sem saber que o componente executor também precisa estar
+montado ali. Ao adicionar QUALQUER CTA/link novo apontando pra path interno numa página que antes
+só tinha `tel:`/`mailto:`/links externos, confirmar que a página monta o componente executor do
+contrato.
+
+**Solução:** montar `<KeepQuery/>` na página nova se ainda não montava. Testar de verdade, não
+confiar só em ler código: `browser_navigate` na página com `?gclid=test123` na URL,
+`browser_evaluate` lendo o `href` real do link depois do JS rodar — o param tem que aparecer no
+destino.
+
+**Ref:** ads4agencies-site, `WTV2ServiceDetailPage.tsx`, sessão 2026-08-04. Achado por review
+Cross-Claude antes do deploy.
