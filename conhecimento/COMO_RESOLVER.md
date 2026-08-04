@@ -4720,9 +4720,7 @@ multi-provider" (commits `e217451`, `5585791`).
 
 ## Fix de guard dependente de sinal do LLM passa 100% dos testes (mockados) e reproduz em PROD — o mock provou a hipótese ERRADA sobre o que o LLM extrai {#mock-sig-llm-hipotese-errada-precisa-smoke-real}
 
-`tags: llm, sig, mock, tdd, teste mockado, hipotese errada, root cause, guard, cancelamento,
-desired cart, structured output, tool call, smoke real, reproduzir em prod, deterministico,
-backstop, contrato mockado nao substitui sistema vivo`
+`tags: llm, sig, mock, tdd, teste mockado, hipotese errada, root cause, guard, cancelamento, desired cart, structured output, tool call, smoke real, reproduzir em prod, deterministico, backstop, contrato mockado nao substitui sistema vivo`
 
 **Contexto:** tiatendo, 2026-08-03. Achado no smoke (C14): `"mudei de ideia, vou retirar"` no
 meio de um pedido abandonava o rascunho inteiro em vez de trocar o modo de entrega. 1ª hipótese:
