@@ -158,6 +158,51 @@ Describe "registrar-hooks-settings.ps1" {
         $saida | Should -Not -Match "orfao"
     }
 
+    It "escopo Todos SEM DryRun: escreve blocos reais em PreToolUse (guardas) E em Stop (observador) na mesma chamada, sem duplicar na 2a rodada" {
+        $kit = New-KitFalso
+        $settings = New-SettingsFalso -Conteudo @{}
+
+        & $script:script -Escopo Todos -KitRoot $kit -SettingsPath $settings | Out-Null
+
+        $j1 = Get-Content $settings -Raw -Encoding UTF8 | ConvertFrom-Json
+        $comandosPreToolUse1 = @($j1.hooks.PreToolUse | ForEach-Object { @($_.hooks) } | ForEach-Object { $_.command })
+        $comandosStop1       = @($j1.hooks.Stop       | ForEach-Object { @($_.hooks) } | ForEach-Object { $_.command })
+
+        ($comandosPreToolUse1 -join "|") | Should -Match "guarda-um\.cmd"
+        ($comandosPreToolUse1 -join "|") | Should -Match "guarda-dois\.cmd"
+        ($comandosStop1 -join "|")       | Should -Match "obs-um\.cmd"
+
+        $nPre1 = @($j1.hooks.PreToolUse).Count
+        $nStop1 = @($j1.hooks.Stop).Count
+
+        & $script:script -Escopo Todos -KitRoot $kit -SettingsPath $settings | Out-Null
+        $j2 = Get-Content $settings -Raw -Encoding UTF8 | ConvertFrom-Json
+        $nPre2 = @($j2.hooks.PreToolUse).Count
+        $nStop2 = @($j2.hooks.Stop).Count
+
+        $nPre2  | Should -Be $nPre1  -Because "2a rodada nao pode duplicar bloco de PreToolUse"
+        $nStop2 | Should -Be $nStop1 -Because "2a rodada nao pode duplicar bloco de Stop"
+    }
+
+    It "settings.json que ainda NAO existe: cria o arquivo com o conteudo esperado e nao faz backup (nada pra fazer backup)" {
+        $kit = New-KitFalso
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("regh-novo-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        $settings = Join-Path $dir "settings.json"
+        [void]$script:temps.Add($dir)
+
+        Test-Path $settings | Should -Be $false -Because "o teste precisa exercitar o branch de primeiro uso, sem arquivo previo"
+
+        & $script:script -Escopo Guardas -KitRoot $kit -SettingsPath $settings | Out-Null
+
+        Test-Path $settings | Should -Be $true
+        $j = Get-Content $settings -Raw -Encoding UTF8 | ConvertFrom-Json
+        $comandos = @($j.hooks.PreToolUse | ForEach-Object { @($_.hooks) } | ForEach-Object { $_.command })
+        ($comandos -join "|") | Should -Match "guarda-um\.cmd"
+        ($comandos -join "|") | Should -Match "guarda-dois\.cmd"
+
+        @(Get-ChildItem $dir -Filter "settings.json.bak-*").Count | Should -Be 0 -Because "primeiro uso: nao existe settings.json anterior pra fazer backup"
+    }
+
     It "contra o manifesto REAL do kit: Guardas=8, Observadores=4, Todos=12 -- todos com wrapper em disco" {
         # Regressao de verdade: usa o hooks-manifest.json e os .cmd reais do proprio repo,
         # nao o kit falso. Prova que o script bate com o que hooks-manifest.tests.ps1 ja

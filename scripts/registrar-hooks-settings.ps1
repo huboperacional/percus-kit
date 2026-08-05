@@ -41,6 +41,7 @@ if (-not $SettingsPath) {
     $claudeHome   = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { "$env:USERPROFILE\.claude" }
     $SettingsPath = Join-Path $claudeHome "settings.json"
 }
+Write-Host "[registrar-hooks] alvo: $SettingsPath"
 
 $hooksDir     = Join-Path $KitRoot "plugin\percus-review\hooks"
 $manifestPath = Join-Path $hooksDir "hooks-manifest.json"
@@ -76,7 +77,6 @@ foreach ($h in $vivos) {
         Evento  = $h.evento
         Matcher = $matcher
         Command = $absoluto
-        Forma   = $h.forma
     })
 }
 
