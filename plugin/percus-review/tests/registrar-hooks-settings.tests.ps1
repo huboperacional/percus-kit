@@ -133,4 +133,37 @@ Describe "registrar-hooks-settings.ps1" {
         (Get-Content $settings -Raw) | Should -Be $antes
         @(Get-ChildItem $dir -Filter "settings.json.bak-*").Count | Should -Be 0 -Because "nada deveria ter sido tentado, nem backup"
     }
+
+    It "escopo Observadores filtra so o hook de forma observador" {
+        $kit = New-KitFalso
+        $settings = New-SettingsFalso -Conteudo @{}
+        $saida = & $script:script -Escopo Observadores -KitRoot $kit -SettingsPath $settings -DryRun *>&1 | Out-String
+        $saida | Should -Match "1 hook"
+        $saida | Should -Match "obs-um"
+        $saida | Should -Not -Match "guarda-um"
+    }
+
+    It "escopo Todos inclui guarda e observador, nunca o orfao" {
+        $kit = New-KitFalso
+        $settings = New-SettingsFalso -Conteudo @{}
+        $saida = & $script:script -Escopo Todos -KitRoot $kit -SettingsPath $settings -DryRun *>&1 | Out-String
+        $saida | Should -Match "3 hook"
+        $saida | Should -Not -Match "orfao"
+    }
+
+    It "contra o manifesto REAL do kit: Guardas=8, Observadores=4, Todos=12 -- todos com wrapper em disco" {
+        # Regressao de verdade: usa o hooks-manifest.json e os .cmd reais do proprio repo,
+        # nao o kit falso. Prova que o script bate com o que hooks-manifest.tests.ps1 ja
+        # afirma sobre o mundo real (8 guarda / 4 observador / 12 total).
+        $settings = New-SettingsFalso -Conteudo @{}
+
+        $saidaGuardas = & $script:script -Escopo Guardas -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
+        $saidaGuardas | Should -Match "8 hook"
+
+        $saidaObs = & $script:script -Escopo Observadores -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
+        $saidaObs | Should -Match "4 hook"
+
+        $saidaTodos = & $script:script -Escopo Todos -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
+        $saidaTodos | Should -Match "12 hook"
+    }
 }
