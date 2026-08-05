@@ -197,6 +197,8 @@
 - [Prefill de checkbox-group via URL param em form embutido de terceiro (GHL) marca a opção ERRADA, não "não funciona"](#ghl-checkbox-prefill-url-inconsistente)
 - [CSS Grid `auto-fit` estica item único/par pra largura total quando sobram poucos itens](#css-grid-autofit-estica-item-unico)
 - [CTA novo pra path interno perde `gclid`/`fbclid`/`utm_*` porque `<KeepQuery/>` nunca foi MONTADO nessa página](#keepquery-precisa-estar-montado)
+- [`_env()` de `.env` com regex `\s*` cruza quebra de linha quando o valor está vazio](#env-regex-cruza-linha-vazia)
+- [Credencial n8n apontando pra hostname interno Docker que nunca vai resolver: n8n e Postgres podem estar em VPS diferentes](#n8n-postgres-vps-diferentes)
 
 ---
 
@@ -5304,5 +5306,73 @@ pergunte "quem MAIS lê essa mesma fonte de dado (mesma tabela/chave), sem passa
 consertei?" — nesse caso, 2 outras rotas liam a mesma linha do banco via SQL raw direto, cast pro
 tipo antigo, sem nenhuma relação de código com a rota já corrigida. `grep` pela CHAVE/tabela no banco
 (não só pelo nome da rota) acha esses consumidores paralelos.
+
+---
+
+## `_env()` de `.env` com regex `\s*` cruza quebra de linha quando o valor está vazio {#env-regex-cruza-linha-vazia}
+
+`tags: parser .env, regex value bleed, chave duplicada, valor vazio, \s inclui \n, dotenv custom, N8N_URL vira nome de outra chave, MULTILINE`
+
+**Sintoma:** um cliente Python que lê `.env` via regex customizada (não biblioteca dotenv) devolve,
+pra uma chave X, o VALOR LITERAL DO NOME da próxima chave no arquivo (ex.: `_env("N8N_URL")` devolve
+`"N8N_USER="`), quando o `.env` tem a chave X duplicada com a primeira ocorrência vazia (`N8N_URL=`
+sem nada depois) seguida de outra linha com o valor real mais adiante no arquivo.
+
+**Causa raiz:** regex do tipo `^\s*NOME\s*=\s*(.+?)\s*$` com `re.MULTILINE` — o `\s*` ENTRE o `=` e o
+grupo de captura inclui `\n`. Quando a linha da chave termina logo após o `=` (valor vazio), esse
+`\s*` engole a quebra de linha e o motor de regex continua tentando casar `(.+?)` a partir do INÍCIO
+da próxima linha — que é o texto de outra chave (`NOME_SEGUINTE=`). Como `(.+?)` só exige 1+ caractere
+não-newline, ele casa com o nome da próxima chave inteiro, e o `$` (fim de linha em modo MULTILINE)
+fecha o match exatamente no fim daquela linha. O bug só aparece quando (a) a chave tem uma ocorrência
+VAZIA no arquivo E (b) existe uma próxima linha com conteúdo — passou despercebido em testes porque
+eles sempre faziam monkeypatch da função `_env()` inteira, nunca exercitavam a regex contra um
+arquivo real com esse padrão de duplicação.
+
+**Solução:** trocar `\s*` por `[ \t]*` nos dois lados do valor
+(`^[ \t]*NOME[ \t]*=[ \t]*(.+?)[ \t]*$`) — exclui `\n` da classe de espaço, então o match nunca
+atravessa linha. Uma chave com valor vazio simplesmente NÃO CASA (o `(.+?)` exige 1+ char), e
+`re.search` continua escaneando até achar a próxima ocorrência (populada) da mesma chave — preserva
+o comportamento desejado de "pular vazia, achar a preenchida" sem o vazamento pra chave errada.
+Escrever teste de regressão direto contra um arquivo `.env` real (via `tmp_path`), não só mockando
+`_env()`, é o que teria pego isso antes.
+
+**Ref:** Kommo-Disparo-WhatsApp, sessão 2026-08-05 (`lib/kommo_client.py` + `lib/n8n_client.py`,
+mesma função duplicada nos dois arquivos por design do projeto).
+
+---
+
+## Credencial n8n apontando pra hostname interno Docker que nunca vai resolver: n8n e Postgres podem estar em VPS diferentes {#n8n-postgres-vps-diferentes}
+
+`tags: n8n credential, postgres host, docker internal hostname, service discovery, DNS de servico externo, firewall bloqueia porta, assumir mesma rede sem verificar, topologia multi-vps`
+
+**Sintoma:** ao criar uma credencial Postgres nova pra um n8n existente, a suposição natural é usar o
+hostname interno do Docker Swarm (ex. `postgres_postgres`, o nome do SERVICE) como Host, porque uma
+variável de ambiente do próprio n8n (`DB_POSTGRESDB_HOST=postgres_postgres`) parece confirmar isso.
+A suposição está ERRADA quando o n8n de fato usado (a URL pública que o operador informa, tipo
+`https://xxx.dominio.com.br`) roda numa MÁQUINA DIFERENTE do VPS onde o Postgres está hospedado —
+hostname interno de Docker Swarm só resolve dentro da mesma rede overlay, na MESMA máquina.
+
+**Causa raiz:** `DB_POSTGRESDB_HOST` (ou variável equivalente) presente num `.env`
+compartilhado/herdado não prova que aquele valor se aplica ao n8n que você está de fato configurando
+— pode ser resquício de outro ambiente/instância n8n que roda na MESMA máquina do Postgres. Verificar
+isso exige checar a TOPOLOGIA real, não confiar na variável.
+
+**Solução (ordem de verificação, do mais rápido ao mais definitivo):**
+1. DNS do hostname público do n8n — se o IP resolvido for DIFERENTE do IP do VPS do Postgres, já
+   descarta hostname interno Docker de cara.
+2. Testar conexão TCP direta na porta do Postgres a partir de QUALQUER máquina externa (não precisa
+   ser o n8n) — se travar/recusar, há firewall bloqueando por design (`iptables -L DOCKER-USER`
+   mostra a regra DROP explícita), o que é esperado/correto pra um Postgres compartilhado não devia
+   estar exposto cru pra internet.
+3. **Mais confiável de todos:** pedir pro operador abrir uma credencial Postgres JÁ EXISTENTE E
+   FUNCIONAL no mesmo n8n (se houver outro projeto configurado lá) e olhar o campo Host na UI — a UI
+   do n8n mostra host/porta/database/user em texto claro (só a senha é mascarada). Ground truth
+   direto, sem precisar adivinhar topologia de rede.
+
+**Trade-off:** pular a verificação e confiar só na variável de ambiente herdada teria produzido uma
+credencial que falharia silenciosamente (timeout) só na hora de testar/ativar o workflow — mais caro
+de debugar depois do que verificar antes de criar.
+
+**Ref:** Kommo-Disparo-WhatsApp, sessão 2026-08-05 (`execution/setup_n8n_credentials.py`).
 
 **Ref:** Paid Media Automation, cont.150, sessão 2026-08-05.
