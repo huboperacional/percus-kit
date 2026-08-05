@@ -58,6 +58,8 @@
 - [Ao proteger alguém de um envio, o filtro tem que caber na CHAVE de cada emissor](#filtro-cabe-na-chave-do-emissor)
 - [`<input type="date">` mostra mm/dd mesmo com a página inteira em pt-BR](#input-date-formato-idioma-navegador)
 - [scp pra caminho remoto com colchetes (`[id]` de rota Next) falha por glob no lado remoto](#scp-colchetes-glob-remoto)
+- [Decisão `"council"` do review-router não está nos passos do comando `/review` — e só `deepseek-review.ps1` escreve o marcador de frescor que o hook checa](#council-decision-fora-do-review-doc)
+- [Groq/Llama devolve 413 (Payload Too Large) num diff grande que a DeepSeek aceita — reduzir `-MaxInputTokens` só daquela perna](#groq-llama-413-payload-too-large)
 - [Teste de presença/ausência de string não prova nada quando o gate é em RUNTIME sobre um template estático](#teste-string-nao-prova-gate-runtime)
 - [`git worktree remove` falha com "Invalid argument" (não timeout) quando o worktree tem uma junction do Windows dentro](#worktree-remove-junction-windows)
 - [API rejeita "invalid unicode code point" com prompt perfeitamente válido — o argv do curl no Windows corrompeu o texto no caminho](#curl-argv-corrompe-utf8-windows)
@@ -5201,3 +5203,67 @@ junction/symlink dentro do worktree antes de qualquer outra hipótese.
 **Sinal de alerta pra generalizar:** qualquer app Next.js (ou framework com padrão parecido de "uma rota de segmento dinâmico serve N entidades por parâmetro") onde a pergunta é "preciso que só ESSA entidade específica seja dinâmica, as outras N-1 continuam estáticas" — a resposta nunca é um export condicional dentro do componente. Ou (a) separar a entidade especial pra um path literal que o roteador prioriza sobre o catch-all dinâmico, ou (b) manter a página estática e mover a parte que precisa ser fresca pra um Route Handler à parte, referenciado por URL (o padrão usado aqui). Testar concretamente: depois de implementar, rodar `next build` e conferir no output que TODAS as rotas afetadas (a especial E as N-1 normais) têm o marcador esperado (`●`/`○` estático vs `ƒ` dinâmico) — não presumir pela leitura do código.
 
 **Ref:** ads4agencies-site, plano `docs/superpowers/plans/2026-08-04-autoworx-admin-panel.md` (Scraper-prospeccao), Task 14, sessão 2026-08-05. Achado por pesquisa (`Explore` subagent) nos componentes de apresentação reais antes de finalizar o plano.
+
+---
+
+## Decisão `"council"` do review-router não está nos passos do comando `/review` — e só `deepseek-review.ps1` escreve o marcador de frescor que o hook checa {#council-decision-fora-do-review-doc}
+
+`tags: percus-review, review-router, council, deepseek-review, reviews latest.jsonl, council-log, pre-commit hook, freshness, R11, versao do kit, drift de documentacao`
+
+**Contexto:** Kommo-Disparo-WhatsApp, 2026-08-05 — primeiro commit de um projeto novo (37+ arquivos,
+pasta sensível inteira). `/percus-review:review` roda `review-router.ps1 -Json` e devolve
+`"decision":"council"`. Os passos do próprio comando `/review` só cobrem 3 ramos —
+`"deepseek"`/`"cross-claude"`/`"dual"` — nenhuma instrução pra `"council"`.
+
+**Causa raiz:** `"council"` é decisão nova (`review-router.ps1` docstring: "Fase 6 v6.1.0+", dispara
+quando pasta sensível **e** (commit veio do DeepSeek **ou** >10 arquivos)). O texto do comando
+`/review` ficou desatualizado em relação ao router instalado — mesmo drift que o health-check da
+sessão já apontava ("versão instalada 6.34.0 diferente da do kit 6.34.1").
+
+**O que fazer quando `decision == "council"`:** chamar `council-orchestrator.ps1` direto —
+`-Mode review -Providers "deepseek,groq-llama,cross-claude"` (cross-claude via o fallback normal do
+marker `__PERCUS_NEEDS_CROSS_CLAUDE__`) — passando o diff (ou um recorte priorizado dos arquivos mais
+sensíveis, se o diff inteiro estourar `-MaxInputTokens`) como `-PromptFile`.
+
+**Pegadinha separada, mais cara:** `council-orchestrator.ps1` loga em
+`.deepseek/council-log/<timestamp>-<mode>.jsonl` — **NÃO** em `.deepseek/reviews/latest.jsonl`, que é
+o arquivo que o hook `pre-commit-check` de fato lê pra decidir se o review está fresco (≤5min). Só
+`deepseek-review.ps1` (o wrapper simples do ramo `"deepseek"`) escreve `reviews/latest.jsonl`. Rodar
+só o conselho, por mais completo que seja, **não desbloqueia o commit** — o hook bloqueia com
+`"nenhum /percus-review:review em .deepseek/reviews/"` mesmo com o council-log cheio. **Solução:**
+depois do council (ou junto, se o tempo permitir), rodar `deepseek-review.ps1` sem argumentos
+(lê `git diff --cached`+`git diff` sozinho, publica em `reviews/latest.jsonl`) — ele é rápido
+(~15-60s) e serve como refresh do marcador de frescor mesmo quando o conselho já fez a análise funda.
+
+**Ref:** Kommo-Disparo-WhatsApp, primeiro commit `a59bd60`, sessão 2026-08-05.
+
+---
+
+## Groq/Llama devolve 413 (Payload Too Large) num diff grande que a DeepSeek aceita — reduzir `-MaxInputTokens` só daquela perna {#groq-llama-413-payload-too-large}
+
+`tags: council-orchestrator, groq-llama, 413, payload too large, MaxInputTokens, truncar, api limit, llama-3.3-70b, deepseek aceita mesmo diff`
+
+**Sintoma:** `council-orchestrator.ps1 -Providers "deepseek,groq-llama,cross-claude"` com um diff de
+~14k tokens (`original_token_count`) devolve `"groq-llama: error"` com `"ATENCAO: 2 de 3 pernas
+responderam"`. A perna DeepSeek, com o MESMO prompt, responde normal. Retentar a chamada idêntica
+falha de novo (não é transitório).
+
+**Causa raiz:** a API da Groq tem um limite de tamanho de payload **HTTP** menor que o da DeepSeek pro
+mesmo texto — não é o `-MaxInputTokens` do script (esse só controla a truncagem **client-side** via
+`Limit-Prompt`; setar um valor ALTO pra "não truncar" piora o problema, porque manda o payload inteiro
+sem cortar). O erro exato aparece em `responses[].error`:
+`"Response status code does not indicate success: 413 (Payload Too Large)"`.
+
+**Solução:** re-rodar **só a perna `groq-llama`** (`-Providers "groq-llama"`) com
+`-MaxInputTokens` **baixo** (ex. `5000`, abaixo do default de 8000) — isso ativa o `Limit-Prompt`
+client-side (preserva ~1000 tokens do início + o resto do fim, avisa
+`"prompt truncado de N -> ~5000 tokens"`) e o payload menor passa no limite da Groq. Não precisa
+re-rodar DeepSeek/Cross-Claude, que já responderam ao prompt completo.
+
+**Trade-off aceito:** a resposta da Llama nessas condições cobre só um RECORTE do diff (o meio é
+cortado) — trate como perspectiva parcial, não substituto do que DeepSeek/Cross-Claude já viram
+inteiro. Combina com [#conselho-perna-vazia-teto-tokens] (outra causa de perna degradada) — sintomas
+parecidos (`status: error` ou `content` vazio), causas diferentes (413 de payload vs. teto de
+`max_tokens`/`reasoning_tokens`).
+
+**Ref:** Kommo-Disparo-WhatsApp, sessão 2026-08-05.
