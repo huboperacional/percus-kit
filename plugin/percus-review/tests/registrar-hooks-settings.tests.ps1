@@ -73,4 +73,48 @@ Describe "registrar-hooks-settings.ps1" {
 
         (Get-Content $settings -Raw) | Should -Be $antes -Because "registro parcial mente sobre o que esta protegido -- nada pode ser gravado"
     }
+
+    It "registra no settings.json vazio e preserva hook alheio ja existente" {
+        $kit = New-KitFalso
+        $settings = New-SettingsFalso -Conteudo @{
+            hooks = @{ SessionStart = @(@{ matcher = ""; hooks = @(@{ type = "command"; command = "echo alheio" }) }) }
+        }
+
+        & $script:script -Escopo Guardas -KitRoot $kit -SettingsPath $settings | Out-Null
+
+        $j = Get-Content $settings -Raw -Encoding UTF8 | ConvertFrom-Json
+        $blocosPreToolUse = @($j.hooks.PreToolUse)
+        $comandos = @($blocosPreToolUse | ForEach-Object { @($_.hooks) } | ForEach-Object { $_.command })
+        ($comandos -join "|") | Should -Match "guarda-um\.cmd"
+        ($comandos -join "|") | Should -Match "guarda-dois\.cmd"
+
+        # o hook alheio de SessionStart sobrevive intacto
+        $sessionStart = @($j.hooks.SessionStart)
+        ($sessionStart | ForEach-Object { @($_.hooks) } | ForEach-Object { $_.command }) | Should -Contain "echo alheio"
+    }
+
+    It "reexecucao e idempotente: mesmo numero de blocos PreToolUse na segunda rodada" {
+        $kit = New-KitFalso
+        $settings = New-SettingsFalso -Conteudo @{}
+
+        & $script:script -Escopo Guardas -KitRoot $kit -SettingsPath $settings | Out-Null
+        $j1 = Get-Content $settings -Raw -Encoding UTF8 | ConvertFrom-Json
+        $n1 = @($j1.hooks.PreToolUse).Count
+
+        & $script:script -Escopo Guardas -KitRoot $kit -SettingsPath $settings | Out-Null
+        $j2 = Get-Content $settings -Raw -Encoding UTF8 | ConvertFrom-Json
+        $n2 = @($j2.hooks.PreToolUse).Count
+
+        $n2 | Should -Be $n1 -Because "rodar duas vezes nao pode duplicar bloco -- enforcement duplo e real (item 2 da medicao)"
+    }
+
+    It "faz backup datado do settings.json antes de sobrescrever" {
+        $kit = New-KitFalso
+        $settings = New-SettingsFalso -Conteudo @{}
+
+        & $script:script -Escopo Guardas -KitRoot $kit -SettingsPath $settings | Out-Null
+
+        @(Get-ChildItem (Split-Path $settings -Parent) -Filter "settings.json.bak-*").Count |
+            Should -Be 1 -Because "primeira escrita sobrescreve um settings.json que ja existia (o fixture cria vazio antes)"
+    }
 }

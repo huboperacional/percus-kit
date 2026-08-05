@@ -87,6 +87,76 @@ if ($faltando.Count -gt 0) {
 Write-Host "[registrar-hooks] $($hooks.Count) hook(s) no escopo '$Escopo', todos com wrapper confirmado em disco"
 foreach ($h in $hooks) { Write-Host "[registrar-hooks]   - $($h.Nome) ($($h.Evento))" }
 
-if ($DryRun) {
-    Write-Host "[registrar-hooks] DRY RUN -- parando aqui (merge e escrita entram na Task 3)"
+$settingsAtual = if (Test-Path $SettingsPath) {
+    try { Get-Content $SettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { throw "settings.json JA esta invalido antes de qualquer mudanca ($SettingsPath). Conserte o JSON primeiro. NADA foi registrado." }
+} else {
+    [pscustomobject]@{}
 }
+
+if (-not $settingsAtual.PSObject.Properties['hooks']) {
+    $settingsAtual | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{})
+}
+
+$adicionados = New-Object System.Collections.Generic.List[string]
+$jaPresentes = New-Object System.Collections.Generic.List[string]
+
+foreach ($h in $hooks) {
+    if (-not $settingsAtual.hooks.PSObject.Properties[$h.Evento]) {
+        $settingsAtual.hooks | Add-Member -NotePropertyName $h.Evento -NotePropertyValue @()
+    }
+    $blocos = @($settingsAtual.hooks.($h.Evento))
+
+    $normAlvo = ($h.Command -replace '/', '\').ToLowerInvariant()
+    $jaTem = $false
+    foreach ($b in $blocos) {
+        foreach ($hk in @($b.hooks)) {
+            $normExistente = ("$($hk.command)".Trim('"') -replace '/', '\').ToLowerInvariant()
+            if ($normExistente -eq $normAlvo) { $jaTem = $true; break }
+        }
+        if ($jaTem) { break }
+    }
+
+    if ($jaTem) {
+        [void]$jaPresentes.Add($h.Nome)
+        continue
+    }
+
+    $novoBloco = [pscustomobject]@{
+        matcher = $h.Matcher
+        hooks   = @([pscustomobject]@{ type = "command"; command = $h.Command })
+    }
+    $settingsAtual.hooks.($h.Evento) = @($blocos) + $novoBloco
+    [void]$adicionados.Add($h.Nome)
+}
+
+if ($adicionados.Count -eq 0) {
+    Write-Host "[registrar-hooks] nada novo -- todos os $($hooks.Count) hook(s) do escopo ja estavam registrados em $SettingsPath"
+} else {
+    Write-Host "[registrar-hooks] novo(s): $($adicionados -join ', ')"
+}
+if ($jaPresentes.Count -gt 0) {
+    Write-Host "[registrar-hooks] ja presentes (pulados): $($jaPresentes -join ', ')"
+}
+
+$texto = $settingsAtual | ConvertTo-Json -Depth 20
+try { $null = $texto | ConvertFrom-Json }
+catch { throw "resultado seria JSON invalido -- NADA foi gravado em '$SettingsPath'" }
+
+if ($DryRun) {
+    Write-Host "[registrar-hooks] DRY RUN -- nada foi gravado. Conteudo proposto:"
+    Write-Host $texto
+    return
+}
+
+$backup = $null
+if (Test-Path $SettingsPath) {
+    $stamp  = Get-Date -Format "yyyyMMdd-HHmmss-fff"
+    $backup = "$SettingsPath.bak-$stamp"
+    Copy-Item -LiteralPath $SettingsPath -Destination $backup
+} else {
+    $pai = Split-Path $SettingsPath -Parent
+    if ($pai -and -not (Test-Path $pai)) { New-Item -ItemType Directory -Path $pai -Force | Out-Null }
+}
+[IO.File]::WriteAllText($SettingsPath, $texto, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host "[registrar-hooks] gravado em $SettingsPath$(if ($backup) { " (backup: $backup)" })"
