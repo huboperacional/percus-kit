@@ -62,4 +62,15 @@ Describe "registrar-hooks-settings.ps1" {
         $saida | Should -Not -Match "obs-um"
         $saida | Should -Not -Match "orfao"
     }
+
+    It "aborta SEM escrever nada quando o manifesto cita um hook sem wrapper .cmd em disco" {
+        $kit = New-KitFalso -ComWrappers $false
+        $settings = New-SettingsFalso -Conteudo @{}
+        $antes = Get-Content $settings -Raw
+
+        { & $script:script -Escopo Guardas -KitRoot $kit -SettingsPath $settings -DryRun } |
+            Should -Throw -ExpectedMessage "*sem wrapper*"
+
+        (Get-Content $settings -Raw) | Should -Be $antes -Because "registro parcial mente sobre o que esta protegido -- nada pode ser gravado"
+    }
 }
