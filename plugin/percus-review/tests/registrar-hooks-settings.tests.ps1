@@ -117,4 +117,20 @@ Describe "registrar-hooks-settings.ps1" {
         @(Get-ChildItem (Split-Path $settings -Parent) -Filter "settings.json.bak-*").Count |
             Should -Be 1 -Because "primeira escrita sobrescreve um settings.json que ja existia (o fixture cria vazio antes)"
     }
+
+    It "settings.json JA invalido antes de qualquer mudanca: aborta e nao mexe no arquivo" {
+        $kit = New-KitFalso
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("regh-set-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $settings = Join-Path $dir "settings.json"
+        [IO.File]::WriteAllText($settings, "{ isto nao e json valido", (New-Object System.Text.UTF8Encoding($false)))
+        [void]$script:temps.Add($dir)
+        $antes = Get-Content $settings -Raw
+
+        { & $script:script -Escopo Guardas -KitRoot $kit -SettingsPath $settings } |
+            Should -Throw -ExpectedMessage "*JA esta invalido*"
+
+        (Get-Content $settings -Raw) | Should -Be $antes
+        @(Get-ChildItem $dir -Filter "settings.json.bak-*").Count | Should -Be 0 -Because "nada deveria ter sido tentado, nem backup"
+    }
 }
