@@ -199,6 +199,8 @@
 - [CTA novo pra path interno perde `gclid`/`fbclid`/`utm_*` porque `<KeepQuery/>` nunca foi MONTADO nessa página](#keepquery-precisa-estar-montado)
 - [`_env()` de `.env` com regex `\s*` cruza quebra de linha quando o valor está vazio](#env-regex-cruza-linha-vazia)
 - [Credencial n8n apontando pra hostname interno Docker que nunca vai resolver: n8n e Postgres podem estar em VPS diferentes](#n8n-postgres-vps-diferentes)
+- [Upload de arquivo pra VPS via Bash falha com erro de bash confuso mesmo pra arquivo pequeno](#vps-upload-msys-path-mangling)
+- [Review R11 (DeepSeek) devolve "Sem findings críticos" mas viu só um pedaço do diff — truncamento silencioso em diffs grandes](#r11-diff-truncation-silent)
 
 ---
 
@@ -5376,3 +5378,89 @@ de debugar depois do que verificar antes de criar.
 **Ref:** Kommo-Disparo-WhatsApp, sessão 2026-08-05 (`execution/setup_n8n_credentials.py`).
 
 **Ref:** Paid Media Automation, cont.150, sessão 2026-08-05.
+
+---
+
+## Upload de arquivo pra VPS via Bash falha com erro de bash confuso ("C:/Program: No such file", "X: No such file or directory") mesmo pra arquivo pequeno {#vps-upload-msys-path-mangling}
+
+`tags: paramiko exec_command falha, sftp falha, upload VPS, git bash MSYS path translation, argv reescrito, ConnectionResetError SSH, git bundle grande, scp alternativa, ssh exec_command chunk`
+
+**Sintoma:** um script Python (paramiko) que faz upload de arquivo pra VPS via
+`client.exec_command(f"cat > {remote_path}")` + `stdin.write(data)` falha com um erro de BASH sem
+sentido (`bash: line 1: C:/Program: No such file or directory` ou
+`bash: line 1: C:/Users/.../algum-arquivo: No such file or directory`), mesmo passando um
+`remote_path` Unix válido tipo `/tmp/foo.txt` e mesmo pra um arquivo de poucos KB. O erro muda de
+forma entre tentativas (às vezes aponta pra um caminho totalmente disparatado). Tentar `SFTP` puro
+(`paramiko.SFTPClient.put`) no lugar falha diferente: `FileNotFoundError: [Errno 2] No such file`
+mesmo com o diretório remoto existindo — sinal de que o subsistema SFTP do `sshd` está desabilitado
+nessa VPS especificamente (não é erro de path).
+
+**Causa raiz (a do exec_command+stdin):** rodando de Git-Bash/MSYS no Windows, QUALQUER argumento de
+linha de comando com cara de path Unix (`/tmp/...`) passado pra um programa (mesmo `python script.py
+"/tmp/foo"`) é reescrito pelo MSYS pra um path Windows ANTES do programa receber o argv — e se
+`/tmp` não for um mount real nessa máquina, a reescrita produz um path bizarro tipo
+`C:/Users/.../AppData/Local/Temp/foo`. O script recebe esse path MANGLED como `remote_path`, monta
+`cat > C:/Users/.../foo` como comando remoto, e o bash do LADO REMOTO (Linux) tenta interpretar esse
+texto — dependendo de como a string chega (quebra de linha, aspas), o resultado é um dos dois erros
+confusos acima. O bug não depende do tamanho do arquivo — só de o `remote_path` ter chegado como
+argumento de linha de comando (`sys.argv`) em vez de estar hardcoded dentro do `.py`.
+
+**Solução:**
+1. **Nunca passe path remoto Unix-style como argumento de bash pra um script Python** — hardcode o
+   `remote_path` como constante DENTRO do arquivo `.py` (escrito via Write/Edit tool, não via
+   `sys.argv`). Uma string literal lida do próprio código-fonte do script nunca passa pelo
+   parser de argv do MSYS.
+2. Pra arquivo GRANDE (testado com bundle git de 8,8MB): SFTP indisponível e um `exec_command` só
+   com todo o base64 embutido (~11,7MB de texto) trava a conexão
+   (`ConnectionResetError: [WinError 10054]`) em chunks acima de ~800KB pré-base64. **Funciona**:
+   quebrar em chunks de **50KB** (pré-base64), cada um em `exec_command(f"echo '{b64chunk}' |
+   base64 -d >> {remote_path}")` sequencial, com `rm -f {remote_path}` antes do primeiro chunk. 177
+   chamadas de exec_command pra 8,8MB rodou sem erro nenhum; 800KB por chunk (11 chamadas) derrubava
+   a conexão de forma consistente e reproduzível — o limite parece ser do lado do servidor (rate
+   limit de canal SSH ou tamanho de comando), não do cliente.
+3. Verificar sempre com `stat -c %s {remote}` no fim e comparar com o tamanho local — silêncio não
+   prova integridade.
+
+**Trade-off:** chunking em 50KB é ~3-4x mais chamadas de rede que o "chunk ótimo" ingênuo (800KB),
+mas cada chamada é rápida (<1s) e o custo total pra 8,8MB foi menos de 2 minutos — preferível a
+descobrir o limite exato do servidor por tentativa e erro repetida.
+
+**Ref:** Paid Media Automation, cont.151, sessão 2026-08-05 (deploy da frente Google Ads multi-conta,
+`scripts/vps_exec.py`/`scripts/vps_upload_stream.py`).
+
+---
+
+## Review R11 (DeepSeek) devolve "Sem findings críticos" mas viu só um pedaço do diff — truncamento silencioso em diffs grandes {#r11-diff-truncation-silent}
+
+`tags: council-orchestrator, deepseek review, prompt truncado, diff grande, false confidence, avaliar so metade do codigo, revisao incompleta parece completa`
+
+**Sintoma:** rodar `council-orchestrator.ps1 -Mode review` num diff grande (~3000 linhas, ~40k
+tokens) devolve `"Sem findings críticos"` de forma limpa — parece um review completo e tranquilizador.
+O JSON de resposta tem uma linha fácil de não notar no meio do output:
+`"[council-orchestrator] AVISO: prompt truncado de 40891 -> ~8000 tokens."` seguida de
+`"truncated": true` no JSON. O truncamento corta do MEIO (mantém início e fim do diff), então os
+arquivos mais centrais/críticos do diff (que caem no meio alfabético/posicional) podem nunca ter
+sido vistos pelo revisor — o "sem findings" não é "revisei e está limpo", é "revisei metade e a
+metade que vi está limpa".
+
+**Causa raiz:** o wrapper do provider (DeepSeek/Groq) tem um teto de contexto de prompt bem menor que
+o que o Claude Code consegue montar num diff real de uma sessão longa — sem um teto explícito, o
+comportamento default é truncar em vez de falhar, e o aviso de truncamento fica fácil de perder no
+meio de um JSON grande.
+
+**Solução:** antes de aceitar um "Sem findings críticos" como válido pra um diff grande, checar
+explicitamente `"truncated"` no JSON de resposta (ou o aviso de stderr). Se truncou: dividir o diff
+em pedaços por arquivo/módulo lógico (cada `git diff -- <paths>` separado, um por chunk) e rodar o
+review em cada pedaço independentemente — cada chamada then cabe no teto de ~8000 tokens do provider.
+Reconsolidar os achados de todos os pedaços antes de decidir se o commit está limpo. Achados que
+citam um arquivo/trecho que NÃO estava no chunk revisado (ex.: um revisor comentando sobre um arquivo
+que só apareceu num chunk diferente) são sinal de que o revisor está alucinando contexto que nunca
+viu — desconfie e verifique manualmente.
+
+**Trade-off:** dividir em N chunks custa N chamadas de review em vez de 1, mas cada chunk cabe
+inteiro no contexto do provider — a alternativa (1 chamada só, confiando no truncamento) já produziu
+nesta sessão um review que teria dado "aprovado" pulando o arquivo com a lógica de merge mais crítica
+do diff inteiro (`destinations.py`, onde 2 bugs reais foram achados quando revisado em separado).
+
+**Ref:** Paid Media Automation, cont.151, sessão 2026-08-05 (R11 da Fatia 2 do Google Ads
+multi-conta).
