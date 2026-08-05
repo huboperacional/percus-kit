@@ -60,6 +60,7 @@
 - [scp pra caminho remoto com colchetes (`[id]` de rota Next) falha por glob no lado remoto](#scp-colchetes-glob-remoto)
 - [Teste de presença/ausência de string não prova nada quando o gate é em RUNTIME sobre um template estático](#teste-string-nao-prova-gate-runtime)
 - [`git worktree remove` falha com "Invalid argument" (não timeout) quando o worktree tem uma junction do Windows dentro](#worktree-remove-junction-windows)
+- [API rejeita "invalid unicode code point" com prompt perfeitamente válido — o argv do curl no Windows corrompeu o texto no caminho](#curl-argv-corrompe-utf8-windows)
 - ["Sessão de 30 dias" que morre em 2 segundos: wipe do refresh token em falha transitória](#refresh-wipe-transitorio)
 - [Auditoria cross-repo que lê o CHECKOUT LOCAL vira evidência circular](#auditoria-cross-repo-working-tree)
 - [Cliente de API que devolve `None` no erro faz o produto achar que ENTREGOU](#provider-none-vira-entrega)
@@ -5157,5 +5158,25 @@ alvo (confirmado contando itens no `node_modules` do repo principal antes/depois
 Só então `git worktree remove --force` funciona normal. Se `git worktree remove` falhar com
 "Invalid argument" especificamente (não um timeout que se resolve esperando), suspeitar de
 junction/symlink dentro do worktree antes de qualquer outra hipótese.
+
+---
+
+## API rejeita "invalid unicode code point" com prompt perfeitamente válido — o argv do curl no Windows corrompeu o texto no caminho {#curl-argv-corrompe-utf8-windows}
+
+`tags: curl, MSYS, Git Bash, mingw32, argv, command line, unicode, UTF-8, invalid unicode code point, deepseek, jq --arg, data-binary, council-orchestrator, analyze mode, Windows`
+
+**Contexto:** tiatendo, 2026-08-05 — `/spec-analyze` da spec N19 (`docs/superpowers/specs/2026-08-05-n19-stage-order-bot-paused-design.md`) voltava com "Providers: 1/2" e o DeepSeek reportando erro. O log (`.deepseek/council-log/*-analyze.jsonl`) mostrava `"error": "jq: parse error: Invalid numeric literal at line 1, column 7"`, `"latency_ms": 0` — parecia bug de parsing no orchestrator, mas era sintoma de um bug mais fundo, mascarado por outro (ver verbete irmão abaixo).
+
+**Causa raiz (nível 1, o que a API realmente reclamava):** a resposta real do DeepSeek era texto puro `Failed to parse the request body as JSON: messages[1].content: invalid unicode code point at line 12 column 6401` — mas os 3 provider wrappers (`deepseek.sh`, `groq-llama.sh`, `cross-claude.sh`) assumem que toda falha da API vem em JSON `{"error":{...}}`; `jq -e '.error'` num corpo não-JSON falha calado (`2>&1` suprimido), o `if` conclui "sem erro", o script cai no caminho de sucesso, e o `jq -r '.choices[0]...'` seguinte falha DE NOVO — dessa vez sem supressão — vazando um parse error do jq que não tem nada a ver com a causa real.
+
+**Causa raiz (nível 2, por que a API via unicode inválido num prompt válido):** a spec N19 era UTF-8 perfeito (confirmado por scan de codepoints — zero surrogates soltos, zero decode error — e roundtrip byte-a-byte `--arg` vs `--rawfile`, idênticos). O corpo JSON construído pelo `jq -n` local também validava limpo. O culpado só apareceu num teste A/B direto contra a API real: `curl -d "$BODY"` (corpo como **argumento de linha de comando**) falha; `curl --data-binary @arquivo` com o MESMO conteúdo funciona. O `curl.exe` desta máquina é um build nativo `mingw32` (`curl --version` → `x86_64-w64-mingw32`), e passar uma string longa/multibyte (acentos, travessões, setas — comuns em spec em português) como argv através da fronteira MSYS/Git-Bash → executável Windows nativo corrompe o texto no meio do caminho. Não é bug de conteúdo, é bug de **mecanismo de transporte**.
+
+**Por que só aparece em specs longas/`analyze`, raramente em `review`:** diffs de código são majoritariamente ASCII; prosa longa em português (specs, pre-mortems) tem muito mais acento/travessão/seta por KB — mais superfície pra esbarrar no bug de argv.
+
+**Solução:** nos 3 provider wrappers `.sh`, o corpo do POST passa a ir para um arquivo temp (`mktemp` + `trap 'rm -f "$BODY_FILE"' EXIT`) e o curl usa `--data-binary "@$BODY_FILE"` em vez de `-d "$BODY"` — bytes lidos direto do disco, argv nunca cruza a fronteira. Adicionalmente, a detecção de erro passou a checar `jq -e . ` (é JSON válido?) **antes** de checar `.error`, tratando corpo não-JSON como erro com o texto bruto da API como mensagem — sem isso a causa real fica sempre mascarada pelo segundo jq. `deepseek.ps1`/`groq-llama` via `.ps1` não têm essa classe de bug: `Invoke-RestMethod -Body` não passa por argv de processo nenhum.
+
+**Como caçar isto de novo:** `error: "jq: parse error..."` com `latency_ms: 0` (ou muito baixo) num provider `.sh` não é o bug real — é o SEGUNDO jq falhando depois que o primeiro check de erro já falhou calado. Sempre suspeitar de resposta não-JSON da API antes de mexer no parsing. Se a API disser "invalid unicode"/"invalid character" num payload que parece limpo, teste `--data-binary @arquivo` vs `-d "$VAR"` lado a lado antes de vasculhar o conteúdo — em ambiente MSYS/Git-Bash com curl nativo Windows, o mecanismo de transporte é suspeito tão cedo quanto o conteúdo.
+
+**Ref:** `percus-kit/plugin/percus-review/providers/{deepseek,groq-llama,cross-claude}.sh`, commits `e4c3b32` (detecção de erro não-JSON) e `eb7c6ff` (corpo por arquivo), sessão 2026-08-05.
 
 **Ref:** Paid Media Automation, worktree `agent-aa4a4f9aa6439631a`, sessão 2026-08-04/05.
