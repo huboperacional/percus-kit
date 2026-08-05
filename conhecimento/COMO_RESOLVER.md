@@ -58,6 +58,8 @@
 - [Ao proteger alguém de um envio, o filtro tem que caber na CHAVE de cada emissor](#filtro-cabe-na-chave-do-emissor)
 - [`<input type="date">` mostra mm/dd mesmo com a página inteira em pt-BR](#input-date-formato-idioma-navegador)
 - [scp pra caminho remoto com colchetes (`[id]` de rota Next) falha por glob no lado remoto](#scp-colchetes-glob-remoto)
+- [`docker service inspect | grep VAR` confirma que a CHAVE existe, não que o VALOR é não-vazio — integração ficou meses no-op silencioso](#docker-inspect-presente-nao-e-valor)
+- [`console.log(objeto)` trunca aninhamento como `[Object]` e esconde o erro real de uma integração que "falhou sem motivo"](#console-log-objeto-trunca-oculta-erro)
 - [Decisão `"council"` do review-router não está nos passos do comando `/review` — e só `deepseek-review.ps1` escreve o marcador de frescor que o hook checa](#council-decision-fora-do-review-doc)
 - [Groq/Llama devolve 413 (Payload Too Large) num diff grande que a DeepSeek aceita — reduzir `-MaxInputTokens` só daquela perna](#groq-llama-413-payload-too-large)
 - [Teste de presença/ausência de string não prova nada quando o gate é em RUNTIME sobre um template estático](#teste-string-nao-prova-gate-runtime)
@@ -5464,3 +5466,73 @@ do diff inteiro (`destinations.py`, onde 2 bugs reais foram achados quando revis
 
 **Ref:** Paid Media Automation, cont.151, sessão 2026-08-05 (R11 da Fatia 2 do Google Ads
 multi-conta).
+
+---
+
+## `docker service inspect | grep VAR` confirma que a CHAVE existe, não que o VALOR é não-vazio — integração ficou meses no-op silencioso {#docker-inspect-presente-nao-e-valor}
+
+`tags: env var vazia, docker service inspect, PRESENT check enganoso, integracao nunca funcionou, secret vazio em producao, docker-compose interpolacao vazia, verificacao superficial de config`
+
+**Sintoma:** primeira aceitação real de um fluxo (proposta de venda) que deveria criar um contato
+num CRM externo (GoHighLevel) via API não gerou nada do lado do CRM — sem erro visível, sem
+exceção, o app continuou funcionando normalmente (a integração é best-effort/no-op silencioso por
+design). Um check anterior, feito em sessão passada, tinha "confirmado" as credenciais como
+`PRESENT` via `docker service inspect ... | grep VAR`.
+
+**Causa raiz:** o `.env` da VPS tinha as chaves (`GHL_PIT_TOKEN=`, `GHL_LOCATION_ID=`) mas com
+**valor vazio** — nunca foram de fato preenchidas, só declaradas. `docker-compose.yml` interpolava
+`${GHL_PIT_TOKEN:-}`, que aceita string vazia sem erro. O código de integração checava
+`if (!token || !locationId) return { skipped: true }` — um guard correto, mas que faz a ausência de
+config parecer indistinguível de "tudo certo, só não tem trabalho a fazer" nos logs. O check de
+verificação usado antes (`docker service inspect --format '...Env...' | grep VAR | sed
+'s/=.*/=PRESENT/'`) tem um bug sutil: `sed 's/=.*/=PRESENT/'` casa `VAR=` (valor vazio) do mesmo
+jeito que casa `VAR=algumacoisa` — `.*` aceita zero caracteres. O resultado impresso
+(`GHL_PIT_TOKEN=PRESENT`) é **sempre verdadeiro que a chave existe**, nunca informa se tem valor.
+Isso mascarou o problema por meses (nenhuma proposta aceita gerou contato no CRM desde que a
+integração foi implementada).
+
+**Solução:** pra confirmar que uma env var tem **valor**, não só existe como chave, use
+`docker exec <container> env | grep VAR` (mostra `VAR=valorreal`, inclusive se vazio — `VAR=` sem
+nada depois é visualmente óbvio) — ou, se for secret que não pode aparecer em texto, comparar
+`length` (`docker exec <container> node -e "console.log(process.env.VAR?.length)"`). Nunca confiar
+num `sed`/regex que substitui o valor por um marcador fixo tipo `PRESENT` sem primeiro checar se o
+valor capturado tinha conteúdo — esse padrão de "check de presença" é enganoso por construção.
+
+**Trade-off:** nenhum — o check com `docker exec ... env` é tão rápido quanto o `service inspect`,
+só que correto. Vale substituir esse padrão em qualquer runbook/memória que ainda recomende
+`service inspect` pra validar secrets.
+
+**Ref:** ADS4PROS-Site, sessão 2026-08-05 (incidente GHL — proposta Tiffany Driving School aceita
+sem gerar contato no CRM; ver `HANDOFF.md` §0-C).
+
+---
+
+## `console.log(objeto)` trunca aninhamento como `[Object]` e esconde o erro real de uma integração que "falhou sem motivo" {#console-log-objeto-trunca-oculta-erro}
+
+`tags: node console.log truncamento, object depth padrao, log estruturado incompleto, erro escondido no log, util inspect depth, debugging as cegas`
+
+**Sintoma:** um log estruturado (`console.log('[evento]', { ...campos, resultado: {...aninhado} })`)
+mostrava o campo aninhado como `resultado: { upsert: [Object], note: [Object] }` — sem nenhum
+detalhe do que de fato aconteceu (`ok`, `error`, `status`). Impossível diagnosticar uma falha de
+integração externa só olhando o log em produção; precisou reproduzir a chamada manualmente pra
+descobrir o erro real.
+
+**Causa raiz:** `console.log` do Node usa `util.inspect` por baixo dos panos, que por padrão só
+desce **2 níveis** de profundidade em objetos aninhados antes de substituir por `[Object]`/`[Array]`.
+Um objeto de resultado com 2+ níveis de aninhamento (comum em respostas de API — `{ upsert: { ok,
+status, data: {...} }, note: {...} }`) estoura esse teto silenciosamente. Não há warning, não há
+erro — o log simplesmente perde informação, e quem lê não tem como saber que perdeu.
+
+**Solução:** pra log estruturado que vai ser lido depois (arquivo, `docker service logs`, sistema de
+observabilidade), nunca passar o objeto direto pro `console.log` — usar `console.log('[tag]',
+JSON.stringify(objeto))`. `JSON.stringify` não tem teto de profundidade (serializa tudo, exceto
+referências circulares). Alternativa se precisar manter objeto navegável no terminal interativo:
+`console.log(util.inspect(objeto, { depth: null }))`.
+
+**Trade-off:** `JSON.stringify` perde a formatação colorida/indentada do `util.inspect` no terminal
+— pra debugging interativo local, `depth: null` é mais legível; pra log de produção que vai ser
+grepado/parseado depois, `JSON.stringify` (uma linha, sem truncamento) é estritamente melhor.
+
+**Ref:** ADS4PROS-Site, sessão 2026-08-05 (`app/api/proposal-accept/route.ts` — log `[proposal-accept]`
+escondia o motivo real da falha do GHL atrás de `[Object]`, atrasou o diagnóstico do incidente de
+credenciais vazias).
