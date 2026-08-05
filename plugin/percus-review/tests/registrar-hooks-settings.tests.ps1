@@ -56,7 +56,7 @@ Describe "registrar-hooks-settings.ps1" {
 
         $saida = & $script:script -Escopo Guardas -KitRoot $kit -SettingsPath $settings -DryRun *>&1 | Out-String
 
-        $saida | Should -Match "2 hook"
+        $saida | Should -Match "\b2 hook\(s\)"
         $saida | Should -Match "guarda-um"
         $saida | Should -Match "guarda-dois"
         $saida | Should -Not -Match "obs-um"
