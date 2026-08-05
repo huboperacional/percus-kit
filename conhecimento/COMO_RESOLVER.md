@@ -58,6 +58,8 @@
 - [Ao proteger alguém de um envio, o filtro tem que caber na CHAVE de cada emissor](#filtro-cabe-na-chave-do-emissor)
 - [`<input type="date">` mostra mm/dd mesmo com a página inteira em pt-BR](#input-date-formato-idioma-navegador)
 - [scp pra caminho remoto com colchetes (`[id]` de rota Next) falha por glob no lado remoto](#scp-colchetes-glob-remoto)
+- [Teste de presença/ausência de string não prova nada quando o gate é em RUNTIME sobre um template estático](#teste-string-nao-prova-gate-runtime)
+- [`git worktree remove` falha com "Invalid argument" (não timeout) quando o worktree tem uma junction do Windows dentro](#worktree-remove-junction-windows)
 - ["Sessão de 30 dias" que morre em 2 segundos: wipe do refresh token em falha transitória](#refresh-wipe-transitorio)
 - [Auditoria cross-repo que lê o CHECKOUT LOCAL vira evidência circular](#auditoria-cross-repo-working-tree)
 - [Cliente de API que devolve `None` no erro faz o produto achar que ENTREGOU](#provider-none-vira-entrega)
@@ -2463,6 +2465,19 @@ teste que exercita o **entrypoint de verdade**, provando qual camada atende cada
 relação de subconjunto no comentário — é ela que alguém vai quebrar sem perceber.
 
 Visto em: tiatendo, correção do "número solto no bot admin" (2026-07-27).
+
+Visto em: tiatendo, N19 (2026-08-05) — variante de BYPASS PARCIAL, não guarda morta total. O gate
+de `bot_paused` (`messageRouter._stageLoadConversation`, Stage 2) funciona perfeitamente pra
+mensagens que não casam nenhum intent do Stage 0b (`_maybeHandleRestaurantNiche`, que roda ANTES).
+Mas o conjunto de ativação do Stage 0b (saudação/cardápio/horário/opt-out) é ORTOGONAL ao de
+`bot_paused=True` — não subconjunto dele, mas também não disjunto — então pra QUALQUER mensagem que
+caia na interseção (ex.: cliente pausado manda "oi"), o Stage 0b atende primeiro e o gate de pausa
+nunca é alcançado nesse turno específico. Achado só ao FORÇAR o estado real via `pauseBot()` (não
+SQL cru) e mandar uma mensagem real — nenhum teste unitário isolado (que mocka o vizinho) pegaria,
+pelo mesmo motivo do sintoma original desta entrada. Generaliza o "Como achar": a pergunta certa não
+é só "B é subconjunto de A?" (bypass total) — é "A ∩ B é vazio?" (query completa: existe qualquer
+mensagem que ative as duas camadas?). Se não for vazio E a camada de cima roda primeiro E não
+delega, a de baixo é inalcançável PRA ESSE SUBCONJUNTO, mesmo continuando viva pro resto.
 
 ---
 
@@ -5079,3 +5094,68 @@ destino.
 
 **Ref:** ads4agencies-site, `WTV2ServiceDetailPage.tsx`, sessão 2026-08-04. Achado por review
 Cross-Claude antes do deploy.
+
+
+---
+
+## Teste de presença/ausência de string não prova nada quando o gate é em RUNTIME sobre um template estático {#teste-string-nao-prova-gate-runtime}
+
+`tags: template estático, feature flag, runtime gate, teste de comportamento vs presença de símbolo, JS servido, harness Node, string assertion`
+
+**Contexto:** Paid Media Automation, sessão 2026-08-04/05 — toggle de client-side por plataforma no
+loader de tracking (`_LOADER_TEMPLATE`, `services/tracking/app/modules/proxy/router.py`). O plano de
+implementação rascunhou testes do tipo `assert "fbq('init',PIXEL_ID)" not in body` pra provar que,
+com a flag desligada, o loader servido não instala o Pixel. Um subagente, seguindo TDD à risca,
+escreveu o teste, rodou, e viu ele FALHAR mesmo contra uma implementação já correta.
+
+**Causa raiz:** o design escolhido gateia a EXECUÇÃO (`if(PIXEL_ID&&FLAG){ fbq('init',...) }`), não a
+PRESENÇA do texto — o corpo da função `fbq('init',...)` é parte do template estático e sai
+IDÊNTICO no JS servido tanto com a flag ligada quanto desligada; só o `if` em volta muda de
+resultado quando o navegador executa. Um `assert texto not in body` nunca vai conseguir diferenciar
+os dois casos, porque o texto é o mesmo nos dois — o teste tal como rascunhado é logicamente
+impossível de passar contra qualquer implementação correta que gateie por essa forma (`if(){...}`
+em vez de omitir o trecho do template).
+
+**Sinal de alerta pra generalizar:** qualquer feature flag/toggle implementada como `if(condição){
+codigo_estatico }` dentro de um template/string que é gerado UMA VEZ e interpretado depois (JS
+servido, SQL, template de e-mail, config gerada) tem essa armadilha. Se o plano/spec pede "o corpo
+gerado NÃO deve conter X quando a flag está off", pare e confirme: a flag está omitindo X do
+template, ou só envolvendo X num `if`? No segundo caso, teste de string está testando a coisa errada.
+
+**Solução:** trocar o teste de "presença de símbolo" por teste de COMPORTAMENTO real — rodar o
+artefato servido de verdade num interpretador real (aqui, harness Node mínimo: shim de
+`window`/`document`/`dataLayer`, `subprocess.run(["node", tmp_file])`, inspeciona os efeitos
+colaterais reais como `typeof window.fbq !== 'undefined'` ou o conteúdo do `dataLayer` capturado).
+O subagente confirmou a causa raiz rodando o teste original (errado) contra uma implementação já
+correta e vendo-o falhar por construção — prova de que o defeito era do teste, não do código —
+antes de reescrever.
+
+**Ref:** Paid Media Automation, `services/tracking/tests/test_loader_script.py`
+(`_run_install_effects_harness`/`_run_pmatrack_ga4_harness`), commit `be557929`, sessão 2026-08-04/05.
+
+---
+
+## `git worktree remove` falha com "Invalid argument" (não timeout) quando o worktree tem uma junction do Windows dentro {#worktree-remove-junction-windows}
+
+`tags: git worktree, Windows, junction, mklink, node_modules, Invalid argument, remove failure`
+
+**Contexto:** Paid Media Automation, sessão 2026-08-04/05 — um subagente rodando num worktree git
+isolado (`isolation:"worktree"`, sem `npm install` automático) usou `mklink /J` pra apontar
+`web/node_modules` pro `node_modules` do repo PRINCIPAL, evitando um install lento só pra rodar
+`tsc`/`vitest`. Depois do trabalho concluído, `git worktree remove --force` nesse worktree
+específico falhou com `error: failed to delete '...': Invalid argument`.
+
+**Causa raiz:** o deletador recursivo do `git worktree remove` no Windows não sabe lidar direito com
+um reparse point (junction) no meio da árvore que está apagando — outros worktrees com
+`node_modules` REAL (grande, mas uma cópia normal) só ficavam LENTOS pra apagar (terminavam sozinhos
+em segundo plano depois de alguns minutos, não é erro de verdade); a junction dá erro imediato e
+consistente, não timeout.
+
+**Solução:** antes do `git worktree remove`, desfazer a junction com `cmd /c rmdir
+"<worktree>\web\node_modules"` — isso desfaz só o reparse point (unlink puro), **não** recursa pro
+alvo (confirmado contando itens no `node_modules` do repo principal antes/depois: mesma contagem).
+Só então `git worktree remove --force` funciona normal. Se `git worktree remove` falhar com
+"Invalid argument" especificamente (não um timeout que se resolve esperando), suspeitar de
+junction/symlink dentro do worktree antes de qualquer outra hipótese.
+
+**Ref:** Paid Media Automation, worktree `agent-aa4a4f9aa6439631a`, sessão 2026-08-04/05.
