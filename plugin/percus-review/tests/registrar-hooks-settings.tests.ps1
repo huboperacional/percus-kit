@@ -88,6 +88,13 @@ Describe "registrar-hooks-settings.ps1" {
         ($comandos -join "|") | Should -Match "guarda-um\.cmd"
         ($comandos -join "|") | Should -Match "guarda-dois\.cmd"
 
+        # o matcher e o que faz o guard disparar de verdade -- confere que foi escrito
+        # com o valor exato do manifesto falso ("Bash|PowerShell"), nao so que o comando existe
+        $blocoComGuarda = $blocosPreToolUse | Where-Object {
+            @($_.hooks) | ForEach-Object { $_.command } | Where-Object { $_ -match "guarda-um\.cmd|guarda-dois\.cmd" }
+        }
+        @($blocoComGuarda) | ForEach-Object { $_.matcher } | Should -Contain "Bash|PowerShell"
+
         # o hook alheio de SessionStart sobrevive intacto
         $sessionStart = @($j.hooks.SessionStart)
         ($sessionStart | ForEach-Object { @($_.hooks) } | ForEach-Object { $_.command }) | Should -Contain "echo alheio"
@@ -138,7 +145,7 @@ Describe "registrar-hooks-settings.ps1" {
         $kit = New-KitFalso
         $settings = New-SettingsFalso -Conteudo @{}
         $saida = & $script:script -Escopo Observadores -KitRoot $kit -SettingsPath $settings -DryRun *>&1 | Out-String
-        $saida | Should -Match "1 hook"
+        $saida | Should -Match "\b1 hook\(s\)"
         $saida | Should -Match "obs-um"
         $saida | Should -Not -Match "guarda-um"
     }
@@ -147,7 +154,7 @@ Describe "registrar-hooks-settings.ps1" {
         $kit = New-KitFalso
         $settings = New-SettingsFalso -Conteudo @{}
         $saida = & $script:script -Escopo Todos -KitRoot $kit -SettingsPath $settings -DryRun *>&1 | Out-String
-        $saida | Should -Match "3 hook"
+        $saida | Should -Match "\b3 hook\(s\)"
         $saida | Should -Not -Match "orfao"
     }
 
@@ -158,12 +165,12 @@ Describe "registrar-hooks-settings.ps1" {
         $settings = New-SettingsFalso -Conteudo @{}
 
         $saidaGuardas = & $script:script -Escopo Guardas -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
-        $saidaGuardas | Should -Match "8 hook"
+        $saidaGuardas | Should -Match "\b8 hook\(s\)"
 
         $saidaObs = & $script:script -Escopo Observadores -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
-        $saidaObs | Should -Match "4 hook"
+        $saidaObs | Should -Match "\b4 hook\(s\)"
 
         $saidaTodos = & $script:script -Escopo Todos -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
-        $saidaTodos | Should -Match "12 hook"
+        $saidaTodos | Should -Match "\b12 hook\(s\)"
     }
 }
