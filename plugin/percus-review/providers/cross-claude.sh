@@ -78,7 +78,14 @@ fi
 
 # IMPORTANTE: system deve ser array de blocks com cache_control — NAO string simples.
 # Anthropic API rejeita cache_control se system for string.
-BODY=$(jq -n \
+#
+# Corpo vai pra ARQUIVO, nao pra argv do curl -- mesma classe de bug achada em
+# deepseek.sh (ver comentario la, tiatendo 2026-08-05 spec N19): "-d "$BODY"" passa
+# JSON longo/multibyte pelo argv do curl.exe nativo via MSYS/Git-Bash e a fronteira
+# corrompe o texto. --data-binary @arquivo le bytes direto do disco, sem cruzar argv.
+BODY_FILE=$(mktemp)
+trap 'rm -f "$BODY_FILE"' EXIT
+jq -n \
     --arg model "$MODEL" \
     --argjson temp "$TEMPERATURE" \
     --argjson max "$MAX_TOKENS" \
@@ -98,18 +105,34 @@ BODY=$(jq -n \
         messages: [
             { role: "user", content: $usr }
         ]
-    }')
+    }' > "$BODY_FILE"
 
 START_MS=$(date +%s%3N)
 RESP=$(curl -s --max-time 60 -X POST "$ENDPOINT" \
     -H "x-api-key: $ANTHROPIC_API_KEY" \
     -H "anthropic-version: 2023-06-01" \
     -H "Content-Type: application/json" \
-    -d "$BODY" || echo "")
+    --data-binary "@$BODY_FILE" || echo "")
 END_MS=$(date +%s%3N)
 LATENCY=$((END_MS - START_MS))
 
-if [[ -z "$RESP" ]] || echo "$RESP" | jq -e '.error' >/dev/null 2>&1; then
+if [[ -z "$RESP" ]]; then
+    jq -n --arg msg "network/empty response" --argjson lat "$LATENCY" --arg mdl "$MODEL" \
+        '{provider:"cross-claude", model:$mdl, status:"error", error:$msg, latency_ms:$lat}'
+    exit 1
+fi
+
+# API pode devolver erro em texto puro (nao-JSON) -- mesma classe de bug achada em
+# deepseek.sh (ver comentario la, tiatendo 2026-08-05 spec N19). Sem este check,
+# "jq -e '.error'" falha calado em RESP nao-JSON, o script cai no caminho de sucesso,
+# e o parse error do jq seguinte mascara a mensagem real da API.
+if ! echo "$RESP" | jq -e . >/dev/null 2>&1; then
+    jq -n --arg msg "$RESP" --argjson lat "$LATENCY" --arg mdl "$MODEL" \
+        '{provider:"cross-claude", model:$mdl, status:"error", error:$msg, latency_ms:$lat}'
+    exit 1
+fi
+
+if echo "$RESP" | jq -e '.error' >/dev/null 2>&1; then
     ERR_MSG=$(echo "$RESP" | jq -r '.error.message // "network/empty response"' 2>/dev/null || echo "network/empty")
     jq -n --arg msg "$ERR_MSG" --argjson lat "$LATENCY" --arg mdl "$MODEL" \
         '{provider:"cross-claude", model:$mdl, status:"error", error:$msg, latency_ms:$lat}'
