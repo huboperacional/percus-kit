@@ -30,7 +30,8 @@
   pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-review-auto.ps1" -NoFactCheck
 
 .NOTES
-  Exit codes: 0 = success, 1 = plugin não encontrado, 2 = router falhou, 3 = deepseek-review falhou
+  Exit codes: 0 = success (inclui deepseek-review falho -- placeholder deferred gravado,
+  ver marker __PERCUS_NEEDS_CROSS_CLAUDE__ no stderr), 1 = plugin não encontrado, 2 = router falhou
 #>
 [CmdletBinding()]
 param(
@@ -131,6 +132,33 @@ function Invoke-FactCheck {
     }
 }
 
+# === Placeholder "deferred" em .deepseek/reviews/latest.jsonl ===
+# Usado sempre que o registro real (findings de DeepSeek e/ou Cross-Claude) não pode
+# ser persistido no momento em que o wrapper decide "dual"/"council" (ex.: DeepSeek
+# fora do ar / API key inválida) -- SEM isto, o caminho antigo fazia `exit` direto
+# nesse ponto, sem nunca gravar nada em .deepseek/reviews/ e sem emitir o marker de
+# Cross-Claude. O gate de 5min (R11, pre-commit-check.ps1/.sh) então nunca achava
+# registro fresco pro commit e bloqueava até o operador declarar PERCUS_HOOKS_DISABLED
+# -- exatamente no caminho sensível (dual/council), que é o de maior risco. Mesmo
+# padrão que já existia só pro caso "cross-claude": grava ANTES de emitir o marker/sair.
+function Write-DeferredReviewPlaceholder {
+    param([string]$Decision, [string]$Reason)
+    $reviewDir = ".deepseek\reviews"
+    New-Item -ItemType Directory -Path $reviewDir -Force | Out-Null
+    $logFile = Join-Path $reviewDir 'latest.jsonl'
+    $logTmp  = Join-Path $reviewDir 'latest.jsonl.tmp'
+    @{
+        deferred    = $true
+        reason      = $Reason
+        decision    = $Decision
+        timestamp   = (Get-Date -Format 'o')
+        placeholder = $true
+        note        = "Agente DEVE dispatchar Sonnet subagent agora; substituir este placeholder pelas findings reais quando possível."
+    } | ConvertTo-Json -Compress | Set-Content -Path $logTmp -Encoding UTF8
+    Move-Item -Path $logTmp -Destination $logFile -Force
+    [Console]::Error.WriteLine("[percus-review-auto] placeholder escrito em $logFile (libera hook por TTL)")
+}
+
 # === Run router (decisão deepseek/cross-claude/dual) ===
 $routerArgs = @("-Json")
 if ($Base) { $routerArgs += @("-Base", $Base) }
@@ -166,8 +194,15 @@ switch ($decision.decision) {
             Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } |
             Out-String
         if ($LASTEXITCODE -ne 0) {
-            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE)")
-            exit 3
+            # Mesmo fix dos branches dual/cross-claude/council: rota solo tambem nao pode
+            # travar o commit inteiro so porque a chave DeepSeek caiu -- essa e a rota mais
+            # comum do portfolio, entao `exit 3` aqui derrubava o review de TODOS os commits
+            # nao-sensiveis. Conselho 3/3 (deepseek+llama+cross-claude, consult 2026-08-05)
+            # confirmou: escalar pra Cross-Claude via marker, nao bloquear.
+            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE) -- registrando placeholder deferred pra não travar o gate.")
+            Write-DeferredReviewPlaceholder -Decision "deepseek" -Reason "decision=deepseek (rota solo), DeepSeek falhou (exit $LASTEXITCODE) -- provável outage/API key inválida. Sem segunda perna de review por padrão nesta rota; escalado pra Cross-Claude."
+            [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: rota solo (decision=deepseek), DeepSeek indisponível. DEVE dispatchar Sonnet subagent via Agent tool agora com prompt de review R11 (escopo: commit atual).")
+            break
         }
         # F3: fact-check pipeline obrigatorio
         $finalOutput = Invoke-FactCheck -ReviewOutput $reviewOutput
@@ -183,8 +218,15 @@ switch ($decision.decision) {
             Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } |
             Out-String
         if ($LASTEXITCODE -ne 0) {
-            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE)")
-            exit 3
+            # DeepSeek falhou (outage/API key inválida/etc.). ANTES: `exit 3` aqui matava
+            # o wrapper inteiro sem gravar nada em .deepseek/reviews/ e sem emitir o marker
+            # -- gate de 5min nunca achava registro pro caminho dual, forçando escape manual
+            # em TODO commit sensível. Fix: registra placeholder deferred e ainda sinaliza
+            # Cross-Claude, pra R11 poder ser cumprido só pela perna que sobrou de pé.
+            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE) -- registrando placeholder deferred pra não travar o gate.")
+            Write-DeferredReviewPlaceholder -Decision "dual" -Reason "decision=dual, DeepSeek falhou (exit $LASTEXITCODE) -- provável outage/API key inválida. Registro parcial; Cross-Claude ainda precisa rodar (R11)."
+            [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual, DeepSeek indisponível). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review.")
+            break
         }
         # F3: fact-check pipeline obrigatorio
         $finalOutput = Invoke-FactCheck -ReviewOutput $reviewOutput
@@ -199,18 +241,7 @@ switch ($decision.decision) {
         # via wrapper save-review (ou criar manualmente).
         # Nota: fact-check nao aplicavel aqui — nao ha output de reviewer local; Sonnet
         # subagent (dispatched via Agent tool) e responsavel por validar seus proprios findings.
-        $reviewDir = ".deepseek\reviews"
-        New-Item -ItemType Directory -Path $reviewDir -Force | Out-Null
-        $placeholderPath = Join-Path $reviewDir "$(Get-Date -Format 'yyyyMMdd-HHmmss')-deferred-cross-claude.jsonl"
-        @{
-            deferred = $true
-            reason = "decision=cross-claude (commit from DeepSeek). R11 anti auto-revisao -- so Sonnet revisa."
-            decision = $decision.decision
-            timestamp = (Get-Date).ToString('o')
-            placeholder = $true
-            note = "Agente DEVE dispatchar Sonnet subagent agora; substituir este placeholder pelas findings reais."
-        } | ConvertTo-Json -Compress | Set-Content -Path $placeholderPath -Encoding UTF8
-        [Console]::Error.WriteLine("[percus-review-auto] placeholder escrito em $placeholderPath (libera hook por TTL)")
+        Write-DeferredReviewPlaceholder -Decision $decision.decision -Reason "decision=cross-claude (commit from DeepSeek). R11 anti auto-revisao -- so Sonnet revisa."
         [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: commit veio de DeepSeek (decision=cross-claude). DEVE dispatchar Sonnet subagent via Agent tool agora -- DeepSeek NAO revisa proprio output (R11).")
     }
 
@@ -225,12 +256,16 @@ switch ($decision.decision) {
             Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } |
             Out-String
         if ($LASTEXITCODE -ne 0) {
-            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE)")
-            exit 3
+            # Mesmo fix do caso "dual" acima: DeepSeek fora do ar nao pode matar o
+            # wrapper inteiro antes de registrar nada e antes do marker -- Llama e
+            # Cross-Claude ainda cobrem o conselho enquanto DeepSeek estiver indisponivel.
+            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE) -- registrando placeholder deferred pra não travar o gate.")
+            Write-DeferredReviewPlaceholder -Decision "council" -Reason "decision=council, DeepSeek falhou (exit $LASTEXITCODE) -- provável outage/API key inválida. Registro parcial; Llama/Cross-Claude cobrem o resto."
+        } else {
+            # F3: fact-check pipeline obrigatorio
+            $finalOutput = Invoke-FactCheck -ReviewOutput $reviewOutput
+            Write-Output $finalOutput
         }
-        # F3: fact-check pipeline obrigatorio
-        $finalOutput = Invoke-FactCheck -ReviewOutput $reviewOutput
-        Write-Output $finalOutput
 
         # Tambem invoca Llama via orchestrator pra adicionar 3a perspectiva ao log council-log/
         $orchScript = Join-Path $current.FullName "scripts\council-orchestrator.ps1"

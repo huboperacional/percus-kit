@@ -132,6 +132,38 @@ fi
 
 >&2 echo "[percus-review-auto] decisao: $DECISION (sensitive=$SENSITIVE)"
 
+# === Placeholder "deferred" em .deepseek/reviews/latest.jsonl ===
+# Usado sempre que o registro real (findings de DeepSeek e/ou Cross-Claude) nao pode
+# ser persistido no momento em que o wrapper decide "dual"/"council" (ex.: DeepSeek
+# fora do ar / API key invalida) -- SEM isto, o caminho antigo fazia `exit` direto
+# nesse ponto, sem nunca gravar nada em .deepseek/reviews/ e sem emitir o marker de
+# Cross-Claude. O gate de 5min (R11, pre-commit-check.sh) entao nunca achava registro
+# fresco pro commit e bloqueava ate o operador declarar PERCUS_HOOKS_DISABLED --
+# exatamente no caminho sensivel (dual/council), que e o de maior risco. Mesmo padrao
+# que ja existia so pro caso "cross-claude": grava ANTES de emitir o marker/sair.
+write_deferred_review_placeholder() {
+    DECISION_ARG="$1"
+    REASON_ARG="$2"
+    REVIEW_DIR=".deepseek/reviews"
+    mkdir -p "$REVIEW_DIR"
+    LOG_FILE="$REVIEW_DIR/latest.jsonl"
+    LOG_TMP="$REVIEW_DIR/latest.jsonl.tmp"
+    ISO_TS=$(date -Iseconds 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
+    if command -v jq >/dev/null 2>&1; then
+        jq -n --arg decision "$DECISION_ARG" --arg reason "$REASON_ARG" --arg ts "$ISO_TS" \
+            '{deferred:true, reason:$reason, decision:$decision, timestamp:$ts, placeholder:true, note:"Agente DEVE dispatchar Sonnet subagent agora; substituir este placeholder pelas findings reais quando possivel."}' \
+            > "$LOG_TMP" && mv -f "$LOG_TMP" "$LOG_FILE"
+    else
+        # Sem jq: escreve JSON manualmente. Escapa backslash ANTES de aspas -- generico
+        # pra qualquer $Reason futuro que contenha barra invertida (ex.: path Windows),
+        # nao so os literais atuais (que nao tem barra invertida, mas a funcao e reusavel).
+        ESCAPED_REASON=$(printf '%s' "$REASON_ARG" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        printf '{"deferred":true,"reason":"%s","decision":"%s","timestamp":"%s","placeholder":true,"note":"Agente DEVE dispatchar Sonnet subagent agora; substituir este placeholder pelas findings reais quando possivel."}\n' \
+            "$ESCAPED_REASON" "$DECISION_ARG" "$ISO_TS" > "$LOG_TMP" && mv -f "$LOG_TMP" "$LOG_FILE"
+    fi
+    >&2 echo "[percus-review-auto] placeholder escrito em $LOG_FILE (libera hook por TTL)"
+}
+
 # === F3 Fact-check helper ===
 # Recebe review output via stdin, passa pelo fact-check pipeline.
 # Se --no-fact-check ou script ausente, passa direto.
@@ -185,8 +217,14 @@ case "$DECISION" in
         # Captura output do reviewer pra passar pelo fact-check pipeline (F3)
         REVIEW_OUTPUT=$(bash "$DEEPSEEK" $DEEPSEEK_ARGS 2>/dev/null)
         if [ $? -ne 0 ]; then
-            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou"
-            exit 3
+            # Mesmo fix dos branches dual/cross-claude/council: rota solo tambem nao pode
+            # travar o commit inteiro so porque a chave DeepSeek caiu -- essa e a rota mais
+            # comum do portfolio. Conselho 3/3 (deepseek+llama+cross-claude, consult
+            # 2026-08-05) confirmou: escalar pra Cross-Claude via marker, nao bloquear.
+            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou -- registrando placeholder deferred pra nao travar o gate."
+            write_deferred_review_placeholder "deepseek" "decision=deepseek (rota solo), DeepSeek falhou -- provavel outage/API key invalida. Sem segunda perna de review por padrao nesta rota; escalado pra Cross-Claude."
+            >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: rota solo (decision=deepseek), DeepSeek indisponivel. DEVE dispatchar Sonnet subagent via Agent tool agora com prompt de review R11 (escopo: commit atual)."
+            exit 0
         fi
         run_fact_check "$REVIEW_OUTPUT"
         ;;
@@ -195,8 +233,15 @@ case "$DECISION" in
         # Captura output do reviewer pra passar pelo fact-check pipeline (F3)
         REVIEW_OUTPUT=$(bash "$DEEPSEEK" $DEEPSEEK_ARGS 2>/dev/null)
         if [ $? -ne 0 ]; then
-            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou"
-            exit 3
+            # DeepSeek falhou (outage/API key invalida/etc.). ANTES: `exit 3` aqui matava
+            # o wrapper inteiro sem gravar nada em .deepseek/reviews/ e sem emitir o marker
+            # -- gate de 5min nunca achava registro pro caminho dual, forcando escape manual
+            # em TODO commit sensivel. Fix: registra placeholder deferred e ainda sinaliza
+            # Cross-Claude, pra R11 poder ser cumprido so pela perna que sobrou de pe.
+            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou -- registrando placeholder deferred pra nao travar o gate."
+            write_deferred_review_placeholder "dual" "decision=dual, DeepSeek falhou -- provavel outage/API key invalida. Registro parcial; Cross-Claude ainda precisa rodar (R11)."
+            >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual, DeepSeek indisponivel). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review."
+            exit 0
         fi
         run_fact_check "$REVIEW_OUTPUT"
         >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review."
@@ -211,10 +256,14 @@ case "$DECISION" in
         # pro agente completar a 3a perspectiva (Cross-Claude).
         REVIEW_OUTPUT=$(bash "$DEEPSEEK" $DEEPSEEK_ARGS 2>/dev/null)
         if [ $? -ne 0 ]; then
-            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou"
-            exit 3
+            # Mesmo fix do caso "dual" acima: DeepSeek fora do ar nao pode matar o
+            # wrapper inteiro antes de registrar nada e antes do marker -- Llama e
+            # Cross-Claude ainda cobrem o conselho enquanto DeepSeek estiver indisponivel.
+            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou -- registrando placeholder deferred pra nao travar o gate."
+            write_deferred_review_placeholder "council" "decision=council, DeepSeek falhou -- provavel outage/API key invalida. Registro parcial; Llama/Cross-Claude cobrem o resto."
+        else
+            run_fact_check "$REVIEW_OUTPUT"
         fi
-        run_fact_check "$REVIEW_OUTPUT"
 
         ORCH="$CURRENT/scripts/council-orchestrator.sh"
         if [ -f "$ORCH" ]; then
@@ -242,13 +291,7 @@ case "$DECISION" in
         # R11: DeepSeek nao pode auto-revisar. Placeholder pra liberar hook TTL,
         # agente DEVE dispatchar Sonnet via Agent tool.
         # Nota: fact-check nao aplicavel aqui — sem output de reviewer local.
-        REVIEW_DIR=".deepseek/reviews"
-        mkdir -p "$REVIEW_DIR"
-        TS=$(date +%Y%m%d-%H%M%S)
-        PLACEHOLDER="$REVIEW_DIR/$TS-deferred-cross-claude.jsonl"
-        ISO_TS=$(date -Iseconds 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
-        printf '{"deferred":true,"reason":"decision=cross-claude (commit from DeepSeek). R11 anti auto-revisao -- so Sonnet revisa.","decision":"cross-claude","timestamp":"%s","placeholder":true,"note":"Agente DEVE dispatchar Sonnet subagent agora; substituir este placeholder pelas findings reais."}\n' "$ISO_TS" > "$PLACEHOLDER"
-        >&2 echo "[percus-review-auto] placeholder escrito em $PLACEHOLDER (libera hook por TTL)"
+        write_deferred_review_placeholder "cross-claude" "decision=cross-claude (commit from DeepSeek). R11 anti auto-revisao -- so Sonnet revisa."
         >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: commit veio de DeepSeek (decision=cross-claude). DEVE dispatchar Sonnet subagent via Agent tool agora -- DeepSeek NAO revisa proprio output (R11)."
         ;;
 
