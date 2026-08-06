@@ -211,6 +211,8 @@
 - [Subagente que promete "reporto quando terminar" um comando em background não retoma sozinho — precisa de outro SendMessage](#subagent-background-promise-nao-se-cumpre-sozinho)
 - [Rota Next.js (Node runtime) atrás de Traefik redireciona pra `0.0.0.0:PORT` em vez do host público](#nextjs-node-route-handler-req-url-bind-address)
 - [Volume nomeado do Docker Swarm nasce `root:root`; container non-root não consegue escrever](#swarm-named-volume-root-owned-vs-nonroot-container)
+- [`EnterWorktree` (ferramenta nativa) nasce STALE quando `main` local está à frente de `origin`](#enterworktree-nasce-stale-baseref-fresh)
+- [Isolamento multi-tenant por UUID+FK (sem coluna `tenant_id` redundante) gera falso positivo em review automático](#tenant-isolation-uuid-fk-false-positive-r6)
 
 ---
 
@@ -5865,3 +5867,73 @@ verificação pós-deploy, não é opcional só porque o container subiu saudáv
 **Ref:** ads4agencies-site, painel de admin AutoWorx, Task 18/19, sessão 2026-08-06 — volume
 `ads4agencies_autoworx_admin_storage`, container `nextjs` uid 1001, fix documentado em
 `deploy/stack.yml` (ARMADILHA 3).
+
+---
+
+## `EnterWorktree` (ferramenta nativa) nasce STALE quando `main` local está à frente de `origin` {#enterworktree-nasce-stale-baseref-fresh}
+
+`tags: EnterWorktree, git worktree, worktree.baseRef, origin desatualizado, subagent-driven-development, worktree stale`
+
+**Contexto:** projeto onde `main` local acumulou commits sem push (`origin/main` ficou pra trás —
+comum quando o operador decide "manter local por enquanto"). Sessão usa a ferramenta nativa
+`EnterWorktree` (não `git worktree add` manual) pra isolar uma frente de implementação.
+
+**Sintoma:** o worktree recém-criado não tem os commits mais recentes do `main` local — `git log
+--oneline HEAD..main` no worktree mostra dezenas/centenas de commits "faltando", incluindo trabalho
+da MESMA sessão que acabou de ser commitado em `main` minutos antes.
+
+**Causa raiz:** o comportamento default de `EnterWorktree` é `worktree.baseRef=fresh`, que cria a
+branch nova a partir de `origin/<default-branch>`, não do HEAD local. Se `origin/main` está atrás
+(sem push), o worktree nasce apontando pra essa versão antiga — silenciosamente, sem erro.
+
+**Solução:** depois de criar o worktree, SEMPRE checar `git log --oneline HEAD..main | wc -l`
+(rodado dentro do worktree, comparando contra o `main` do repo principal). Se não for zero:
+`git merge main --ff-only` dentro do worktree, ANTES de qualquer outro trabalho — passo 0
+obrigatório, não opcional. Confirmar depois com o mesmo `wc -l` (deve dar 0). Isso vale mesmo que o
+worktree tenha acabado de ser criado na mesma sessão — a staleness não é sobre "worktree antigo",
+é sobre a origem do branch base.
+
+**Como pegar isso ANTES de perder trabalho:** não assuma que `EnterWorktree` reflete o estado atual
+do repo só porque acabou de ser chamado. O check de staleness (`git log --oneline HEAD..main`) leva
+2 segundos e evita implementar em cima de uma árvore desatualizada, depois descobrir no merge que
+faltava metade do trabalho recente.
+
+**Ref:** tiatendo, frente C13/C16 (sinal de troca de modo), sessão 2026-08-06 — worktree
+`worktree-c13-c16-sinal-modo` nasceu 190 commits atrás de `main` local (que incluía toda a spec e
+plano commitados minutos antes na mesma sessão); `git merge main --ff-only` corrigiu antes de
+qualquer implementação.
+
+---
+
+## Isolamento multi-tenant por UUID+FK (sem coluna `tenant_id` redundante) gera falso positivo em review automático {#tenant-isolation-uuid-fk-false-positive-r6}
+
+`tags: R6, isolamento por tenant, falso positivo, review automatico, UUID, foreign key, conversation_id`
+
+**Contexto:** tabela auxiliar 1:1 (ex. `session_state`) chaveada só por uma FK pra um recurso pai
+(`conversation_id UUID REFERENCES conversations(id)`), sem coluna `tenant_id` própria. Função que
+lê/escreve nessa tabela recebe só o id da FK como parâmetro, sem `tenantId` explícito.
+
+**Sintoma:** review automático (DeepSeek ou similar) marca `[SEV: risco]` citando violação de
+regra de isolamento por tenant ("query sem tenant_id explícito pode vazar entre tenants"), mesmo
+quando a função é segura.
+
+**Causa raiz do falso positivo:** o reviewer aplica a heurística geral (toda query nova deveria
+filtrar por `tenant_id`) sem verificar que ESSA tabela específica usa outro mecanismo de
+isolamento — o id que chega já nasceu amarrado a um tenant único (resolvido no servidor a partir
+de `tenantId` antes de virar `conversationId`, nunca é input direto/adivinhável do usuário externo)
+e a FK/UNIQUE garante que não existe caminho pra um id de um tenant apontar pra dado de outro.
+Isolamento "por identidade de chave única resolvida upstream" é equivalente em efeito a um filtro
+`WHERE tenant_id=`, só que via mecanismo diferente.
+
+**Como confirmar/refutar rápido:** (1) ler o schema da tabela (`CREATE TABLE`/migration) — se a
+chave é `UNIQUE`/`PRIMARY KEY` numa coluna UUID com FK pra uma tabela que JÁ é tenant-scoped, é
+seguro; (2) confirmar que o id nunca chega como input direto de fora (sempre resolvido
+server-side); (3) checar se o MESMO padrão de chamada (função sem `tenantId`) já existe em outros
+call-sites pré-existentes no mesmo arquivo — se sim, não é risco introduzido pelo diff sob review,
+é padrão estabelecido.
+
+**Ref:** tiatendo, review de marco C13/C16, sessão 2026-08-06 — `_persistDeliveryPref` chamada com
+só `conversationId` (`execution/engine/restaurantOrderFlow.py`/`restaurantCommandOrchestrator.py`);
+DeepSeek marcou risco R6, Cross-Claude confirmou falso positivo lendo `session_state` (UNIQUE em
+`conversation_id`, FK pra `conversations.id`) + achando 5+ call-sites pré-existentes com o mesmo
+padrão.
