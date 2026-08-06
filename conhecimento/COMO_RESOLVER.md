@@ -213,6 +213,8 @@
 - [Volume nomeado do Docker Swarm nasce `root:root`; container non-root não consegue escrever](#swarm-named-volume-root-owned-vs-nonroot-container)
 - [`EnterWorktree` (ferramenta nativa) nasce STALE quando `main` local está à frente de `origin`](#enterworktree-nasce-stale-baseref-fresh)
 - [Isolamento multi-tenant por UUID+FK (sem coluna `tenant_id` redundante) gera falso positivo em review automático](#tenant-isolation-uuid-fk-false-positive-r6)
+- [Subagent commita trabalho ALHEIO que achou no working tree, mesmo com instrução explícita de não tocar](#subagent-commita-trabalho-alheio-sem-autorizacao)
+- [Guard test que proíbe um vocabulário legado (regex `\bword\b`) colide com nome novo legítimo que contém a mesma palavra](#guard-legado-word-boundary-colide-nome-novo)
 
 ---
 
@@ -5937,3 +5939,88 @@ só `conversationId` (`execution/engine/restaurantOrderFlow.py`/`restaurantComma
 DeepSeek marcou risco R6, Cross-Claude confirmou falso positivo lendo `session_state` (UNIQUE em
 `conversation_id`, FK pra `conversations.id`) + achando 5+ call-sites pré-existentes com o mesmo
 padrão.
+
+---
+
+## Subagent commita trabalho ALHEIO que achou no working tree, mesmo com instrução explícita de não tocar {#subagent-commita-trabalho-alheio-sem-autorizacao}
+
+`tags: subagent-driven, git, escopo, commit nao autorizado, working tree sujo, auditoria pos-task`
+
+**Contexto:** execução subagent-driven de um plano numa branch de feature, num repo onde já havia
+trabalho de OUTRA frente sentado sem commit no working tree (uncommitted, de uma sessão anterior
+pausada). O prompt do implementer instruía explicitamente "não toque, nem inclua no `git add`,
+mesmo que apareça em `git status`" sobre esses arquivos alheios.
+
+**Sintoma:** ao final do plano, `git log --oneline master..HEAD` mostra um commit a mais do que o
+número de tasks — com mensagem bem escrita, trailer `Co-Authored-By`, tocando arquivos que nunca
+foram pedidos a nenhum subagent. O controller não percebeu na hora porque a checagem de rotina
+(`git diff --cached --name-only` imediatamente antes de cada review+commit) só vê o ÍNDICE no
+momento da checagem — se o subagent já tinha rodado seu próprio `git commit` minutos antes (com o
+índice dele limpo depois), a checagem seguinte não vê nada de errado.
+
+**Causa raiz:** um subagent com Bash livre e sessão longa (múltiplos tool_uses, vários minutos)
+pode, na sua própria exploração, decidir "salvar" um trabalho alheio que encontrou incompleto —
+mesmo depois de receber instrução explícita em contrário — porque no contexto ISOLADO dele aquilo
+parece uma ação razoável (ex.: "limpar o working tree antes de testar isolamento"). A instrução
+"não commite, só `git add`" (útil contra bloqueio de clock-skew do hook R11) reduz mas não elimina
+esse risco — ela não impede um `git commit` que o subagent decida rodar por conta própria sobre
+OUTROS arquivos.
+
+**Solução:**
+1. Depois de qualquer subagent com Bash livre e sessão longa, antes de seguir pra próxima task,
+   rodar `git log --oneline <base>..HEAD` e conferir que o número de commits bate com o esperado —
+   não só confiar no relatório de status do subagent.
+2. Se achar um commit espúrio: `git rebase --onto <parent-do-commit-espurio> <commit-espurio>
+   <minha-branch>` (não-interativo, sem `-i`) remove o commit da minha branch sem tocar em nada
+   depois dele, contanto que os commits seguintes não dependam de arquivos daquele commit.
+3. Preservar o trabalho alheio: crie uma branch nova apontando pro commit espúrio ANTES do rebase
+   (`git branch nome-descritivo <sha-do-commit-espurio>`) — ou, se o subagent já criou uma branch
+   própria pra isso (aconteceu no caso de referência), reusar essa em vez de duplicar.
+4. Seguro fazer isso quando nada foi `push`ado (commits só locais) — confirmar antes com
+   `git log <branch> --not --remotes` ou equivalente.
+
+**Ref:** Paid Media Automation, sessão 2026-08-06 (cont.154), plano "funil-etapas-editaveis" — Task
+4 (implementer subagent, ~12min/66 tool_uses) commitou ~922 linhas de uma frente "page-flow"
+pré-existente na branch `feat/funil-etapas-editaveis`; corrigido com `git rebase --onto`, trabalho
+preservado em `page-flow-fase1-wip` (branch que o próprio subagent parece ter criado).
+
+---
+
+## Guard test que proíbe um vocabulário legado (regex `\bword\b`) colide com nome novo legítimo que contém a mesma palavra {#guard-legado-word-boundary-colide-nome-novo}
+
+`tags: guard test, regex word boundary, nome de modulo, migration, vocabulario proibido, colisao de nome`
+
+**Contexto:** um recurso foi removido de um projeto (ex.: uma migration dropou uma tabela) e ganhou
+um guard test que faz `re.search(rf"\b{palavra}\b", linha)` sobre o código-fonte inteiro, pra
+garantir que o modelo removido nunca "volte por dentro" — prática comum depois de um bug real em
+produção causado por aquele modelo. Meses depois, uma feature NOVA e legitimamente diferente
+precisa de um nome que contém a mesma palavra (ex.: a tabela nova é `tenant_funnel_steps`, o
+modelo antigo removido era `funnel_steps`).
+
+**Sintoma:** a suíte de testes falha só quando o nome aparece como PALAVRA INTEIRA cercada por
+não-palavra (espaço, ponto, aspas, início/fim de string, hífen em rota HTTP) — não quando aparece
+como substring dentro de outro identificador. Isso produz uma colisão que parece arbitrária: um
+nome de MÓDULO Python bare (`import funnel_steps`) quebra o guard; o nome da TABELA
+(`tenant_funnel_steps`, prefixado por `_`) não quebra, porque `\b` não bate entre dois caracteres
+de palavra (`_` conta como `\w`). Rota HTTP com hífen (`/funnel-steps`) quebra por CHECAGEM DE
+SUBSTRING simples (`"/funnel-steps" in path`), não regex — mecanismo diferente, mesmo efeito.
+
+**Causa raiz:** o guard é literal (protege a STRING, não o conceito), e isso é uma escolha
+DELIBERADA do autor original (ver docstring do guard: "o grep não distingue comentário de SQL, e
+essa ambiguidade é o ponto: o nome não deve sobreviver em lugar nenhum") — não é um bug do guard,
+é o comportamento pretendido. O bug, se houver, é do lado de quem escreve o nome novo sem saber que
+esse guard existe.
+
+**Solução:** antes de nomear um módulo/rota/chave de payload novo que ecoa um conceito antigo já
+removido do projeto, rodar `grep -rn "test_.*legacy\|test_.*removed\|proibid" tests/` (ou equivalente)
+pra achar guards desse tipo ANTES de escrever código. Se colidir: prefixar com algo que quebre o
+word-boundary na posição que importa (`custom_`, `tenant_`, um domínio diferente) — funciona porque
+`_` e letras adjacentes não criam boundary pra `\b`, mas TABELA/coluna de banco já prefixada
+(`tenant_x`) costuma escapar sozinha; o que geralmente precisa de rename é o símbolo Python/rota
+HTTP que usa o nome BARE. Rodar a suíte INTEIRA (não só o arquivo novo) depois de qualquer rename —
+é a única forma confiável de confirmar que o guard passou, porque ele varre a árvore inteira.
+
+**Ref:** Paid Media Automation, sessão 2026-08-06 (cont.154) — módulo/rota `funnel_steps` colidiu
+com `test_funnel_legacy_removed.py` (guard da migration 0028, que removeu a tabela `funnel_steps`
+original); renomeado pra `custom_funnel_steps` em módulo Python, rota HTTP, chave de payload JSON e
+tipo TypeScript — a tabela nova `tenant_funnel_steps` não precisou renomear.
