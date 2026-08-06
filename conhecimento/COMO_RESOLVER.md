@@ -215,6 +215,8 @@
 - [Isolamento multi-tenant por UUID+FK (sem coluna `tenant_id` redundante) gera falso positivo em review automático](#tenant-isolation-uuid-fk-false-positive-r6)
 - [Subagent commita trabalho ALHEIO que achou no working tree, mesmo com instrução explícita de não tocar](#subagent-commita-trabalho-alheio-sem-autorizacao)
 - [Guard test que proíbe um vocabulário legado (regex `\bword\b`) colide com nome novo legítimo que contém a mesma palavra](#guard-legado-word-boundary-colide-nome-novo)
+- [Classe CSS de tema novo perde (ou não) uma queda de especificidade contra Tailwind, dependendo se ela declara a propriedade](#css-cascade-theme-class-vs-tailwind-inconsistent)
+- [`position: fixed` renderiza preso dentro de um card em vez da viewport inteira](#position-fixed-trapped-by-ancestor-transform)
 
 ---
 
@@ -6024,3 +6026,75 @@ HTTP que usa o nome BARE. Rodar a suíte INTEIRA (não só o arquivo novo) depoi
 com `test_funnel_legacy_removed.py` (guard da migration 0028, que removeu a tabela `funnel_steps`
 original); renomeado pra `custom_funnel_steps` em módulo Python, rota HTTP, chave de payload JSON e
 tipo TypeScript — a tabela nova `tenant_funnel_steps` não precisou renomear.
+
+---
+
+## Classe CSS de tema novo perde (ou não) uma queda de especificidade contra Tailwind, dependendo se ela declara a propriedade {#css-cascade-theme-class-vs-tailwind-inconsistent}
+
+`tags: CSS especificidade, Tailwind, cascata, cascade order, classe custom, padding, admin-theme, stylesheet load order, inline style, object-fit`
+
+**Contexto:** um tema CSS novo, escopado (`.admin-theme .admin-btn`, `.admin-theme .admin-input`),
+importado por um layout Next.js aninhado, coexistindo no mesmo elemento com classes utilitárias
+Tailwind (`pl-[32px]`, `px-[20px]`) pro mesmo elemento — padrão comum quando um design system novo
+usa classes próprias pra cor/sombra/borda mas ainda quer Tailwind pra spacing/layout pontual.
+
+**Sintoma:** um input de busca com `pl-[32px]` (Tailwind) tinha o `padding-left` REAL computado em
+`12px` — o texto nascia embaixo do ícone. Corrigido via inline style. Aplicando o MESMO raciocínio
+("Tailwind perde pra classe do tema, sempre use inline style") em 3 botões diferentes que também
+pareciam quebrados (um deles renderizando como círculo perfeito em vez de pill) — só que aí o
+review cross-provider (DeepSeek) apontou que inline style ali violava a convenção do projeto
+(preferir Tailwind), e um teste ao vivo (computed styles via Playwright, antes/depois) provou que
+a classe Tailwind `px-[20px]` funcionava perfeitamente nos botões — sem conflito nenhum.
+
+**Causa raiz:** as duas situações PARECEM iguais mas não são. `.admin-input` DECLARAVA sua própria
+`padding: 0 12px` — havia uma guerra de especificidade de verdade (mesma especificidade, 0-1-0,
+entre a classe do tema e a classe Tailwind; quem carrega por último no stylesheet vence, e nesse
+setup era o tema). `.admin-btn` NÃO declarava `padding` nenhum — não havia guerra nenhuma pra
+Tailwind perder, o padding zero vinha simplesmente de ninguém ter setado nada. O sintoma visual
+(padding efetivo = 0/errado) era idêntico nos dois casos; a causa era oposta.
+
+**Solução:** antes de aplicar "usa inline style pra vencer a cascata" como padrão geral a partir de
+UM caso confirmado, checar se a classe do tema REALMENTE declara a mesma propriedade que a classe
+Tailwind está tentando setar (`grep` a prop no arquivo CSS do tema). Se declara → conflito real,
+inline style é o fix certo (ou renomear pra não colidir). Se não declara → não há conflito, o bug é
+só "ninguém setou nada", e a classe Tailwind normal resolve sem abrir mão da convenção do projeto.
+Generalizar de um caso pro outro sem checar gera diagnóstico certo pro sintoma errado.
+
+**Ref:** ads4agencies-site, redesign do painel de admin AutoWorx, sessão 2026-08-06 — `app/admin/
+admin-theme.css`, achado no feedback visual ao vivo do operador, commits que corrigem e depois
+corrigem-a-correção quando o review apontou a generalização precipitada.
+
+---
+
+## `position: fixed` renderiza preso dentro de um card em vez da viewport inteira {#position-fixed-trapped-by-ancestor-transform}
+
+`tags: CSS, position fixed, containing block, transform, lightbox, modal, overlay, portal, createPortal, React, hover transform`
+
+**Contexto:** um lightbox/modal de foto (`position: fixed; inset: 0`) renderizado como filho direto
+de um card que tem `transform` no `:hover` (`.admin-card:hover { transform: translateY(-2px); }` —
+efeito comum de "levantar" o card ao passar o mouse). Clique na miniatura abre o overlay.
+
+**Sintoma:** ao abrir o lightbox com o mouse ainda em cima da miniatura (cenário normal — o clique
+que abre o overlay deixa o cursor exatamente ali), o overlay de tela cheia renderizava PRESO dentro
+da caixa do card, não cobrindo a viewport — como se `position: fixed` tivesse virado
+`position: absolute` relativo ao card.
+
+**Causa raiz:** é exatamente isso que acontece. Qualquer ancestral com `transform` (ou `filter`,
+`perspective`, `will-change: transform`, `contain: layout/paint`) ATIVO no momento vira um novo
+"containing block" pra descendentes `position: fixed` — eles passam a ser posicionados relativos a
+esse ancestral, não à viewport. Como o `:hover` do card ainda está ativo (cursor não saiu da
+miniatura), o `transform` está aplicado exatamente quando o overlay tenta abrir.
+
+**Solução:** renderizar o overlay via `createPortal(overlay, document.body)` (React) em vez de deixá-lo
+como filho normal da árvore — isso tira o elemento do DOM subtree do card por completo, imune a
+qualquer `transform`/`filter` de qualquer ancestral, presente ou futuro. Não dá pra resolver só
+tirando o `transform` do hover (perderia o efeito visual) nem só mudando `position` (é o comportamento
+correto do CSS, não um bug de valor errado).
+
+**Como pegar isso antes de declarar pronto:** testar abrindo o overlay com o mouse ainda sobre o
+elemento que o disparou (não mover o mouse pra fora antes de clicar) — é exatamente esse o caminho
+que reproduz o bug; testar só com screenshot pós-clique-e-mouse-longe pode passar batido.
+
+**Ref:** ads4agencies-site, redesign do painel de admin AutoWorx, sessão 2026-08-06 — feature de
+lightbox de foto pedida ao vivo pelo operador, `components/admin/PhotoFieldCard.tsx`, achado
+imediatamente no primeiro teste ao vivo via Playwright screenshot.
