@@ -6180,3 +6180,79 @@ worktree nem coordenação de deploy são automáticos — cada um exige ação 
 
 **Ref:** Paid Media Automation, sessão 2026-08-06 (cont.155→156) — frente "Fluxo de Páginas" colidindo
 com "Funil etapas editáveis", reconciliadas via `feat/page-flow-merged` → `master` (`758946e8`).
+
+---
+
+## Adicionar um arquivo ao índice do git e depois fechar o registro sem restringir o escopo pode levar junto o que outro processo já tinha preparado no mesmo diretório {#indice-git-compartilhado-leva-trabalho-alheio}
+
+`tags: git, indice, pathspec, sessão paralela, staged, working tree compartilhado, registro acidental`
+
+**Contexto:** duas sessões Claude Code rodando no MESMO diretório de trabalho (não em git worktrees
+isolados), cada uma trabalhando em arquivos diferentes. Uma sessão (Fluxo de Páginas) tinha preparado
+os próprios arquivos (6 novos: `page-flow-focus.ts` etc.) no índice, mas ainda não tinha fechado o
+registro. A outra sessão, pra fechar um checkpoint de documentação, adicionou só `docs/STATUS.md` ao
+índice e em seguida fechou o registro sem informar quais arquivos deveriam entrar.
+
+**Sintoma:** o registro resultante trouxe **12 arquivos**, não 1 — os 6 arquivos alheios (já
+preparados pela outra sessão) foram junto, com uma mensagem que não os menciona. Só descoberto porque
+o resumo do registro foi conferido logo depois (hábito, não pela suspeita — o número de arquivos bateu
+estranho).
+
+**Causa raiz:** adicionar um arquivo específico ao índice só afeta AQUELE arquivo — mas não tem
+escopo sobre o que MAIS já estava preparado. Fechar o registro sem informar o escopo processa o índice
+INTEIRO, não só o que a última adição tocou. Num diretório exclusivo de uma sessão isso é invisível
+(só a própria sessão prepara coisas); num diretório COMPARTILHADO, qualquer preparo alheio anterior
+vaza pro seu registro.
+
+**Solução:**
+- Antes de fechar QUALQUER registro num diretório que pode ter atividade paralela: conferir o estado
+  completo do índice, **sem filtro que esconda linhas** (um filtro por nome de arquivo esconde
+  exatamente os arquivos alheios que você precisa ver).
+- Informar o escopo explícito de arquivos ao fechar o registro também, não só ao preparar — é a rede
+  de segurança que funciona mesmo se a conferência prévia for esquecida ou lida rápido demais.
+- Se o vazamento já aconteceu e ainda não foi publicado: desfazer só o último registro mantendo TUDO
+  preparado (zero perda de conteúdo, nem o seu nem o alheio) → devolver os arquivos alheios pro estado
+  "modificado, não preparado" exato de antes → refazer o registro só com o arquivo próprio, com escopo
+  explícito desta vez.
+
+**Ref:** Paid Media Automation, sessão 2026-08-06 (cont.155→156), checkpoint de STATUS.md durante
+sessão paralela "Fluxo de Páginas" ativa no mesmo diretório.
+
+---
+
+## Backfill manual via CLI (`--account-id`) grava dado real mas não atualiza a tabela de saúde da coleta {#cli-backfill-nao-atualiza-collection-log}
+
+`tags: worker, collector, backfill, collection_log, saúde da coleta, CLI, cron, observabilidade`
+
+**Contexto:** operador pediu backfill urgente de métricas Meta Ads pra um cliente (D4U), 6 contas,
+217 dias, via `docker exec <worker> python collector.py --account-id <id> --date <data>` em loop
+(caminho manual, não o cron agendado).
+
+**Sintoma:** o backfill rodou limpo (zero erro, dado real gravado em `metrics_daily`/`ads`/etc.,
+confirmável por query direta), mas a tela de Saúde da Coleta continuou mostrando as mesmas contas
+como "Atrasada" com a MESMA data antiga, mesmo depois do F5.
+
+**Causa raiz:** `worker/collector.py` tem duas funções que fazem coisas parecidas mas não a mesma
+coisa. `collect_all()` (o caminho do cron) chama `_log_collection(acc["id"], date, "SUCCESS"/"FAILED")`
+pra cada conta — é isso que grava em `collection_log`, a tabela que a tela de saúde lê. O caminho CLI
+(`--account-id`) chama `collect_with_retry()` DIRETO, pulando esse logging por inteiro. Os dois
+caminhos escrevem a MESMA métrica em `metrics_daily`, mas só um escreve o "aconteceu" em
+`collection_log`.
+
+**Solução:** depois de qualquer backfill manual via `--account-id`, gravar `collection_log` à parte,
+via SQL direto (idempotente, `ON CONFLICT (ad_account_id, date) DO UPDATE`):
+```sql
+INSERT INTO public.collection_log (ad_account_id, date, status, finished_at)
+SELECT aid::uuid, d::date, 'SUCCESS', now()
+FROM unnest(ARRAY['<uuid-1>','<uuid-2>']::text[]) aid
+CROSS JOIN generate_series('<inicio>'::date, '<fim>'::date, '1 day') d
+ON CONFLICT (ad_account_id, date) DO UPDATE SET status='SUCCESS', error_message=NULL, finished_at=now();
+```
+`ad_account_id` aqui é o `id` INTERNO (UUID) de `client_ad_accounts`, não o `account_id` da
+plataforma (Meta/Google) — os dois são campos diferentes na mesma tabela, fácil de confundir.
+Correção estrutural (não feita, registrada como dívida): `collect_with_retry` podia sempre chamar
+`_log_collection` também, unificando os dois caminhos.
+
+**Ref:** Paid Media Automation, sessão 2026-08-06 (cont.155→156) — backfill D4U (6 contas Meta,
+01/01→05/08/2026), `client_ad_accounts.client_id = 77d723a1-...` (nome interno do cliente ainda
+"Gustavo", `account_name` de cada conta já rebrandeado pra "D4U" — outra pegadinha de busca por nome).
