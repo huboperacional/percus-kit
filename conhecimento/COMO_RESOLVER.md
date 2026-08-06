@@ -219,6 +219,8 @@
 - [`position: fixed` renderiza preso dentro de um card em vez da viewport inteira](#position-fixed-trapped-by-ancestor-transform)
 - [`docker ps --filter name=X` casa por SUBSTRING — pega sidecar cujo nome começa com X](#docker-ps-filter-name-substring-match)
 - [Duas sessões Claude no MESMO diretório de trabalho colidem em checkout E em deploy, não só em commit](#sessoes-paralelas-mesmo-diretorio-colidem)
+- [Adicionar um arquivo ao índice do git e depois fechar o registro sem restringir o escopo pode levar junto o que outro processo já tinha preparado no mesmo diretório](#indice-git-compartilhado-leva-trabalho-alheio)
+- [Backfill manual via CLI (`--account-id`) grava dado real mas não atualiza a tabela de saúde da coleta](#cli-backfill-nao-atualiza-collection-log)
 
 ---
 

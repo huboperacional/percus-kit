@@ -122,10 +122,15 @@ try {
     $authFile = Join-Path $cwd ".percus/acao-externa-autorizada.json"
     if (Test-Path $authFile) {
         $auth = Get-Content $authFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-        $criadoEm = [DateTimeOffset]::FromUnixTimeSeconds($auth.timestamp_unix).LocalDateTime
-        $idadeMin = ((Get-Date) - $criadoEm).TotalMinutes
-        if ($idadeMin -ge 0 -and $idadeMin -lt 60) {
-            [Console]::Error.WriteLine("[percus:hook external-action-guard] autorizacao em lote ativa (id: $($auth.id), motivo: $($auth.motivo), idade: $([math]::Round($idadeMin,1))min) -- permitindo.")
+        # Comparacao em epoch puro, NUNCA converter pra hora local antes de subtrair -- achado
+        # do R11/DeepSeek no review deste plano: subtracao de DateTime local e aritmetica de
+        # relogio de parede, nao tempo real decorrido. Numa transicao de horario de verao isso
+        # podia fazer autorizacao EXPIRADA parecer fresca (perigoso) ou fresca parecer expirada.
+        # Epoch (segundos desde 1970 UTC) e monotonico e imune a fuso/DST por definicao.
+        $agoraUnix = [DateTimeOffset]::new((Get-Date)).ToUnixTimeSeconds()
+        $idadeSeg = $agoraUnix - $auth.timestamp_unix
+        if ($idadeSeg -ge 0 -and $idadeSeg -lt 3600) {
+            [Console]::Error.WriteLine("[percus:hook external-action-guard] autorizacao em lote ativa (id: $($auth.id), motivo: $($auth.motivo), idade: $([math]::Round($idadeSeg/60,1))min) -- permitindo.")
             exit 0
         }
     }
@@ -134,6 +139,11 @@ try {
     # relogio no passado) NAO libera -- so significa "nao consegui confirmar autorizacao", cai
     # pro fluxo normal do R20 abaixo. Fail-closed desta checagem, mesmo com o resto do hook
     # sendo fail-open pra erro interno inesperado.
+    #
+    # Loga o motivo do erro (achado do R11/DeepSeek): sem isto, um arquivo de autorizacao
+    # corrompido bloqueia do mesmo jeito que "nunca autorizado", e ninguem descobre que o
+    # motivo real era um erro tecnico, nao ausencia de autorizacao.
+    [Console]::Error.WriteLine("[percus:hook external-action-guard] falha ao processar autorizacao em lote: $($_.Exception.Message)")
 }
 ```
 
@@ -217,6 +227,19 @@ usado em `renomear-kit-local.tests.ps1` e `registrar-hooks-settings.tests.ps1`.
   menor, não maior), só potencialmente inconveniente se o operador esperar uma autorização só
   cobrir trabalho espalhado por vários worktrees do mesmo projeto — aceito como comportamento
   documentado, sem mudança de design necessária.
+- **`catch` silencioso — achado do R11/DeepSeek no review do plano de implementação (segunda
+  rodada).** O bloco `catch` bloqueava certo mas sem logar nada — arquivo de autorização
+  corrompido/ilegível resultava em bloqueio indistinguível de "nunca autorizado", dificultando
+  diagnóstico. Corrigido: `catch` agora escreve em stderr o motivo técnico do erro, preservando
+  o fail-closed (continua bloqueando, só passou a explicar por quê).
+- **Comparação de idade em hora local em vez de epoch puro — achado do R11/DeepSeek no review
+  do plano de implementação.** A versão anterior deste hook convertia `timestamp_unix` pra
+  `DateTime` local (`.LocalDateTime`) e subtraía de `Get-Date` (também local) pra calcular a
+  idade em minutos. Subtração de `DateTime` com `Kind=Local` é aritmética de relógio de parede —
+  numa transição de horário de verão entre a criação e a checagem, o resultado diverge do tempo
+  real decorrido, podendo fazer uma autorização expirada parecer fresca. Corrigido: comparação
+  direta em epoch (segundos desde 1970 UTC dos dois lados, nunca convertidos pra hora local),
+  imune a fuso/DST por definição — ver "Mudança no hook" acima, já atualizado.
 - **Escrita concorrente no log de auditoria — achado do R11/DeepSeek no re-review deste
   documento.** `.percus/autorizacoes-usadas.jsonl` é append-only sem lock; duas sessões do agente
   rodando ao mesmo tempo no mesmo checkout (cenário já registrado como real neste projeto — ver
