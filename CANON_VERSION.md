@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.34.1`
+**Versão canônica em `huboperacional/percus-kit`:** `6.35.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
 >
@@ -18,6 +18,30 @@
 > onde os gates de commit leem.
 >
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
+
+---
+
+## Changelog v6.35.0 — 2026-08-07
+
+**R20 ganha um segundo escape hatch: autorização em lote por arquivo.** O hook
+`external-action-guard.ps1` já tinha `PERCUS_EXTERNAL_OVERRIDE=1`, mas essa variável não atravessa
+a fronteira de processo do `PreToolUse` (achado 2026-07-31) — setar dentro da sessão do Claude não
+tem efeito nenhum. Agora existe um segundo mecanismo, em disco: o agente cria
+`.percus/acao-externa-autorizada.json` (via `scripts/autorizar-acao-externa.ps1`) **depois** de
+confirmação explícita do operador na conversa, com uma janela de 60 minutos calculada em epoch
+puro (nunca `DateTime` local, imune a fuso/DST). Os dois mecanismos convivem — qualquer um dos dois
+libera a ação externa, nenhum substitui o outro.
+
+Erro na checagem do arquivo (JSON corrompido, campo faltando, arquivo ilegível) é fail-closed:
+bloqueia, nunca libera — comportamento diferente do resto do hook, que é fail-open para erro
+interno inesperado. Todo uso da autorização em lote é registrado em
+`.percus/autorizacoes-usadas.jsonl` via `scripts/registrar-uso-autorizacao.ps1`, pra auditoria
+posterior de o que foi liberado, por qual autorização, quando.
+
+Risco estrutural aceito conscientemente pelo operador: o mesmo agente que a R20 existe para conter
+é quem cria o arquivo que o hook confia, sem verificação externa de que a confirmação humana
+aconteceu de verdade. Ver `docs/superpowers/specs/2026-08-06-r20-autorizacao-lote-design.md` pro
+raciocínio completo.
 
 ---
 
