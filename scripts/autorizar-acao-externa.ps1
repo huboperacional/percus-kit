@@ -13,6 +13,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
+    [ValidateNotNullOrEmpty()]
     [string]$Motivo,
     [string]$ProjetoRoot
 )
@@ -34,7 +35,12 @@ $auth = [pscustomobject]@{
 
 $caminho = Join-Path $dir "acao-externa-autorizada.json"
 $texto = $auth | ConvertTo-Json
-[IO.File]::WriteAllText($caminho, $texto, (New-Object System.Text.UTF8Encoding($false)))
+# BOM UTF-8 (true) de proposito, ao contrario do resto do kit: o HOOK que le este arquivo
+# roda sob powershell.exe 5.1 (nao pwsh) e le com Get-Content -Raw | ConvertFrom-Json SEM
+# -Encoding explicito -- sem BOM, isso cai no codepage ANSI do sistema e corrompe "motivo"
+# acentuado (achado por review empirico 2026-08-07). O BOM faz o 5.1 detectar UTF-8 certo
+# na leitura sem precisar tocar no hook.
+[IO.File]::WriteAllText($caminho, $texto, (New-Object System.Text.UTF8Encoding($true)))
 
 $expiraEm = $agora.AddMinutes(60).ToString("HH:mm")
 Write-Host "[autorizar-acao-externa] autorizacao criada: id=$($auth.id) motivo='$Motivo' valida ate $expiraEm"

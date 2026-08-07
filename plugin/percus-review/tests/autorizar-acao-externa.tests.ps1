@@ -56,4 +56,18 @@ Describe "autorizar-acao-externa.ps1" {
     It "-Motivo e obrigatorio" {
         { & $script:script -ProjetoRoot "C:\qualquer" -ErrorAction Stop } | Should -Throw
     }
+
+    It "grava motivo acentuado sem corromper (BOM UTF-8, le de volta com -Encoding UTF8)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("autoriza-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        [void]$script:temps.Add($dir)
+
+        $motivoAcentuado = "correção-urgente-acentuada: ção, não, autorização"
+
+        & $script:script -Motivo $motivoAcentuado -ProjetoRoot $dir | Out-Null
+
+        $caminho = Join-Path $dir ".percus\acao-externa-autorizada.json"
+        $auth = Get-Content $caminho -Raw -Encoding UTF8 | ConvertFrom-Json
+        $auth.motivo | Should -Be $motivoAcentuado
+    }
 }
