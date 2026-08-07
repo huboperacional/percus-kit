@@ -228,6 +228,10 @@
 - [Browser MCP (Playwright/Chrome-DevTools) pode estar conectado a um perfil Chrome REAL com sessão AO VIVO do operador, não um perfil isolado](#browser-mcp-sessao-ao-vivo-operador)
 - [Smoke test conversacional (webhook + estado de sessão de bot): mandar a próxima mensagem sem confirmar o estado via poll() cascateia falso-negativo](#smoke-conversacional-sessao-presa-cascateia)
 - [Hook PowerShell roda sob `powershell.exe` 5.1, não `pwsh` — arquivo produzido sem BOM (ou teste com acento literal no source) corrompe/quebra silenciosamente](#hook-powershell-51-sem-bom-corrompe)
+- [Fluxo de confirmação com allowlist fixo cancela silenciosamente em vez de reprompt](#confirmacao-allowlist-cancela-em-vez-de-reprompt)
+- [Deploy de sessão paralela sobrescreve o seu sem aviso](#deploy-paralelo-sobrescreve-sem-aviso)
+- [Junction de node_modules compartilhada entre worktrees corrompe e trava Turbopack](#junction-node-modules-worktree-risco)
+- [Dois hooks de pre-commit diferentes bloqueiam por motivos diferentes](#dois-hooks-pre-commit-r11-mock-scan)
 
 ---
 
@@ -4532,6 +4536,20 @@ PARTE dos passos/ramos, reintroduzindo o bug que a lógica completa já evitava.
 de pedido abandonado (3 passos, uma função só fazia 1); aqui é um discriminador de confirmação de
 endereço (4 ramos, a função nova só cobria 2).
 
+**3ª ocorrência, projeto diferente (Família Milionária, 2026-08-07):** `extrairPagamentoDivida`
+(bot WhatsApp) já tinha corrigido um "leak" de nome vazando os verbos "quero"/"vou" pra dentro do
+campo extraído (achado de review anterior, comentado no próprio código como "Leak 3"). A função
+IRMÃ `extrairDividaDeCriacao` — mesmo arquivo, mesma responsabilidade de extrair um nome de texto
+livre, só que pro fluxo de CRIAÇÃO em vez de PAGAMENTO — nunca recebeu o equivalente: sua
+stopword-list (`_STOP_WORDS_CRIAR`) não tinha "quero"/"cadastrar"/"criar"/"tenho". Sintoma em prod
+(print real do usuário): "tenho uma dívida de 5000 mil com o banco, quero cadastrar" virava
+nome="Mil Banco Quero Cadastrar" em vez de "Banco". O comentário no código JÁ apontava a lição
+("Leak 3") — só não tinha sido replicado pra irmã. Fix + teste: `familia-api/app/modules/whatsapp/
+divida_handler.py`, commit `4b6d127`. **Reforça o padrão:** ao corrigir um leak/discriminador numa
+função, sempre perguntar "existe uma função IRMÃ com a mesma responsabilidade que também precisa
+desse fix?" — grep pelo nome da constante/lista (`_STOP_PAGAMENTO_DIVIDA` vs `_STOP_WORDS_CRIAR`)
+teria achado isso em segundos.
+
 ---
 
 ## CLAUDE.md aponta pro caminho ANTIGO do canon (`_Novo_Projeto`) — script não existe mais, renomeado pra `percus-kit` {#claudemd-caminho-canon-stale}
@@ -6608,3 +6626,227 @@ quebraria se algo fizesse comparação byte-a-byte estrita do conteúdo, o que n
 **Ref:** percus-kit, plano `docs/superpowers/plans/2026-08-06-r20-autorizacao-lote.md`, Tasks 4-5
 (sessão 2026-08-07, achado em code review + confirmado empiricamente contra `powershell.exe` 5.1
 real).
+
+## Mockup aprovado nunca gerado pelo algoritmo real de layout diverge da produção
+
+**Sintoma:** operador aprova uma prévia (Claude Artifact) com nós/raias organizados de um jeito
+limpo; a implementação real usa um algoritmo de layout determinístico já existente (BFS+baricentro,
+ou qualquer coisa que calcule posição a partir de dado real); em produção, com dado denso de
+verdade, a ordem visual sai completamente diferente do que foi aprovado — parece regressão, mas o
+código está "correto" (fez exatamente o que a spec pedia).
+
+**Causa raiz:** o mockup foi posicionado À MÃO (coordenadas fixas, pensadas pra ilustrar o
+CONCEITO) em vez de rodar o algoritmo real contra dado real. Funciona pra aprovar a IDEIA (cores,
+interação, tipos de nó) mas nunca prova que o algoritmo de POSICIONAMENTO vai produzir aquilo — são
+duas coisas diferentes sendo aprovadas junto sem querer.
+
+**Solução:** ao construir a prévia de um redesenho que envolve um algoritmo de layout existente
+(não só estilo/interação), rodar esse algoritmo de verdade contra uma amostra real de dado antes de
+pedir aprovação — nem que seja um script standalone que chama a função de layout e dumpa
+coordenadas, sem precisar do app inteiro rodando. Se isso não for viável a tempo, pelo menos avisar
+explicitamente na hora da aprovação: "isto é só o CONCEITO visual, o posicionamento real vai vir do
+algoritmo X, ainda não testado contra este mockup".
+
+**Ref:** Paid Media Automation, cont.157 (2026-08-07), Fluxo de Páginas — raias de canal + tipo de
+conversão. Ver `docs/adrs/0008-fluxo-de-paginas-permanece-literal-em-raias.md` e
+`docs/STATUS.md` ADENDO 31/32.
+
+## Resgatar commit que caiu no branch errado por colisão de sessão paralela (sem perder o trabalho de nenhum dos dois lados)
+
+**Sintoma:** um commit termina normalmente, mas o branch atual não era o esperado (outra sessão
+tinha trocado de branch nesse working tree compartilhado, com mudanças já staged dela) — o commit
+acabou de propósito em cima do trabalho alheio.
+
+**Solução (não-destrutiva):** criar uma ref nova apontando pro commit certo
+(`git branch <nome-novo> <sha>`), depois mover o branch errado de volta com reset MISTO — nunca
+`--hard` — pro sha anterior ao commit que caiu no lugar errado. `git branch` só cria ref, não mexe
+em nada. O reset misto move o ponteiro do branch e reseta o ÍNDICE pro estado anterior, mas NUNCA
+toca o working tree — os arquivos que a outra sessão tinha modificado (agora "unstaged" em vez de
+"staged") continuam com o conteúdo dela intacto, ela só precisa re-adicionar antes do próximo
+commit dela. Confirme ANTES que o branch-alvo não está checked-out em nenhum worktree
+(`git worktree list`) — se estiver, prefira `git fetch . origem:destino` em vez de mexer direto (
+recusa com segurança se o destino estiver em uso).
+
+**Lição maior:** isso só foi necessário porque a primeira task de uma execução subagent-driven
+rodou no working tree COMPARTILHADO em vez de um worktree isolado — o próprio plano já mandava usar
+worktree isolado desde o início. Criar o worktree ANTES da primeira task evita o problema inteiro.
+
+**Ref:** Paid Media Automation, cont.157 (2026-08-07).
+
+## QA visual de tela autenticada sem OTP real (dashboard com login por telefone/magic-link)
+
+**Sintoma:** precisa validar visualmente (screenshot real, não leitura de CSS) uma tela do painel
+que exige login (OTP WhatsApp / JWT de auth-service externo), e não há como receber o OTP
+programaticamente nem forjar o JWT (chave de assinatura vive num serviço externo).
+
+**Solução:** o próprio FastAPI permite `app.dependency_overrides[requireAuth] = lambda: {...sessão
+fake...}` — mesmo padrão que os testes de rota já usam (`tests/dashboard/test_xss_conversation_list.py`).
+Rodar dentro do container de produção (mesmo banco, dado real, sem precisar de DB local):
+1. Override da dependência de auth, request via `httpx.AsyncClient(transport=ASGITransport(app=...))`
+   contra a rota de página inteira (não só o endpoint JSON) — devolve o HTML final igual ao usuário
+   veria.
+2. Salvar o HTML + baixar (`docker cp`) só as pastas `static/css`, `static/js`, `static/img`
+   referenciadas (nunca a pasta `static/` inteira — pode ter dezenas de MB de upload de tenant que
+   não tem nada a ver com a tela).
+3. Servir localmente (`python -m http.server` na pasta que espelha os paths absolutos `/admin/...`
+   do HTML) e apontar Playwright/Chrome DevTools MCP pra lá.
+
+**Armadilha**: a sessão fake precisa de um `role` que EXISTA no mapa de abilities do RBAC (`super_admin`
+faz bypass de tudo; qualquer outro precisa bater um `ROLE_ABILITIES` real — `"owner"` não existe nesse
+projeto, o role de dono é `"tenant_admin"`) — usar um role inventado quebra com 403 `"missing ability"`
+sem dizer o motivo real (parece erro de tenant, é erro de nome de role).
+
+**Trade-off:** o HTML capturado é um snapshot; qualquer chamada HTMX/fetch subsequente (buscar lista
+de conversas, etc.) vai falhar se a sessão fake não tiver CSRF token real — serve pra validar LAYOUT/CSS
+estático, não pra testar interação viva. Pra isso, ainda é preciso login real.
+
+**Ref:** tiatendo, sessão 2026-08-07 (validação da rota `/conversations` durante reskin visual).
+
+## Pagar.me recusa cobrança com erro rotativo (telefone → documento → billing_address) sem dizer os 3 de uma vez
+
+**Sintoma:** criar um customer + card + subscription real (mesmo em `PAGARME_ENV=test`) falha com
+`subscription.status = "failed"` (não um erro HTTP — a chamada "funciona", só o resultado final é
+falho). A API devolve só UM motivo por vez em `last_transaction.gateway_response.errors` (ex.: `"At
+least one customer phone is required"`); corrigir esse e tentar de novo revela o PRÓXIMO requisito
+faltando (`"The customer Document is required"`), e depois o seguinte (`"billing | value is
+required"` = falta `billing_address`).
+
+**Causa raiz:** com antifraude ligado na conta Pagar.me (padrão), uma cobrança de cartão de crédito
+precisa de: telefone do customer, documento (CPF/CNPJ) do customer, E `billing_address` — mas esse
+último não é um campo do `customer`, é um campo do **`card`** (`POST /customers/{id}/cards` aceita
+`{token, billing_address: {line_1, line_2, zip_code, city, state, country}}`), não documentado como
+óbvio na maioria dos wrappers/exemplos.
+
+**Solução:** ao integrar cobrança de cartão pela primeira vez, montar a chamada já com os 3 de uma
+vez (telefone + documento + billing_address no card) em vez de descobrir um por um por tentativa e
+erro — cada tentativa cria um customer/card/subscription real (mesmo que "failed") no painel Pagar.me,
+poluindo o ambiente de teste.
+
+**Ref:** tiatendo, sessão 2026-08-07 (smoke `PAGARME_ENV=test` de O4b, achou o gap real em
+`pagarmeClient.createCard()`).
+
+## Distinguir bug antigo (já corrigido) de regressão nova ao receber print de conversa real
+
+**Sintoma:** operador manda screenshot de uma conversa real do WhatsApp mostrando um bug que "parece"
+já ter sido corrigido numa sessão anterior — risco de (a) assumir que é regressão e sair caçando o
+que "quebrou de novo" sem necessidade, ou (b) assumir que já está resolvido sem checar e ignorar uma
+regressão real.
+
+**Solução:** o app do WhatsApp mostra hora local do aparelho e agrupa por "Today" relativo a QUANDO
+o screenshot foi tirado — não é confiável pra saber se aconteceu antes ou depois de um deploy do
+mesmo dia. Achar a conversa exata no banco por conteúdo (`messages.content ILIKE`), pegar o
+`created_at` (sempre UTC), e comparar contra o horário REAL do deploy/commit do fix (não só o texto
+"hoje"). Se o fuso do operador for BRT (UTC-3), uma conversa "de ontem à noite, tipo 22h" pode cair
+como UTC do dia SEGUINTE — o oposto do que a intuição sugere. Prova mais forte que só timestamp:
+achar uma ocorrência IDÊNTICA do mesmo cenário numa conversa DIFERENTE, depois do deploy, e checar se
+o comportamento lá já saiu correto — evidência comportamental direta bate qualquer inferência de
+timestamp.
+
+**Ref:** tiatendo, sessão 2026-08-07 (bug de desambiguação multi-sabor — conversa reportada era de
+ANTES do fix `0.291.0`, não regressão).
+
+## Deploy de sessão paralela sobrescreve o seu sem aviso {#deploy-paralelo-sobrescreve-sem-aviso}
+
+tags: deploy, worktree, sessão paralela, colisão, drift, docker service, swarm, git log master
+
+**Sintoma:** você confirma via smoke real (Playwright, curl) que seu fix está em produção. Minutos
+ou horas depois, o mesmo bug volta — não porque seu código regrediu, mas porque OUTRA sessão
+paralela fez deploy de uma imagem buildada a partir da PRÓPRIA branch dela, sem antes puxar seu
+commit já mergeado em `master`. O `docker-compose.swarm.yml` comentado documenta o pin certo, mas
+a imagem REAL rodando diverge do arquivo.
+
+**Causa raiz:** duas sessões trabalhando no mesmo repositório sem worktree isolado desde o início
+cada uma builda e faz deploy a partir do próprio checkout local, ignorando o que a outra mergeou
+nesse meio tempo. Não é um erro de UMA sessão — é a ausência de coordenação entre elas.
+
+**Solução:** nunca confie no `image:` do `docker-compose.swarm.yml` como fonte de verdade sobre o
+que está no ar — sempre `docker service ps <serviço>` antes de assumir. Antes de QUALQUER build,
+`git log master -1` e confirme que seus commits relevantes são ancestrais dessa tip; se a imagem
+atual em prod não corresponde a um commit alcançável a partir do `master` local, é sinal de que
+outra sessão buildou de uma branch própria — reconcilie (merge/cherry-pick na ordem certa) ANTES de
+buildar, nunca depois. O padrão real: sessões paralelas SEM worktree isolado desde o início SEMPRE
+colidem em algum deploy, é questão de quando, não de se.
+
+**Ref:** Paid Media Automation, sessão cont.157 (2026-08-07) — fix do sidebar `033003a1` confirmado
+em prod, revertido 32min depois por deploy `pageflow-13c711bd` da sessão paralela de Fluxo de
+Páginas. 3ª ocorrência da mesma classe (ver também ADENDO 27/28/31 do STATUS.md desse projeto).
+
+## Junction de node_modules compartilhada entre worktrees corrompe e trava Turbopack {#junction-node-modules-worktree-risco}
+
+tags: node_modules, junction, symlink, worktree, npm ci, turbopack, next dev, windows, corrupção
+
+**Sintoma:** múltiplos `npm ci` concorrentes em worktrees diferentes no mesmo disco Windows
+corrompem uns aos outros (`ENOTEMPTY`, pacote sem `package.json`). A solução óbvia — apontar
+`node_modules` de cada worktree pra uma cópia já saudável via junction (`New-Item -ItemType
+Junction`) — resolve a lentidão mas introduz dois problemas novos, não óbvios até acontecerem.
+
+**Causa raiz:** (1) Turbopack (bundler default do Next 16) valida que `node_modules` fica DENTRO da
+raiz do projeto e recusa symlink/junction apontando pra fora — não é um bug, é validação
+proposital. (2) qualquer processo que ESCREVA em `node_modules` (ex.: `next dev` auto-instalando um
+`@types/*` que falta) mexe no alvo real da junction, corrompendo a cópia compartilhada pra TODOS os
+worktrees que apontam pra ela — inclusive a sessão principal.
+
+**Solução:** trate a junction como estritamente READ-ONLY — `tsc`/`vitest`/`next build` leem sem
+escrever, então funcionam. Nunca rode `npm install`/`next dev` (que pode auto-instalar) contra uma
+junction compartilhada; se precisar de dev server, use `next dev --webpack` (Turbopack recusa a
+junction com `Symlink [project]/node_modules is invalid, it points out of the filesystem root`). Se
+um subagent detectar escrita acontecendo no meio da tarefa, o certo é matar o processo na hora e
+trocar pra uma cópia isolada (`npm ci` de verdade), não insistir na junction.
+
+**Ref:** Paid Media Automation, sessão cont.157 (2026-08-07) — 3 subagents paralelos usando a mesma
+junction; um pegou o `next dev` tentando `npm install --save-dev @types/node` através dela e matou
+o processo antes de corromper.
+
+## Dois hooks de pre-commit diferentes bloqueiam por motivos diferentes {#dois-hooks-pre-commit-r11-mock-scan}
+
+tags: pre-commit, hook, mock-scan, R11, review, TODO, bloqueio, git commit
+
+**Sintoma:** review R11 (`/percus-review:review`) passou sem achado, mas `git commit` ainda falha.
+Fácil assumir que é o MESMO gate de review falhando de novo (e re-pedir review ao operador à toa,
+perdendo tempo).
+
+**Causa raiz:** existe um segundo hook, `mock-scan-pre-commit`, independente do R11 — ele varre o
+diff por marcadores tipo `// TODO`/mock e bloqueia mesmo que o TODO seja PRÉ-EXISTENTE (não
+introduzido pelo seu diff atual).
+
+**Solução:** leia a mensagem do hook com atenção — ela cita o arquivo:linha exato — antes de
+assumir que é o mesmo bloqueio de review R11. Resolver exige ou tocar o TODO pré-existente (fora do
+escopo original da tarefa) ou pedir autorização explícita do operador pra um prefixo tipo
+`MOCK-OK: <motivo>` — não é algo que o agente deve se autorizar sozinho.
+
+**Ref:** Paid Media Automation, sessão cont.157 (2026-08-07) — trilha do título isolado bloqueada
+por TODO em `approvals/page.tsx:138`, não relacionado ao diff da tarefa em andamento.
+
+## Fluxo de confirmação com allowlist fixo cancela silenciosamente em vez de reprompt {#confirmacao-allowlist-cancela-em-vez-de-reprompt}
+
+tags: confirmacao, bot, whatsapp, allowlist, sim nao, is_affirmative, is_negative, cancelamento silencioso, ux, fonte unica, correcao ambigua, reprompt
+
+**Sintoma:** print de conversa real (usuário reporta bug): bot pede confirmação ("Responda *sim*
+pra confirmar"), usuário responde algo que NÃO é "sim" mas também não é uma recusa de verdade — no
+caso real, uma tentativa de CORRIGIR um dado errado no card ("Banco do Brasim" tentando consertar
+um nome extraído errado). O bot trata isso como recusa e cancela: "Beleza, não cadastrei a dívida."
+— sem avisar que não entendeu, perdendo o contexto e forçando o usuário a recomeçar do zero.
+
+**Causa raiz:** o handler do estado de confirmação usava um **allowlist fixo** (`resp not in
+("sim","s","confirmar","isso","pode","claro")` → cancela) em vez da fonte única de
+afirmativo/negativo já estabelecida no projeto (`is_affirmative`/`is_negative`, com um TERCEIRO
+resultado — indeterminado — que outros fluxos de confirmação do MESMO projeto já tratavam
+corretamente com reprompt, não cancelamento). O fluxo novo (Dívida) foi escrito do zero em vez de
+reusar o padrão já provado; um allowlist binário não tem como representar "não entendi", só
+"sim"/"não" — qualquer coisa fora do allowlist vira "não" por construção.
+
+**Solução:** confirmação com resposta em linguagem natural precisa de TRÊS resultados, não dois:
+afirmativo → confirma; negativo explícito → cancela; **indeterminado → REPROMPTA mantendo o estado/
+sessão vivo**, nunca cancela por default. Se o projeto já tem uma fonte única de classificação sim/
+não (regex, `is_affirmative`/`is_negative`, ou equivalente) usada por outro fluxo de confirmação,
+qualquer fluxo NOVO de confirmação deve reusá-la — não reinventar um allowlist ad-hoc. Teste que
+prova a correção: mandar uma resposta plausível-mas-não-reconhecida (não é nem "sim" nem "não" óbvio)
+e assertar que o estado NÃO foi limpo (sessão sobrevive) e a resposta não contém a mensagem de
+cancelamento.
+
+**Ref:** Família Milionária, sessão 2026-08-07 — `processDividaConfirmation` em
+`familia-api/app/modules/whatsapp/divida_flow.py`, commit `4b6d127`. Fix trocou o allowlist por
+`is_affirmative`/`is_negative` de `app.modules.whatsapp.intents` — mesma fonte já usada pela
+confirmação de Lançamento (`_processConfirmation`) e por `processDividaSelection` no MESMO arquivo,
+nunca adotada por `processDividaConfirmation`. Smoke ao vivo em prod reproduzindo a conversa exata
+do print: 9/9 PASS.
