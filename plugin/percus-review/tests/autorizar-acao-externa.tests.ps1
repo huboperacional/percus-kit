@@ -57,7 +57,7 @@ Describe "autorizar-acao-externa.ps1" {
         { & $script:script -ProjetoRoot "C:\qualquer" -ErrorAction Stop } | Should -Throw
     }
 
-    It "grava motivo acentuado sem corromper (BOM UTF-8, le de volta com -Encoding UTF8)" {
+    It "grava motivo acentuado sem corromper (BOM UTF-8, le de volta do MESMO jeito que o hook le -- sem -Encoding explicito)" {
         $dir = Join-Path ([IO.Path]::GetTempPath()) ("autoriza-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
         [void]$script:temps.Add($dir)
@@ -73,8 +73,14 @@ Describe "autorizar-acao-externa.ps1" {
 
         & $script:script -Motivo $motivoAcentuado -ProjetoRoot $dir | Out-Null
 
+        # De proposito SEM -Encoding explicito aqui -- e assim que o hook real le o arquivo
+        # (external-action-guard.ps1: "Get-Content $authFile -Raw", sem -Encoding). Ler com
+        # -Encoding UTF8 forcado mascarava o bug: decodifica UTF-8 certo com OU sem BOM, entao
+        # esse teste passava mesmo revertendo o fix do BOM em autorizar-acao-externa.ps1. Sem
+        # -Encoding, PS 5.1 so acerta o UTF-8 se o BOM estiver presente -- e o teste que de fato
+        # prova a correcao.
         $caminho = Join-Path $dir ".percus\acao-externa-autorizada.json"
-        $auth = Get-Content $caminho -Raw -Encoding UTF8 | ConvertFrom-Json
+        $auth = Get-Content $caminho -Raw | ConvertFrom-Json
         $auth.motivo | Should -Be $motivoAcentuado
     }
 }
