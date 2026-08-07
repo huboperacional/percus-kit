@@ -3,6 +3,38 @@
 Describe "external-action-guard.ps1 hook" {
     BeforeAll {
         $script:hookPath = Join-Path $PSScriptRoot ".." "hooks" "external-action-guard.ps1"
+
+        # Invoca o hook com um cwd controlado -- o hook le (Get-Location).Path pra montar o
+        # caminho do arquivo de autorizacao, entao os testes precisam simular "rodando de
+        # dentro do projeto X" sem tocar o .percus/ real do repo.
+        function Invoke-HookEmDir {
+            param([string]$Dir, [string]$Stdin)
+            Push-Location $Dir
+            try {
+                return ($Stdin | & pwsh -NoProfile -File $script:hookPath 2>&1)
+            } finally {
+                Pop-Location
+            }
+        }
+
+        # Planta um arquivo de autorizacao fixture com idade controlada (em minutos atras de
+        # agora), no formato timestamp_unix que o hook espera.
+        function New-AutorizacaoFixture {
+            param([string]$Dir, [double]$IdadeMinutos = 5, [string]$Motivo = "teste")
+            $percusDir = Join-Path $Dir ".percus"
+            New-Item -ItemType Directory -Path $percusDir -Force | Out-Null
+            $quando = (Get-Date).AddMinutes(-$IdadeMinutos)
+            $epoch = [DateTimeOffset]::new($quando).ToUnixTimeSeconds()
+            $auth = [pscustomobject]@{
+                id             = [guid]::NewGuid().ToString()
+                motivo         = $Motivo
+                autorizado_em  = $quando.ToString("o")
+                timestamp_unix = $epoch
+            }
+            $caminho = Join-Path $percusDir "acao-externa-autorizada.json"
+            ($auth | ConvertTo-Json) | Set-Content -LiteralPath $caminho -Encoding utf8
+            return $caminho
+        }
     }
 
     It "existe" {
@@ -10,66 +42,93 @@ Describe "external-action-guard.ps1 hook" {
     }
 
     It "permite tool nao-externo (echo hello)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         $stdin = '{"tool_input":{"command":"echo hello"}}'
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "permite gh pr list (read-only)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         $stdin = '{"tool_input":{"command":"gh pr list"}}'
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "bloqueia gh pr comment sem aprovacao operador" {
         # Setup: sem .deepseek/council-log/ ou council log antigo > 5min OU premise_validity ruim
         # No env override
-        $stdin = '{"tool_input":{"command":"gh pr comment 123 --body \"test\""}}'
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $stdin = '{"tool_input":{"command":"gh pr comment 123 --body \"test\""}}'
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         $LASTEXITCODE | Should -Be 2 -Because "gh pr comment requer aprovacao R20"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "permite gh pr comment com PERCUS_EXTERNAL_OVERRIDE setado" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         $stdin = '{"tool_input":{"command":"gh pr comment 123 --body test"}}'
         $env:PERCUS_EXTERNAL_OVERRIDE = "1"
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
         $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "bloqueia slack-cli send" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
         $stdin = '{"tool_input":{"command":"slack-cli send --channel general msg"}}'
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         $LASTEXITCODE | Should -Be 2
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "bloqueia gh issue close" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
         $stdin = '{"tool_input":{"command":"gh issue close 42"}}'
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         $LASTEXITCODE | Should -Be 2
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "permite git push se override setado (R20 escape)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         $stdin = '{"tool_input":{"command":"git push origin main"}}'
         $env:PERCUS_EXTERNAL_OVERRIDE = "1"
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
         $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "stderr message inclui R20 reference" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
         $stdin = '{"tool_input":{"command":"gh pr comment 123 --body x"}}'
-        $errOutput = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $errOutput = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         ($errOutput -join " ") | Should -Match "R20|external-action-guard"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "graceful em stdin vazio (exit 0)" {
-        $result = "" | & pwsh -NoProfile -File $hookPath 2>&1
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $null = Invoke-HookEmDir -Dir $dir -Stdin ""
         $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "barra a mesma acao vinda de QUALQUER tool -- <Tool>" -ForEach @(
@@ -84,9 +143,93 @@ Describe "external-action-guard.ps1 hook" {
         # tool_input.command, que as duas tools preenchem. Este It amarra esse "sempre" -- se
         # alguem introduzir ramificacao por tool_name, o matcher entregaria a chamada e o hook a
         # descartaria em silencio, e o teste do matcher sozinho seguiria verde.
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
         $stdin = '{"tool_name":"' + $Tool + '","tool_input":{"command":"git push origin main"}}'
-        $null = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         $LASTEXITCODE | Should -Be 2 -Because "acao externa pela tool $Tool tem que barrar igual"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
+
+    It "permite acao externa com autorizacao em lote fresca (timestamp_unix recente)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        New-AutorizacaoFixture -Dir $dir -IdadeMinutos 5 | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"git push origin main"}}'
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        $LASTEXITCODE | Should -Be 0 -Because "autorizacao em lote fresca deve liberar"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
+
+    It "NAO permite acao externa com autorizacao em lote expirada (timestamp_unix ha mais de 60min)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        New-AutorizacaoFixture -Dir $dir -IdadeMinutos 61 | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"git push origin main"}}'
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        $LASTEXITCODE | Should -Be 2 -Because "autorizacao expirada nao pode liberar"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
+
+    It "BLOQUEIA (fail-closed) quando o arquivo de autorizacao tem JSON corrompido" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        $percusDir = Join-Path $dir ".percus"
+        New-Item -ItemType Directory -Path $percusDir -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $percusDir "acao-externa-autorizada.json"), "{ isto nao e json", (New-Object System.Text.UTF8Encoding($false)))
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"git push origin main"}}'
+        $saida = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        $LASTEXITCODE | Should -Be 2 -Because "JSON corrompido nao pode liberar -- fail-closed desta checagem especifica"
+        ($saida -join " ") | Should -Match "falha ao processar autorizacao em lote" -Because "erro tecnico tem que ser distinguivel de 'nunca autorizado' no log (achado R11/DeepSeek)"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
+
+    It "BLOQUEIA quando o arquivo de autorizacao existe mas NAO tem timestamp_unix" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        $percusDir = Join-Path $dir ".percus"
+        New-Item -ItemType Directory -Path $percusDir -Force | Out-Null
+        '{"id":"x","motivo":"sem timestamp"}' | Set-Content -LiteralPath (Join-Path $percusDir "acao-externa-autorizada.json") -Encoding utf8
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"git push origin main"}}'
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        $LASTEXITCODE | Should -Be 2 -Because "sem timestamp_unix nao da pra calcular idade -- bloqueia, nao libera"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
+
+    It "autorizacao criada num diretorio NAO libera acao rodada em outro diretorio (escopo por-projeto)" {
+        $dirAutorizado = Join-Path ([IO.Path]::GetTempPath()) ("eag-auth-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        $dirOutro      = Join-Path ([IO.Path]::GetTempPath()) ("eag-outro-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dirOutro -Force | Out-Null
+        New-AutorizacaoFixture -Dir $dirAutorizado -IdadeMinutos 5 | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"git push origin main"}}'
+        $null = Invoke-HookEmDir -Dir $dirOutro -Stdin $stdin
+        $LASTEXITCODE | Should -Be 2 -Because "autorizacao de outro diretorio nao pode vazar"
+        Remove-Item -Recurse -Force $dirAutorizado,$dirOutro -ErrorAction SilentlyContinue
+    }
+
+    It "cobre acao externa alem de git push -- slack-cli tambem e liberado pela autorizacao em lote" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-AutorizacaoFixture -Dir $dir -IdadeMinutos 5 | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"slack-cli send --channel geral msg"}}'
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        $LASTEXITCODE | Should -Be 0 -Because "escopo cobre TODAS as acoes externas do R20, nao so push"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
+
+    It "mensagem de stderr ao usar autorizacao em lote inclui id e motivo" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        $caminho = New-AutorizacaoFixture -Dir $dir -IdadeMinutos 5 -Motivo "fim do dia, autorizado"
+        $auth = Get-Content $caminho -Raw | ConvertFrom-Json
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"git push origin main"}}'
+        $saida = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        ($saida -join " ") | Should -Match ([regex]::Escape($auth.id))
+        ($saida -join " ") | Should -Match "fim do dia, autorizado"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 }
