@@ -173,4 +173,29 @@ Describe "external-action-guard.ps1 hook" {
         $LASTEXITCODE | Should -Be 2 -Because "autorizacao expirada nao pode liberar"
         Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
+
+    It "BLOQUEIA (fail-closed) quando o arquivo de autorizacao tem JSON corrompido" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        $percusDir = Join-Path $dir ".percus"
+        New-Item -ItemType Directory -Path $percusDir -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $percusDir "acao-externa-autorizada.json"), "{ isto nao e json", (New-Object System.Text.UTF8Encoding($false)))
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"git push origin main"}}'
+        $saida = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        $LASTEXITCODE | Should -Be 2 -Because "JSON corrompido nao pode liberar -- fail-closed desta checagem especifica"
+        ($saida -join " ") | Should -Match "falha ao processar autorizacao em lote" -Because "erro tecnico tem que ser distinguivel de 'nunca autorizado' no log (achado R11/DeepSeek)"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
+
+    It "BLOQUEIA quando o arquivo de autorizacao existe mas NAO tem timestamp_unix" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        $percusDir = Join-Path $dir ".percus"
+        New-Item -ItemType Directory -Path $percusDir -Force | Out-Null
+        '{"id":"x","motivo":"sem timestamp"}' | Set-Content -LiteralPath (Join-Path $percusDir "acao-externa-autorizada.json") -Encoding utf8
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"git push origin main"}}'
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        $LASTEXITCODE | Should -Be 2 -Because "sem timestamp_unix nao da pra calcular idade -- bloqueia, nao libera"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
 }
