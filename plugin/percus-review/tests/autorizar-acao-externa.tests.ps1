@@ -62,7 +62,14 @@ Describe "autorizar-acao-externa.ps1" {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
         [void]$script:temps.Add($dir)
 
-        $motivoAcentuado = "correção-urgente-acentuada: ção, não, autorização"
+        # ASCII puro no source (disciplina do kit, ver renomear-kit-local.ps1): monta o texto
+        # acentuado via [char] com o codepoint Unicode em vez de literal no arquivo -- este
+        # proprio .tests.ps1 nao tem BOM, e um acento literal aqui reproduziria a MESMA classe
+        # de bug que o fix do BOM no .json resolveu, so que no source do teste (achado
+        # ps51-compat.tests.ps1, "nenhum .ps1 do kit tem caractere nao-ASCII sem BOM").
+        # codepoints: c-cedilha=0x00E7  a-til=0x00E3
+        $motivoAcentuado = "corre" + [char]0x00E7 + [char]0x00E3 + "o-urgente-acentuada: " +
+            [char]0x00E7 + [char]0x00E3 + "o, n" + [char]0x00E3 + "o, autoriza" + [char]0x00E7 + [char]0x00E3 + "o"
 
         & $script:script -Motivo $motivoAcentuado -ProjetoRoot $dir | Out-Null
 
