@@ -32,14 +32,49 @@ try {
 
     if (-not $isExternalAction) { exit 0 }
 
+    $cwd = (Get-Location).Path
+
     # Escape hatch: operador autorizou explicitamente
     if ($env:PERCUS_EXTERNAL_OVERRIDE -eq "1") {
         [Console]::Error.WriteLine("[percus:hook external-action-guard] PERCUS_EXTERNAL_OVERRIDE setado — permitindo.")
         exit 0
     }
 
+    # Escape hatch: autorizacao em lote via arquivo (janela de 60min por timestamp_unix DENTRO do
+    # JSON, nao LastWriteTime do filesystem -- metadado de filesystem pode mudar sem o conteudo
+    # mudar; o timestamp gravado na criacao e mais confiavel). Arquivo atravessa a fronteira de
+    # processo do hook; env var da sessao do Claude nao atravessa (achado 2026-07-31).
+    #
+    # IMPORTANTE: try/catch AQUI, LOCAL -- nao deixar erro desta checagem cair no catch generico
+    # do fim do script. O catch generico do hook e fail-OPEN de proposito (erro interno do script
+    # nao pode travar a maquina). Mas erro NESTA checagem especifica (arquivo ilegivel, JSON
+    # corrompido, campo faltando) tem que continuar pro fluxo normal do R20 -- ou seja, tem que
+    # poder BLOQUEAR. Fail-open aqui seria: permissao negada no arquivo = "ah, deu erro, libera
+    # geral" -- o oposto do que devia acontecer.
+    try {
+        $authFile = Join-Path $cwd ".percus/acao-externa-autorizada.json"
+        if (Test-Path $authFile) {
+            $auth = Get-Content $authFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            # Comparacao em epoch puro, NUNCA converter pra hora local antes de subtrair --
+            # subtracao de DateTime local e aritmetica de relogio de parede, nao tempo real
+            # decorrido. Numa transicao de horario de verao isso podia fazer autorizacao
+            # EXPIRADA parecer fresca. Epoch (segundos desde 1970 UTC) e imune a fuso/DST.
+            $agoraUnix = [DateTimeOffset]::new((Get-Date)).ToUnixTimeSeconds()
+            $idadeSeg = $agoraUnix - $auth.timestamp_unix
+            if ($idadeSeg -ge 0 -and $idadeSeg -lt 3600) {
+                [Console]::Error.WriteLine("[percus:hook external-action-guard] autorizacao em lote ativa (id: $($auth.id), motivo: $($auth.motivo), idade: $([math]::Round($idadeSeg/60,1))min) -- permitindo.")
+                exit 0
+            }
+        }
+    } catch {
+        # Qualquer falha nesta checagem especifica (arquivo ilegivel, JSON invalido, campo
+        # faltando, relogio no passado) NAO libera -- so significa "nao consegui confirmar
+        # autorizacao", cai pro fluxo normal do R20 abaixo. Fail-closed desta checagem, mesmo
+        # com o resto do hook sendo fail-open pra erro interno inesperado.
+        [Console]::Error.WriteLine("[percus:hook external-action-guard] falha ao processar autorizacao em lote: $($_.Exception.Message)")
+    }
+
     # Verifica council recente (premise_validity)
-    $cwd = (Get-Location).Path
     $councilDir = Join-Path $cwd ".deepseek/council-log"
     $councilBad = $false
     $councilBadReason = ""
