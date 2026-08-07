@@ -6729,6 +6729,12 @@ poluindo o ambiente de teste.
 **Ref:** tiatendo, sessão 2026-08-07 (smoke `PAGARME_ENV=test` de O4b, achou o gap real em
 `pagarmeClient.createCard()`).
 
+**Fechado (mesmo dia, sessão de continuação):** os 3 campos agora são coletados no formulário de
+cartão (`saveCard()`) e enviados de uma vez. Confirmado em PROD `0.294.0` com smoke real
+repetindo o mesmo roteiro — `createCard()` retornou `status=active` de primeira, sem nenhum dos 3
+erros rotativos. Receita de smoke sem precisar de browser/OTP: ver
+`{#smoke-pagarme-card-sem-browser}` em `COMO_FAZER.md`.
+
 ## Distinguir bug antigo (já corrigido) de regressão nova ao receber print de conversa real
 
 **Sintoma:** operador manda screenshot de uma conversa real do WhatsApp mostrando um bug que "parece"
