@@ -198,4 +198,38 @@ Describe "external-action-guard.ps1 hook" {
         $LASTEXITCODE | Should -Be 2 -Because "sem timestamp_unix nao da pra calcular idade -- bloqueia, nao libera"
         Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
+
+    It "autorizacao criada num diretorio NAO libera acao rodada em outro diretorio (escopo por-projeto)" {
+        $dirAutorizado = Join-Path ([IO.Path]::GetTempPath()) ("eag-auth-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        $dirOutro      = Join-Path ([IO.Path]::GetTempPath()) ("eag-outro-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dirOutro -Force | Out-Null
+        New-AutorizacaoFixture -Dir $dirAutorizado -IdadeMinutos 5 | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"git push origin main"}}'
+        $null = Invoke-HookEmDir -Dir $dirOutro -Stdin $stdin
+        $LASTEXITCODE | Should -Be 2 -Because "autorizacao de outro diretorio nao pode vazar"
+        Remove-Item -Recurse -Force $dirAutorizado,$dirOutro -ErrorAction SilentlyContinue
+    }
+
+    It "cobre acao externa alem de git push -- slack-cli tambem e liberado pela autorizacao em lote" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-AutorizacaoFixture -Dir $dir -IdadeMinutos 5 | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"slack-cli send --channel geral msg"}}'
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        $LASTEXITCODE | Should -Be 0 -Because "escopo cobre TODAS as acoes externas do R20, nao so push"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
+
+    It "mensagem de stderr ao usar autorizacao em lote inclui id e motivo" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        $caminho = New-AutorizacaoFixture -Dir $dir -IdadeMinutos 5 -Motivo "fim do dia, autorizado"
+        $auth = Get-Content $caminho -Raw | ConvertFrom-Json
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"git push origin main"}}'
+        $saida = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        ($saida -join " ") | Should -Match ([regex]::Escape($auth.id))
+        ($saida -join " ") | Should -Match "fim do dia, autorizado"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
 }
