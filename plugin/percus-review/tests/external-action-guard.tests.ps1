@@ -42,66 +42,93 @@ Describe "external-action-guard.ps1 hook" {
     }
 
     It "permite tool nao-externo (echo hello)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         $stdin = '{"tool_input":{"command":"echo hello"}}'
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "permite gh pr list (read-only)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         $stdin = '{"tool_input":{"command":"gh pr list"}}'
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "bloqueia gh pr comment sem aprovacao operador" {
         # Setup: sem .deepseek/council-log/ ou council log antigo > 5min OU premise_validity ruim
         # No env override
-        $stdin = '{"tool_input":{"command":"gh pr comment 123 --body \"test\""}}'
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $stdin = '{"tool_input":{"command":"gh pr comment 123 --body \"test\""}}'
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         $LASTEXITCODE | Should -Be 2 -Because "gh pr comment requer aprovacao R20"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "permite gh pr comment com PERCUS_EXTERNAL_OVERRIDE setado" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         $stdin = '{"tool_input":{"command":"gh pr comment 123 --body test"}}'
         $env:PERCUS_EXTERNAL_OVERRIDE = "1"
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
         $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "bloqueia slack-cli send" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
         $stdin = '{"tool_input":{"command":"slack-cli send --channel general msg"}}'
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         $LASTEXITCODE | Should -Be 2
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "bloqueia gh issue close" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
         $stdin = '{"tool_input":{"command":"gh issue close 42"}}'
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         $LASTEXITCODE | Should -Be 2
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "permite git push se override setado (R20 escape)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         $stdin = '{"tool_input":{"command":"git push origin main"}}'
         $env:PERCUS_EXTERNAL_OVERRIDE = "1"
-        $result = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
         $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "stderr message inclui R20 reference" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
         $stdin = '{"tool_input":{"command":"gh pr comment 123 --body x"}}'
-        $errOutput = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $errOutput = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         ($errOutput -join " ") | Should -Match "R20|external-action-guard"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "graceful em stdin vazio (exit 0)" {
-        $result = "" | & pwsh -NoProfile -File $hookPath 2>&1
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $null = Invoke-HookEmDir -Dir $dir -Stdin ""
         $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "barra a mesma acao vinda de QUALQUER tool -- <Tool>" -ForEach @(
@@ -116,10 +143,13 @@ Describe "external-action-guard.ps1 hook" {
         # tool_input.command, que as duas tools preenchem. Este It amarra esse "sempre" -- se
         # alguem introduzir ramificacao por tool_name, o matcher entregaria a chamada e o hook a
         # descartaria em silencio, e o teste do matcher sozinho seguiria verde.
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
         Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
         $stdin = '{"tool_name":"' + $Tool + '","tool_input":{"command":"git push origin main"}}'
-        $null = $stdin | & pwsh -NoProfile -File $hookPath 2>&1
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
         $LASTEXITCODE | Should -Be 2 -Because "acao externa pela tool $Tool tem que barrar igual"
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
     It "permite acao externa com autorizacao em lote fresca (timestamp_unix recente)" {
