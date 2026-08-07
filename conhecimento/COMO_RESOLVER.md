@@ -224,6 +224,8 @@
 - [Duas sessões Claude no MESMO diretório de trabalho colidem em checkout E em deploy, não só em commit](#sessoes-paralelas-mesmo-diretorio-colidem)
 - [Adicionar um arquivo ao índice do git e depois fechar o registro sem restringir o escopo pode levar junto o que outro processo já tinha preparado no mesmo diretório](#indice-git-compartilhado-leva-trabalho-alheio)
 - [Backfill manual via CLI (`--account-id`) grava dado real mas não atualiza a tabela de saúde da coleta](#cli-backfill-nao-atualiza-collection-log)
+- [Browser MCP (Playwright/Chrome-DevTools) pode estar conectado a um perfil Chrome REAL com sessão AO VIVO do operador, não um perfil isolado](#browser-mcp-sessao-ao-vivo-operador)
+- [Smoke test conversacional (webhook + estado de sessão de bot): mandar a próxima mensagem sem confirmar o estado via poll() cascateia falso-negativo](#smoke-conversacional-sessao-presa-cascateia)
 
 ---
 
@@ -6421,3 +6423,94 @@ Playwright (`browser_console_messages` mostrava `Illegal return statement`); cau
 com `node --check` no `<script>` extraído (apontou `Unexpected token '}'` na chave de fechamento
 órfã, ~150 linhas depois do defeito real). Corrigido movendo `function openSettle(){` pra linha
 própria — commit `3973e1a`.
+
+---
+
+## Browser MCP (Playwright/Chrome-DevTools) pode estar conectado a um perfil Chrome REAL com sessão AO VIVO do operador, não um perfil isolado {#browser-mcp-sessao-ao-vivo-operador}
+
+`tags: playwright mcp, chrome-devtools mcp, browser automation, profile compartilhado, sessão ao vivo, e2e produção, campo preenchido sozinho, navegação inesperada, concorrência humano-agente`
+
+**Contexto:** verificando visualmente uma feature web em produção via `browser_navigate`/
+`browser_snapshot` do Playwright MCP (ou chrome-devtools MCP), depois de um dos dois servidores
+desconectar e liberar um lock de `userDataDir` que os dois disputavam.
+
+**Sintoma:** `browser_navigate` pra uma rota autenticada abre DIRETO numa sessão já logada (nome,
+dados reais do usuário visíveis) — sem o agente ter feito login. Ao reabrir um form pra completar a
+verificação (ex.: reabrir um modal "Novo item"), os campos vêm **preenchidos com dado que o agente
+não digitou**, e a página navega sozinha pra outra rota sem nenhuma chamada `browser_navigate` do
+agente.
+
+**Causa raiz:** o MCP de browser não estava apontando pra um perfil `--isolated`/efêmero — estava
+conectado ao perfil Chrome PESSOAL do operador (o mesmo que ele usa no dia a dia), que já tinha uma
+sessão autenticada viva. O operador estava usando o app **em paralelo**, na mesma aba/perfil que o
+agente estava controlando via automação. Login sem interação do agente, campo preenchido do nada e
+navegação não solicitada são os 3 sinais de que isso está acontecendo — não é bug do MCP, é
+compartilhamento genuíno de sessão com um humano.
+
+**Por que é perigoso:** cliques/navegação do agente competem com a interação real da pessoa —
+podem sobrescrever o que ela estava digitando, navegar pra longe da tela em que ela estava
+trabalhando, ou (pior) o agente poderia clicar "Salvar"/"Criar" em cima de dado que não é seu,
+submetendo algo indesejado numa conta de produção real. Categoria de risco distinta de
+[Duas sessões Claude no MESMO diretório colidem](#sessoes-paralelas-mesmo-diretorio-colidem) — ali
+é agente-vs-agente; aqui é agente-vs-humano-real-usando-o-produto.
+
+**Solução / como aplicar:**
+1. Antes de clicar/preencher/submeter qualquer coisa, `browser_snapshot` primeiro. Se algum campo já
+   tiver texto que você não colocou lá, ou se você chegou autenticado sem ter feito login, TRATE
+   como sessão possivelmente compartilhada.
+2. Prefira uma leitura passiva (abrir modal só pra conferir estrutura, sem submeter) pra confirmar
+   UI; só avance pra CRUD ativo (criar/editar/deletar) com alta confiança de que é seguro — ou numa
+   sessão que você sabe que é isolada.
+3. Ao detectar sinal de atividade concorrente, PARE imediatamente. Não tente "consertar" clicando em
+   Cancelar repetidamente (isso também é uma ação na sessão de outra pessoa) — avise o operador
+   direto e peça pra ele confirmar que nada ficou fora do lugar do lado dele.
+4. Se a config do MCP permitir `--isolated`/um `userDataDir` próprio, prefira isso pra qualquer
+   verificação automatizada de UI — evita a classe inteira do problema.
+
+**Ref:** Família Milionária, sessão 2026-08-07 — verificação da feature Metas/Desejos (`/metas`);
+Chrome-DevTools MCP desconectou, Playwright MCP assumiu o mesmo perfil e caiu numa sessão real do
+operador (campo "Evelyn"/"Evelyn IPTU" preenchido sozinho, navegação pra `/dividas` não solicitada).
+Agente parou antes de submeter qualquer coisa; operador confirmou que nada ficou fora do lugar.
+
+---
+
+## Smoke test conversacional (webhook + estado de sessão de bot): mandar a próxima mensagem sem confirmar o estado via poll() cascateia falso-negativo {#smoke-conversacional-sessao-presa-cascateia}
+
+`tags: smoke test, bot conversacional, webhook, whatsapp, estado de sessão, confirmation state, poll, falso negativo, cascata, teste em produção`
+
+**Contexto:** smoke test que injeta mensagens sequenciais REAIS (assinadas HMAC) contra um bot
+conversacional em produção, onde o bot usa uma máquina de estados de sessão (`CONFIRMATION_STATES`
+ou equivalente) — comum em bots de criação-com-confirmação (WhatsApp, etc.) que perguntam um dado
+faltante antes de confirmar.
+
+**Sintoma:** um cenário do meio do script (ex.: "testar recusa de confirmação") falha, e TODOS os
+cenários seguintes do mesmo script também falham, com uma resposta genérica/de erro repetida
+("não entendi", menu de desambiguação) que não tem nada a ver com o que cada mensagem pedia.
+Parece bug de produto generalizado, mas só o primeiro cenário tem causa real.
+
+**Causa raiz:** o script assumiu que uma mensagem de setup levaria a sessão a um estado específico
+(ex.: "confirmando_X", pronto pra receber sim/não), sem checar isso via `poll()` antes de mandar a
+próxima mensagem. Na prática a mensagem de setup não tinha sinal suficiente (ex.: faltava uma
+keyword que o extrator de intent precisa) e o bot foi pra um estado DIFERENTE (ex.: "perguntando
+categoria/campo faltante"). A mensagem seguinte do script ("nao", pensada como recusa de
+confirmação) foi interpretada como resposta INVÁLIDA daquele outro estado — e, por design correto
+do bot (não limpar sessão em resposta inválida, só repetir a pergunta), a sessão ficou PRESA
+esperando uma resposta válida pro resto do script. Toda mensagem seguinte (consulta, ação, setup do
+próximo cenário) foi interceptada pelo handler desse estado pendente.
+
+**Solução:**
+1. Em qualquer bloco do script que depende de um estado específico ter sido atingido, confirme com
+   `poll(query_do_estado, "estado_esperado", timeout)` **antes** de mandar a mensagem que depende
+   dele — nunca assuma a transição só porque a mensagem anterior "parecia" certa.
+2. Se o cenário pretende testar uma RECUSA/cancelamento de confirmação, garanta que a mensagem de
+   setup tem sinal suficiente (keyword detectável, etc.) pra chegar no estado de confirmação de
+   verdade antes de mandar a recusa — não escolha a frase de setup mais "neutra" só porque parece
+   representativa; teste primeiro que ela bate o estado certo.
+3. Isolar cada cenário num bloco com `try/except` (`runBlock`) evita que uma EXCEÇÃO derrube o
+   script inteiro, mas **não substitui** o `poll()` de estado — uma sessão presa sem exceção passa
+   reto pelo `runBlock` e ainda cascateia falso-negativo por todos os cenários seguintes.
+
+**Ref:** Família Milionária, `execution/smoke_metas.py` (Fase 2, Metas/Desejos), 2026-08-07 — 1ª
+rodada teve 4 falsas-FALHA em cascata porque o cenário de recusa mandava "nao" numa frase sem
+keyword de categoria (foi pra `aguardando_categoria_meta`, não `confirmando_meta`); corrigido
+trocando a frase de setup por uma com keyword válida, e a suíte foi de 9/13 pra 15/15 PASS.
