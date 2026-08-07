@@ -708,11 +708,18 @@ OU findings sem `fact_check: CONFIRMADO`.
 
 ### Gate verificável
 
-- Antes de qualquer ação externa pública pelo agente:
-  - Log explícito de `operator_approved: true` na conversa, OU
-  - Variável de ambiente `PERCUS_EXTERNAL_OVERRIDE=1` com motivo declarado em commit/log
+- Antes de qualquer ação externa pública pelo agente, um dos dois:
+  - Variável de ambiente `PERCUS_EXTERNAL_OVERRIDE=1`, setada FORA da sessão do Claude (ela não
+    atravessa a fronteira de processo do hook `PreToolUse` — setar dentro da sessão não funciona).
+  - Arquivo `.percus/acao-externa-autorizada.json` (janela de 60min, criado pelo agente via
+    `scripts/autorizar-acao-externa.ps1` DEPOIS de confirmação explícita do operador na conversa
+    — nunca antes). Risco estrutural aceito conscientemente: o agente cria o arquivo que o hook
+    confia, sem verificação externa de que a confirmação aconteceu de verdade. Ver
+    `docs/superpowers/specs/2026-08-06-r20-autorizacao-lote-design.md` pro raciocínio completo.
+    Todo uso registrado em `.percus/autorizacoes-usadas.jsonl` via
+    `scripts/registrar-uso-autorizacao.ps1`.
 - **Logs de council consult NÃO contam como autorização** (são opinião, não gate)
-- Hook `plugin/percus-review/hooks/external-action-guard.ps1` (v6.7.0+) faz
+- Hook `plugin/percus-review/hooks/external-action-guard.ps1` (v6.7.0+, arquivo v6.35.0+) faz
   enforcement runtime via PreToolUse bloqueando `gh pr comment`, `gh issue close`,
   `slack-cli`, `git push` sem aprovação explícita
 
