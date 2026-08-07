@@ -232,6 +232,9 @@
 - [Deploy de sessão paralela sobrescreve o seu sem aviso](#deploy-paralelo-sobrescreve-sem-aviso)
 - [Junction de node_modules compartilhada entre worktrees corrompe e trava Turbopack](#junction-node-modules-worktree-risco)
 - [Dois hooks de pre-commit diferentes bloqueiam por motivos diferentes](#dois-hooks-pre-commit-r11-mock-scan)
+- [API serializa Decimal como STRING no JSON — `typeof x === 'number'` no frontend falha em silêncio](#decimal-serializado-como-string-typeof-number-falha)
+- [Deploy `--quick` pula o SCP INTEIRO, não só "arquivo novo" — código antigo compila e roda sem erro](#deploy-quick-pula-scp-inteiro-nao-so-arquivo-novo)
+- [Classificador de handoff roda incondicionalmente ANTES do handler de confirmação — fix novo em `_processConfirmation` pode nascer morto](#classificador-handoff-intercepta-antes-do-handler-fix-inalcancavel)
 
 ---
 
@@ -6850,3 +6853,111 @@ cancelamento.
 confirmação de Lançamento (`_processConfirmation`) e por `processDividaSelection` no MESMO arquivo,
 nunca adotada por `processDividaConfirmation`. Smoke ao vivo em prod reproduzindo a conversa exata
 do print: 9/9 PASS.
+
+## API serializa Decimal como STRING no JSON — `typeof x === 'number'` no frontend falha em silêncio {#decimal-serializado-como-string-typeof-number-falha}
+
+tags: decimal, pydantic, fastapi, json, typeof, number, string, serializacao, frontend, dinheiro, preco, regressao, teste mockado diverge do real, e2e mock
+
+**Sintoma:** tela mostra o preço/valor de TABELA em vez do valor real do contrato, mesmo com o
+backend retornando o campo certo (`GET /billing/subscription` respondendo 200, sem erro). Card
+"Status da assinatura" dizia R$19,90/mês pra quem paga R$11,94 (com cupom) — o MESMO bug já tinha
+sido corrigido antes (fix documentado, deploy no ar), mas voltou a acontecer em prod.
+
+**Causa raiz:** um `Decimal` num schema Pydantic (`valorMensal: Decimal | None = Field(alias=
+"valor_mensal")`) serializa por padrão como **STRING** no JSON de resposta (`"valor_mensal":
+"11.94"`, com aspas) — não como `number` — pra preservar precisão decimal. O código do frontend
+fazia `typeof status?.valor_mensal === 'number' ? status.valor_mensal : null`, que é **sempre
+falso** pra uma string, então tratava o valor como ausente e caía no fallback "sem valor cobrado"
+(mostra o preço de tabela cheio, sem desconto). O bug NÃO aparecia nos testes porque o e2e mockava
+a resposta com um NÚMERO literal JS (`valor_mensal: 11.94`), nunca exercitando o formato real que a
+API devolve — teste verde, prod quebrado.
+
+**Solução:** ao ler um campo Decimal/numérico vindo de uma API Python (Pydantic/FastAPI) no
+frontend, NUNCA usar `typeof x === 'number'` como guarda de presença — o tipo declarado no
+OpenAPI/TS gerado (`valor_mensal?: string | null`) já denuncia isso se for conferido antes de
+escrever o guard. Checar `null`/`undefined` PRIMEIRO (`x == null`), só então coagir com `Number(x)`
+(que aceita tanto string quanto number) — coagir direto sem o guard de nulidade troca o problema por
+outro pior: `Number(null)` é `0` e `Number(undefined)` é `NaN`, reproduzindo a MESMA classe de
+exibição errada (agora com "R$ 0,00" ou "NaN" em vez de mostrar o fallback correto). Padrão seguro:
+`const valor = x != null ? Number(x) : null`. Se o mesmo campo já é lido em OUTRA tela do mesmo
+projeto, verifique como ELA faz — muito provavelmente já tem o guard certo e é só replicar, em vez
+de reinventar um novo que erra de novo. No teste, cubra os 3 formatos que a API pode mandar: string
+válida (`"11.94"`), `null`, e ausente (`undefined`) — não só o que "faria sentido" em JS.
+
+**Ref:** Família Milionária, sessão 2026-08-07 — `resumoPreco()` em
+`familia-frontend/src/app/assinatura/page.tsx`, commit `9a3c684`. A tela irmã
+`/assinatura/confirmacao` já tinha `Number(sub.valor_mensal)` certo desde 25/07 (linha 193) — nunca
+foi replicado em `/assinatura`. Achado navegando a tela ao vivo em prod via Playwright MCP (não por
+review de código) — API respondendo 200, zero erro de console, e mesmo assim preço errado. Fix
+verificado chamando `fetch()` direto no endpoint pra ver o JSON cru antes de mexer no código
+(`"valor_mensal":"11.94"`, com aspas — a prova).
+
+## Deploy `--quick` pula o SCP INTEIRO, não só "arquivo novo" — código antigo compila e roda sem erro {#deploy-quick-pula-scp-inteiro-nao-so-arquivo-novo}
+
+tags: deploy, scp, quick, docker build, footgun, stale code, cache, chunk hash, next.js, rebuild com codigo antigo
+
+**Sintoma:** fix commitado, testado, `npm run build` local passa, `deploy_frontend_v2.py --quick`
+roda sem erro, "Deploy complete!", `/health` ok — e o bug **continua no ar**, idêntico a antes do
+fix. Nenhum erro em lugar nenhum; parece que o deploy "não pegou" por acaso.
+
+**Causa raiz:** `--quick` foi desenhado (comentário no próprio script) pra pular só o SCP quando
+"nenhum arquivo mudou" — mas na prática o parâmetro pula o passo de sincronização **por completo**,
+incondicionalmente, sempre que passado, e reconstrói a imagem Docker **a partir do código já
+presente na VPS** (do deploy anterior). Se o código local mudou desde o último deploy full — mesmo
+sendo um arquivo MODIFICADO, não novo — o build na VPS usa a versão VELHA, produz um bundle/imagem
+igualmente "válido" (compila, sobe, health-check passa) mas sem o fix. Confirmado inspecionando o
+hash do chunk JS servido em prod vs. o hash do build local: divergiam mesmo após "deploy bem-
+sucedido". A doc antiga ("`--quick` PULA SCP, arquivo NOVO exige FULL") estava incompleta — não é
+só arquivo novo, é QUALQUER mudança não sincronizada antes.
+
+**Solução:** depois de um fix, o PRIMEIRO deploy que o carrega tem que ser FULL (sem `--quick`),
+mesmo que o footgun de uplink degradado torne isso mais lento/arriscado. Pra confirmar que o deploy
+realmente pegou o código novo: comparar o hash do arquivo/chunk servido em prod (via `fetch()` no
+console ou `docker exec <container> ls` no diretório de build) contra o hash do build local — nunca
+confiar só em "Deploy complete!" + `/health` ok, porque um deploy com código velho passa exatamente
+pelos mesmos checks que um com código novo.
+
+**Ref:** Família Milionária, sessão 2026-08-07 — `execution/deploy_frontend_v2.py`. Descoberto
+debugando por que o fix do bug de preço (ver entrada acima) continuava reproduzindo em prod mesmo
+após "deploy completo": `docker exec <container> ls .next/static/chunks/app/assinatura/` mostrou o
+hash do chunk ANTIGO mesmo com uma imagem Docker nova e com timestamp recente — o Dockerfile builda
+a partir do código NO DISCO da VPS, que só é atualizado pelo passo de SCP que `--quick` pula.
+
+## Classificador de handoff roda incondicionalmente ANTES do handler de confirmação — fix novo em `_processConfirmation` pode nascer morto {#classificador-handoff-intercepta-antes-do-handler-fix-inalcancavel}
+
+tags: whatsapp, bot, confirmacao, handoff, classificador, regressao silenciosa, teste unitario pula camada, ambiguidade, reply novo ambiguo fallback, testes chamam funcao direto
+
+**Sintoma:** um fix aplicado dentro do handler de um estado de confirmação (`_processConfirmation`)
+tem 47 testes unitários passando, foi deployado há semanas, e continua **não funcionando** quando
+testado ao vivo contra prod — a mensagem que deveria disparar o fix nunca chega nem perto dele; o
+bot responde com um menu de ambiguidade genérico ("Não ficou claro o que você quis dizer...").
+
+**Causa raiz:** existe uma camada de classificação (`handoff_detector.classificarMensagemPendente`)
+que roda **incondicionalmente**, ANTES de qualquer handler de estado, sempre que a sessão está num
+estado de confirmação pendente — decide se a mensagem é `reply` (segue pro handler normal), `novo`
+(abre menu de gasto novo), `ambiguo` (abre menu de esclarecimento) ou `fallback`. Essa camada foi
+escrita numa sessão ANTERIOR ao fix, e o fix novo assumiu (documentado no próprio docstring do
+código) que "mensagens de X nunca chegam aqui, o guard já desvia antes" — mas o guard desviava só
+UM tipo de mensagem (gasto novo com verbo+dinheiro), não o tipo que o fix precisava alcançar
+(correção de data, que tem número mas não bate nenhum padrão de "reply" conhecido pelo
+classificador) → cai em "ambíguo" → NUNCA chega no handler onde o fix mora. **Os testes do fix nunca
+pegaram isso porque chamam a função do handler DIRETO** (`await _processConfirmation(texto, sessao,
+...)`), pulando inteiramente a camada de classificação que roda no pipeline real.
+
+**Solução:** quando um bot/pipeline conversacional tem MÚLTIPLAS camadas de classificação em
+sequência (roteador de intent → classificador de estado pendente → handler do estado), um fix
+dentro da camada mais interna (o handler) só é *alcançável de verdade* se TODAS as camadas
+anteriores também souberem reconhecer o padrão novo como "deixa passar". Ao escrever um teste pra um
+fix de handler, pelo menos UM teste tem que exercitar o PIPELINE INTEIRO (webhook → classificador →
+handler), não só a função isolada — testes que chamam a função-alvo direto (`await
+_handler(texto, ...)`) provam que o handler está certo, mas não provam que a mensagem CHEGA nele.
+Um smoke/e2e ao vivo contra prod (ou um teste de caracterização do pipeline completo) é o que pega
+esse tipo de regressão — testes unitários isolados por design não pegam.
+
+**Ref:** Família Milionária, sessão 2026-08-07 — `handoff_detector.classificarMensagemPendente` +
+`_isGenuineReply` em `familia-api/app/modules/whatsapp/handoff_detector.py`, vs. o fix de
+`_detectDateCorrection` em `_processConfirmation` (commit `413d286`, 2026-07-24). Fix: novo
+`is_date_correction()` em `correction_patterns.py` (módulo-folha compartilhado), ligado no
+classificador. Achado por `execution/smoke_confirmando_ajuste_data.py` (script novo, injeta mensagem
+real assinada no webhook de produção) — não pelos 47 testes unitários da 413d286, que datam de ANTES
+desta descoberta e nunca detectaram o gap porque testam só o handler isolado.
