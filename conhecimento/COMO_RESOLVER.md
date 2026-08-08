@@ -236,6 +236,8 @@
 - [API serializa Decimal como STRING no JSON — `typeof x === 'number'` no frontend falha em silêncio](#decimal-serializado-como-string-typeof-number-falha)
 - [Deploy `--quick` pula o SCP INTEIRO, não só "arquivo novo" — código antigo compila e roda sem erro](#deploy-quick-pula-scp-inteiro-nao-so-arquivo-novo)
 - [Classificador de handoff roda incondicionalmente ANTES do handler de confirmação — fix novo em `_processConfirmation` pode nascer morto](#classificador-handoff-intercepta-antes-do-handler-fix-inalcancavel)
+- [Campo novo no contrato JSON entre 2 serviços deployados separadamente fica ausente no frontend se o backend for pra produção primeiro](#contrato-novo-precisa-dos-dois-deploys-juntos)
+- [Chrome DevTools MCP recusa `new_page`/`navigate_page` com "browser already running" mesmo quando o próprio MCP perdeu o rastro do processo](#chrome-devtools-mcp-processo-orfao-trava-perfil)
 
 ---
 
@@ -7011,3 +7013,98 @@ PATCH no v5). Fix final: pular a chamada inteira pra `super_admin`, commit `97ca
 `docs/superpowers/specs/2026-08-07-pagarme-customer-sync-retry-safety-design.md` (achado de API) e
 `docs/superpowers/specs/2026-08-07-pagarme-update-customer-super-admin-identity-guard-design.md`
 (o round 1 rejeitado + a correção).
+
+---
+
+## Campo novo no contrato JSON entre 2 serviços deployados separadamente fica ausente no frontend se o backend for pra produção primeiro {#contrato-novo-precisa-dos-dois-deploys-juntos}
+
+tags: deploy sequenciado, contrato de api, campo novo, microservico, backend frontend dessincronia, optional chaining, docker service update, breaking change silencioso, feature invisivel
+
+**Contexto:** feature que adiciona um campo novo na resposta JSON de um endpoint (`spendConfidence`),
+consumido por uma tela que já lia outros campos do mesmo payload. Backend (`services/tracking`) e
+frontend (`web`) são imagens Docker separadas, deployadas via `docker service update` uma de cada
+vez, não atomicamente.
+
+**Sintoma:** depois de deployar só o backend (`services/tracking`) com o campo novo, a tela em
+produção não mostrava a feature nova — sem erro de console, sem 5xx, só ausência silenciosa.
+Investigação inicial suspeitou de bug no cálculo do backend (o valor parecia "errado" por não
+aparecer), até checar a network tab e ver que a API **já respondia corretamente** com o campo novo
+preenchido — o problema era que o `web` ainda rodava a imagem de ANTES da feature, que nem sabia que
+esse campo existia.
+
+**Causa raiz:** dois serviços com um contrato JSON compartilhado, deployados de forma independente e
+sequencial (não atômica). Deployar o produtor (backend) do campo novo sem deployar o consumidor
+(frontend) na mesma janela deixa uma janela real, em produção, onde o campo existe na resposta mas
+o código que deveria lê-lo ainda não existe no ar.
+
+**Por que não quebrou:** o frontend já tinha sido escrito com acesso defensivo (`data.campoNovo?.x
+?? 0`) por causa de um achado de code-review — não por antecipação deliberada desse cenário exato,
+mas o efeito foi o mesmo: sem esse `?.`, o acesso direto (`data.campoNovo.x`) teria lançado
+`TypeError` e quebrado a tela INTEIRA (não só escondido a feature nova) durante essa mesma janela de
+dessincronia. A defesa vale mesmo quando "o deploy vai ser rápido" — a janela existe de qualquer
+forma.
+
+**Solução:**
+1. Ao adicionar um campo novo a um contrato JSON consumido por outro serviço deployado
+   separadamente, trate o acesso a esse campo no lado consumidor como **potencialmente ausente**
+   (optional chaining + fallback), mesmo que o plano seja deployar os dois juntos — a ordem real de
+   `docker service update` não é atômica entre dois `services:` diferentes.
+2. Ao fazer o deploy de uma feature que toca contrato entre 2+ serviços, faça os dois `docker
+   service update` na MESMA janela — não passe pra outra tarefa entre um e outro. Se notar que só um
+   foi feito, o próximo passo é sempre completar o outro antes de considerar a feature no ar.
+3. Ao investigar "a feature nova não aparece" em produção, confira a resposta REAL da network tab
+   ANTES de suspeitar do cálculo do backend — se o campo já vem certo na resposta, o backend está
+   certo e o problema é no consumidor (deploy desatualizado, cache, ou lógica de renderização), não
+   na fonte do dado.
+
+**Ref:** Paid Media Automation, sessão 2026-08-07 — feature "confiança do gasto" na tela HubSpot
+(`docs/superpowers/plans/2026-08-07-hubspot-spend-confidence-plan.md`). Campo `spendConfidence`
+adicionado em `services/tracking/app/modules/crm/hubspot_campaign_performance.py`; consumido em
+`web/src/app/dashboard/clients/[id]/(shell)/leads/hubspot-performance/page.tsx` com
+`data.spendConfidence?.activeCampaignsNoSpend ?? 0` (achado de code-review da Task 4, commit
+`70995670`). Deploy do `tracking`+`tracking-worker` (`spendconf-02c3d357`) feito antes do `web` —
+smoke contra D4U (cliente real com 56 campanhas ativas sem gasto) mostrou API correta (`GET
+.../crm/hubspot/campaign-performance` já retornava `spendConfidence` certo) mas banner ausente na
+tela; corrigido buildando e deployando `web:spendconf-02c3d357` na sequência. Lição registrada
+também no `docker-compose.swarm.yml` do projeto, no comentário do pin.
+
+---
+
+## Chrome DevTools MCP recusa `new_page`/`navigate_page` com "browser already running" mesmo quando o próprio MCP perdeu o rastro do processo {#chrome-devtools-mcp-processo-orfao-trava-perfil}
+
+tags: chrome-devtools mcp, browser already in use, userDataDir, processo orfao, sessao longa, playwright, mcp desconectado, chrome.exe travado
+
+**Sintoma:** numa sessão de agente muito longa (muitas horas, dezenas de chamadas de browser MCP),
+uma chamada a `new_page`/`navigate_page` do Chrome DevTools MCP falha com `Error: the browser is
+already running for <userDataDir>, use --isolated to run multiple instances`. `list_pages` falha com
+o mesmo erro. Não é concorrência com outra sessão/humano (ver
+[Browser MCP sessão ao vivo do operador](#browser-mcp-sessao-ao-vivo-operador) pra esse caso
+diferente) — é a MESMA sessão de agente que já tinha usado o browser MCP com sucesso antes.
+
+**Causa raiz:** o processo `chrome.exe` real (mais os processos filhos: gpu-process, renderer,
+utility, crashpad-handler) sobreviveu no SO enquanto o servidor MCP, por algum motivo (idle timeout,
+reciclagem interna, etc.), perdeu o handle/rastro dele. O lock do `userDataDir` (perfil do Chrome)
+continua ativo no processo órfão, então quando o MCP tenta abrir um novo browser apontando pro mesmo
+perfil, o Chrome real recusa (é o comportamento normal do Chrome pra 2 instâncias no mesmo perfil,
+não um bug do MCP) — mas o MCP não tem mais o processo pra reconectar.
+
+**Solução:**
+1. Identifique o processo `chrome.exe` PAI (não os filhos) que referencia o `userDataDir` do MCP:
+   `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.CommandLine -like
+   "*<nome-do-perfil-mcp>*" }` (Windows) — o processo pai tem `--remote-debugging-pipe` na linha de
+   comando; os filhos (`--type=gpu-process`, `--type=renderer`, etc.) são descartáveis e morrem em
+   cascata quando o pai morre.
+2. Mate o processo pai: `Stop-Process -Id <pid> -Force`. Não precisa matar os filhos manualmente.
+3. Repita a chamada MCP (`new_page`/`navigate_page`) — o servidor detecta que precisa reconectar e
+   sobe um browser novo. A resposta costuma incluir uma nota tipo "the browser was restarted or
+   reconnected since the last call" confirmando a reconexão.
+4. Isso é seguro de fazer mesmo achando que "pode ser sessão de outro processo" — SE o `userDataDir`
+   na linha de comando bate com o perfil dedicado do MCP (não o perfil pessoal do Chrome do
+   operador), matar esse processo específico não afeta nada fora da automação do agente.
+
+**Ref:** Paid Media Automation, sessão 2026-08-07 (cont.158, sessão de várias horas com dezenas de
+chamadas de Playwright/Chrome DevTools MCP pra smoke tests). `new_page` falhou com "browser already
+running for C:\Users\...\chrome-devtools-mcp\chrome-profile"; `Get-CimInstance` achou o processo pai
+(PID com `--remote-debugging-pipe`) mais ~12 processos filhos (gpu, renderer×5, utility×3, audio,
+video-capture, crashpad-handler). `Stop-Process -Id <pai> -Force` seguido de `new_page` reconectou
+com sucesso, sem precisar reiniciar a sessão inteira.
