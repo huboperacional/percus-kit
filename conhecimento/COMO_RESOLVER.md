@@ -240,6 +240,8 @@
 - [Chrome DevTools MCP recusa `new_page`/`navigate_page` com "browser already running" mesmo quando o próprio MCP perdeu o rastro do processo](#chrome-devtools-mcp-processo-orfao-trava-perfil)
 - [Última página do path terminar em dígito é assinatura estrutural de "página de detalhe de catálogo" — genérico, não depende do CMS](#url-trailing-digit-catalog-detail-page)
 - [Conversa longa com muitos screenshots: imagem nova passa a ser rejeitada mesmo pequena — é acúmulo, não tamanho do arquivo](#conversa-longa-limite-imagem-cumulativo)
+- [Playwright `request.newContext({baseURL})` + rota com `/` no início apaga o path inteiro do baseURL (silencioso, 404 em tudo)](#playwright-baseurl-path-absoluto-apaga)
+- [`storageState` cacheado de sessão OTP fica inválido entre rodadas separadas: refresh reativo dentro do browser nunca é gravado de volta em disco](#storagestate-refresh-reativo-nao-persiste)
 
 ---
 
@@ -7189,3 +7191,104 @@ conversa**, antes do orçamento saturar com outras capturas — ou numa conversa
 (`C:\Users\...\Lixo\aaaa\*.png`, 1085-1480px de largura) falharam ao ler depois de ~20 screenshots já
 tirados via chrome-devtools MCP na mesma conversa; tentativa de OCR local (WinRT via pwsh e via
 Bash→powershell.exe) falhou nos dois runtimes por motivos diferentes.
+
+---
+
+## Playwright `request.newContext({baseURL})` + rota com `/` no início APAGA o path inteiro do baseURL (silencioso, 404 em tudo) {#playwright-baseurl-path-absoluto-apaga}
+
+tags: playwright apirequestcontext, baseurl, new URL path base, whatwg url resolution, leading
+slash relative path, ctx.get 404, teardown nunca limpou, global-teardown silently broken,
+request.newContext baseURL bug, url absoluta vs relativa
+
+**Sintoma:** um `APIRequestContext` criado com `request.newContext({ baseURL: 'https://api.exemplo.com/api/v1' })`
+(sem `/` no fim) faz `ctx.get('/recurso/')` (rota COM `/` no início) e recebe **404** — mesmo com
+token válido, mesmo o endpoint existindo de verdade (confirmado batendo a MESMA URL com `curl`
+manualmente: 200 OK). O erro não aparece como falha de auth (401/403) — é um 404 limpo, `{"detail":
+"Not Found"}`, porque a requisição de fato chegou no servidor, só que num path errado.
+
+**Causa raiz:** Playwright resolve `baseURL` + rota via `new URL(givenURL, baseURL)`
+(`playwright-core/lib/utils/isomorphic/urlMatch.js::resolveBaseURL`) — semântica WHATWG padrão do
+construtor `URL`. Quando `givenURL` começa com `/` (path absoluto), o resultado **descarta o path
+inteiro do `baseURL`**, mantendo só o origin (protocolo+host+porta):
+```js
+new URL('/metas/', 'https://api.exemplo.com/api/v1')  // -> 'https://api.exemplo.com/metas/'  (sem /api/v1!)
+new URL('metas/',  'https://api.exemplo.com/api/v1/')  // -> 'https://api.exemplo.com/api/v1/metas/'  (correto)
+```
+Isso é comportamento **documentado do próprio `URL()` do JS/WHATWG** — não é bug do Playwright, mas
+a combinação "`baseURL` sem `/` final" + "rota com `/` inicial" (a forma mais intuitiva de escrever
+as duas coisas) produz esse resultado contra-intuitivo silenciosamente. Não falha no request feito
+manualmente com string concatenada (`${API_BASE}${rota}`) — só quando se depende do parâmetro
+`baseURL` do `newContext`/`APIRequestContext` pra fazer a junção.
+
+**Por que é fácil passar 3 semanas sem notar:** se o código que usa esse `ctx` for justamente uma
+rede de segurança/teardown que só roda condicionalmente (ex.: só depois de uma suíte autenticada
+rodar de verdade) e o "caminho feliz" raramente é exercitado (porque outra dependência — ex. um
+token manual — está quebrada há tempos), o 404 nunca aparece nos logs de ninguém. Confirmado numa
+sessão real: um `globalTeardown` de e2e escrito assim **nunca limpou um único registro** desde que
+foi escrito, porque a suíte autenticada ficou travada em outro problema (token manual) por semanas
+— quando o outro problema foi resolvido e o teardown finalmente rodou de verdade, todos os 6
+recursos que ele tentava listar vieram 404.
+
+**Solução:** não confie no `baseURL` do context pra rotas com `/` no início. Duas opções:
+1. Sempre montar a URL absoluta na mão (`${API_BASE}${rota}`, concatenação de string simples) e
+   não passar `baseURL` pro `newContext` — mais explícito, impossível de resolver errado.
+2. Se quiser manter `baseURL`, garanta que ele termine em `/` E que toda rota NÃO comece em `/`
+   (`baseURL: '.../api/v1/'` + `ctx.get('metas/')`) — mais frágil (fácil esquecer o `/` em um dos
+   dois lados de novo no futuro), prefira a opção 1.
+
+Diagnóstico rápido pra confirmar que é isso: reproduza fora do Playwright com `new URL(rota, baseURL).href`
+num REPL de Node — se o resultado não contém o path do `baseURL`, é essa causa.
+
+**Ref:** Família Milionária, sessão 2026-08-07 — implementação da conta E2E sintética
+(`docs/superpowers/plans/2026-08-07-e2e-synthetic-account.md`, Task 7). `global-teardown.ts`
+(rede de segurança que apaga dado `[E2E]` de produção pós-e2e) 404ava em TODAS as 6 listagens;
+confirmado lendo o source de `playwright-core` + repro isolado em Node fora do test runner. Fix:
+`familia-frontend/tests/e2e/global-teardown.ts` (commit `8105db1`), URLs absolutas.
+
+---
+
+## `storageState` cacheado de sessão OTP fica inválido entre rodadas separadas: refresh reativo dentro do browser nunca é gravado de volta em disco {#storagestate-refresh-reativo-nao-persiste}
+
+tags: playwright storageState cache, refresh token rotation single-use, auth.setup cache valido,
+otp login cache 30 dias, invalid refresh 401, sessao expira entre invocacoes separadas, e2e
+automated login token rotation lost
+
+**Sintoma:** um `auth.setup.ts` (ou script equivalente) faz login real (OTP, magic-link, etc.),
+salva `access_token`+`refresh_token` num `storageState` em disco, e um sidecar de metadados marca
+"válido por ~30 dias" (TTL do refresh). Lógica simples: "se o cache ainda está dentro da janela,
+pula o login". **Funciona na primeira invocação, quebra silenciosamente em invocações
+posteriores** — uma spec/teste que roda depois volta pra tela de login, com erro
+`{"detail":"invalid refresh"}` ao tentar renovar, mesmo dentro da janela de 30 dias.
+
+**Causa raiz:** o access token dura pouco (ex. 15min). Assim que expira, o PRÓPRIO app/frontend
+(interceptor de 401, refresh reativo automático) troca o par de tokens sozinho pra manter a UX —
+isso é o comportamento CORRETO e desejado em produção. Mas o refresh é **single-use com rotação**:
+a resposta de `/token/refresh` vem com um `refresh_token` NOVO que invalida o antigo. Esse refresh
+automático acontece DENTRO do browser context daquele teste específico — só existe no `localStorage`
+daquela sessão efêmera, nunca é regravado no arquivo de `storageState` em disco (só quem escreve
+esse arquivo é o script de setup, que só roda 1x por invocação). A PRÓXIMA invocação (novo processo,
+novo browser context) carrega o arquivo ANTIGO, com o `refresh_token` que JÁ FOI consumido/rotacionado
+pela rodada anterior → `POST /refresh` rejeita com 401 `invalid refresh` → sessão morre.
+
+**Como confirmar que é isso:** pegue o `refresh_token` gravado no `storageState` em disco e teste
+direto contra o endpoint de refresh (`curl -X POST .../token/refresh -d '{"refresh_token":"..."}'`)
+— se vier `invalid refresh`/401, o token já foi consumido em algum momento depois da última vez que
+o arquivo foi escrito.
+
+**Solução:** não trate "cache válido" como "pula tudo". Trate como "renova PROATIVAMENTE via
+`/token/refresh` (rota SEM rate limit, diferente do endpoint de login/OTP que costuma ter) e
+regrava o `storageState`+metadados a cada invocação" — só cai pro login completo (OTP/magic-link)
+se essa renovação em si falhar (aí sim o refresh morreu de verdade, não só rotacionou). Isso garante
+que o arquivo em disco nunca fica desatualizado em relação ao último refresh que aconteceu, seja
+ele proativo (nosso) ou reativo (do próprio app numa rodada anterior). Ressalva: isso NÃO cobre
+rotação que acontece NO MEIO de uma mesma rodada longa com múltiplas specs sequenciais (>15min de
+ponta a ponta) — cada spec nessa mesma invocação ainda carrega o storageState ORIGINAL da memória/
+disco do início da rodada; se uma spec do meio disparar o refresh reativo, specs seguintes DA MESMA
+rodada podem herdar o token já rotacionado. Mitigação parcial: manter a rodada mais curta que a
+validade do access token, ou (não implementado ainda) regravar o storageState após cada spec.
+
+**Ref:** Família Milionária, sessão 2026-08-07 — conta E2E sintética
+(`docs/superpowers/plans/2026-08-07-e2e-synthetic-account.md`, Task 7). Confirmado testando o `rt`
+do disco direto contra `/token/refresh` (`invalid refresh`). Fix em
+`familia-frontend/tests/e2e/auth.setup.ts` (commit `8105db1`): cache válido agora sempre renova
+antes de reusar, em vez de só pular.
