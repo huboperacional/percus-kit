@@ -238,6 +238,8 @@
 - [Classificador de handoff roda incondicionalmente ANTES do handler de confirmação — fix novo em `_processConfirmation` pode nascer morto](#classificador-handoff-intercepta-antes-do-handler-fix-inalcancavel)
 - [Campo novo no contrato JSON entre 2 serviços deployados separadamente fica ausente no frontend se o backend for pra produção primeiro](#contrato-novo-precisa-dos-dois-deploys-juntos)
 - [Chrome DevTools MCP recusa `new_page`/`navigate_page` com "browser already running" mesmo quando o próprio MCP perdeu o rastro do processo](#chrome-devtools-mcp-processo-orfao-trava-perfil)
+- [Última página do path terminar em dígito é assinatura estrutural de "página de detalhe de catálogo" — genérico, não depende do CMS](#url-trailing-digit-catalog-detail-page)
+- [Conversa longa com muitos screenshots: imagem nova passa a ser rejeitada mesmo pequena — é acúmulo, não tamanho do arquivo](#conversa-longa-limite-imagem-cumulativo)
 
 ---
 
@@ -7108,3 +7110,82 @@ running for C:\Users\...\chrome-devtools-mcp\chrome-profile"; `Get-CimInstance` 
 (PID com `--remote-debugging-pipe`) mais ~12 processos filhos (gpu, renderer×5, utility×3, audio,
 video-capture, crashpad-handler). `Stop-Process -Id <pai> -Force` seguido de `new_page` reconectou
 com sucesso, sem precisar reiniciar a sessão inteira.
+
+---
+
+## Última página do path terminar em dígito é assinatura estrutural de "página de detalhe de catálogo" — genérico, não depende do CMS {#url-trailing-digit-catalog-detail-page}
+
+tags: url pattern, deteccao generica, pagina de produto, pagina de imovel, catalog detail page,
+agrupar paginas, page-flow, heuristica sem hardcode de dominio, praedium, wordpress, shopify
+
+**Contexto:** grafo/lista de páginas navegadas por sessão (Fluxo de Páginas) tinha uma "cauda longa"
+de páginas de ficha-de-produto/imóvel poluindo a visualização (274 páginas distintas, a maioria com
+1-2 sessões cada). Pedido explícito do operador: "não hardcode pro CMS específico (Praedium) — tem
+que identificar sozinho". Confundir isso com o problema geral de "cauda longa de baixo tráfego" (que
+já tinha solução própria, agrupamento por peso) seria perder a informação de que essas páginas são
+TODAS da MESMA categoria estrutural (fichas de um catálogo), não só "baixo tráfego disperso".
+
+**Causa raiz / por que dá pra generalizar:** qualquer catálogo paginado (CMS de imóveis, e-commerce,
+diretório) cedo ou tarde precisa de um identificador único por item na URL — e o jeito mais comum de
+resolver isso, INDEPENDENTE da stack (WordPress, Shopify, Praedium, Next.js customizado), é sufixar o
+slug com um ID numérico (`...-id-2001`, `.../product/123`, `.../p2001`). Páginas de LISTAGEM/filtro do
+mesmo site, em contraste, quase sempre terminam em palavra (`3-quartos`, `ate-750-mil`, `mais-vendidos`)
+porque são compostas de filtros humanos, não de uma chave primária de banco.
+
+**Solução:** heurística estrutural de uma linha, sem tabela de exceção por CMS:
+
+```ts
+function isCatalogDetailPage(label: string): boolean {
+  return /\d+\/?$/.test(label); // último segmento do path termina em dígito
+}
+```
+
+Valide contra o dado real do tenant antes de confiar: agrupe por primeiro segmento do path entre os
+matches — se 100% caem sob o MESMO segmento raiz (ex. todos sob `/imovel/...`), é sinal forte de que a
+heurística achou o padrão certo, não ruído. Rode também o caminho negativo: liste os labels que TÊM
+algum dígito mas NÃO batem na regex (ex. `ate-750-mil`) — se nenhum desses vira falso-positivo, a
+heurística está discriminando path-de-filtro vs path-de-registro corretamente.
+
+**Ref:** Paid Media Automation, sessão 2026-08-07 (cont.158). Validado contra 274 páginas reais da
+Imobiliária Uni: 177 matches, 100% sob `/imovel/...`, zero falso-positivo nas páginas de filtro
+(`web/src/app/dev-preview/page-flow/page.tsx`, `isCatalogDetailPage`).
+
+---
+
+## Conversa longa com muitos screenshots: imagem nova passa a ser rejeitada mesmo pequena — é acúmulo, não tamanho do arquivo {#conversa-longa-limite-imagem-cumulativo}
+
+tags: image dimensions exceed max allowed size, many-image requests, 2000 pixels, screenshot rejeitado,
+chrome devtools mcp screenshot, ocr windows fallback, winrt powershell falha, conversa longa limite
+
+**Sintoma:** numa conversa já longa (dezenas de screenshots tirados via browser MCP ao longo da
+sessão), o usuário tenta colar um print no chat e a API rejeita com "At least one of the image
+dimensions exceed max allowed size for many-image requests: 2000 pixels" — mesmo pra imagens
+pequenas (ex. 1091×282, bem abaixo de 2000px em qualquer lado). Redimensionar o arquivo NÃO resolve:
+o mesmo arquivo, lido sozinho (`Read` isolado, sem nenhuma outra imagem na chamada), falha do mesmo
+jeito, com um `request_id` novo a cada tentativa — não é reuso de um erro em cache.
+
+**Causa raiz:** o limite não é por-arquivo, é o ORÇAMENTO TOTAL de pixels/imagens da requisição — que
+inclui o HISTÓRICO da conversa inteira sendo reenviado ao modelo, não só a imagem nova. Uma conversa
+que já acumulou muitas capturas de tela (comum em sessões de smoke test / co-design ao vivo via
+Playwright/Chrome DevTools MCP) satura esse orçamento; a partir daí, QUALQUER imagem nova — não
+importa o tamanho dela sozinha — estoura o total.
+
+**O que NÃO funciona (testado e descartado nesta sessão):**
+1. Redimensionar/cortar a imagem antes de enviar — o gargalo é cumulativo, não individual.
+2. OCR local via `Windows.Media.Ocr` (WinRT) rodado em `pwsh` (PowerShell 7/Core) — falha com
+   `Operation is not supported on this platform (0x80131539)` ao tentar refletir
+   `IAsyncOperation<T>.AsTask` via `System.WindowsRuntimeSystemExtensions`: a projeção WinRT usada
+   pelo type-accelerator `[Tipo, Assembly, ContentType=WindowsRuntime]` não é suportada no CLR do
+   PowerShell 7/.NET moderno, só no Windows PowerShell 5.1 clássico.
+3. Chamar `powershell.exe` (5.1 legado) heredoc'ado de DENTRO do Bash (Git-Bash/MSYS) — o script passa
+   por 2 camadas de escaping (Bash → powershell.exe) e corrompe encoding/backtick, o mesmo erro de
+   "matriz nula" aparece mesmo rodando no runtime correto.
+
+**Solução que funciona:** peça o dado em TEXTO em vez de imagem (transcrição manual do que a pessoa
+está vendo) — sem gargalo nenhum. Se a imagem for indispensável, ela precisa ser lida **cedo na
+conversa**, antes do orçamento saturar com outras capturas — ou numa conversa nova/`/clear`.
+
+**Ref:** Paid Media Automation, sessão 2026-08-07 (cont.158). 3 arquivos salvos em disco
+(`C:\Users\...\Lixo\aaaa\*.png`, 1085-1480px de largura) falharam ao ler depois de ~20 screenshots já
+tirados via chrome-devtools MCP na mesma conversa; tentativa de OCR local (WinRT via pwsh e via
+Bash→powershell.exe) falhou nos dois runtimes por motivos diferentes.
