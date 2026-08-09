@@ -246,6 +246,8 @@
 - [`storageState` cacheado de sessão OTP fica inválido entre rodadas separadas: refresh reativo dentro do browser nunca é gravado de volta em disco](#storagestate-refresh-reativo-nao-persiste)
 - [`Promise.all` de fetch composto sobrescreve append otimista de criação inline feita em paralelo](#promise-all-fetch-sobrescreve-append-otimista)
 - [`/percus-review:review` e `/spec-analyze` recusam invocação do agente via Skill tool — reservados pro operador](#percus-review-recusa-skill-tool)
+- [Review por-task em `subagent-driven-development` não pega bug que veio do próprio texto do plano](#review-por-task-nao-pega-bug-do-plano)
+- [Playwright MCP recusa qualquer ação com "Browser is already in use... use --isolated"](#playwright-mcp-browser-already-in-use)
 
 ---
 
@@ -7439,3 +7441,68 @@ aceitaria a de uma sessão manual.
 `/percus-review:spec-analyze` 1x), resolvido todas as vezes pedindo pro operador rodar o slash
 command explicitamente. Ver também memória local `percus_review_skill_bypass` (atualizada nesta
 sessão, memória antiga sugeria o bypass agora proibido).
+
+---
+
+## Review por-task em `subagent-driven-development` não pega bug que veio do próprio texto do plano {#review-por-task-nao-pega-bug-do-plano}
+
+tags: subagent driven development missing bug, plan code has defect, per-task review insufficient, spec requirement unimplemented, whole branch review finds gap, multi-task plan hidden bug, RF requirement missed by every task reviewer
+
+**Sintoma:** um plano multi-task (8 tasks) executado via `superpowers:subagent-driven-development`
+teve TODAS as tasks aprovadas "Ready to merge: Yes" individualmente (implementer + spec-reviewer +
+code-reviewer por task, alguns com 2-3 rodadas de fix reais) — mas, ao rodar o passo final da
+skill ("dispatch final code reviewer subagent for entire implementation" contra o diff acumulado
+inteiro e a spec completa), apareceram 2 achados reais que NENHUM review por-task tinha pego: um
+requisito EARS "DEVE SEMPRE" (RF-05) 100% não implementado, e uma exigência de transação explícita
+da spec (§3.4) ignorada.
+
+**Causa raiz:** cada task individual foi implementada **exatamente como o próprio texto do plano
+prescrevia** — o código da task bateu com o código proposto pelo plano, e o spec-reviewer de cada
+task confere "implementação bate com ESTA task", não "implementação bate com a spec INTEIRA".
+Quando o BUG está no próprio texto do plano (o autor do plano esqueceu de implementar um requisito,
+ou implementou parcialmente), review por-task estrutural nunca detecta — porque não existe
+"desvio" nenhum entre task e implementação, o desvio é entre plano e spec. Só um review que lê a
+spec completa E o diff acumulado INTEIRO de uma vez consegue notar "RF-05 existe na spec, cadê no
+código?" — pergunta que nenhum reviewer de task individual está posicionado pra fazer.
+
+**Solução:** nunca pular o passo final da skill (`dispatch final code reviewer subagent for entire
+implementation`) mesmo quando toda task individual já fechou "Ready to merge: Yes" — é
+especificamente esse passo, com escopo = spec completa + diff acumulado inteiro, que pega bugs
+oriundos do PRÓPRIO PLANO (não do implementer). Ao montar o prompt desse review final, force o
+reviewer a andar pela lista de requisitos (RF-01, RF-02, ... um por um, "satisfeito/gap/N-A" com
+evidência) em vez de só pedir "revise o diff" — revisão RF-a-RF é o que expõe requisito
+inteiramente ausente, que uma leitura solta do diff tende a não notar (não hunta por AUSÊNCIA, só
+por presença de código ruim).
+
+**Ref:** Paid Media Automation, sessão 2026-08-09 — frente "Revisão Estruturada de Nomenclatura"
+(8 tasks + 2 fixes). Ver memória local `project_nomenclatura_revisao_estruturada`.
+
+---
+
+## Playwright MCP recusa qualquer ação com "Browser is already in use... use --isolated" {#playwright-mcp-browser-already-in-use}
+
+tags: playwright mcp browser already in use, use isolated to run multiple instances, browser_navigate fails, browser_click fails, browser_tabs fails, stale chrome process holding profile lock, mcp-chrome profile locked
+
+**Sintoma:** QUALQUER tool do Playwright MCP (`browser_navigate`, `browser_snapshot`,
+`browser_tabs`, etc.) falha imediatamente com
+`Error: Browser is already in use for <path>\ms-playwright-mcp\mcp-chrome-<hash>, use --isolated
+to run multiple instances of the same browser` — mesmo sendo a primeira chamada da sessão atual,
+sem nenhum outro uso aparente do MCP nesta conversa.
+
+**Causa raiz:** uma sessão ANTERIOR (dias atrás, inclusive) deixou um processo Chrome real rodando
+com o mesmo `--user-data-dir` do profile de automação do Playwright MCP, sem fechar limpo. O
+profile fica com lock de arquivo enquanto QUALQUER processo Chrome (inclusive renderers filhos)
+segue vivo apontando pra ele — não importa se a sessão que o abriu já terminou há muito tempo.
+
+**Solução:** achar e matar o processo Chrome PAI (não renderer) que referencia esse
+`user-data-dir`, depois retentar a call do MCP (funciona imediatamente, sem restart de nada).
+No Windows: `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object {
+$_.CommandLine -like "*<hash-do-profile>*" -and $_.CommandLine -notlike "*--type=*" } | Select
+ProcessId` acha o processo principal (renderers/gpu-process têm `--type=` na command line, o
+processo raiz do browser não tem). `Stop-Process -Id <pid> -Force` mata a árvore inteira (Chrome
+derruba os filhos quando o processo pai morre). É seguro matar sem confirmar — é sempre um
+artefato órfão da própria automação, nunca o browser pessoal do operador (perfil dedicado só do
+MCP, path contém `ms-playwright-mcp`).
+
+**Ref:** Paid Media Automation, sessão 2026-08-09 — processo órfão de 08/08 (mais de 24h),
+`browser_navigate` bloqueado até matar PID da árvore Chrome do profile `mcp-chrome-426029c`.
