@@ -38,6 +38,8 @@
 - [Ferramenta de monitoramento roda INERTE com os testes verdes: `source` de outro script clobrou o entry point](#source-clobra-entry-point)
 - [Como saber se um cron/monitor MORREU: batimento periódico não serve — só dead-man's switch](#deadman-switch-nao-batimento)
 - [Auditar SPA em produção de fora: bata na ROTA INTERNA, nunca em `/`](#auditar-spa-rota-interna)
+- [Várias linhas SVG tracejadas sobrepostas, com fases diferentes, parecem 1 linha SÓLIDA](#svg-dasharray-sobreposto-parece-solido)
+- [SVG `marker-end` (seta) fica tampada por outra linha que cruza por cima — ordem de pintura no DOM](#svg-marker-end-tampado-por-path-posterior)
 - [Lição escrita em prosa não impede reincidência — o conserto tem que morar num gate](#licao-em-prosa-reincide)
 - [Alarme falso treina todo mundo a ignorar o alarme de verdade](#alarme-falso-mata-o-alarme)
 - [O aviso promete o que o gate não entrega (promessa e decisão em módulos diferentes)](#promessa-e-decisao-separadas)
@@ -242,6 +244,8 @@
 - [Conversa longa com muitos screenshots: imagem nova passa a ser rejeitada mesmo pequena — é acúmulo, não tamanho do arquivo](#conversa-longa-limite-imagem-cumulativo)
 - [Playwright `request.newContext({baseURL})` + rota com `/` no início apaga o path inteiro do baseURL (silencioso, 404 em tudo)](#playwright-baseurl-path-absoluto-apaga)
 - [`storageState` cacheado de sessão OTP fica inválido entre rodadas separadas: refresh reativo dentro do browser nunca é gravado de volta em disco](#storagestate-refresh-reativo-nao-persiste)
+- [`Promise.all` de fetch composto sobrescreve append otimista de criação inline feita em paralelo](#promise-all-fetch-sobrescreve-append-otimista)
+- [`/percus-review:review` e `/spec-analyze` recusam invocação do agente via Skill tool — reservados pro operador](#percus-review-recusa-skill-tool)
 
 ---
 
@@ -7292,3 +7296,146 @@ validade do access token, ou (não implementado ainda) regravar o storageState a
 do disco direto contra `/token/refresh` (`invalid refresh`). Fix em
 `familia-frontend/tests/e2e/auth.setup.ts` (commit `8105db1`): cache válido agora sempre renova
 antes de reusar, em vez de só pular.
+
+---
+
+## Várias linhas SVG tracejadas sobrepostas, com fases diferentes, parecem 1 linha SÓLIDA {#svg-dasharray-sobreposto-parece-solido}
+
+tags: svg stroke-dasharray, dashed line looks solid, multiple paths same segment overlap, path
+phase offset, bundled diagram lines, bus diagram svg, sankey trunk line, diagrama de fluxo linhas
+sobrepostas, tronco compartilhado
+
+**Sintoma:** um diagrama SVG com várias linhas tracejadas (`stroke-dasharray`) que compartilham um
+trecho visual comum (ex.: várias origens convergindo num "tronco"/trilho antes de entrar num alvo
+único) — o trecho COMPARTILHADO aparece como linha SÓLIDA, mesmo com `stroke-dasharray` aplicado
+em todos os `<path>`. Trechos NÃO-compartilhados (só 1 linha passando) continuam tracejados
+normalmente — só o ponto de overlap "perde" o tracejado.
+
+**Causa raiz:** cada `<path>` tem seu próprio `stroke-dasharray` com fase iniciando em `M` (o começo
+daquele path específico). Quando N paths diferentes redesenham o MESMO segmento visual (cada um
+percorrendo até ali por uma distância própria, diferente das outras), a fase do tracejado de cada
+um cai em pontos diferentes ao longo do segmento compartilhado. O olho humano vê a UNIÃO de todas
+as fases sobrepostas — em qualquer ponto do segmento, quase sempre AL menos um dos N paths está na
+fase "on" (traço visível), cobrindo os gaps dos outros. O resultado visual é indistinguível de uma
+linha sólida, mesmo que cada path individual esteja corretamente tracejado.
+
+**Como confirmar:** inspecione os atributos `d` dos `<path>` via `document.querySelectorAll('svg
+path')` — se múltiplos paths têm o MESMO segmento de coordenadas (total ou parcial) mas comprimentos
+totais diferentes (logo fases de dash diferentes), essa é a causa.
+
+**Solução:** não deixe N origens redesenharem o MESMO trecho compartilhado. Separe o desenho em: (1)
+um "stub" curto e individual por origem (da própria origem até o ponto de junção, sem repetir o
+trecho comum) e (2) UM path só pro trecho compartilhado (tronco/trilho + entrada final no alvo),
+desenhado uma única vez. Isso também resolve de graça o problema irmão de setas duplicadas (várias
+`marker-end` empilhadas no mesmo alvo) — só o path do trecho compartilhado precisa de seta.
+
+**Ref:** Paid Media Automation, sessão 2026-08-08 (cont.159) — protótipo `/dev-preview/page-flow`
+(`web/src/app/dev-preview/page-flow/page.tsx`), rota "D" até o card de Lead: 7-8 origens
+redesenhavam o trilho horizontal + subida final inteiros, cada uma por cima da outra — operador
+reportou "a linha azul não fica tracejada, parece linha sólida". Fix: trechos individuais (stub,
+sem seta) + 1 trecho comum (trilho+subida+entrada, com seta), campo novo `FlowLine.noArrow` pra
+marcar os que não devem receber marcador.
+
+---
+
+## SVG `marker-end` (seta) fica tampada por outra linha que cruza por cima — ordem de pintura no DOM {#svg-marker-end-tampado-por-path-posterior}
+
+tags: svg marker-end z-order, arrowhead hidden, paint order svg path, stacking context path
+element, arrow marker occluded, seta escondida atras da linha, z-index svg sem z-index real
+
+**Sintoma:** num SVG com várias `<path>` cada uma com `marker-end` (seta na ponta), setas de
+linhas "de baixo" (mais cedo no array/DOM) ficam parcial ou totalmente escondidas quando outra
+linha "de cima" (mais tarde no DOM) cruza exatamente por cima do ponto onde a seta deveria
+aparecer.
+
+**Causa raiz:** SVG não tem `z-index` real fora de `<svg>` raiz — a ordem de pintura é estritamente
+a ordem no DOM (quem vem depois pinta por cima de quem vem antes). Um `marker-end` é pintado como
+parte do PRÓPRIO path que o declara, no momento em que ESSE path é pintado. Se um path B (mais
+tarde no DOM) cruza geometricamente sobre o ponto de chegada de um path A (mais cedo), o corpo de B
+cobre a seta de A, mesmo que A e B não tenham relação lógica nenhuma entre si — é pura coincidência
+de ordem de desenho + posição geométrica.
+
+**Solução:** separe o desenho em 2 passadas. 1ª passada: todos os paths com o CORPO da linha
+(stroke visível, dasharray, etc.), SEM `marker-end`. 2ª passada, DEPOIS no DOM (portanto sempre por
+cima): os MESMOS paths de novo, mas com `stroke="transparent"` (corpo invisível) e `marker-end`
+setado — como é sempre a ÚLTIMA coisa pintada, a seta nunca fica atrás de nada. O corpo invisível
+ainda "conta" pro browser desenhar o marker (browsers pintam marker mesmo com stroke transparente,
+desde que não seja `stroke="none"`).
+
+**Ref:** Paid Media Automation, sessão 2026-08-08 (cont.159) — mesmo protótipo do achado acima.
+Operador reportou "as setinhas devem ficar acima das linhas, não por baixo" depois de ver setas
+sumindo onde linhas de cores diferentes se cruzavam. Fix em
+`web/src/app/dev-preview/page-flow/page.tsx`: `{lines.map(...)}` duplicado em 2 passadas.
+
+---
+
+## `Promise.all` de fetch composto sobrescreve append otimista de criação inline feita em paralelo {#promise-all-fetch-sobrescreve-append-otimista}
+
+tags: race condition optimistic update, stale closure overwrite state, promise all overwrites
+optimistic append, item created disappears from ui, fetchData race with inline create, item some
+da tela mas existe no banco
+
+**Sintoma:** um item criado inline (ex.: categoria criada dentro do modal de outra entidade) some
+da lista/select na hora, mesmo o `POST` tendo retornado sucesso e o item existindo no banco —
+confirmado porque um teardown/limpeza posterior encontra e remove o registro. Reproduz de forma
+intermitente (não determinístico a cada rodada) dependendo só de timing de rede.
+
+**Causa raiz:** a tela tem um `fetchData()` que faz `Promise.all` de N endpoints (ex.: lista
+principal + categorias + centros de custo + formas de pagamento) e no fim faz
+`setEstado(resFetch.data)` pra cada um. Se o usuário criar um item da MESMA lista (via um fluxo
+inline com append otimista, `setEstado(prev => [...prev, novoItem])`) enquanto esse `Promise.all`
+ainda está em voo, e QUALQUER UMA das outras N-1 chamadas for mais lenta que o `POST` de criação, o
+`setEstado(resFetch.data)` do fetch original resolve DEPOIS do append otimista — o snapshot do GET
+foi tirado (no servidor) ANTES do POST committar, então sobrescreve o item recém-criado. Testes e2e
+automatizados disparam esse timing com muito mais frequência que humanos (cliques em milissegundos
+vs. segundos).
+
+**Solução:** não é useEffect/dependência faltando — é substituição cega de estado por um fetch
+concorrente. Fix: merge em vez de substituição, mas ESCOPADO — nunca "mantenha tudo que falta no
+fetch" (isso mascara deleção real de itens antigos por outra via). Use um `Map<id, timestampDeCriacao>`
+de itens "recém-criados via fluxo inline" com TTL curto (dezenas de segundos bastam). No handler de
+criação: registra o id+timestamp. No merge do fetch: remove do map qualquer id que já apareceu no
+fetch novo OU que passou do TTL; o que sobrar no map e não estiver no fetch novo, mantém no
+resultado final. Duas versões mais simples foram tentadas e descartadas por review: merge cego de
+tudo ausente do fetch (mascara deleção pra sempre) e Set sem TTL (mascara deleção até o item ser
+deletado por fora sem nenhum fetch subsequente refletir isso — fantasma permanente).
+
+**Ref:** Família Milionária, sessão 2026-08-08 — `familia-frontend/src/app/lancamentos/page.tsx`,
+categoria criada inline no modal de lançamento sumindo do select ~50% das vezes (achado rodando
+`categorias.spec.ts` repetidamente contra prod, confirmado via diagnóstico de timing de rede
+custom). Ver também memória local `gotcha_promise_all_fetch_race_overwrites_optimistic_append`.
+
+---
+
+## `/percus-review:review` e `/spec-analyze` recusam invocação do agente via Skill tool — reservados pro operador {#percus-review-recusa-skill-tool}
+
+tags: disable-model-invocation skill blocked, review command cannot be invoked by agent, spec
+analyze requires explicit user invocation, council gate reserved for operator, canon 6.35.0 skill
+restriction
+
+**Sintoma:** chamar `Skill({skill: "percus-review:review"})` (ou `percus-review:spec-analyze`)
+programaticamente devolve erro explícito: *"cannot be used with Skill tool due to
+disable-model-invocation... Do not replicate this skill's workflow by other means — it is reserved
+for explicit user invocation."* Isso quebra fluxos que antes funcionavam (ex.: bypass via
+`review-router.ps1`/`deepseek-review.ps1` direto por Bash, documentado em versões antigas desta
+base como workaround válido).
+
+**Causa raiz:** mudança de canon (6.34.1→6.35.0 na máquina onde foi observado) endureceu o gate
+R11/`[S]` — o objetivo é impedir que o próprio agente se autoconceda a revisão que deveria vir de
+uma decisão do operador. A mensagem de erro é uma instrução explícita, não um bug: pede
+textualmente pra NÃO replicar o workflow por outro meio.
+
+**Solução:** não contornar (nem com script direto, nem repetindo a lógica manualmente) — isso
+violaria a instrução explícita do próprio gate. Fluxo correto: avisar o operador que o commit/spec
+está pronto mas precisa de `/percus-review:review` (ou `/spec-analyze`) rodado por ELE. Quando o
+operador digita o slash command, o conteúdo do comando é injetado no contexto da conversa (bloco
+`<command-name>`/`<command-message>`) — isso É uma invocação explícita do usuário, diferente de o
+agente chamar via Skill tool, e o agente PODE seguir as instruções injetadas normalmente (rodar os
+scripts que o comando manda, interpretar o resultado, fazer fact-check de CRITICAL antes de aceitar
+— guardrail R20). O hook de pre-commit aceita a entry gerada por esse fluxo exatamente como
+aceitaria a de uma sessão manual.
+
+**Ref:** Família Milionária, sessão 2026-08-08 — bloqueado 3x (`/percus-review:review` 2x,
+`/percus-review:spec-analyze` 1x), resolvido todas as vezes pedindo pro operador rodar o slash
+command explicitamente. Ver também memória local `percus_review_skill_bypass` (atualizada nesta
+sessão, memória antiga sugeria o bypass agora proibido).
