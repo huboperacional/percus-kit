@@ -249,6 +249,11 @@
 - [`/percus-review:review` e `/spec-analyze` recusam invocação do agente via Skill tool — reservados pro operador](#percus-review-recusa-skill-tool)
 - [Review por-task em `subagent-driven-development` não pega bug que veio do próprio texto do plano](#review-por-task-nao-pega-bug-do-plano)
 - [Playwright MCP recusa qualquer ação com "Browser is already in use... use --isolated"](#playwright-mcp-browser-already-in-use)
+- [Negativa de palavra-chave em NÍVEL DE CONTA no Google Ads: erro diz "shared set does not exist" e a lista existe](#google-ads-negativa-conta-sharedset-tipo-proprio)
+- ["Ação principal" no painel de anúncios NÃO significa que guia o lance — são 3 camadas, não 1](#acao-principal-nao-significa-biddable)
+- [Google Ads API: setar bool para `False` não entra na field_mask automática — mutate dá sucesso e o campo não muda](#proto3-bool-false-fora-da-field-mask)
+- [`preventDefault` no evento `submit` NÃO impede envio de form disparado por `form.submit()` — você cria um lead real em produção](#form-submit-programatico-ignora-listeners)
+- [O agregado da plataforma não é um componente — somá-lo com os próprios componentes dobra a métrica (razão EXATAMENTE 2,00×)](#agregado-nao-e-componente)
 
 ---
 
@@ -7545,3 +7550,264 @@ também um subagent Sonnet com o prompt padrão de Cross-Claude review em parale
 **Ref:** Família Milionária, sessão 2026-08-09/10 — plano "Observabilidade de falhas do bot"
 (8 tasks + milestone-review, worktree `observabilidade-falhas-bot`), 10 ciclos de review rodados
 sem nenhuma intervenção do operador depois do commit inicial do plano.
+
+---
+
+## Negativa de palavra-chave em NÍVEL DE CONTA no Google Ads: erro diz "shared set does not exist" e a lista existe {#google-ads-negativa-conta-sharedset-tipo-proprio}
+
+tags: google ads, negative keyword, account level, shared set, customer negative criterion, NEGATIVE_KEYWORD_SHARED_SET_DOES_NOT_EXIST, sharedsettype, api
+
+**Sintoma.** Você cria um `SharedSet` de negativas, popula com `SharedCriterion`, e ao anexar na
+conta via `CustomerNegativeCriterionService` toma:
+
+```
+criterion_error: NEGATIVE_KEYWORD_SHARED_SET_DOES_NOT_EXIST
+"Cannot create a negative keyword list criterion with a shared set that does not exist."
+```
+
+A lista **está lá** — dá pra consultar por GAQL, tem os termos dentro, o `resource_name` é válido.
+
+**Causa raiz.** O enum `SharedSetTypeEnum` tem **dois** tipos de lista de negativa, e eles não são
+intercambiáveis:
+
+| Tipo | Para quê |
+|---|---|
+| `NEGATIVE_KEYWORDS` | lista compartilhada **de campanha** (anexa via `CampaignSharedSet`) |
+| `ACCOUNT_LEVEL_NEGATIVE_KEYWORDS` | lista **de conta** (anexa via `CustomerNegativeCriterion`) |
+
+Criar com o tipo errado **não falha**, e popular com `SharedCriterion` **também não falha**. Só o
+terceiro passo quebra — e a mensagem culpa a existência da lista em vez do tipo dela, porque o
+serviço de conta só enxerga listas do tipo de conta.
+
+**Solução.**
+
+```python
+op.create.type_ = client.enums.SharedSetTypeEnum.ACCOUNT_LEVEL_NEGATIVE_KEYWORDS
+...
+cnc_op.create.negative_keyword_list.shared_set = shared_set_rn   # mensagem, NÃO string
+```
+
+`negative_keyword_list` é um `NegativeKeywordListInfo` — atribuir a string direto dá
+`TypeError: expected NegativeKeywordListInfo got str`. Tem que ir no campo `.shared_set`.
+
+**Verificação — o contador da lista MENTE.** Em `shared_set`, os campos `member_count` e
+`reference_count` voltam **0** mesmo com a lista populada e anexada e funcionando. Não use eles
+como prova. Prove por dois caminhos:
+
+```sql
+-- 1. a lista está anexada?  deve aparecer type = NEGATIVE_KEYWORD_LIST
+SELECT customer_negative_criterion.id, customer_negative_criterion.type,
+       customer_negative_criterion.negative_keyword_list.shared_set
+FROM customer_negative_criterion
+
+-- 2. os termos estão dentro?  conte as linhas
+SELECT shared_criterion.keyword.text, shared_criterion.keyword.match_type
+FROM shared_criterion WHERE shared_set.type = 'ACCOUNT_LEVEL_NEGATIVE_KEYWORDS'
+```
+
+**Ref:** Paid Media Automation, Imobiliária UNI (customer 5977410135), 2026-08-10 — lista
+"NEG CONTA - Concorrentes", 32 termos. Perdi um ciclo criando e apagando lista com o tipo errado.
+Procedimento de montar a lista sem fogo amigo: `COMO_FAZER.md#negativas-sem-fogo-amigo`.
+
+---
+
+## "Ação principal" no painel de anúncios NÃO significa que guia o lance — são 3 camadas, não 1 {#acao-principal-nao-significa-biddable}
+
+tags: google ads, conversao, primary_for_goal, biddable, conversion goal, todas as conversoes, all_conversions, smart bidding, relatorio inflado, perfil da empresa, local actions
+
+**Sintoma.** O painel mostra uma ação de conversão como **"Ação principal"**, e você conclui que ela
+está guiando o lance / poluindo o Smart Bidding. Ou o contrário: a coluna "Todas as conversões"
+mostra 199/mês e a "Conversões" mostra 7, e você não sabe qual é a real.
+
+**Causa raiz.** "Principal" é um rótulo com **escopo de meta**, não de conta. Uma ação só influencia
+o lance se **três** condições valerem juntas — e o painel só mostra a primeira:
+
+```
+1. conversion_action.primary_for_goal              <- o rotulo "Acao principal"
+2. conversion_action.include_in_conversions_metric <- entra na coluna "Conversoes"?
+3. customer_conversion_goal.biddable               <- a META dela otimiza?  (a que decide)
+   + campaign_conversion_goal.biddable             <- ...e nesta campanha?
+```
+
+As ações do **Perfil da Empresa** (`Local actions - Directions`, `- Other engagements`,
+`Store visits`, `Clicks to call`…) vêm com `primary_for_goal = true` e
+`include_in_conversions_metric = false`, e as metas delas (`Ver rota`, `Engajamentos`,
+`Visita à loja`) vêm com `biddable = false`. **Ler só a camada 1 leva à conclusão oposta da
+verdade.** Elas também **não são editáveis** — quem gere é o Google.
+
+O inverso também morde: ação de **upload** (`type = UPLOAD_CLICKS`, típica de integração própria de
+CRM) nasce com `primary_for_goal = false` **e** `include_in_conversions_metric = false`. Ela recebe
+o dado, responde 200, aparece em "Todas as conversões" — **e não conta nem guia lance**. Na conta
+onde isso foi visto, ficou assim **4 meses** com o Smart Bidding cego enquanto tudo respondia OK.
+
+**Solução.** Consulte as três camadas antes de afirmar qualquer coisa:
+
+```sql
+-- camadas 1 e 2
+SELECT conversion_action.name, conversion_action.primary_for_goal,
+       conversion_action.include_in_conversions_metric, conversion_action.origin
+FROM conversion_action WHERE conversion_action.status = 'ENABLED'
+
+-- camada 3 (a que decide)
+SELECT customer_conversion_goal.category, customer_conversion_goal.origin,
+       customer_conversion_goal.biddable
+FROM customer_conversion_goal
+
+-- e se a campanha usa metas proprias
+SELECT campaign.name, campaign_conversion_goal.category,
+       campaign_conversion_goal.origin, campaign_conversion_goal.biddable
+FROM campaign_conversion_goal WHERE campaign.status = 'ENABLED'
+```
+
+Para **relatório ao cliente**, use sempre a coluna **`Conversões`** (`metrics.conversions`), nunca
+`Todas as conversões` (`metrics.all_conversions`) — a segunda mistura rota no mapa e visita à loja
+com lead, e apresentada como resultado de mídia promete o que a campanha não entregou.
+
+**Dois alertas do painel que são falso positivo** nesse cenário, e cujo botão é perigoso:
+- *"Não está recebendo dados porque não há conexões associadas"* → olha o registro de conexões do
+  Gerenciador de Dados; upload por API com conta de serviço não aparece lá. **Clicar em "Conectar
+  fonte de dados" cria um 2º caminho de importação** → duplica conversão ou sobrescreve o destino.
+- *Conversões otimizadas: "nenhuma tentativa com dados fornecidos pelo usuário"* → pede PII com
+  hash; quem manda identificador de clique nunca vai satisfazer.
+Em ambos, **a prova de que chega dado são as conversões registradas**, não o alerta.
+
+**Ref:** Paid Media Automation, Imobiliária UNI (customer 5977410135), 2026-08-10. Padrão completo
+do produto, com checklist pra tela nova: `docs/PADRAO_METRICA_CONVERSOES.md`. Errei essa leitura
+duas vezes na mesma sessão (rótulo do nome da conversão, depois rótulo "principal") antes de ir
+olhar a camada da meta.
+
+---
+
+## Google Ads API: setar bool para `False` não entra na field_mask automática — mutate dá sucesso e o campo não muda {#proto3-bool-false-fora-da-field-mask}
+
+tags: google ads api, field_mask, protobuf_helpers, proto3, bool false, mutate silencioso, update_mask, network_settings
+
+**Sintoma.** Você monta um update de campanha, seta um booleano para `False`, gera a máscara com
+`protobuf_helpers.field_mask(None, obj._pb)`, chama o mutate — **retorna 200, sem erro** — e ao
+reler pela API **o campo continua `True`**.
+
+**Causa raiz.** Em proto3, `False` é o valor default do tipo e **não é serializado**. O helper
+`field_mask(None, ...)` monta a máscara a partir dos campos presentes na serialização, então o
+campo simplesmente **não entra na máscara** e o servidor não recebe ordem de mudar nada.
+
+O engano é que a chamada é **parcialmente bem-sucedida**: no mesmo mutate, um enum com valor
+não-default (ex.: `geo_target_type_setting.positive_geo_target_type = PRESENCE`) **é aplicado**
+enquanto os bool **não são**. Você vê "sucesso", confere um campo, e conclui que tudo passou.
+
+**Solução.** Máscara explícita sempre que o alvo for `False`, `0` ou `""`:
+
+```python
+camp.network_settings.target_google_search   = True    # preservar o que nao muda
+camp.network_settings.target_search_network  = False
+camp.network_settings.target_content_network = False
+op.update_mask.paths.extend([
+    "network_settings.target_google_search",
+    "network_settings.target_search_network",
+    "network_settings.target_content_network",
+])
+```
+
+Cite na máscara também os irmãos da **mesma mensagem** que você quer preservar — mexer num
+sub-campo de uma mensagem sem declarar os outros é pedir surpresa.
+
+**E releia pela API depois do mutate.** O retorno de sucesso não prova aplicação; só a leitura
+prova. Mesma família de `#gate-must-be-seen-failing`.
+
+**Ref:** Paid Media Automation, Imobiliária UNI (customer 5977410135), 2026-08-10 — desligando
+Rede de Display e Parceiros de Pesquisa. Descoberto só porque a conferência pós-mutate estava no
+mesmo script.
+
+---
+
+## `preventDefault` no evento `submit` NÃO impede envio de form disparado por `form.submit()` — você cria um lead real em produção {#form-submit-programatico-ignora-listeners}
+
+tags: playwright, form submit, preventDefault, addEventListener capture, auditoria de tracking, poluicao de producao, lead falso, teste em site de cliente
+
+**Sintoma.** Você quer auditar se um formulário de site dispara conversão, então instala um
+bloqueio antes de testar:
+
+```js
+document.addEventListener('submit', e => e.preventDefault(), true);  // captura
+```
+
+Dispara o submit, e o navegador **navega assim mesmo** para a página de obrigado. Resultado:
+**lead falso criado no CRM e no e-mail do cliente.**
+
+**Causa raiz.** O método `HTMLFormElement.prototype.submit()` — que a maioria dos temas de site
+chama a partir do handler do botão — **não dispara o evento `submit`**. Ele vai direto pro
+envio. Nenhum listener roda, em captura ou em bolha, e `preventDefault` não tem o que cancelar.
+(É diferente de `form.requestSubmit()`, que dispara o evento normalmente.)
+
+**Solução — bloqueie na camada de rede, não na de evento.** Antes de qualquer clique:
+
+```js
+// 1. neutralizar o submit programatico
+HTMLFormElement.prototype.submit = function () {
+  window.__submitsBloqueados.push(this.getAttribute('action'));
+};
+// 2. e ainda assim interceptar fetch / sendBeacon / XHR, que e por onde
+//    o tracking sai (ver o mesmo padrao usado pra medir cobertura de CTA)
+```
+
+Com Playwright dá pra ser mais forte ainda: `page.route()` abortando o POST do endpoint do
+formulário — isso pega qualquer caminho, inclusive navegação nativa.
+
+**Duas regras que vêm junto:**
+- **Prove o interceptador antes de confiar no silêncio dele.** Dispare um canário conhecido
+  (`fetch` pro próprio endpoint de tracking) e confirme que foi capturado. Sem isso, você não
+  distingue "nada disparou" de "meu instrumento está quebrado" — mesma família de
+  `#gate-must-be-seen-failing`.
+- **Em site de cliente, prefira inspecionar a submeter.** Ler `form.action`, os campos e os
+  listeners já responde a maior parte das perguntas de cobertura sem tocar em produção.
+
+**Ref:** Paid Media Automation, auditoria da Imobiliária UNI, 2026-08-10 — criei 1 ou 2 leads
+falsos no imóvel 198 do cliente testando o formulário "Quero mais informações". O interceptador
+de rede (fetch/beacon/XHR) funcionou e foi validado por canário; o que falhou foi só o bloqueio
+do submit.
+
+---
+
+## O agregado da plataforma não é um componente — somá-lo com os próprios componentes dobra tudo {#agregado-nao-e-componente}
+
+`tags: meta ads conversions lead dobrado duplicado agregado componente action_type cpl metade`
+
+tags: número exatamente 2x, dobrado, conversões infladas, CPL pela metade, action_type lead, lead_form, lead_pixel, onsite_conversion.lead_grouped, offsite_conversion.fb_pixel_lead, agregado somado com componente, quebra por tipo idêntica, recoleta, duas réguas na série, fronteira da janela recoletada
+
+**Sintoma:** um número nosso é EXATAMENTE 2,00× o da plataforma (ou do relatório de outra
+equipe), enquanto outra coluna da mesma linha — investimento, impressões — bate ao centavo. A
+razão exata é a pista: erro de arredondamento ou de janela não produz 2,00× em várias linhas.
+
+**Causa:** APIs de anúncio devolvem, na MESMA resposta, o TOTAL e as PARTES que o compõem. No
+Meta: `lead` é o total; `offsite_conversion.fb_pixel_lead` e `onsite_conversion.lead_grouped` são
+os componentes. Se o total cair no mesmo balde de um componente, o escalar soma o todo mais uma
+parte dele mesmo. Numa conta que só usa um dos caminhos, total == componente → exatamente 2×.
+
+**Como confirmar em 1 consulta:** olhe a quebra por tipo bruta, não o escalar. Se ela vier
+`{"lead_form": N, "lead_pixel": N}` com valores IDÊNTICOS em toda linha, não são dois eventos —
+é o mesmo contado duas vezes.
+
+**Como corrigir sem criar o defeito inverso:** dê ao agregado um balde próprio e **prefira os
+componentes**, usando o agregado apenas como FALLBACK quando não houver componente nenhum. Sem o
+fallback, a conta que só reporta o total zera — o fix vira perda silenciosa de conversão.
+
+**Três armadilhas que vêm junto:**
+- **O teste pode estar fixando o defeito como contrato.** Aqui havia `counts["pixel"] == 7`
+  somando `lead`=4 com `fb_pixel_lead`=3 — some o agregado com um componente e chame de esperado.
+  Ver `#mock-que-espelha-o-bug`. Quando o número de um teste MUDA, decida se é regressão ou se é
+  o conserto, e escreva qual dos dois no docstring.
+- **O mesmo defeito costuma existir no consumidor.** O front repetia a soma. E a pertinência do
+  agregado ao total **depende do resto do mapa** (só conta se não houver componente), então um
+  predicado por chave não resolve — a decisão tem que ver o conjunto inteiro.
+- **Ordem de deploy:** suba primeiro quem LÊ a chave nova, depois quem a ESCREVE. O inverso deixa
+  o consumidor antigo recebendo uma chave que ele não classifica.
+
+**A fronteira da série não é a data do deploy.** Se você recoletar uma janela, o dado corrigido
+começa no INÍCIO DA JANELA, não no dia em que o código subiu — e qualquer trecho fora da janela
+mas anterior ao deploy fica dobrado no meio. Ou você recoleta até o dia do deploy (deixando UMA
+fronteira), ou modela várias. Modelar uma só e escolher a data errada classifica o dado ao
+contrário. Ver `#reordenar-gate-muda-o-significado-do-contador`.
+
+**Ref:** Paid Media Automation, 2026-08-10 (`5d66c97f`, `00f1997b`). Descoberto sem querer: o
+operador pediu "ideias" a partir do PDF de um relatório de outra equipe, e cruzar aquele PDF com o
+banco revelou o bug. Canário em produção antes da recoleta em massa (24 → 12 numa conta/dia, com
+gasto idêntico) provou o fix antes de reescrever 328 dia/conta.
