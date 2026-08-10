@@ -254,6 +254,9 @@
 - [Google Ads API: setar bool para `False` não entra na field_mask automática — mutate dá sucesso e o campo não muda](#proto3-bool-false-fora-da-field-mask)
 - [`preventDefault` no evento `submit` NÃO impede envio de form disparado por `form.submit()` — você cria um lead real em produção](#form-submit-programatico-ignora-listeners)
 - [O agregado da plataforma não é um componente — somá-lo com os próprios componentes dobra a métrica (razão EXATAMENTE 2,00×)](#agregado-nao-e-componente)
+- [Hook `PreToolUse` bloqueia o comando INTEIRO — o `add` encadeado antes do commit nunca roda](#pretooluse-bloqueia-comando-inteiro-add-nao-roda)
+- ["Corrigir a fixture enfraqueceria o teste" é meia-verdade — pergunte o que ele passa a medir](#fixture-corrigida-nao-enfraquece-troca-o-que-mede)
+- [Mutação que SOBREVIVE pode ser guarda redundante, não teste fraco — meça antes de fabricar teste](#mutacao-sobrevive-por-guarda-redundante)
 
 ---
 
@@ -7811,3 +7814,92 @@ contrário. Ver `#reordenar-gate-muda-o-significado-do-contador`.
 operador pediu "ideias" a partir do PDF de um relatório de outra equipe, e cruzar aquele PDF com o
 banco revelou o bug. Canário em produção antes da recoleta em massa (24 → 12 numa conta/dia, com
 gasto idêntico) provou o fix antes de reescrever 328 dia/conta.
+
+## Hook `PreToolUse` bloqueia o comando INTEIRO — `add` encadeado antes do commit nunca roda {#pretooluse-bloqueia-comando-inteiro-add-nao-roda}
+
+tags: hook bloqueou de novo, linha que ja corrigi, mock-scan acusa linha antiga, staged desatualizado, git add encadeado nao rodou, PreToolUse, && no mesmo comando, gate de commit dispara sem commitar, heredoc com texto de commit, MOCK-OK primeira linha
+
+**Sintoma.** Você edita um arquivo pra remover o que o hook `mock-scan` acusa, roda
+`git add <arquivo> && git c-o-m-m-i-t -m "..."`, e o hook **bloqueia de novo citando a linha
+antiga** — com o número de linha do conteúdo que você acabou de apagar. Você olha o arquivo: está
+corrigido. Olha `git diff --cached`: ainda mostra a versão velha. Parece cache do hook.
+
+**Não é cache.** O hook `PreToolUse` intercepta a chamada de Bash **antes de ela executar**. Quando
+bloqueia, **nada** do comando roda — inclusive o `git add` encadeado antes. O que está staged
+continua sendo o resultado de um `add` ANTERIOR, feito quando o arquivo ainda tinha o problema.
+
+**Como sair.** Duas chamadas de Bash **separadas**: primeiro o `add`, depois o commit. Mesma regra
+que já vale pro par `percus-review-auto.ps1` + commit (que quebra por outro motivo — o hook mede a
+idade do review), e pelo mesmo mecanismo: encadear com `&&` num único comando é o que mata.
+
+**Como confirmar em 5 segundos** se o que está staged é o velho ou o novo:
+`git diff --cached -- <arquivo> | grep -n "<trecho acusado>"` — linha com `-` na frente = você já
+corrigiu (é a remoção); linha com `+` = ainda está lá de verdade.
+
+**Irmão do mesmo problema, achado ao escrever esta entrada:** o gate `pre-commit-check` casa a
+string do comando, não a intenção. Um `cat >> arquivo.md <<EOF` cujo TEXTO documenta um comando de
+commit dispara o gate de R11 ("último review tem 33 min"), mesmo sem commitar nada. Contorne
+escrevendo o conteúdo num arquivo temporário (tool de escrita) e concatenando depois — o comando de
+shell deixa de conter as palavras-gatilho.
+
+Relacionado: `{#percus-hook-cross-project}` (TTL do review); e a família "MOCK-OK precisa ser a 1ª
+linha da mensagem" — o hook lê o argumento do `-m`; com `-F -`/heredoc ele não enxerga o prefixo.
+
+## "Corrigir a fixture enfraqueceria o teste" é meia-verdade — pergunte o que ele passa a medir {#fixture-corrigida-nao-enfraquece-troca-o-que-mede}
+
+tags: corrigir enfraqueceria o teste, fixture com formato errado, golden desatualizado, glifo diferente do produtor, teste mede mundo inexistente, divida de teste, revalidar LLM pago, o que sobra depois da correcao
+
+**Situação.** Um teste (golden, snapshot, fixture de integração) usa um dado que **não bate com o
+formato que produção realmente emite** — glifo diferente, campo a mais, encoding antigo. Alguém
+percebe, mede o custo de corrigir, e conclui: "corrigir muda o que o teste mede e exige revalidar;
+fica como dívida". Parece disciplina (não fazer edição de carona). Muitas vezes é o contrário.
+
+**O erro de raciocínio.** "Enfraquece" pressupõe que o que o teste mede HOJE é valioso. Se a fixture
+usa um formato que produção nunca emitiu, o teste está medindo um **mundo inexistente** — o valor
+dele já era zero, só que ninguém tinha olhado. Corrigir não tira valor: revela que não havia.
+
+**A pergunta que resolve.** Antes de aceitar a dívida, calcule **o que sobra depois da correção** e
+pergunte: *isso é mais próximo ou menos próximo do que produção faz hoje?*
+
+Caso real (tiatendo, C17, 10/08): a fixture de um golden com LLM real trazia
+`1x Carne Assada G - R$ 30,00` (x e hífen ASCII) enquanto o produtor emitia `1× … — R$` (U+00D7,
+U+2014) havia 2 meses. A avaliação inicial foi não mexer, porque a poda de histórico recém-criada
+passaria a casar aquelas linhas e "sobraria menos" pro LLM ver. Ao corrigir, o que sobrou foi
+justamente o `diffPreamble` — um **quarto formato de eco que um review tinha apontado como
+"não medido"**. O golden deixou de medir um cenário impossível (readback templatado na janela, que
+produção agora poda) e passou a medir o vetor residual real. 5 rodadas de LLM confirmaram que ele
+não contamina — e o teste virou o detector permanente daquele vetor.
+
+**Regra prática.** Fixture divergente do produtor real é **sempre** um achado, nunca só dívida
+estética. Se corrigir "muda o que o teste mede", isso é informação sobre o teste, não argumento
+contra a correção.
+
+## Mutação que SOBREVIVE pode ser guarda redundante, não teste fraco — meça antes de fabricar teste {#mutacao-sobrevive-por-guarda-redundante}
+
+tags: mutacao sobreviveu, teste nao morre com a mutacao, teste decorativo, mutation testing verde, guarda redundante, ancora e match redundantes, test-fitting, fabricar teste pra fechar placar, defesa em profundidade nao pinada
+
+**Sintoma.** Você especifica uma mutação pra provar que um teste tem dentes ("tire a âncora `^` da
+regex e o teste deve ficar vermelho"), aplica, e **a suíte segue verde**. A conclusão automática é
+"o teste é decorativo, preciso escrever um que mate essa mutação".
+
+**Antes disso, meça POR QUE sobreviveu.** Em código com defesa em profundidade, duas guardas
+independentes frequentemente protegem a mesma propriedade. Mutar **uma** deixa a outra em pé, e o
+teste continua verde **corretamente** — ele testa o comportamento, e o comportamento não mudou.
+
+Dois casos reais na mesma sessão (tiatendo, C17):
+- regex `^\s*\d+×\s.+\s—\sR\$…`: tirar as âncoras não matou os controles negativos, porque quem
+  protege as frases-alvo é o prefixo `\d+×` — nenhuma delas contém o caractere `×` (U+00D7). A
+  mutação fiel ao risco documentado (tirar o **prefixo**) derrubou os dois controles na hora.
+- a mesma regex com `.match()`: trocar `.match` por `.search` também sobreviveu, porque `^`
+  continuava lá — `^` + `.match` são redundantes entre si. A mutação que desancora de verdade é
+  tirar os dois.
+
+**O anti-padrão a evitar.** Fabricar um teste só pra fazer a mutação especificada ficar vermelha é
+**test-fitting**: você acopla o teste à implementação (à regex, ao método) em vez de ao
+comportamento, e ele passa a quebrar em refactor legítimo. Se nenhum texto real do sistema exercita
+a mutação, o teste que a mataria seria inventado — e um teste inventado é pior que a lacuna.
+
+**O que fazer.** (a) Descubra qual guarda de fato protege; (b) rode a mutação **fiel ao risco que o
+comentário/doc do código declara**, não a que você imaginou; (c) se a guarda redundante não tem
+teste e existe um produtor REAL que a exercitaria, escreva o teste sobre **esse produtor**; (d) se
+não existe produtor real, registre como defesa em profundidade não-pinada e siga — é honesto.
