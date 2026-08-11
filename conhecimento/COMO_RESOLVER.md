@@ -30,6 +30,7 @@
 - [Conselho: `status: ok` NÃO significa que o membro respondeu (irmão do teto de tokens)](#conselho-status-ok-content-vazio)
 - [Pre-mortem de plano: mande o revisor LER o código, não só o plano](#pre-mortem-revisor-le-o-codigo)
 - [Org de teste limpa não expõe topologia — só comportamento](#org-limpa-nao-expoe-topologia)
+- [Poster de vídeo proxiado pra rota que só aceita `kind:'photo'` — 400 invisível no desktop, único conteúdo no mobile](#video-poster-proxied-to-photo-only-route)
 - [Watchdog de confirmação de entrega dispara falso-positivo contra device de teste automatizado (não gera ack)](#watchdog-ack-device-teste-automatizado)
 - [Marcar uma entidade como "fora do padrão": filtre os EMISSORES, não só os leitores](#marca-varre-emissores-e-leitores)
 - [Brief de design que cita a fonte pelo NOME propaga erro invisível](#brief-cita-token-nao-nome)
@@ -7903,3 +7904,21 @@ a mutação, o teste que a mataria seria inventado — e um teste inventado é p
 comentário/doc do código declara**, não a que você imaginou; (c) se a guarda redundante não tem
 teste e existe um produtor REAL que a exercitaria, escreva o teste sobre **esse produtor**; (d) se
 não existe produtor real, registre como defesa em profundidade não-pinada e siga — é honesto.
+
+## Poster de vídeo proxiado pra rota que só aceita `kind:'photo'` — 400 invisível no desktop, único conteúdo no mobile {#video-poster-proxied-to-photo-only-route}
+
+`tags: admin panel, asset proxy, video slot, poster, kind mismatch, 400, mobile-only bug, iframe cobre erro, unit test verde mas runtime quebra, next.js route handler, ads4agencies-site, window-tint-v2, autoworx`
+
+**Sintoma.** Operador reporta "os vídeos não estão carregando no telefone" num site já em produção com meses de review em cima. Desktop parece perfeito. `next dev` + Playwright + DevTools console mostra `Failed to load resource: 400 @ /api/asset/photo/service.window-tint.video` toda vez que a página carrega — mas a suíte de testes (incluindo um teste de paridade dedicado, 72 casos) está 100% verde.
+
+**Causa raiz.** O transform que reescreve os campos editáveis do painel de admin (`applyVideoProxy` em `withAssetProxy.ts`) reescrevia **os dois** campos de um slot de vídeo: `embedSrcOverride` (correto — o slot É editável, guarda um `youtubeId`) e `posterSrc` (**errado** — reescrevia pra `/api/asset/photo/<slotId>`). Só que a rota `/api/asset/photo/[slotId]` rejeita com 400 QUALQUER slot cujo `kind` registrado não seja `'photo'` — e um slot de vídeo é registrado com `kind:'video'`, sem exceção, sem fallback. Não existe (nem nunca existiu) rota de upload de foto pra um slot de vídeo: `/api/admin/video/[slotId]` só aceita `{youtubeId}` no corpo, nunca um arquivo. Ou seja, a URL gerada pra `posterSrc` **não tinha NENHUM caminho de código que pudesse fazer ela funcionar** — não é um bug de manifest vazio, é uma rota inteira incompatível com o kind do slot, por design.
+
+**Por que só apareceu no mobile.** O componente de vídeo (`WTV2VideoLayer`) sempre renderiza a `<img poster>` por baixo do iframe autoplay (fallback pros 4 modos de falha documentados: reduced-motion, ad-blocker, autoplay recusado, touch). Em desktop o iframe (que usa a rota CORRETA, `/api/asset/video-embed/`, e funciona) cobre visualmente o poster quebrado por cima — 0 sintoma visível. Em telas `max-width:820px`/`pointer:coarse`/`hover:none`/`prefers-reduced-motion`, uma media query esconde o iframe **de propósito** e o poster quebrado vira o ÚNICO conteúdo da seção — em toda página com vídeo (home hero, about, 4 de 5 subpáginas de serviço).
+
+**Por que os testes não pegaram.** O teste unitário do transform (`withAssetProxy.test.ts`) e o teste de paridade (`withAssetProxy-admin-slots-parity.test.ts`, 72 casos) testam a STRING que a função pura devolve (`expect(posterSrc).toBe('/api/asset/photo/hero.video')`) — nunca chamam o route handler de verdade pra ver se aquela URL resolve. O teste do route handler (`app/api/asset/photo/[slotId]/route.test.ts`) por sua vez só testa slots `kind:'photo'` reais, nunca é chamado com um slot-id de vídeo (por que chamaria — nada no código de produção deveria gerar essa combinação). Dois arquivos, cada um 100% verde isoladamente, cobrindo metades diferentes de um contrato quebrado no meio.
+
+**Solução.** `posterSrc` nunca deveria ter sido proxiado — não existe (nem faz sentido existir, dado o design atual) upload de poster pra slot de vídeo. Removida a linha `video.posterSrc = photoProxyUrl(slotId)` de `applyVideoProxy`; `posterSrc` fica sempre o asset estático real. Os 2 testes que travavam o comportamento errado foram reescritos pra afirmar o oposto (posterSrc == valor estático original, não a URL do proxy). Verificado ao vivo: `next dev` + Playwright, viewport 390×844, console limpo, poster real carregando.
+
+**Padrão pra generalizar.** Quando uma "rota de asset genérica" valida `kind` (ou tipo/formato) ANTES de olhar dados reais, um segundo campo do mesmo objeto que aponta pra essa rota mas carrega um kind diferente é um 400 garantido, não uma race condition — e é fácil de nunca notar se o layout tem uma camada visual que cobre o elemento quebrado em ALGUM viewport/dispositivo mas não em outro. Ao revisar um transform que gera URLs de proxy a partir de um id só, perguntar: "essa MESMA id tem exatamente um kind em todo o sistema, ou o transform está assumindo um kind que o registro real não garante?"
+
+**Ref:** achado 2026-08-11, sessão scraper-prospeccao (via ads4agencies-site), reportado pelo operador ao vivo ("no telefone os vídeos não estão carregando") enquanto revisava o site publicado. Fix em `data/companies/window-tint-v2/withAssetProxy.ts` (`applyVideoProxy`) + 2 arquivos de teste no mesmo diretório. R23.
