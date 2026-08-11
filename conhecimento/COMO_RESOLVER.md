@@ -31,6 +31,8 @@
 - [Pre-mortem de plano: mande o revisor LER o código, não só o plano](#pre-mortem-revisor-le-o-codigo)
 - [Org de teste limpa não expõe topologia — só comportamento](#org-limpa-nao-expoe-topologia)
 - [Poster de vídeo proxiado pra rota que só aceita `kind:'photo'` — 400 invisível no desktop, único conteúdo no mobile](#video-poster-proxied-to-photo-only-route)
+- [Árvore obsoleta no dir de deploy do VPS reprova `next build` — `docker builder prune` NÃO é o fix](#docker-context-stale-tree-recorrencia)
+- [`rm -rf` de "limpeza" no dir de deploy do VPS apaga segredos reais nunca commitados](#rm-rf-deploy-dir-apaga-env)
 - [Watchdog de confirmação de entrega dispara falso-positivo contra device de teste automatizado (não gera ack)](#watchdog-ack-device-teste-automatizado)
 - [Marcar uma entidade como "fora do padrão": filtre os EMISSORES, não só os leitores](#marca-varre-emissores-e-leitores)
 - [Brief de design que cita a fonte pelo NOME propaga erro invisível](#brief-cita-token-nao-nome)
@@ -8132,3 +8134,40 @@ passa por vazio. Sempre asserte também que a PRIMEIRA metade aconteceu.
 
 **Ref:** Família Milionária, `c931f3f` e `042fb61` (2026-08-11). O transcript de Camada 1 passava
 com o bug original de volta; o hook `stub_intent` foi o que o tornou efetivo. R23.
+
+## Árvore obsoleta no dir de deploy do VPS reprova `next build` — `docker builder prune` NÃO é o fix {#docker-context-stale-tree-recorrencia}
+
+`tags: docker, dockerfile, COPY . ., build context, next build, typecheck, arvore obsoleta, stale tree, dockerignore, buildkit cache, docker builder prune, vps deploy`
+
+**Sintoma.** `next build` no VPS reprova com um type error real, num arquivo real, apontando um trecho que bate com o que você acabou de mudar — mas a mudança JÁ está correta no seu commit (confirmado lendo `git show HEAD:<arquivo>` e o mtime do arquivo extraído). Rodar `docker builder prune -a -f` (limpar TODO o cache do BuildKit, dezenas de GB) e buildar de novo reproduz **o mesmo erro, idêntico**.
+
+**Causa raiz.** O `Dockerfile` faz `COPY . .` no build context (`/opt/<projeto>` no VPS), e esse diretório acumula **árvores obsoletas de deploys anteriores** — uma pasta de extração de uma rodada de dias/semanas atrás que ninguém apagou. `next build` faz typecheck de TUDO que está em `/app` depois do `COPY`, incluindo essas sobras. Uma cópia antiga de um arquivo que você mudou (ou de um arquivo que consome esse arquivo, com tipos incompatíveis entre a versão velha e a nova) reprova o build com erro em código que **não está no git e nunca roda**.
+
+**Por que `docker builder prune` não resolve — e por que isso é o sinal, não o fix.** `--mount=type=cache` (cache do `npm run build`) e a árvore obsoleta são duas coisas diferentes: a árvore obsoleta é um **arquivo real sentado no build context**, não um cache do BuildKit. Limpar o cache e reproduzir o erro idêntico é justamente a prova de que NÃO é problema de cache — é hora de olhar o **prefixo do path** no erro, não a linha.
+
+**Diagnóstico rápido (mais rápido que rebuildar Docker toda vez).** Se o VPS tem `node`/`npm` fora do Docker (`which node`), rode `npm ci` direto no build context do host e depois `npx tsc --noEmit -p .` ali — isola em segundos se o erro é do Docker context (árvore obsoleta/`.dockerignore` incompleto) ou do código de verdade, sem esperar um build completo (~2min) a cada tentativa.
+
+**Padrão: isto SEMPRE volta com um nome novo.** Primeira ocorrência documentada (2026-07-30): `build-src/`. Segunda (2026-08-11): `src-extract/`. Cada rodada de deploy que usa uma convenção de extração diferente (ou um humano/agente que testou manualmente e nomeou a pasta do jeito que quis) planta uma bomba-relógio nova. `.dockerignore` com uma lista de nomes conhecidos (`build-src`, `build`, `src-extract`, `src.tgz`) ajuda mas **nunca fecha definitivamente** — é uma lista que só cresce reativamente.
+
+**Solução:**
+1. Achar e apagar a árvore obsoleta especificamente (não um `rm -rf` amplo — ver [[reference_vps_deploy_dir_rm_rf_deletes_untracked_env]] pro motivo).
+2. Adicionar o nome ao `.dockerignore` como defesa-em-profundidade pro futuro.
+3. Rebuildar.
+
+**Ref:** 2026-07-30 (`build-src/`, ads4agencies-site) + recorrência 2026-08-11 (`src-extract/`, mesmo projeto, sessão scraper-prospeccao). R23. Memória do projeto: `reference_docker_context_stale_tree_fails_build`.
+
+## `rm -rf` de "limpeza" no dir de deploy do VPS apaga segredos reais nunca commitados {#rm-rf-deploy-dir-apaga-env}
+
+`tags: rm -rf, vps, deploy, env, secrets, deploy/.env, git archive, tar, docker service inspect, backup, gitignore, stack.yml, disaster recovery`
+
+**Contexto.** Perseguindo o achado acima ([[docker-context-stale-tree-recorrencia]]), rodei um `rm -rf` "de limpeza total" no diretório de deploy do VPS antes de re-extrair via `tar` — pra garantir que não sobrasse NENHUMA árvore obsoleta, não só a que eu já tinha identificado.
+
+**O que quebrou.** `deploy/.env` (segredos reais — chave Stripe LIVE, senha de admin, token de API, session secret) é **gitignored de propósito**: vive só no host, nunca no repo (é doc explícita do `stack.yml` do projeto). `rm -rf` numa lista que incluiu a pasta `deploy/` apagou esse arquivo; o `tar xzf` do `git archive` **não o repõe** (ele só carrega o que está commitado). Build seguinte quebrou com "`.env`: No such file or directory".
+
+**Por que não foi mais grave.** O serviço Docker Swarm **já rodando** não foi afetado — `docker stack deploy` assa o `env_file:` na spec do serviço NO MOMENTO do deploy; o container sobrevive à perda do arquivo fonte (mesmo mecanismo do gap de rotação de segredo já documentado em `reference_vps_secret_rotation_gap_and_envfile_reload`). Zero downtime.
+
+**Recuperação.** `docker service inspect <servico> --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}'` no serviço rodando devolve o env INTEIRO já assado, inclusive os valores que vieram do `.env` apagado — reconstrua o arquivo linha por linha a partir dessa saída (`chmod 600`/dono certo pra igualar o original). Só funciona enquanto o serviço antigo continuar de pé — se ele caísse ANTES da recuperação, os segredos LIVE estariam perdidos sem backup (nunca existiu cópia fora do host).
+
+**Regra prática.** Num diretório de deploy de VPS, NUNCA `rm -rf` uma lista ampla "pra garantir" — esses diretórios acumulam arquivo real (segredos, uploads, volumes) que não está em nenhum git. Antes de limpar: `ls -la` primeiro, separar mentalmente "o que o `git archive`/deploy repõe" (código) de "o que só existe ali" (`.env`, dados de volume) — remover só o item específico já identificado como lixo, nunca uma lista ampla.
+
+**Ref:** 2026-08-11, ads4agencies-site, sessão scraper-prospeccao. R23. Memória do projeto: `reference_vps_deploy_dir_rm_rf_deletes_untracked_env`.
