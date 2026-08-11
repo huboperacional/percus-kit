@@ -38,6 +38,8 @@
 - [Conselho devolve "3 providers ok" com uma perna vazia e outra cortada (teto de tokens × modelo de raciocínio)](#conselho-perna-vazia-teto-tokens)
 - [Ferramenta de monitoramento roda INERTE com os testes verdes: `source` de outro script clobrou o entry point](#source-clobra-entry-point)
 - [Como saber se um cron/monitor MORREU: batimento periódico não serve — só dead-man's switch](#deadman-switch-nao-batimento)
+- [Chave de junção normalizada em um lado só: UPDATE vira no-op silencioso e a coluna nasce morta](#chave-normalizada-so-de-um-lado)
+- [Teste de gate passa VERDE com o bug presente porque a dependência morre antes de chegar no gate](#teste-verde-dependencia-morre-antes-do-gate)
 - [Auditar SPA em produção de fora: bata na ROTA INTERNA, nunca em `/`](#auditar-spa-rota-interna)
 - [Várias linhas SVG tracejadas sobrepostas, com fases diferentes, parecem 1 linha SÓLIDA](#svg-dasharray-sobreposto-parece-solido)
 - [SVG `marker-end` (seta) fica tampada por outra linha que cruza por cima — ordem de pintura no DOM](#svg-marker-end-tampado-por-path-posterior)
@@ -3496,6 +3498,47 @@ distinguir "sessão morta" de "falha de rede"**, o que quebra qualquer regra do 
 refresh token em 401".
 
 ---
+
+
+## Auditoria de conta de anuncios: validar a PROPRIA proposta nao acha erro de ausencia
+
+**Sintoma:** a reestruturacao passa em todas as checagens (limite de caractere, URL viva, status
+relido da API) e mesmo assim a melhor palavra da conta fica sem dono. Medido em 2026-08-11 na
+Imobiliaria UNI: `imoveis dourados ms` — 387 cliques, R$ 733,63 e 4 conversoes em 30 dias — fora da
+estrutura nova, junto com 603 cliques e METADE das conversoes da conta. O plano previa pausar o
+grupo antigo, o que teria tirado do ar exatamente o que mais funcionava.
+
+**Causa:** toda checagem olhava PARA DENTRO da proposta. Erro de ausencia nao se detecta olhando o
+que esta presente. No mesmo dia a mesma causa produziu mais quatro: negativas presas no grupo antigo
+(grupos novos nascem desprotegidos), campanha Smart com 34% do orcamento fora do escopo (auditei o
+que me apontaram, nao onde o dinheiro estava), `hectares` julgado como medida de area quando e o
+bairro de maior padrao da cidade, e uma linha ausente na tabela lida como "esse cliente nao existe".
+
+**Solucao:** gate que compara o HISTORICO COM RESULTADO contra a estrutura ATIVA, com exit code.
+`docs/auditorias/gate_cobertura.py` no Paid Media. Dois usos, mesmo motor:
+- cobertura de migracao: `--campanha <id>` (nao suba abaixo de 95% das conversoes)
+- perda antes de pausar: `--campanha <id> --pausar "<grupo>"`
+Casamento frouxo de proposito (normaliza acento/caixa, substring nos dois sentidos): falso
+"descoberto" vira ruido e ninguem le o relatorio depois. Se acusa buraco, o buraco e real.
+**Prove o gate nos DOIS sentidos** — reconstruindo o estado do erro ele tem que REPROVAR.
+
+**Armadilha ao medir o proprio gate:** `python gate.py | tail -20; echo $?` devolve o codigo do
+`tail`, nao do python. Medi `exit=0` num REPROVADO e quase commitei um gate que so imprime.
+
+**Cliente com CMS Praedium (imobiliaria) publica feed VRSync** com bairro/tipo/preco de cada imovel:
+e a verdade de estoque E o dicionario que classifica termo de bairro que a auditoria nao sabe
+julgar. `docs/auditorias/inventario_vrsync.py`. Sem User-Agent o bucket devolve 403. `AccessDenied`
+do S3 e ambiguo (chave inexistente e chave privada dao o mesmo erro quando falta `ListBucket`) —
+em 2026-08-11 era arquivo que nunca tinha sido gerado. **Feed de um cliente NUNCA entra na decisao
+de outro: planejamento e tenant a tenant.**
+
+**Ao mutar Google Ads:** `FieldMask` vem de `google.protobuf.field_mask_pb2`, NAO de
+`client.get_type("FieldMask")` (levanta `ValueError` e deixa a acao CRIADA e NAO promovida — a
+armadilha da acao de upload que recebe dado e nao conta). Script que cria e depois promove precisa
+ser idempotente, e o log tem que distinguir "encontrei o que EU criei numa execucao anterior" de
+"ja existia na conta do cliente".
+
+Skill que impoe a ordem: `.claude/skills/auditoria-de-conta/SKILL.md` (Paid Media).
 
 ## A mutação sobreviveu: o código está certo e a prova de que precisa estar não existe {#mutacao-sobrevive-predicado-quase-certo}
 
@@ -7922,3 +7965,170 @@ não existe produtor real, registre como defesa em profundidade não-pinada e si
 **Padrão pra generalizar.** Quando uma "rota de asset genérica" valida `kind` (ou tipo/formato) ANTES de olhar dados reais, um segundo campo do mesmo objeto que aponta pra essa rota mas carrega um kind diferente é um 400 garantido, não uma race condition — e é fácil de nunca notar se o layout tem uma camada visual que cobre o elemento quebrado em ALGUM viewport/dispositivo mas não em outro. Ao revisar um transform que gera URLs de proxy a partir de um id só, perguntar: "essa MESMA id tem exatamente um kind em todo o sistema, ou o transform está assumindo um kind que o registro real não garante?"
 
 **Ref:** achado 2026-08-11, sessão scraper-prospeccao (via ads4agencies-site), reportado pelo operador ao vivo ("no telefone os vídeos não estão carregando") enquanto revisava o site publicado. Fix em `data/companies/window-tint-v2/withAssetProxy.ts` (`applyVideoProxy`) + 2 arquivos de teste no mesmo diretório. R23.
+
+---
+
+## Guard que varre o repo acusa o seu próprio git worktree como violação
+
+**Sintoma.** Um teste-guarda que varre o código-fonte do repo (procurando chave legada, mock,
+import proibido, o que for) começa a falhar acusando dezenas de arquivos que você não tocou. O
+conteúdo acusado é legítimo — são cópias do código real. Na mesma rodada, a suíte fica muito mais
+lenta sem motivo aparente.
+
+**Causa.** O scanner usa `Path.rglob("*")` (ou `find` equivalente) e filtra por uma lista de
+diretórios ignorados **depois** de já ter caminhado. Se o procedimento do projeto manda criar git
+worktree isolado **dentro** do repo (`.worktrees/<frente>`), o scanner enxerga a árvore duplicada
+como fonte: cada arquivo do worktree vira "violação nova" contra a allowlist, e a caminhada dobra
+(ou pior, se houver `node_modules` linkado lá dentro).
+
+**Por que engana.** O sintoma não tem relação nenhuma com a causa. O guard reporta "chave legada do
+Meta lida fora da allowlist" quando o problema é *um diretório no disco*. Dá pra perder uma
+investigação inteira lendo o conteúdo acusado antes de olhar o **caminho** dele.
+
+**Solução.** Duas coisas, e a segunda é a que resolve:
+1. Adicionar `.worktrees` (e o diretório de worktree de subagente, ex. `.claude/worktrees`) à lista
+   de ignorados.
+2. **Trocar `rglob` + filtro por `os.walk` com poda de `dirnames` in-place** — é a poda que impede a
+   descida. A lista de ignorados sozinha evita o falso-positivo mas não a varredura.
+
+```python
+for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
+    dirnames[:] = [d for d in dirnames if d not in SKIPPED_DIRS]   # poda, não filtro
+```
+
+**Medido (paid-media, 2026-08-11):** guard 31s-falhando → 0,74s-passando; suíte do worker inteira
+5min52 → 27,9s.
+
+**Padrão pra generalizar.** Guard que anda pelo diretório do repo em vez de perguntar ao git quais
+arquivos são rastreados vai, mais cedo ou mais tarde, brigar com worktree/venv/cache/build. Ao ver
+um scanner de fonte acusando arquivo que você não escreveu, **leia o CAMINHO antes do conteúdo**.
+Prova barata: rode o mesmo teste DENTRO do worktree — ele passa lá, porque de lá não enxerga o pai.
+
+**Ref:** achado 2026-08-11, sessão paid-media (frente nomenclatura). Fix em
+`worker/tests/test_meta_action_type_consumers.py`, commit `9a806512`. R23.
+
+---
+
+## Validador que confirma a STRING não confirma o SISTEMA
+
+**Sintoma:** um monitor diz `ok` sobre algo que está quebrado há semanas, e ninguém desconfia
+porque "o check existe e está verde".
+
+**Caso concreto (paid-media, 2026-08-11):** o validador de snippet de tracking procurava
+`/scripts/loader.js?t=<id>` no HTML da página. O site do cliente carregava exatamente esse
+caminho — só que de `track.imoveismude.com.br`, um domínio de TERCEIRO que devolvia **HTTP 404**.
+O cliente passou **14 dias sem coletar um único evento** e o painel teria ficado verde o tempo
+todo. A régua confirmava que a string existia; não que a tag funcionava.
+
+**Como achar isto num validador seu:** pergunte *"o que exatamente esta asserção prova?"* e
+depois *"consigo construir um caso onde ela passa e o sistema está morto?"*. Se conseguir em
+menos de um minuto, o validador é decorativo. Prove rodando a função REAL contra o HTML/payload
+quebrado antes de consertar — foi assim que a suspeita virou fato aqui (a função devolveu `True`).
+
+**A classe:** identificador presente ≠ identificador ALCANÇÁVEL. Vale pra URL (host além do
+caminho), import (módulo existe ≠ é o que roda), env var (definida ≠ com o valor certo), feature
+flag (existe ≠ ligada), webhook (cadastrado ≠ entregando).
+
+**Armadilha do conserto:** ao apertar a régua, não confunda DEGRADADO com QUEBRADO. Aqui o host
+compartilhado continua aceito — chamá-lo piora o cookie mas a coleta funciona, e recusá-lo faria
+o painel gritar "pixel ausente" sobre página que está medindo. Quem denuncia degradação é outro
+elo.
+
+**Bônus medido na mesma sessão:** a MESMA regra existia duas vezes (job Python que alerta + botão
+TypeScript) e as duas **já discordavam** — a mesma página dava `ok` num lugar e "ausente" no
+outro. Quando uma regra vive em duas linguagens, extraia os casos pra um **contrato JSON** que as
+duas suites leem, com um teste que roda a implementação ANTIGA e exige que ela REPROVE (gate
+visto reprovando). Sem isso a divergência é invisível até um cliente pagar por ela.
+
+**Ref:** paid-media, commit `64127a7a`, contrato em `docs/contracts/snippet-validation-cases.json`.
+Relacionado: "Ausência do sinal ≠ ausência do sistema" (o inverso desta). R23.
+
+---
+
+## Soft-delete + UNIQUE sem filtro = recurso trancado pra sempre
+
+**Sintoma:** o usuário tenta cadastrar algo, leva `409 já existe`, e **não vê nada na tela** que
+possa apagar ou editar. Beco sem saída pela UI.
+
+**Causa:** `DELETE` é soft (`is_active = false`), a listagem filtra `is_active = true`, mas a
+constraint é `UNIQUE (dono, chave)` **sem filtro de ativos**. A linha que bloqueia existe pro
+banco e não existe pro usuário.
+
+**Conserto certo — RESSUSCITAR, não criar outra:** no `POST`, se achar a linha e ela estiver
+inativa, faça `UPDATE ... SET is_active = true` **preservando o id**. Criar linha nova (ou tornar
+o índice parcial com `WHERE is_active`) parece equivalente e não é: o id costuma estar embutido
+em algo externo já distribuído — aqui, o marcador `pma-tracker-init:<id>` no HTML do site do
+cliente. Id novo ⇒ a página passa a reprovar na validação sem ninguém ter mexido nela.
+
+Zere também o estado derivado (status de validação, timestamps) — o que a linha sabia envelheceu
+enquanto ela esteve fora da varredura.
+
+**Como procurar no seu projeto:** `grep` por `is_active`/`deletedAt` e cruze com as constraints
+`UNIQUE` da mesma tabela. Toda combinação sem filtro parcial é um beco esperando acontecer.
+
+**Ref:** paid-media, commit `64127a7a`. Travou o operador em produção. R23.
+
+
+---
+
+## Chave de junção normalizada em um lado só: UPDATE vira no-op silencioso e a coluna nasce morta {#chave-normalizada-so-de-um-lado}
+
+tags: update-no-op, coluna-morta, chave-divergente, normalizacao, lstrip, telefone, join-key,
+silent-failure, teste-usa-mesmo-formato-dos-dois-lados
+
+**Sintoma:** uma coluna existe no esquema, o código que a escreve existe e é chamado, os testes
+passam — e em produção ela é sempre o default. Nenhum erro, nenhum log, nenhuma exceção.
+
+**Causa raiz:** o registro grava com uma chave (`usuario.whatsapp` = `+5567...`) e o update casa
+com outra (`sessao.numeroWhatsapp`, que o `upsertSession` normaliza com `lstrip("+")`). Como o
+`UPDATE ... WHERE numero = :x` usa igualdade exata, ele acerta **zero linhas** — e `rowcount=0`
+não é exceção, então o `try/except` best-effort não tem o que registrar. O caminho de falha é
+silêncio absoluto.
+
+**Por que o teste não pega:** o unitário monta os dois lados com a MESMA string. A divergência só
+existe porque duas camadas diferentes produzem a chave — e só o teste de pipeline (que passa pelo
+`upsertSession` real) exercita isso.
+
+**Solução:** (1) derivar a chave da MESMA fonte nos dois lados; (2) teste de integração que roda o
+pipeline de ponta a ponta e afirma a coluna, mutation-testado trocando a chave de volta; (3) se a
+operação é best-effort, logue `rowcount == 0` — "não achei o que atualizar" é informação, não
+sucesso.
+
+**Como procurar no seu projeto:** `grep` pelas funções de normalização (`lstrip`, `strip`, `lower`,
+`replace`) aplicadas a identificadores e cruze com todo `WHERE <id> =`. Cada par onde uma ponta
+normaliza e a outra não é um no-op esperando acontecer.
+
+**Ref:** Família Milionária, `042fb61` → `b00d534` (2026-08-11). Achado pelo `milestone-review`
+sobre o diff completo, depois de 9 reviews por commit e 2713 testes verdes. R23.
+
+---
+
+## Teste de gate passa VERDE com o bug presente porque a dependência morre antes de chegar no gate {#teste-verde-dependencia-morre-antes-do-gate}
+
+tags: teste-decorativo, mutation-test, harness, gate-inalcancavel, fallback-mascara-teste,
+api-key-ausente, engine-de-teste-diferente, best-effort-engole-erro, vacuous-pass
+
+**Sintoma:** você escreve um teste (transcript, e2e, integração) para um bug recém-corrigido, ele
+passa, e você marca a cobertura como feita. Ao mutation-testar — revertendo o fix — **ele continua
+verde**.
+
+**Causa raiz (duas variantes vistas no mesmo dia):**
+1. **Dependência externa ausente muda a rota.** Sem `OPENAI_API_KEY`, o classificador levanta e o
+   pipeline cai num fallback (`intencao=lancamento`). O gate sob teste só roda em `consulta`, então
+   ele **nunca é alcançado** — nem com bug, nem sem. O teste não testa nada.
+2. **Escrita best-effort aponta pra outro engine.** A função usa sessão própria
+   (`AsyncSessionLocal`), que no ambiente de teste é um engine diferente do das fixtures. O insert
+   falha sempre, o `except` engole, e a asserção posterior lê uma tabela que nunca recebeu nada.
+
+**Solução:** (1) **mutation-test é obrigatório** em todo teste de guard — reverta o fix e confirme
+o vermelho, senão você tem cobertura imaginária; (2) para o caso 1, dê ao harness um hook que fixe
+a dependência (`meta.stub_intent` fixando a saída do classificador) — isso destrava a classe
+inteira de cenários, não só o bug da vez; (3) para o caso 2, aponte a factory global pro engine de
+teste via `monkeypatch`, e afirme que houve o que medir (`len(rows) == N`) antes de afirmar o
+conteúdo.
+
+**Regra geral:** teste que só afirma ausência (`assert x not in saida`, `assert segunda == []`)
+passa por vazio. Sempre asserte também que a PRIMEIRA metade aconteceu.
+
+**Ref:** Família Milionária, `c931f3f` e `042fb61` (2026-08-11). O transcript de Camada 1 passava
+com o bug original de volta; o hook `stub_intent` foi o que o tornou efetivo. R23.
