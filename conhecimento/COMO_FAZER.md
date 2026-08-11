@@ -24,6 +24,7 @@
 - [Rodar checkpoint no próprio percus-kit (canon/tooling, sem PLANO/HANDOFF)](#checkpoint-no-canon-tooling)
 - [Fechar subagent-driven-development num worktree nativo do harness (`EnterWorktree`)](#subagent-driven-worktree-nativo) — merge não é `cd` livre; plano tem que estar commitado
 - [Negativar concorrentes em conta de mídia paga sem fogo amigo](#negativas-sem-fogo-amigo) — cruze com o catálogo do cliente ANTES; ampla de 2 palavras salva marca ambígua
+- [Escapar o mock-scan sem sujar o assunto do commit](#mock-ok-no-corpo) — `MOCK-OK:` casa em QUALQUER linha, não só no assunto
 
 ---
 
@@ -466,3 +467,36 @@ tinha 645 negativas que pareciam patrimônio e continham `apartamento`, `terreno
 
 **Ref:** Paid Media Automation, Imobiliária UNI, 2026-08-10. Mecânica de API:
 `COMO_RESOLVER.md#google-ads-negativa-conta-sharedset-tipo-proprio`.
+
+## Escapar o mock-scan sem sujar o assunto do commit {#mock-ok-no-corpo}
+
+`tags: mock-scan, MOCK-OK, commit message, git log --oneline, hook pre-commit, escape, assunto limpo`
+
+**Quando:** o hook `mock-scan-pre-commit` bloqueia o commit por achar `TODO`/`todo` no diff, e é
+falso positivo — em português "todo/toda" é palavra comum ("roda em TODO turno", "toda linha").
+
+**A crença que estava errada:** que o escape `MOCK-OK:` precisa ser o **prefixo da 1ª linha**. Isso
+levou um projeto a ter assuntos de commit como `MOCK-OK: "TODO turno" e portugues -- fix(x): ...`,
+e depois a uma operação de reescrita de 7 assuntos pra limpar.
+
+**O fato, medido (2026-08-11):** o hook casa `(?i)\bMOCK-OK:` **sem âncora**
+(`mock-scan-pre-commit.ps1`), então funciona em **qualquer linha** — inclusive num parágrafo no fim
+do corpo. Verificado commitando via `git commit -F -` com o escape no último parágrafo: passou, e o
+`git log --oneline` ficou com o assunto limpo.
+
+**Como fazer:** ponha o escape num parágrafo **no fim do corpo**, junto da explicação de por que não
+há mock ali:
+
+```
+fix(restaurant): evento grava valor literal (C18)
+
+<corpo explicando o que o commit faz>
+
+MOCK-OK: o scanner casa "TODO turno"/"todo" em portugues (every/all) como
+placeholder de mock. Nao ha mock nenhum no diff.
+```
+
+Motivo em ASCII (o regex mangia acento). Vale também pro `PERCUS_SKIP_MOCK_SCAN=1`, que é a saída
+quando nem o escape resolve.
+
+**Ref:** tiatendo, frente C18 (2026-08-11). R23.
