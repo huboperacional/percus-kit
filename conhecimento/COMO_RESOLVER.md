@@ -282,6 +282,7 @@
 - [Reescrever histórico para tirar segredo: o `--replace-text` também acerta onde a string era legítima](#filter-repo-atinge-uso-legitimo)
 - [Cloudflare: `X-Auth-Key` recusa a chave e o token Bearer funciona](#cloudflare-token-vs-global-key)
 - [Teste "flaky" que é `ORDER BY` de timestamp empatado — o relógio não tem resolução para desempatar](#order-by-timestamp-empatado)
+- [Hook pre-commit bloqueia por "review velho" logo depois de você rodar o review — `latest.jsonl` gravado relativo ao cwd](#review-auto-grava-relativo-ao-cwd)
 
 ---
 
@@ -8490,7 +8491,27 @@ não passa pelo ingress.
 isso se o Postgres não for compartilhado.** Se outros produtos usam o mesmo container, mudar o modo
 de publicação afeta todos eles e vira decisão do operador.
 
-**Ref:** Empresa Milionária, Fase 0, 2026-08-11. O comando documentado no handoff anterior estava
+**Não é problema de chave/autenticação.** Antes de mexer em chave SSH: o SSH autentica normalmente
+(o mesmo alias funciona para `docker exec`). O que falha é a **entrega do TCP depois do túnel**.
+Criar chave nova não muda nada.
+
+**Solução VALIDADA para banco de teste/efêmero (2026-08-12):** container publicado **direto pelo
+docker** (fora do Swarm) não passa pelo ingress, e o túnel comum alcança:
+
+```bash
+ssh vps-auto "docker run -d --rm --name pg_teste -e POSTGRES_PASSWORD=descartavel \
+  -p 127.0.0.1:5433:5432 postgres:17"
+ssh -N -L 15433:127.0.0.1:5433 vps-auto &      # túnel comum, mesma chave de sempre
+# cliente local em localhost:15433 conecta normalmente (provado com asyncpg, PostgreSQL 17.10)
+ssh vps-auto "docker rm -f pg_teste"           # teardown sem rastro
+```
+
+Publicar em `127.0.0.1` da VPS (nunca `0.0.0.0`) mantém o container invisível para a internet —
+só o túnel alcança. É o caminho para suíte de integração (RLS, CheckConstraint, migration) quando
+não há Docker local.
+
+**Ref:** Empresa Milionária, Fase 0, 2026-08-11 (diagnóstico); Fase A, 2026-08-12 (spike do
+container efêmero validado de ponta a ponta — `D:\Claud Automations\Finance\docs\superpowers\plans\2026-08-12-fase-a-dominio-pj.md`, emenda da Task 12). O comando documentado no handoff anterior estava
 errado desde sempre e nunca havia sido exercido — o banco só tinha sido testado por `docker exec`.
 
 ---
@@ -8999,11 +9020,21 @@ a, b = datetime.now(timezone.utc), datetime.now(timezone.utc)
 print(a == b)          # True => o empate é real, e o "flaky" está explicado
 ```
 
-**Solução:** acrescente um desempate estável e monotônico à ordenação.
+**Solução:** acrescente um desempate estável e **monotônico** à ordenação.
 
 ```python
 .order_by(Modelo.criadoEm.desc(), Modelo.id.desc())
 ```
+
+⚠️ **O desempate por `id` só funciona se `id` for monotônico** (sequence/autoincrement).
+**Com PK UUID4 ele NÃO conserta nada** (refutado em revisão, 2026-08-12): uuid4 é aleatório,
+então a ordem fica determinística *dentro* do run mas **sorteada entre runs** — o teste continua
+flaky, agora com cara de consertado. Com UUID4, o fix é outro:
+
+- **No teste:** garanta timestamps distintos entre as criações (timestamp explícito na fixture ou
+  tick de relógio forçado) — não exige tocar no código de produção.
+- **No produto:** ordene por critério de negócio, ou adicione coluna monotônica (sequence) se
+  "ordem de chegada" for semântica de verdade.
 
 **Não é só teste.** O mesmo empate acontece em produção sempre que dois registros entram no mesmo
 tick — importação em lote, criação em cascata, parcelamento que gera N irmãos. "O último" devolve
@@ -9015,3 +9046,39 @@ negócio.
 
 **Ref:** Empresa Milionária, 2026-08-12, `whatsapp/service.py` (`_searchLancamentos`). Falha
 aparecia 1 vez a cada N execuções da suíte de 2.7 mil testes.
+
+## Hook pre-commit bloqueia por "review velho" logo depois de você rodar o review {#review-auto-grava-relativo-ao-cwd}
+
+tags: percus-review-auto, pre-commit-check, latest.jsonl, R11, BLOCK, ultimo review tem N min, cwd, Get-Location, diretorio corrente, .deepseek/reviews, git root, hook nao acha registro, review fresco ignorado
+
+**Contexto:** você roda `percus-review-auto.ps1`, ele imprime findings e termina bem — e o commit
+em seguida é bloqueado pelo hook com `BLOCK: ultimo /percus-review:review tem N min (max 5)`,
+apontando para um `latest.jsonl` antigo.
+
+**Causa raiz:** `deepseek-review.ps1` grava `.deepseek/reviews/latest.jsonl` **relativo ao
+diretório corrente** (`Get-Location`), enquanto o hook `pre-commit-check` procura **na raiz do
+git**. Rodar o review de um subdiretório (ex.: `empresa-api/`) grava o registro fresco em
+`<subdir>/.deepseek/reviews/` — que o hook nunca lê. O review rodou de verdade; o registro é que
+ficou no lugar errado.
+
+**Diagnóstico em um comando:** procure todos os registros e compare timestamps —
+
+```bash
+find . -name "latest.jsonl" -path "*deepseek*" | while read f; do ls -la "$f"; done
+```
+
+Um `latest.jsonl` fresco fora da raiz confirma a causa.
+
+**Solução:** rode o review **sempre da raiz do repositório** e apague o `.deepseek/` órfão do
+subdiretório (senão vira lixo e confunde o próximo diagnóstico). Em PowerShell:
+
+```powershell
+Set-Location "<raiz do repo>"
+& pwsh -NoProfile -ExecutionPolicy Bypass -File "$env:PERCUS_CANON_DIR\scripts\percus-review-auto.ps1"
+```
+
+**Armadilha associada:** a janela do hook é de 5 minutos — rode o review COLADO no commit, e nos
+commits em blocos, conte que cada bloco pode precisar de review novo.
+
+**Ref:** Empresa Milionária, Fase A, 2026-08-12. O review tinha rodado 2 min antes do commit e o
+hook acusava 73 min — o registro fresco estava em `empresa-api/.deepseek/reviews/`.
