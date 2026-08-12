@@ -273,6 +273,8 @@
 - [Substituição mecânica de identidade (fork/rebrand) falsifica log histórico e inverte seus próprios comentários](#sed-identidade-falsifica-historico)
 - [n8n `jsonBody` sem `specifyBody: "json"` manda o corpo VAZIO — o PATCH "responde 200" e não aplica nada](#n8n-jsonbody-sem-specifybody-corpo-vazio)
 - [n8n workflow já ATIVO não recarrega código de node só com update via API — precisa desativar→reativar (vale pra QUALQUER trigger, não só webhook)](#n8n-webhook-ativo-nao-recarrega-sem-reativar)
+- [Campo de escrita que SUBSTITUI a coleção inteira — o "adicionar uma tag" que apaga as outras (e derruba uma regra de negócio junto)](#campo-de-escrita-substitui-colecao-inteira)
+- [Webhook que "nunca chega": o provedor DESATIVOU a assinatura sozinho depois das suas respostas inválidas](#webhook-desativado-pelo-provedor-apos-resposta-invalida)
 - [n8n `$('Node').item` (paired item) aborta com "Multiple matches found" assim que o fluxo carrega 2+ itens](#n8n-paired-item-multiple-matches)
 - [API rejeita `*_id` com `InvalidType` porque o driver do Postgres devolve `BIGINT` como STRING](#bigint-vira-string-e-api-rejeita-int)
 - [Teste de fuso passa VERDE na sua máquina e o código quebra em produção — o teste validou o `TZ` do dev, não o do runtime](#teste-timezone-passa-por-coincidencia-da-maquina)
@@ -283,6 +285,9 @@
 - [Cloudflare: `X-Auth-Key` recusa a chave e o token Bearer funciona](#cloudflare-token-vs-global-key)
 - [Teste "flaky" que é `ORDER BY` de timestamp empatado — o relógio não tem resolução para desempatar](#order-by-timestamp-empatado)
 - [Hook pre-commit bloqueia por "review velho" logo depois de você rodar o review — `latest.jsonl` gravado relativo ao cwd](#review-auto-grava-relativo-ao-cwd)
+- [`Enum(native_enum=False)` do SQLAlchemy grava o NAME do membro, não o `.value` — invisível pela suíte, quebra query manual](#sqlalchemy-enum-grava-name)
+- [Gate escapado 80 vezes em 30 dias não é indisciplina — é regex errado pra código em português](#gate-escapado-em-massa-e-regex-errado)
+- [Fix deployado, correto e mutation-testado — e prod segue com o comportamento velho: o caminho debounced pula os handlers pré-dispatch](#debounce-pula-handlers-pre-dispatch)
 
 ---
 
@@ -7957,6 +7962,45 @@ shell deixa de conter as palavras-gatilho.
 Relacionado: `{#percus-hook-cross-project}` (TTL do review); e a família "MOCK-OK precisa ser a 1ª
 linha da mensagem" — o hook lê o argumento do `-m`; com `-F -`/heredoc ele não enxerga o prefixo.
 
+## Gate escapado 80 vezes em 30 dias não é indisciplina — é regex errado pra código em português {#gate-escapado-em-massa-e-regex-errado}
+
+tags: MOCK-OK toda hora, mock-scan bloqueia sempre, TODO em portugues, gate que ninguem respeita, escape reincidente, 21 escapes num dia, R3 falso positivo, gate treina o operador a escapar, drift de gate, palavra portuguesa casa marcador
+
+**Sintoma.** Todo commit que toca um arquivo grande é barrado pelo `mock-scan`, e a mensagem
+precisa começar com `MOCK-OK: <motivo>`. Você escreve o motivo, passa, e segue. Semanas depois, a
+contagem: **80 escapes em 30 dias, com pico de 21 num único dia.**
+
+**Como medir (2 comandos).**
+```bash
+git log --since="30 days ago" --format="%s" | grep -ci "MOCK-OK"
+git log --since="30 days ago" --format="%ad|%s" --date=short | grep -i "|MOCK-OK" \
+  | cut -d'|' -f1 | sort | uniq -c | sort -rn | head
+```
+
+**Causa raiz.** O padrão do gate procura `TODO/FIXME/XXX/HACK`, e **`TODO` é palavra comum em
+português** — *"faz TODO chamador quebrar alto"*, *"depois de TODO resumo de carrinho"*, *"reprovava
+TODO endereço"*. Num repositório com comentários em PT-BR ela aparece às dezenas por arquivo. O gate
+não está pegando marcador pendente: está pegando prosa.
+
+**Por que isso é pior que um falso positivo comum.** O gate de mock/placeholder existe pra impedir
+que código provisório chegue em produção (R3). Um gate que dispara em toda prosa **treina o operador
+a escapar por reflexo** — e no dia em que houver um `TODO:` de verdade, o `MOCK-OK` vai junto, sem
+ninguém ler. O valor do gate não cai devagar: ele vira zero.
+
+**A regra que aplica aqui** (loop `drift`): estourar **uma vez** é descuido; estourar **quatro** não
+é o operador — é o desenho. **Proponha a partição, não mais disciplina.**
+
+**Correção.** Exigir marcador de verdade em vez da palavra solta: `TODO:` / `TODO(` / `# TODO` /
+`// TODO`, com dois-pontos, parêntese ou início-de-comentário obrigatórios. Um `\bTODO\b` casa
+português; um `\bTODO\s*[:(]` não.
+
+**Enquanto não corrigir**, duas armadilhas ligadas: o prefixo `MOCK-OK:` **só é lido dentro de
+`-m`** (com `-F -`/heredoc o hook não enxerga o argumento), e o `PreToolUse` bloqueia o comando
+INTEIRO — `git add && git commit` encadeado nunca chega a fazer o `add`. Ver
+`{#pretooluse-bloqueia-comando-inteiro-add-nao-roda}`.
+
+**Ref:** tiatendo, 30 dias até 2026-08-12 — 80 escapes, 6 deles numa sessão só.
+
 ## "Corrigir a fixture enfraqueceria o teste" é meia-verdade — pergunte o que ele passa a medir {#fixture-corrigida-nao-enfraquece-troca-o-que-mede}
 
 tags: corrigir enfraqueceria o teste, fixture com formato errado, golden desatualizado, glifo diferente do produtor, teste mede mundo inexistente, divida de teste, revalidar LLM pago, o que sobra depois da correcao
@@ -8664,6 +8708,98 @@ mais. Virou código (`reload_active_workflow()` chamado pelo próprio `--apply`)
 
 ---
 
+## Campo de escrita que SUBSTITUI a coleção inteira — o "adicionar uma tag" que apaga as outras (e derruba uma regra de negócio junto) {#campo-de-escrita-substitui-colecao-inteira}
+
+`tags: api rest, PATCH, substitui lista, replace vs append, tags_to_add, tags_to_delete, _embedded, opt-out apagado, kommo, amocrm, efeito colateral silencioso, campo de leitura usado pra escrita`
+
+**Sintoma:** você "adiciona" um item a uma coleção de um recurso (tags, labels, categorias,
+participantes) via PATCH e a chamada responde 200. Só muito depois alguém nota que **os outros itens
+da coleção sumiram** — e ninguém liga o sumiço à sua chamada, porque ela fazia outra coisa.
+
+**Causa raiz:** o campo que você usou é de **leitura** (o que a API te devolve no GET), e quando
+aceito na escrita ele funciona como **atribuição da coleção inteira**, não como append. A API tem
+campos dedicados para mutação granular — geralmente `<coisa>_to_add` / `<coisa>_to_delete` — e eles
+costumam ficar num nível diferente do payload.
+
+**Por que isso vira incidente e não bug pequeno:** a coleção apagada quase sempre carrega alguma
+**decisão de negócio** que outro trecho do sistema consulta. No caso de referência, o mesmo lead
+guardava `nao-contatar`/`opt-out`, e o worker lia exatamente essas tags antes de enviar mensagem.
+Resultado: **o ato de enfileirar o lead apagava a evidência que impediria o disparo** — quem pediu
+para não ser contatado receberia a mensagem. Nenhum log acusaria nada, porque tecnicamente tudo
+"deu 200".
+
+**Como confirmar em 2 minutos, sem depender de doc:** teste controlado num registro descartável.
+
+1. leia a coleção atual;
+2. adicione uma tag-sonda com nome óbvio (`teste-nao-apagar`) pelo campo que você acredita ser o de
+   append;
+3. dispare **exatamente o payload que o seu código manda hoje**;
+4. releia. Se a sonda sumiu, é substituição.
+
+Restaure o estado no fim. Esse teste vale mais que a documentação, porque APIs de CRM costumam
+aceitar formatos legados não documentados.
+
+**Armadilha irmã, medida no mesmo teste:** o campo certo **no lugar errado** é pior que o errado. Um
+`tags_to_add` aninhado dentro de `_embedded` fez a API responder **200 e não fazer nada** — falha
+silenciosa idêntica à do `jsonBody` sem `specifyBody`. Confira o NÍVEL do campo, não só o nome.
+
+**Solução:** migre para os campos granulares, na raiz do payload, e transforme a regra em lint de
+deploy — a chave errada é invisível em code review (o payload "parece certo"). Vale bloquear a chave
+de leitura em **qualquer profundidade**: um regex de proximidade (`"_embedded"[^}]*"tags"`) não
+atravessa objeto aninhado e deixa passar justamente o caso mais elaborado.
+
+**Ref:** Kommo-Disparo-WhatsApp, 2026-08-12. Lead com 4 tags ficou com 1 após o PATCH. Bug ativo em
+produção, nunca manifestado porque até então só leads de teste sem tag de bloqueio eram enfileirados.
+
+---
+
+## Webhook que "nunca chega": o provedor DESATIVOU a assinatura sozinho depois das suas respostas inválidas {#webhook-desativado-pelo-provedor-apos-resposta-invalida}
+
+`tags: webhook nao chega, 0 execucoes, disabled, assinatura desativada, kommo, amocrm, stripe, retry, resposta invalida, responseNode, onReceived, integracao morta em silencio`
+
+**Sintoma:** o evento acontece no sistema de origem (dá pra ver na tela dele), mas o seu workflow /
+endpoint **não registra execução nenhuma**. Zero. Você revisa o parser, o filtro, a rota — tudo
+certo — e conclui que "o evento não está sendo gerado".
+
+**Causa raiz:** a assinatura do webhook está **desativada do lado do provedor**. Muitas plataformas
+desativam automaticamente um endpoint que responde de forma inválida (erro, timeout, sem corpo)
+algumas vezes seguidas. Esse estado é invisível do seu lado: você não recebe nada, e "0 execuções"
+parece "nenhum evento", não "fui desligado".
+
+O que torna a armadilha perfeita: o motivo da desativação costuma ser **um bug seu já corrigido**.
+Você conserta o workflow, testa, e continua sem receber nada — porque o conserto não reativa a
+assinatura.
+
+**Ordem certa de diagnóstico** — inverta o instinto:
+
+```bash
+# 1. PRIMEIRO: a assinatura está viva do lado de lá?
+GET /api/v4/webhooks        # procure o campo `disabled`
+# 2. só depois investigue parser, filtro de evento, rota
+```
+
+**A correção real não é reativar — é garantir que você SEMPRE responde.** Reativar sem consertar a
+resposta só adia a próxima desativação. Dois pontos:
+
+- **Todo caminho do fluxo precisa terminar numa resposta**, inclusive os de exceção. Audite as
+  folhas do grafo: cada uma deve ser um node de resposta. Um `IF` que é pulado (porque o node
+  anterior devolveu 0 linhas) mata o fluxo antes da resposta.
+- **Prefira responder na entrada** (`responseMode: onReceived` no n8n; ACK imediato em qualquer
+  stack) e processar depois. Com resposta só no fim, qualquer exceção no meio — banco fora do ar,
+  payload inesperado — vira resposta inválida e conta pontos para a desativação.
+
+**Sinal de alerta que aponta pra cá:** "o evento aparece no CRM, o parser funciona quando testo
+local, mas em produção não chega nada" e a última execução registrada é de **dias atrás**, logo
+depois de um período em que o sistema estava quebrado.
+
+**Ref:** Kommo-Disparo-WhatsApp, 2026-08-12. O `.../finalizar` estava `disabled=True` desde algum
+ponto em que o workflow morria antes do `Respond` (o firewall bloqueava o Postgres e toda execução
+falhava). O evento (`update_lead`) sempre esteve correto. Isso manteve o `03-finalizar-disparo` sem
+NENHUMA execução real desde que o projeto existia — vários dias de investigação foram gastos no
+parser, que estava certo o tempo todo.
+
+---
+
 ## Teste de fuso passa VERDE na sua máquina e o código quebra em produção — o teste validou o `TZ` do dev, não o do runtime {#teste-timezone-passa-por-coincidencia-da-maquina}
 
 `tags: timezone, fuso horario, TZ, teste falso verde, UTC, container, new Date, toLocaleString, America/Campo_Grande, America/Cuiaba, agendamento, next_send_at, teste valida ambiente errado`
@@ -9082,3 +9218,82 @@ commits em blocos, conte que cada bloco pode precisar de review novo.
 
 **Ref:** Empresa Milionária, Fase A, 2026-08-12. O review tinha rodado 2 min antes do commit e o
 hook acusava 73 min — o registro fresco estava em `empresa-api/.deepseek/reviews/`.
+
+## Fix deployado, correto e mutation-testado — e prod segue com o comportamento velho: o caminho debounced pula os handlers pré-dispatch {#debounce-pula-handlers-pre-dispatch}
+
+tags: debounce, processBatch, cmdHandler, _dispatchInboundText, _processMessage, paridade, fail-open, handler nunca roda, smoke 2/5, codigo no container mas comportamento velho, dois caminhos de pipeline, flush, sweeper, isComando, bypass
+
+**Contexto:** fix no handler pré-dispatch (ex.: `recorrencia_handler` via `cmdHandler.handle`)
+passa suíte + mutation, deploy FULL verificado (símbolos grepados DENTRO do container, task única
+com a imagem nova) — e o smoke ao vivo reproduz o comportamento ANTIGO byte a byte, sem NENHUM log
+do handler.
+
+**Causa raiz:** o pipeline tem DOIS caminhos de entrada e o fix só é alcançável por um. O flush do
+debounce (`processBatch`) despachava direto pro `_dispatchInboundText`, pulando tudo que
+`_processMessage` roda antes (cmdHandler → recorrencia/parcelamento handlers, desfazer). O gate de
+debounce elege exatamente usuário conhecido + onboarded + sessão **idle** — o caminho DOMINANTE de
+prod. Mitigação antiga (`isComando` bypassa debounce) cobria só comando explícito; frase natural
+furava. Agravante: testes de unidade chamam o handler direto e transcripts entram pelo caminho
+não-debounced — a rede inteira era verde com o fix inalcançável.
+
+**Diagnóstico em dois passos:** (1) confirme que o tráfego bateu no container novo
+(`docker logs ... | grep -c <numero>` > 0); (2) grep pelos logs que o fix emite
+(`grep -E 'recorrencia_|classify_manage'`) — tráfego presente + zero logs do handler = o caminho
+executado não passa pelo sítio do fix. Aí procure o segundo caminho de entrada
+(`rg "dispatchInboundText\(" -n` e veja quem chama sem passar pelo prelúdio).
+
+**Solução:** paridade — o flush roda os MESMOOS handlers pré-dispatch do caminho normal
+(`respostaCmd = await cmdHandler.handle(combinado, ...)` + send/commit/return se respondeu), com
+teste que entra PELO CAMINHO DEBOUNCED (fakeredis + tryFlush com clock-fudge + `_sweepDebounceOnce`)
+e asserts POSITIVOS no conteúdo enviado (assert negativo passa verde com bot mudo).
+
+**Armadilha associada:** ao achar um buraco desses, enumere o que MAIS o caminho pula — aqui
+"desfaz" (`_tryDesfazerUltimo`) tem o mesmo buraco e virou `[0]` separado, não conserto embutido.
+
+**Ref:** Família Milionária, 2026-08-12, spec objeto-sem-rótulo. 1ª rodada do smoke 2/5 com o Fix 1
+deployado; paridade em `1550c03`; a rede local inteira (2750 testes) era verde com o bug vivo.
+
+## `Enum(native_enum=False)` do SQLAlchemy grava o NAME do membro, não o `.value` {#sqlalchemy-enum-grava-name}
+
+tags: sqlalchemy, Enum, native_enum, values_callable, enum grava maiusculo, WHERE nao retorna linha, psql query vazia, str enum, alembic, VARCHAR, ORM esconde, python enum name vs value
+
+**Contexto:** você declara `class Situacao(str, enum.Enum): APROVADO = "aprovado"` e mapeia com
+`mapped_column(Enum(Situacao, native_enum=False))`. Tudo passa nos testes — porque o ORM traduz
+na ida e na volta. Aí alguém roda `SELECT ... WHERE situacao = 'aprovado'` no psql e recebe
+**zero linhas**, com o dado correto no banco.
+
+**Causa raiz:** por padrão o SQLAlchemy persiste o **nome** do membro (`"APROVADO"`), não o
+`.value` (`"aprovado"`). Herdar de `str` **não muda isso**. O defeito é invisível pela suíte:
+todo teste que lê pelo ORM recebe o enum de volta corretamente.
+
+**Onde dói:** query manual/psql, dump para o contador, integração que lê a tabela direto,
+filtro escrito em SQL cru, e migration que cria CHECK com os valores canônicos.
+
+**Solução:**
+
+```python
+tipo: Mapped[TipoTitulo] = mapped_column(
+    Enum(TipoTitulo, native_enum=False,
+         values_callable=lambda e: [m.value for m in e]),
+    nullable=False,
+)
+```
+
+**Teste que pega (o único que pega):** leia com **SQL cru**, não pelo ORM.
+
+```python
+bruto = (await session.execute(text("SELECT situacao FROM titulos"))).all()
+assert ("aprovado",) in [tuple(l) for l in bruto]
+```
+
+⚠️ Não filtre por `WHERE id = :i` num teste SQLite com PK UUID: o dialeto serializa o UUID
+**sem hífens** e o `str(uuid)` não casa. Selecione a tabela e procure a tupla.
+
+**Armadilha de retrofit:** se já existe dado gravado com o NAME, acrescentar `values_callable`
+**não migra nada** — precisa de `UPDATE` na migration. Corrigir antes do baseline sai de graça;
+depois, não.
+
+**Ref:** Empresa Milionária, Fase A Task 7, 2026-08-12. Achado pelo revisor cross-provider (R11)
+em código rascunhado por DeepSeek e já revisado por Opus — os dois deixaram passar. Dois modelos
+anteriores (`papel.py`, `conta_financeira.py`) já tinham sido commitados com o mesmo defeito e
+foram corrigidos junto.
