@@ -266,6 +266,10 @@
 - [Smoke devolve o resultado CERTO e a sua mudança nem rodou — confirme o CAMINHO, não a saída](#smoke-certo-mas-caminho-nao-rodou)
 - [Bug de LLM "não reproduz mais": o GATILHO envelhece, o MECANISMO não — cace a frase vizinha medindo o extrator offline](#gatilho-llm-envelhece-mecanismo-fica)
 - ["A cobertura da guarda é parcial" não é ordem de alargar — meça o que o alargamento QUEBRA, não só o que ele pega](#alargar-matcher-de-guarda-troca-miss-por-alvo-errado)
+- [Multi-tenant: a checagem de FOREIGN KEY do PostgreSQL NÃO passa pela RLS — a FK simples deixa o filho apontar para pai de outro tenant](#fk-nao-passa-por-rls-multitenant)
+- [Recurso finito consumido por N filhos: travar só a linha PAI errada deixa a soma estourar](#lock-no-pai-errado-soma-estoura)
+- [Estorno por soft-delete faz o relatório do mês passado mudar depois de entregue — use contra-lançamento](#estorno-soft-delete-muda-relatorio-ja-entregue)
+- [RLS ligada, política escrita, e o app continua vendo tudo: faltou `FORCE`, ou o role é superusuário](#rls-sem-force-dono-ignora-politica)
 - [A leitura de versão do `enforcement-health` VENCE no meio da sessão — `autoUpdate` fecha a divergência sozinho enquanto você "conserta"](#health-check-versao-vence-autoupdate)
 - [`pip install` falha compilando wheel nativa (PyO3 não suporta a versão do Python do venv)](#venv-python-diverge-do-dockerfile)
 - [Túnel SSH para Postgres no Swarm: conecta, mas o banco nunca responde](#tunel-postgres-swarm-ingress)
@@ -8363,6 +8367,32 @@ pela saída) · [#smoke-prod-feature-llm] (frase exata do caso original) ·
 **Ref:** tiatendo, frente C18, PROD `0.297.0` (2026-08-11). Eventos
 `cart_anchor='mismatch_perguntou'` em `20:59:04` e `20:59:57` UTC. R23.
 
+### Adendo 2026-08-12 — os dois eixos de perturbação que mais renderam, e o achado estrutural
+
+A frase original do C18 envelheceu de novo (**5/5 correta** em 12/08). O passo 3 acima ("varra
+frases vizinhas derivadas do MECANISMO") funcionou, e vale registrar **quais eixos** pagaram —
+eles são baratos e reutilizáveis em qualquer extrator multi-linha:
+
+1. **Inverta a ORDEM das linhas.** Mesmo conteúdo, ordem trocada: `Torre e meia … feijoada` na
+   linha 1 e `G … strogonoff` na linha 2 quebrou **5/5**, enquanto a ordem original acertava 5/5.
+2. **Varie o PARENTESCO entre os rótulos**, não o prato. Medido 3/3 em cada combinação:
+   `Torre e meia`→`G` **ERRA**; `M`→`G`, `G`→`M` e `Torre`→`Torre e meia` acertam. O defeito exige
+   que o rótulo da linha ANTERIOR **contenha o da seguinte como prefixo** (`Torre e meia` ⊃
+   `Torre`) — e é direcional. Caracterizar isso custou 12 gerações e transformou "o extrator às
+   vezes erra" num gatilho determinístico com teste possível.
+
+**O achado que só apareceu ao perguntar "quem pega isso?":** o projeto tinha **6 guardas** dessa
+família, e **nenhuma pegava** — porque todas conferem o **PRATO** contra o texto e nenhuma confere
+a **VARIANTE**. Os dois pratos estavam certos, então a ancoragem dizia `ancorado`, o `decideDiff`
+dava lastro às duas adições, e o turno **aplicava R$ 175,00 no lugar de R$ 125,00**. Lição
+transferível: ao fechar uma família de guardas, pergunte **qual CAMPO cada uma valida** — seis
+defesas em volta do mesmo campo deixam o vizinho descoberto, e o vizinho é onde o dinheiro vaza.
+
+**Como verificar o "quem pega isso?" sem deploy:** alimente as funções puras de decisão com a
+saída medida do LLM e o cardápio real (`computeDiff` → `decideDiff` → guardas), e leia os baldes.
+É determinístico, roda em segundos e responde "aplica / pergunta / descarta" antes de qualquer
+smoke. Ref: tiatendo, frente E1 (2026-08-12).
+
 ---
 
 ## A leitura de versão do `enforcement-health` VENCE no meio da sessão — `autoUpdate` fecha a divergência sozinho enquanto você "conserta" {#health-check-versao-vence-autoupdate}
@@ -9297,3 +9327,315 @@ depois, não.
 em código rascunhado por DeepSeek e já revisado por Opus — os dois deixaram passar. Dois modelos
 anteriores (`papel.py`, `conta_financeira.py`) já tinham sido commitados com o mesmo defeito e
 foram corrigidos junto.
+
+---
+
+## Multi-tenant: a checagem de FOREIGN KEY do PostgreSQL NÃO passa pela RLS — a FK simples deixa o filho apontar para pai de outro tenant {#fk-nao-passa-por-rls-multitenant}
+
+tags: multi-tenant, RLS, row level security, foreign key cruza tenant, isolamento, vazamento entre empresas, tenant_id, empresa_id, FK composta, UNIQUE (id, tenant_id), postgres, referential integrity bypassa policy
+
+**Contexto:** você fez o dever de casa do isolamento — mixin de `tenant_id` obrigatório em toda
+tabela, RLS ligada no PostgreSQL com política por `current_setting`, e um harness que varre os
+endpoints procurando vazamento. Parece fechado.
+
+Não está. Nada impede gravar um filho com `tenant_id` do tenant **A** e uma FK apontando para um
+pai do tenant **B**:
+
+```sql
+INSERT INTO movimentos (empresa_id, conta_id, ...)
+VALUES ('empresa-A', 'conta-que-e-da-empresa-B', ...);   -- passa
+```
+
+**Causa raiz:** no PostgreSQL a verificação de integridade referencial roda **com privilégio de
+sistema** e é explicitamente **isenta das políticas de RLS** (senão uma FK apontando para linha
+invisível quebraria a integridade do banco). Ou seja: a política que esconde a linha do tenant B
+do `SELECT` **não** impede a FK de aceitá-la. A RLS protege leitura; ela não valida a
+*coerência* entre a FK e o `tenant_id` da própria linha.
+
+**Por que os outros controles também não pegam:**
+
+- **Harness de vazamento por endpoint:** varre resposta de API. Isto é escrita direta no banco,
+  atrás da camada que ele observa.
+- **Mixin de `tenant_id`:** garante que a coluna existe e está preenchida — nunca que ela é
+  **coerente** com o pai apontado.
+- **Teste de suíte em SQLite:** não tem RLS nenhuma, então nem simula o cenário.
+
+**Onde dói:** relatório consolidado de grupo somando conta de outra empresa; extrato de conta
+que mostra movimento que não é dela; e o pior caso, o dado cruzado que só aparece meses depois,
+já com retenção fiscal em cima e sem como saber qual lado está certo.
+
+**Solução — FK composta, resolvida pelo banco, sem trigger e sem código de aplicação:**
+
+```sql
+-- 1) na tabela-pai, a UNIQUE redundante que habilita a referência composta
+ALTER TABLE contas_financeiras ADD CONSTRAINT uq_conta_id_empresa UNIQUE (id, empresa_id);
+
+-- 2) no filho, a FK passa a carregar o tenant junto
+ALTER TABLE movimentos ADD CONSTRAINT fk_movimento_conta
+  FOREIGN KEY (conta_id, empresa_id) REFERENCES contas_financeiras (id, empresa_id);
+```
+
+A combinação impossível passa a ser recusada pelo próprio banco. Custo: uma UNIQUE a mais por
+tabela-pai (que em geral já é coberta pelo índice da PK) e a coluna de tenant na FK do filho.
+
+**Teste que pega:** insira o filho com `tenant_id` de A e FK para pai de B e espere
+`IntegrityError`. Tem que rodar contra **Postgres real** — em SQLite este teste não prova nada.
+
+**Quando decidir:** antes do baseline da migration. Depois que a tabela tem dado com retenção
+fiscal, virar FK simples em composta é migration com backfill e janela de inconsistência.
+Antes, é uma linha a mais no modelo.
+
+**Ref:** Empresa Milionária, Fase A Task 8, 2026-08-12. Achado pelo revisor cross-provider (R11)
+sobre `Movimento`; o mesmo buraco estava em `Titulo` (3 FKs) já commitado. Vale para qualquer
+projeto Percus com o gatilho "é (ou pode virar) multi-tenant" marcado.
+
+---
+
+## Recurso finito consumido por N filhos: travar só a linha PAI errada deixa a soma estourar {#lock-no-pai-errado-soma-estoura}
+
+tags: with_for_update, race condition, TOCTOU, soma excede, saldo, alocacao, N:N, baixa, pagamento parcial, SELECT FOR UPDATE, concorrencia, teto, over-allocation, conciliacao
+
+**Contexto:** relação N:N em que os dois lados são finitos — um pagamento quita vários títulos,
+um lote atende vários pedidos, um crédito cobre várias faturas. Você faz o certo e trava a
+linha antes de conferir o saldo:
+
+```python
+titulo = (await s.execute(
+    select(Titulo).where(Titulo.id == tituloId).with_for_update())).scalar_one()
+jaAplicado = (await s.execute(
+    select(func.sum(Baixa.valor)).where(Baixa.movimentoId == movimentoId))).scalar_one()
+if jaAplicado + novo > movimento.valor:
+    raise SemSaldo()
+```
+
+**Causa raiz:** o lock está no **título**, e o recurso que estoura é o **movimento**. Duas
+transações que baixam títulos DIFERENTES do MESMO movimento não disputam linha nenhuma em
+comum: as duas passam pelo `with_for_update` sem esperar, as duas leem `jaAplicado` no mesmo
+valor antigo, e as duas gravam. A soma final passa do teto sem que nenhuma constraint reclame —
+`SUM` não é constraint.
+
+**Sintoma em produção:** conciliação que fecha com dinheiro a mais e não reproduz em teste,
+porque teste roda uma transação por vez. Some quando você olha, porque o `SELECT` de
+conferência lê o estado final já consistente-parecendo.
+
+**Regra:** trave a linha do **recurso finito** — a que a soma consulta —, não só a que você
+está alterando. Se as duas são finitas (aqui: saldo do título E valor do movimento), trave as
+duas, **sempre na mesma ordem** em todos os caminhos de código, senão troca a corrida por
+deadlock.
+
+```python
+titulo = ... .with_for_update()      # 1º sempre
+movimento = ... .with_for_update()   # 2º sempre
+```
+
+**Onde mais aparece:** estoque com reserva por pedido, cupom com limite de uso, cota de plano
+consumida por várias chamadas, verba de campanha rateada por peça.
+
+**Teste que pega:** o de unidade NÃO pega — precisa de duas transações reais concorrentes,
+contra Postgres. Enquanto não existir, o teto é garantia de intenção, não de banco.
+
+**Ref:** Empresa Milionária, Fase A Task 9 (`AplicarBaixa`), 2026-08-12. Achado por revisor
+cross-provider; o lock do título já estava lá e escondia o buraco, porque parecia que "tem
+lock".
+
+---
+
+## O enriquecedor que "ignora" a entrada vazia APAGA a intenção de remover
+
+**Classe:** contrato de PATCH parcial atravessando uma camada que valida/enriquece.
+
+**Sintoma:** o operador clica "Limpar", confirma o aviso de consequência, lê "salvo" — e o valor
+continua gravado. Nenhum erro, nenhum log, nenhum alerta. O teste de unidade da tela passa (ele
+checa o corpo que a tela MONTA) e o do backend passa (ele checa o corpo que o backend RECEBE).
+
+**Causa raiz:** entre os dois existe um gate que valida cada entrada contra um serviço externo e
+devolve um mapa NOVO, só com o que validou:
+
+```ts
+for (const type of TIPOS) {
+  const input = conversions[type];
+  if (!input) continue;        // <-- `null` cai aqui junto com `undefined`
+  enriched[type] = await validar(input);
+}
+return { conversions: enriched };   // o `null` sumiu do mapa
+```
+
+`null` e "não enviado" são falsy do mesmo jeito, então o `continue` trata os dois igual. Só que
+eles são **opostos** num PATCH parcial: `{tipo: null}` significa *apague*, e a ausência da chave
+significa *não toque*. Ao devolver `enriched`, o gate converte um em outro — e o merge por tipo do
+destino, que preserva o que não veio, faz exatamente o que foi mandado.
+
+**Regra:** num caminho de PATCH parcial, separe **remoções** de **entradas a validar** ANTES do
+laço, valide só as segundas, e re-junte as duas na saída. Remoção não passa por validação (não há o
+que validar) nem por pré-requisito de validação (aqui, exigir `customer_id` para poder apagar era
+pedir a conta do serviço externo para desfazer).
+
+```ts
+const paraRemover = {}, paraValidar = {};
+for (const [k, v] of Object.entries(conversions)) (v === null ? paraRemover : paraValidar)[k] = v;
+if (!Object.keys(paraValidar).length) return { ...config, conversions: paraRemover };
+return { ...config, conversions: { ...paraRemover, ...(await validar(paraValidar)) } };
+```
+
+**Teste que pega:** asserção sobre o corpo que sai do GATE, não sobre o que a tela monta nem sobre o
+que o backend aceita. Visto falhando antes do fix: `expected {} to deeply equal { venda: null }`.
+
+**Onde mais aparece:** qualquer enriquecedor/normalizador no meio de um PATCH parcial — sanitizador
+de formulário, camada de defaults, mapper de DTO. A pergunta é sempre a mesma: *este laço distingue
+"veio vazio" de "não veio"?*
+
+**Ref:** Paid Media Automation, Matriz de Conversões F3, 2026-08-12 (`gateGadsConfig` +
+`validateAndEnrichGadsConversions`). Achado pelo review cross-provider; o finding descrevia o
+mecanismo errado (previa um 400), mas apontava o lugar certo.
+
+---
+
+## `null` que significa duas coisas opostas: separe o "não há com o que comparar" do "o outro lado está vazio"
+
+**Classe:** comparação entre duas fontes quando uma delas pode não existir por construção.
+
+**Sintoma:** um estado de alerta novo dispara em massa, em linhas que estão perfeitamente
+configuradas.
+
+**Causa raiz:** a leitura da segunda fonte devolve `null` por motivos estruturalmente diferentes —
+*aquela plataforma não tem essa fonte*, *aquela linha não alimenta essa fonte*, e *a fonte existe e
+está vazia*. O código testa o valor (`if (a && !b)`) e trata os três igual.
+
+**Regra:** calcule primeiro um booleano de **elegibilidade** ("existe segunda fonte para comparar
+aqui?") e só depois olhe valor nenhum. O booleano tem que ser avaliado ANTES, não depois:
+
+```ts
+const comparavel = ehPrimario && PLATAFORMAS_COM_A_SEGUNDA_FONTE.has(plataforma);
+if (!comparavel) return valor ? {estado: "ok"} : {estado: "vazio"};
+// só aqui a ausência do outro lado significa divergência
+```
+
+**Teste que pega:** um caso por MOTIVO de ausência, não um caso de ausência. Aqui foram três:
+plataforma sem a coluna, linha não-primária, e coluna existente e vazia.
+
+**Ref:** Paid Media Automation, `build-matrix.ts`, 2026-08-12. Sem a separação, todo destino
+primário de GA4/TikTok aparecia como "dessincronizado".
+
+---
+
+## Estorno por soft-delete faz o relatório do mês passado mudar depois de entregue — use contra-lançamento {#estorno-soft-delete-muda-relatorio-ja-entregue}
+
+tags: estorno, soft delete, deleted_at, cancelado_em, contra-lancamento, contra-baixa, retificacao, fechamento contabil, auditoria, retencao fiscal, imutabilidade, WHERE IS NULL esquecido, relatorio diverge, ledger
+
+**Contexto:** você precisa desfazer um lançamento — pagamento aplicado errado, item cancelado,
+comissão estornada. O reflexo é marcar a linha: `estornada_em`, `cancelado_em`, `deleted_at`,
+e excluir da soma com `WHERE estornada_em IS NULL`. Nunca apaga nada, então parece seguro.
+
+**Causa raiz:** marcar a linha **altera o passado**. O fato de março some da soma de março.
+Se alguém já exportou, imprimiu ou entregou o relatório daquele mês, regerar agora devolve
+número diferente — e as duas versões são "corretas" segundo o sistema. Em contexto fiscal ou
+contábil isso é o defeito, não um detalhe: o que foi entregue tem que continuar sendo o que
+foi entregue.
+
+O segundo problema é operacional: a regra passa a morar numa cláusula `WHERE` que **toda**
+consulta futura tem que lembrar — relatório novo, dashboard, consulta manual no banco, export
+para o contador. Quem esquecer lê o dobro, e nada acusa.
+
+**Solução — contra-lançamento:** o estorno é uma **linha nova** de sinal contrário, apontando
+para a original (`estorna_id`). A original **nunca é tocada**. Somas passam a ser de todas as
+linhas, sem cláusula de exclusão:
+
+```sql
+-- março: a linha original, intocada para sempre
+INSERT INTO baixas (titulo_id, movimento_id, valor) VALUES ('T', 'M', 300);
+-- agosto: a correção é um fato de agosto
+INSERT INTO baixas (titulo_id, movimento_id, valor, estorna_id) VALUES ('T', 'M', -300, <id>);
+```
+
+O relatório de março continua igual ao entregue; o de agosto mostra a retificação. É como
+contador faz na vida real.
+
+**Decorrências que você vai encontrar (e nenhuma é opcional):**
+
+- **Os CHECK de sinal viram condicionais ao tipo de linha:** `(estorna_id IS NULL AND valor > 0)
+  OR (estorna_id IS NOT NULL AND valor < 0)`. Sem isso, uma contra-linha positiva soma em vez
+  de desfazer.
+- **UNIQUE(pai_a, pai_b) não sobrevive.** É a pegadinha: parece que um índice único parcial
+  `WHERE estorna_id IS NULL` resolve, e **não resolve** — depois do estorno, reaplicar cria uma
+  SEGUNDA linha original com o mesmo par, e as duas casam o predicado. A unicidade tem que sair
+  do banco e virar pergunta no caso de uso.
+- **A pergunta certa é "existe original que ninguém estornou", não "a soma é positiva".** Pela
+  soma, uma contra-linha adulterada com magnitude maior que a original zera o par e libera
+  lançamento novo. Existência não depende de magnitude:
+
+```sql
+SELECT 1 FROM baixas o
+ WHERE o.titulo_id=:t AND o.movimento_id=:m AND o.estorna_id IS NULL
+   AND NOT EXISTS (SELECT 1 FROM baixas c
+                    WHERE c.estorna_id = o.id AND c.empresa_id = o.empresa_id)
+```
+  (o filtro de tenant na subquery não é decoração: sem ele, uma contra-linha de outro tenant dá
+  a original por estornada.)
+- **UNIQUE(estorna_id)** — estornar duas vezes devolveria o saldo em dobro.
+- **Estado derivado, nunca guardado.** "Voltar para a situação anterior" tenta gravar o estado
+  antigo na linha; derive do saldo resultante. O gravado envelhece na primeira coisa que mexer.
+
+**Não confunda estornar o VÍNCULO com estornar o DINHEIRO.** Desfazer a aplicação de um
+pagamento a uma fatura não move caixa — o dinheiro saiu do banco do mesmo jeito e o extrato
+continua correto. Devolução real é um lançamento novo, com a data em que o dinheiro voltou.
+Trocar os dois cria dinheiro que nunca existiu.
+
+**Quando decidir:** antes do baseline da migration. Depois, virar soft-delete em
+contra-lançamento é migration com backfill em tabela sob retenção.
+
+**Ref:** Empresa Milionária, Fase A Task 11, 2026-08-12 (ADR-0007). O conselho recomendou
+contra-lançamento por manutenibilidade; o argumento que decidiu foi o do relatório já entregue,
+que veio da spec. A pegadinha do índice parcial foi encontrada implementando — o próprio
+conselho a tinha recomendado como se funcionasse.
+
+---
+
+## RLS ligada, política escrita, e o app continua vendo tudo: faltou `FORCE`, ou o role é superusuário {#rls-sem-force-dono-ignora-politica}
+
+tags: RLS, row level security, FORCE ROW LEVEL SECURITY, multi-tenant, isolamento, postgres, superuser ignora rls, bypassrls, dono da tabela, current_setting, set_config, teste de rls passa mentindo
+
+**Contexto:** você ligou `ENABLE ROW LEVEL SECURITY`, escreveu a `CREATE POLICY` com
+`current_setting('app.tenant_id')`, testou — e o `SELECT` continua devolvendo as linhas de
+todos os tenants. Ou pior: **o teste passa** e você acha que está isolado.
+
+**Causa raiz — são duas, e ambas silenciosas:**
+
+1. **O DONO da tabela ignora a política.** `ENABLE ROW LEVEL SECURITY` não vale para o owner.
+   E o owner costuma ser exatamente o role da aplicação, porque foi ele que rodou a migration.
+   Falta `ALTER TABLE ... FORCE ROW LEVEL SECURITY`.
+2. **Superusuário ignora RLS sempre** — inclusive com `FORCE`. Não há política que o alcance.
+
+Medido num Postgres 17, duas linhas de tenants diferentes, política ativa:
+
+| Configuração | Linhas que o dono enxerga |
+|---|---|
+| Política ativa, sem `FORCE` | **2 de 2** — decoração |
+| `FORCE`, sem contexto | 0 |
+| `FORCE` + `set_config('app.tenant_id', ...)` | 1 |
+
+**A armadilha do TESTE, que é a pior das duas:** o container de teste levantado com
+`docker run -e POSTGRES_USER=meu_app` cria esse usuário como **superusuário**. Aí o teste de
+RLS roda como superusuário, o isolamento nunca é exercido, e o resultado é verde por um motivo
+que não existe em produção. Espelhe os privilégios reais:
+
+```bash
+docker run -d -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=... postgres:17
+docker exec c psql -U postgres -c \
+  "CREATE ROLE meu_app LOGIN PASSWORD '...' NOSUPERUSER NOBYPASSRLS NOCREATEROLE;"
+docker exec c psql -U postgres -c "CREATE DATABASE app OWNER meu_app;"
+```
+
+E confira, em produção **e** no teste, antes de confiar em qualquer resultado:
+
+```sql
+SELECT usename, usesuper, usebypassrls FROM pg_user WHERE usename = current_user;
+```
+
+**`SET LOCAL` não aceita bind parameter.** `SET` é comando utilitário: o driver devolve erro de
+sintaxe. Use `SELECT set_config('app.tenant_id', :id, true)` — o terceiro argumento `true` é o
+equivalente de `LOCAL`, e ele **não é opcional** num pool de conexões: valor de sessão sobrevive
+à requisição e vaza para a próxima, que pode ser de outro tenant.
+
+**Ref:** Empresa Milionária, Fase A Task 12, 2026-08-12. O container de teste nasceu com o app
+role superusuário na primeira tentativa; o defeito só apareceu porque a privilegiação foi
+comparada com a de produção antes de escrever o teste.
