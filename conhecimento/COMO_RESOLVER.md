@@ -270,6 +270,10 @@
 - [Túnel SSH para Postgres no Swarm: conecta, mas o banco nunca responde](#tunel-postgres-swarm-ingress)
 - ["Senha errada" que é o seu parser levando as aspas do `.env` junto](#env-parse-aspas-senha-falsa)
 - [Substituição mecânica de identidade (fork/rebrand) falsifica log histórico e inverte seus próprios comentários](#sed-identidade-falsifica-historico)
+- [n8n `jsonBody` sem `specifyBody: "json"` manda o corpo VAZIO — o PATCH "responde 200" e não aplica nada](#n8n-jsonbody-sem-specifybody-corpo-vazio)
+- [n8n workflow webhook já ATIVO não recarrega código de node só com update via API — precisa desativar→reativar](#n8n-webhook-ativo-nao-recarrega-sem-reativar)
+- [n8n: 0 linhas num node Postgres sem `alwaysOutputData` pula o `IF` seguinte inteiro — webhook fica pendurado sem resposta](#n8n-alwaysoutputdata-ausente-pendura-webhook)
+- [`iptables DOCKER-USER` bloqueando 100% do tráfego externo pra uma porta publicada, sem exceção nenhuma (nem pro seu próprio serviço)](#docker-user-drop-total-sem-excecao)
 
 ---
 
@@ -8495,3 +8499,141 @@ produto novo vai cair no WhatsApp do antigo.
 
 **Ref:** Empresa Milionária, Fase 0, 2026-08-11. O número do produto de origem estava em 8 telas: o
 review cross-provider pegou 1, o grep por número pegou as outras 7.
+
+---
+
+## n8n `jsonBody` sem `specifyBody: "json"` manda o corpo VAZIO — o PATCH "responde 200" e não aplica nada {#n8n-jsonbody-sem-specifybody-corpo-vazio}
+
+`tags: n8n, httpRequest node, jsonBody, specifyBody, sendBody, PATCH, POST, corpo vazio, falha silenciosa, 200 sem efeito, bodyParameters, keypair, contentType, webhook, tag nao aplicada`
+
+**Sintoma:** um node HTTP Request (`n8n-nodes-base.httpRequest`, `sendBody: true` +
+`"jsonBody": "={{ {...} }}"`) devolve HTTP 200/sucesso, mas o efeito esperado no destino (tag
+aplicada, campo atualizado, status mudado) simplesmente não acontece — nenhum erro, nenhum log,
+nada. Parece bug do serviço remoto ou "atraso de indexação", mas não é.
+
+**Causa raiz:** o node HTTP Request v4.x tem DOIS mecanismos concorrentes de corpo:
+`bodyParameters` (modo `keypair`, formulário) e `jsonBody` (modo `json`). Qual dos dois é
+efetivamente ENVIADO depende de um campo separado, `specifyBody`, que **default pra `"keypair"`**
+mesmo quando `contentType` é `"json"`. Se `specifyBody` não estiver setado explicitamente como
+`"json"` no JSON do node, o n8n manda o `bodyParameters` (frequentemente `{parameters: []}`, vazio)
+em vez do `jsonBody` que você escreveu — a requisição sai com corpo vazio, o servidor remoto aceita
+(muitas APIs tratam PATCH sem corpo como no-op bem-sucedido) e devolve 200, mascarando o problema
+por completo. Confirmado consultando o schema REAL do node (`POST /rest/node-types` no n8n, não
+documentação/suposição): `specifyBody` só aparece com `displayOptions.show: {sendBody:[true],
+contentType:['json']}`, e seu `default` é `"keypair"`.
+
+**Solução:** todo node com `sendBody: true` e `jsonBody` presente TEM que ter também
+`"contentType": "json"` e `"specifyBody": "json"` explícitos no JSON — nunca confiar no default.
+Escrever um lint/teste que bloqueia deploy se `jsonBody` existir sem `specifyBody: "json"` no mesmo
+node (barato, mecânico, pega a classe inteira de uma vez).
+
+**Como confirmar ao vivo, sem adivinhar:** `POST {n8n}/rest/node-types` com
+`{"nodeInfos":[{"name":"n8n-nodes-base.httpRequest","version":<a do node>}]}` (autenticado com a
+mesma sessão do editor) devolve o schema completo do node, incluindo `displayOptions`/`default` de
+cada campo — mais confiável que testar por tentativa e erro contra o servidor remoto.
+
+**Ref:** Kommo-Disparo-WhatsApp, 2026-08-11/12. Achado no PATCH que "aperta o play" do Salesbot
+(`02-dispatch-worker.json`) — se não achado, o sistema pareceria funcionar (fila enche, sem erro)
+mas nunca dispararia mensagem nenhuma, em silêncio, pra sempre. Lint `lint_json_body_needs_specify_body`
+em `execution/deploy_workflows_n8n.py`.
+
+---
+
+## n8n workflow webhook já ATIVO não recarrega código de node só com update via API — precisa desativar→reativar {#n8n-webhook-ativo-nao-recarrega-sem-reativar}
+
+`tags: n8n, webhook, workflow ativo, update via api, PATCH workflow, code node, versionId, activate, deactivate, versao antiga, cache, node code stale, deploy nao pega`
+
+**Sintoma:** você corrige o `jsCode`/parâmetros de um node num workflow **webhook já ATIVO** via
+`PATCH /rest/workflows/{id}` (script de deploy, não o editor visual), confirma que o JSON salvo no
+n8n bate byte-a-byte com o arquivo local corrigido — e mesmo assim, disparar o webhook de verdade
+continua exibindo o comportamento ANTIGO (o bug que você acabou de corrigir ainda acontece).
+
+**Causa raiz:** o handler HTTP registrado pra um webhook trigger é montado/cacheado no momento da
+**ativação** do workflow. Atualizar o conteúdo via API muda o registro no banco, mas não força o
+handler já registrado a recarregar — ele continua servindo a versão compilada de quando foi ativado
+pela última vez. Isso é diferente de editar pelo editor visual do n8n, que internamente já dispara
+esse refresh como parte do próprio fluxo de salvar.
+
+**Solução:** depois de TODO `--apply`/update num workflow webhook que já está ativo, rodar um ciclo
+`deactivate` → `activate` (via API, `POST /rest/workflows/{id}/deactivate` e `/activate`, cada um
+precisa do `versionId` atual no corpo — ver achado irmão sobre o bug do `activate`/`deactivate`
+nesse mesmo projeto) antes de considerar o fix "no ar". Sem isso, o dry-run/diff mostra tudo certo e
+o comportamento ao vivo continua errado — falso positivo perigoso.
+
+**Sinal de alerta:** "o JSON deployado é idêntico ao local, testei a mesma lógica isolada e funciona,
+mas ao vivo continua com o bug antigo" — isso não é "deploy não pegou o arquivo", é "o handler nunca
+recarregou".
+
+**Ref:** Kommo-Disparo-WhatsApp, 2026-08-11/12 — confirmado repetidas vezes no `01-enfileirar.json`
+durante uma sequência de ~8 fixes em cadeia; cada rodada de `--apply` precisou do ciclo
+desativar→reativar antes do reteste bater.
+
+---
+
+## n8n: 0 linhas num node Postgres sem `alwaysOutputData` pula o `IF` seguinte inteiro — webhook fica pendurado sem resposta {#n8n-alwaysoutputdata-ausente-pendura-webhook}
+
+`tags: n8n, postgres node, alwaysOutputData, 0 rows, IF node pulado, execution running, webhook pendurado, responseNode, timeout, sem resposta http, 0 items`
+
+**Sintoma:** um workflow com `responseMode: responseNode` (o webhook espera um node "Respond to
+Webhook" explícito) ocasionalmente fica "rodando" por minutos sem nunca responder ao chamador —
+`GET /rest/executions/{id}` mostra `status: "running"` por tempo anormal (a Kommo/o cliente HTTP
+original acaba fazendo retry, gerando execuções duplicadas do mesmo evento).
+
+**Causa raiz:** um node Postgres (`operation: executeQuery`) que devolve 0 linhas emite, por padrão,
+**0 items de saída** — não um item vazio. Um node `IF` (ou qualquer node) que recebe 0 items em
+TODAS as entradas é **pulado inteiro**, sem rodar nenhum dos 2 branches. Se esse `IF` é o único
+caminho até um node `Respond to Webhook`, o webhook nunca recebe resposta — a execução "trava"
+(do ponto de vista de quem chamou) até o timeout do lado de quem fez a requisição.
+
+**Solução:** todo node Postgres cuja query pode legitimamente devolver 0 linhas (busca que pode não
+achar nada — canal não configurado, item duplicado via `ON CONFLICT DO NOTHING`, etc.) E que
+alimenta um `IF`/node que precisa rodar de qualquer forma pra alcançar um `Respond` **tem que ter
+`"alwaysOutputData": true`** no JSON do node. Com isso, 0 linhas vira 1 item com `json: {}` (objeto
+vazio, confirmado empiricamente contra n8n real — não é `[]`/array, nem `null`), que o `IF` seguinte
+avalia normalmente (campos ausentes → `notEmpty` dá `false` → cai no branch certo).
+
+**Como confirmar sem adivinhar:** decodificar a execução real (`GET /rest/executions/{id}`, campo
+`data` no formato "flatted" — resolver referências numéricas recursivamente) e olhar o output
+literal do node em questão, em vez de assumir a partir da documentação.
+
+**Ref:** Kommo-Disparo-WhatsApp, 2026-08-11/12. Corrigido em 5 nodes Postgres do mesmo projeto assim
+que o padrão foi reconhecido pela 1ª vez.
+
+---
+
+## `iptables DOCKER-USER` bloqueando 100% do tráfego externo pra uma porta publicada, sem exceção nenhuma (nem pro seu próprio serviço) {#docker-user-drop-total-sem-excecao}
+
+`tags: iptables, docker-user, firewall, porta bloqueada, connection timed out, postgres, 5432, docker swarm, porta publicada, DROP, sem excecao, n8n nao alcanca postgres, vps compartilhado`
+
+**Sintoma:** um serviço com porta publicada via Docker (`*:5432->5432/tcp` no `docker service ls`)
+está saudável, a porta está exposta, mas QUALQUER tentativa de conexão externa (inclusive de outro
+serviço legítimo no MESMO ecossistema, rodando noutro VPS) trava com `Connection timed out` — não
+`connection refused` (que indicaria porta fechada), timeout mesmo, consistente por dias, não
+intermitente.
+
+**Causa raiz:** regra `DROP` na chain `DOCKER-USER` do iptables (`iptables -L DOCKER-USER -n
+--line-numbers`) bloqueando `0.0.0.0/0` pra essa porta, **sem nenhuma regra `ACCEPT` antes dela**
+pra nenhum IP — nem pro consumidor legítimo do próprio ecossistema. `DOCKER-USER` é a chain que o
+Docker usa pra filtrar tráfego destinado a portas publicadas, e roda ANTES das regras normais de
+`INPUT`/`FORWARD` — um `DROP` ali bloqueia mesmo que tudo o mais pareça liberado.
+
+**Como confirmar sem adivinhar:** `iptables -L DOCKER-USER -n --line-numbers` direto no VPS que
+hospeda o serviço (não no cliente que está tentando conectar — de lá só se vê o timeout, não a
+causa). Se aparecer só uma linha `DROP ... dpt:<porta>` sem `ACCEPT` antes, é isso.
+
+**Solução (mínima, escopada — não abrir a porta geral):** inserir uma regra `ACCEPT` pro IP
+específico do consumidor legítimo, ANTES da regra de `DROP` (posição 1): `iptables -I DOCKER-USER 1
+-s <IP do consumidor> -p tcp --dport <porta> -j ACCEPT`. Mantém o bloqueio geral pra todo o resto —
+não é "abrir a porta", é adicionar uma exceção pontual.
+
+**Cuidado — isto é mudança de firewall em infra COMPARTILHADA:** confirme com o operador (ou quem
+administra o VPS) antes de aplicar; é uma ação difícil de reverter cegamente e que afeta outros
+consumidores do mesmo host. Não presuma que "existe uma credencial configurada com esse host" prova
+que a conexão já funcionou de verdade — pode ter sido só o campo da UI confirmado visualmente, nunca
+testado ao vivo.
+
+**Ref:** Kommo-Disparo-WhatsApp, 2026-08-11/12 (VPS compartilhado 161.97.129.138, administrado pelo
+projeto irmão `Melhoria na VPS`) — um achado ANTERIOR no mesmo projeto (sessão de 2026-08-05) já
+tinha tropeçado nessa mesma regra ao testar a porta de fora, mas foi contornado assumindo que uma
+credencial existente "confirmava" que funcionava, sem teste ao vivo — o bloqueio ficou sem corrigir
+por mais uma semana até essa entrada.
