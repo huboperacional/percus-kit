@@ -271,7 +271,11 @@
 - ["Senha errada" que é o seu parser levando as aspas do `.env` junto](#env-parse-aspas-senha-falsa)
 - [Substituição mecânica de identidade (fork/rebrand) falsifica log histórico e inverte seus próprios comentários](#sed-identidade-falsifica-historico)
 - [n8n `jsonBody` sem `specifyBody: "json"` manda o corpo VAZIO — o PATCH "responde 200" e não aplica nada](#n8n-jsonbody-sem-specifybody-corpo-vazio)
-- [n8n workflow webhook já ATIVO não recarrega código de node só com update via API — precisa desativar→reativar](#n8n-webhook-ativo-nao-recarrega-sem-reativar)
+- [n8n workflow já ATIVO não recarrega código de node só com update via API — precisa desativar→reativar (vale pra QUALQUER trigger, não só webhook)](#n8n-webhook-ativo-nao-recarrega-sem-reativar)
+- [n8n `$('Node').item` (paired item) aborta com "Multiple matches found" assim que o fluxo carrega 2+ itens](#n8n-paired-item-multiple-matches)
+- [API rejeita `*_id` com `InvalidType` porque o driver do Postgres devolve `BIGINT` como STRING](#bigint-vira-string-e-api-rejeita-int)
+- [Teste de fuso passa VERDE na sua máquina e o código quebra em produção — o teste validou o `TZ` do dev, não o do runtime](#teste-timezone-passa-por-coincidencia-da-maquina)
+- ["Recebi a mesma mensagem 2x" num teste onde todos os registros apontam pro MESMO destino não é duplicata — é o teste que não consegue distinguir](#teste-mesmo-destino-nao-distingue-duplicata)
 - [n8n: 0 linhas num node Postgres sem `alwaysOutputData` pula o `IF` seguinte inteiro — webhook fica pendurado sem resposta](#n8n-alwaysoutputdata-ausente-pendura-webhook)
 - [`iptables DOCKER-USER` bloqueando 100% do tráfego externo pra uma porta publicada, sem exceção nenhuma (nem pro seu próprio serviço)](#docker-user-drop-total-sem-excecao)
 - [Reescrever histórico para tirar segredo: o `--replace-text` também acerta onde a string era legítima](#filter-repo-atinge-uso-legitimo)
@@ -8542,14 +8546,26 @@ em `execution/deploy_workflows_n8n.py`.
 
 ---
 
-## n8n workflow webhook já ATIVO não recarrega código de node só com update via API — precisa desativar→reativar {#n8n-webhook-ativo-nao-recarrega-sem-reativar}
+## n8n workflow já ATIVO não recarrega código de node só com update via API — precisa desativar→reativar (vale pra QUALQUER trigger, não só webhook) {#n8n-webhook-ativo-nao-recarrega-sem-reativar}
 
-`tags: n8n, webhook, workflow ativo, update via api, PATCH workflow, code node, versionId, activate, deactivate, versao antiga, cache, node code stale, deploy nao pega`
+`tags: n8n, webhook, schedule trigger, workflow ativo, update via api, PATCH workflow, code node, versionId, activate, deactivate, versao antiga, cache, node code stale, deploy nao pega`
 
-**Sintoma:** você corrige o `jsCode`/parâmetros de um node num workflow **webhook já ATIVO** via
+> **Correção 2026-08-12:** a versão original desta entrada dizia "workflow **webhook**" e supunha que
+> schedule trigger provavelmente não precisava. **A suposição foi REFUTADA com prova direta:** o
+> mesmo cache atinge **schedule trigger** igual. Não restrinja o ciclo de reload ao tipo de trigger —
+> aplique a todo workflow ATIVO que receber update via API. Ver "Como provar" abaixo.
+
+**Sintoma:** você corrige o `jsCode`/parâmetros de um node num workflow **já ATIVO** via
 `PATCH /rest/workflows/{id}` (script de deploy, não o editor visual), confirma que o JSON salvo no
-n8n bate byte-a-byte com o arquivo local corrigido — e mesmo assim, disparar o webhook de verdade
-continua exibindo o comportamento ANTIGO (o bug que você acabou de corrigir ainda acontece).
+n8n bate byte-a-byte com o arquivo local corrigido — e mesmo assim, executar de verdade continua
+exibindo o comportamento ANTIGO (o bug que você acabou de corrigir ainda acontece).
+
+**Como provar em 30 segundos, sem adivinhar:** o objeto de erro da execução carrega a expressão
+**como o runtime a avaliou**, no campo `cause`. Decodifique `execution.data` (formato `flatted`) e
+leia `resultData.error.cause` — se ele mostra uma expressão que **não existe mais** no JSON em
+produção, está provado que o handler roda código velho. Foi assim que o caso de 2026-08-12 fechou:
+o `cause` exibia `=https://{{ $env.KOMMO_SUBDOMAIN }}.kommo.com/...` enquanto o JSON deployado já
+tinha a URL literal, sem nenhum `$env`.
 
 **Causa raiz:** o handler HTTP registrado pra um webhook trigger é montado/cacheado no momento da
 **ativação** do workflow. Atualizar o conteúdo via API muda o registro no banco, mas não força o
@@ -8567,9 +8583,176 @@ o comportamento ao vivo continua errado — falso positivo perigoso.
 mas ao vivo continua com o bug antigo" — isso não é "deploy não pegou o arquivo", é "o handler nunca
 recarregou".
 
+**Faça o deploy fazer isso sozinho.** Enquanto o reload for um passo manual "que você lembra de
+rodar", ele vai ser esquecido no dia em que importar. Ponha o ciclo dentro do próprio comando de
+apply, e faça ele **falhar alto** se o `activate` quebrar depois do `deactivate` ter passado — senão
+o workflow fica DESATIVADO em silêncio, que é fail-safe pro usuário final e fail-SILENT pro produto
+(a fila congela sem erro nenhum aparecer).
+
 **Ref:** Kommo-Disparo-WhatsApp, 2026-08-11/12 — confirmado repetidas vezes no `01-enfileirar.json`
-durante uma sequência de ~8 fixes em cadeia; cada rodada de `--apply` precisou do ciclo
-desativar→reativar antes do reteste bater.
+(webhook) durante uma sequência de ~8 fixes em cadeia. Em 2026-08-12 o MESMO cache foi confirmado em
+`02-dispatch-worker` e `04-recovery`, ambos **schedule trigger**: o `04` falhava 100% das execuções
+a cada 5min, por horas, com `access to env vars denied` num `$env` que o JSON em produção não tinha
+mais. Virou código (`reload_active_workflow()` chamado pelo próprio `--apply`).
+
+---
+
+## Teste de fuso passa VERDE na sua máquina e o código quebra em produção — o teste validou o `TZ` do dev, não o do runtime {#teste-timezone-passa-por-coincidencia-da-maquina}
+
+`tags: timezone, fuso horario, TZ, teste falso verde, UTC, container, new Date, toLocaleString, America/Campo_Grande, America/Cuiaba, agendamento, next_send_at, teste valida ambiente errado`
+
+**Sintoma:** a suíte está verde, o teste é sério (roda a lógica REAL extraída do artefato, não uma
+cópia), as asserções conferem timestamps absolutos — e mesmo assim o valor gravado em produção sai
+com algumas horas de diferença do que o teste afirma.
+
+**Causa raiz:** o código converte "hora local" → instante absoluto usando o fuso **da máquina**, e o
+teste roda numa máquina cujo fuso por acaso coincide com o do negócio. Em JS o padrão é
+`new Date(d.toLocaleString('en-US', { timeZone: tz }))`: o `toLocaleString` acerta o fuso alvo, mas
+o `new Date(string)` reinterpreta a string no fuso **do processo**. Na máquina do dev (UTC-4, mesmo
+offset do cliente) os dois se cancelam e o resultado sai certo; no container (UTC) sobra a diferença
+inteira. Em SQL o gêmeo é montar um `timestamp` *naive* (`::date + hora_local`) e atribuir a uma
+coluna `timestamptz`: o Postgres completa o fuso com o `TimeZone` **da sessão**, que no container é
+`UTC`.
+
+Confirme em um comando, antes de discutir qualquer outra hipótese:
+
+```bash
+TZ=UTC node tests/test_alguma_logica_de_horario.mjs   # roda o MESMO teste no fuso do runtime
+psql -c "SHOW TimeZone;"                              # o fuso que o Postgres vai assumir
+```
+
+Se o teste reprova sob `TZ=UTC` e passa sem ele, o teste nunca testou a lógica — testou o seu
+relógio.
+
+**Solução:** (1) fixe o fuso no harness de teste (ou rode a suíte nos dois fusos: o do runtime e um
+diferente — um código correto passa nos dois); (2) no código, nunca deixe a conversão de volta pra
+instante absoluto depender do fuso do processo — em SQL, feche com `AT TIME ZONE <tz>` explícito
+(`(expr_naive) AT TIME ZONE c.timezone`); em JS, calcule o offset do fuso alvo e aplique, em vez de
+reparsear string.
+
+**Por que passa despercebido:** o erro é constante e do tamanho exato do offset, então o valor
+*parece* plausível — é uma hora do dia válida, só que errada. E some completamente da revisão de
+código, porque a linha suspeita é a que "já converte pro fuso do cliente".
+
+**Irmão conceitual:** [#teste-verde-dependencia-morre-antes-do-gate] e o caso do realm do `vm` — nos
+três, o teste está verde porque mediu o ambiente errado, não porque o código está certo.
+
+**Ref:** Kommo-Disparo-WhatsApp, 2026-08-12. Máquina do dev = `America/Cuiaba` (UTC-4), cliente =
+`America/Campo_Grande` (UTC-4), container n8n = UTC. `TZ=UTC node tests/test_next_delay_logic.mjs`
+reprovou 2 dos 3 testes, devolvendo `08:00:00.000Z` onde o teste exigia `12:00:00.000Z` — as mesmas
+4h que apareciam gravadas em `next_send_at` no banco de produção.
+
+---
+
+## n8n `$('Node').item` (paired item) aborta com "Multiple matches found" assim que o fluxo carrega 2+ itens {#n8n-paired-item-multiple-matches}
+
+`tags: n8n, paired item, Multiple matches found, pairedItemMultipleMatchesCodeNode, $('Node').item, LIMIT, fan-out, multi-tenant, canal, workflow quebra depois de agir`
+
+**Sintoma:** o workflow rodou meses sem problema e passa a abortar com
+`Multiple matches found` / `pairedItemMultipleMatchesCodeNode` logo depois de você **habilitar o
+segundo** de alguma coisa (segundo canal, segunda conta, segundo cliente).
+
+**Causa raiz:** `$('Nome do Node').item` (singular) só resolve quando existe **um** item no fluxo —
+é uma referência ao item *pareado* com o atual. Um node de origem com `LIMIT 20` (ou sem `LIMIT`
+nenhum) devolvia 1 linha enquanto só existia um registro habilitado; com dois, o n8n não consegue
+decidir qual item corresponde e aborta.
+
+**O que torna isso grave:** o erro estoura **no meio do fluxo**, geralmente num node de
+`UPDATE`/release **depois** do node que já executou a ação externa (o POST/PATCH que manda a
+mensagem, cobra o cartão, cria o registro). O efeito colateral já aconteceu e o estado local fica
+inconsistente, porque a linha que ia registrar/limpar nunca rodou.
+
+**Solução:** decida qual é a verdade e torne-a explícita.
+- Se o desenho real é "um por execução" (worker com schedule frequente), ponha `LIMIT 1` na origem
+  **e documente no artefato** que N nodes dependem disso.
+- Se o desenho é fan-out de verdade, tire o `.item` e use `$('Node').all()[$itemIndex]` /
+  `itemMatching()`.
+
+**Armadilha do `LIMIT 1` ingênuo (custa um segundo bug):** com `ORDER BY <proximo_horario> LIMIT 1`,
+qualquer caminho que **não avance** esse campo faz o registro escolhido vencer a ordenação **para
+sempre** e matar os outros de fome, em silêncio. Audite TODOS os caminhos de saída (fila vazia,
+falha, cancelamento) — se um deles só limpa o lock sem empurrar o horário, é starvation. Um sintoma
+que denuncia: dois nodes irmãos de "release" com queries diferentes, um com `next_send_at = NOW()` e
+outro sem. Reforce a origem com `EXISTS(<tem trabalho de verdade>)` e um predicado de lock, para não
+selecionar quem não tem o que fazer.
+
+**Ref:** Kommo-Disparo-WhatsApp, 2026-08-12. `Find Due Channels` com `LIMIT 20` + 7 nodes usando
+`.item`: ao habilitar o 2º canal de WhatsApp, toda execução que chegava no disparo abortava **depois
+do PATCH que aciona o bot**. O `LIMIT 1` corrigiu isso e introduziu a starvation descrita acima,
+pega no review antes de ir pra produção.
+
+---
+
+## API rejeita `*_id` com `InvalidType` porque o driver do Postgres devolve `BIGINT` como STRING {#bigint-vira-string-e-api-rejeita-int}
+
+`tags: BIGINT, string, InvalidType, HTTP 400, NotSupportedChoice, status_id, n8n postgres node, coercao de tipo, Number(), JSON.stringify, kommo`
+
+**Sintoma:** a API externa recusa o corpo com algo como
+`InvalidType: "This value should be of type int"` (às vezes acompanhado de `NotSupportedChoice`,
+sugerindo falsamente que o VALOR é inválido), mesmo o número estando visivelmente correto no log.
+
+**Causa raiz:** `BIGINT`/`int8` não cabe no `Number` de JS sem perda, então drivers Postgres o
+devolvem como **string** (`"109943212"`). Se esse valor vai direto pro JSON do corpo, sai
+`{"status_id": "109943212"}` — string — e uma API com validação estrita recusa. O `NotSupportedChoice`
+junto engana: parece "esse id não existe", quando o problema é só o tipo.
+
+**Solução:** coagir explicitamente na fronteira (`Number(...)`/`parseInt(...)`) para todo id que a
+API exige como inteiro. E vale virar lint no pipeline de deploy: varrer o corpo JSON e reprovar
+`"<campo_id>": <expressão não coagida>`, com **lista explícita** dos campos que a API exige como int
+— reprovar qualquer coisa terminada em `_id` gera falso-positivo em campos que são string por design
+(`request_id` de correlação, `external_id`).
+
+**Cuidado com o gêmeo na direção oposta:** a MESMA API costuma devolver esses ids como **número** no
+JSON de resposta, e aí um comparador de tipo estrito que espera string reprova
+(`'27261879' is a number but was expecting a string`). Os dois convivem no mesmo workflow: coaja
+para número indo, para string voltando.
+
+**Ref:** Kommo-Disparo-WhatsApp, 2026-08-12. O PATCH que "aperta o play" do Salesbot falhava com
+HTTP 400 sem enviar mensagem nenhuma. O gêmeo invertido já tinha acontecido no mesmo projeto dias
+antes, num `IF` comparando `id` de contato.
+
+---
+
+## "Recebi a mesma mensagem 2x" num teste onde todos os registros apontam pro MESMO destino não é duplicata — é o teste que não consegue distinguir {#teste-mesmo-destino-nao-distingue-duplicata}
+
+`tags: disparo duplicado, falso alarme, teste com telefone unico, mesmo destinatario, whatsapp, deduplicacao, evidencia, log antes de concluir`
+
+**Sintoma:** o operador reporta "chegou duplicado" durante um teste de disparo, com print da caixa
+de entrada mostrando duas mensagens parecidas. Regra de segurança manda pausar na hora — mas a
+investigação não acha duplicação nenhuma no sistema.
+
+**Causa raiz:** os N registros de teste foram criados apontando todos para o **mesmo destinatário**
+(o telefone/e-mail do próprio operador, que é o jeito seguro de testar). Cada um dispara **uma**
+mensagem, corretamente, mas todas caem **na mesma conversa** — e a caixa de entrada não tem como
+mostrar que vieram de registros diferentes. O que parece "a mesma mensagem 2x" é "2 registros
+distintos, 1 mensagem cada", ainda mais convincente quando o conteúdo é idêntico por design
+(mesmo template).
+
+**Como decidir em um minuto, sem depender da caixa de entrada:** cruze com o log de disparo antes de
+concluir qualquer coisa.
+
+```sql
+SELECT lead_id, event_type, created_at FROM <tabela_de_log>
+WHERE event_type = '<evento_de_disparo>' ORDER BY created_at DESC;
+```
+
+Duas linhas com **ids diferentes** = comportamento correto. Duas linhas com o **mesmo id** = a
+duplicata é real. Confira também o intervalo contra a regra de espaçamento configurada: se bate com
+a faixa esperada (ex.: 5-15min), é o agendador funcionando.
+
+**Não relaxe a regra por causa disto.** Pausar primeiro e investigar depois continua certo — o custo
+de pausar é baixo, o de uma duplicata real com pessoa de verdade não é. O que muda é a ordem: pause,
+**depois** cruze com o log, e só reative com causa-raiz fechada.
+
+**O resíduo costuma ser real.** No caso de referência, o alarme era falso para um canal e
+**verdadeiro para o outro**: havia uma segunda mensagem sem NENHUM disparo correspondente no log —
+originada dentro da ferramenta externa (um passo extra no bot), não no orquestrador. Sem o
+cruzamento, os dois casos ficariam no mesmo balaio e o de verdade seria descartado junto.
+
+**Solução de teste:** para exercitar duplicidade de verdade, use destinatários distintos por
+registro; se não der, trate o log como a única fonte de verdade e diga isso em voz alta no runbook.
+
+**Ref:** Kommo-Disparo-WhatsApp, 2026-08-12, 6 leads de teste apontando para o mesmo telefone.
 
 ---
 
