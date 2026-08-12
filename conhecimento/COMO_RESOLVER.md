@@ -266,6 +266,10 @@
 - [Bug de LLM "não reproduz mais": o GATILHO envelhece, o MECANISMO não — cace a frase vizinha medindo o extrator offline](#gatilho-llm-envelhece-mecanismo-fica)
 - ["A cobertura da guarda é parcial" não é ordem de alargar — meça o que o alargamento QUEBRA, não só o que ele pega](#alargar-matcher-de-guarda-troca-miss-por-alvo-errado)
 - [A leitura de versão do `enforcement-health` VENCE no meio da sessão — `autoUpdate` fecha a divergência sozinho enquanto você "conserta"](#health-check-versao-vence-autoupdate)
+- [`pip install` falha compilando wheel nativa (PyO3 não suporta a versão do Python do venv)](#venv-python-diverge-do-dockerfile)
+- [Túnel SSH para Postgres no Swarm: conecta, mas o banco nunca responde](#tunel-postgres-swarm-ingress)
+- ["Senha errada" que é o seu parser levando as aspas do `.env` junto](#env-parse-aspas-senha-falsa)
+- [Substituição mecânica de identidade (fork/rebrand) falsifica log histórico e inverte seus próprios comentários](#sed-identidade-falsifica-historico)
 
 ---
 
@@ -8351,3 +8355,143 @@ implementa o dano.
 **Ref:** tiatendo, guarda C18, 2026-08-12. Conselho `consult` 3/3 por não implementar.
 Irmão: [#rotulo-casa-dentro-de-palavra] (casamento curto demais pega a coisa errada no caminho do
 dinheiro) e [#guarda-redundante-tesoura-ou-morta]. R23.
+
+---
+
+## `pip install` falha compilando wheel nativa ("PyO3 não suporta esta versão do Python") {#venv-python-diverge-do-dockerfile}
+
+tags: pip install falha, wheel nativa, maturin, cargo, PyO3, pydantic-core, asyncpg, cryptography, build failed, Python 3.14, 3.13, versao do interpretador, venv, Dockerfile, requirements pinado, nao suba as versoes
+
+**Contexto:** projeto com `requirements.txt` pinado (ex.: `pydantic==2.9.2`, `SQLAlchemy==2.0.35`).
+`pip install -r requirements.txt` morre tentando **compilar** `pydantic-core` e `asyncpg`, com
+mensagem do tipo `the configured Python interpreter version (3.14) is newer than PyO3's maximum
+supported version (3.13)`.
+
+**Causa raiz:** o venv foi criado com o Python **default da máquina**, não com o do ambiente de
+produção. Sem wheel pré-compilada para aquela versão, o pip cai no build a partir do fonte — e a
+toolchain Rust do pacote não suporta o interpretador. **Não é problema de dependência: é do
+interpretador.**
+
+**Solução:** leia a versão no `Dockerfile` (`FROM python:3.12-slim`) e recrie o venv com ela.
+
+```bash
+py --list                      # Windows: veja o que existe
+py -3.12 -m venv .venv         # ou python3.12 -m venv .venv
+source .venv/Scripts/activate
+python --version               # confirme ANTES de instalar
+pip install -r requirements.txt -r requirements-test.txt
+```
+
+⚠️ **A tentação errada é subir `pydantic`/`SQLAlchemy` para uma versão que compile.** Num fork de
+125 mil linhas isso é mudança de **comportamento**, não de ambiente, e o custo aparece semanas
+depois. Alinhar o interpretador ao Dockerfile é mudança de risco zero e resolve a classe inteira.
+
+**Sintoma irmão:** a suíte "passa" no venv errado porque o pacote faltante é importado de forma
+lazy, e só um teste específico acusa. Confira `python --version` antes de acreditar em qualquer
+baseline.
+
+**Ref:** Empresa Milionária, Fase 0, 2026-08-11. O plano previa o risco e mandava "registre e
+reporte"; a saída real era mais simples do que parecia.
+
+---
+
+## Túnel SSH para Postgres no Swarm: conecta, mas o banco nunca responde {#tunel-postgres-swarm-ingress}
+
+tags: tunel ssh, -L, postgres, swarm, docker, ingress, mesh, ConnectionResetError, WinError 64, timeout, asyncpg, connection was closed in the middle of operation, alembic current, DNS interno, service name nao resolve, overlay
+
+**Contexto:** `ssh -f -N -L 15432:postgres_postgres:5432 vps` sobe sem erro, `netstat` mostra a
+porta escutando, mas qualquer cliente falha — ora `ConnectionResetError [WinError 64]`, ora
+timeout puro no handshake.
+
+**Duas causas distintas, que aparecem juntas e se disfarçam:**
+
+1. **O alvo do forward é resolvido no HOST remoto, não dentro do Swarm.** `postgres_postgres` é
+   DNS interno da rede overlay; o host não o resolve. Confirme com
+   `ssh vps "getent hosts postgres_postgres"` — se não vier nada, o túnel encaminha para lugar
+   nenhum. O IP do container na overlay também não é roteável do host.
+2. **O ingress mesh aceita o TCP e não entrega.** Com `-L 15432:localhost:5432` (alvo correto,
+   já que `docker service ls` mostra `*:5432->5432/tcp`), o TCP conecta em 0,0s — e o Postgres
+   nunca responde ao SSLRequest. Teste decisivo, que separa "não conectou" de "conectou e o
+   servidor está mudo":
+
+```bash
+python -c "
+import socket
+s = socket.create_connection(('127.0.0.1', 15432), timeout=15)
+s.sendall((8).to_bytes(4, 'big') + (80877103).to_bytes(4, 'big'))  # SSLRequest
+s.settimeout(15)
+print('resposta:', s.recv(1))
+"
+```
+
+TCP abre e o `recv` estoura o tempo = o problema está **depois** do túnel.
+
+**Solução de contorno:** fale com o banco por `docker exec` no container, que é caminho interno e
+não passa pelo ingress.
+
+**Solução de verdade:** publicar a porta em modo `host` em vez de `ingress`, no stack. ⚠️ **Só faça
+isso se o Postgres não for compartilhado.** Se outros produtos usam o mesmo container, mudar o modo
+de publicação afeta todos eles e vira decisão do operador.
+
+**Ref:** Empresa Milionária, Fase 0, 2026-08-11. O comando documentado no handoff anterior estava
+errado desde sempre e nunca havia sido exercido — o banco só tinha sido testado por `docker exec`.
+
+---
+
+## "Senha errada" que é o seu parser levando as aspas do `.env` junto {#env-parse-aspas-senha-falsa}
+
+tags: password authentication failed, senha errada, .env, dotenv, parser, aspas, quotes, strip, psql, PGPASSWORD, DATABASE_URL, falso negativo, credencial valida
+
+**Contexto:** você lê o `.env` com um `split` caseiro, monta a conexão e o Postgres responde
+`FATAL: password authentication failed for user "..."`. A credencial parece errada, e você começa a
+investigar role, `pg_hba` e provisionamento — tudo caminho errado.
+
+**Causa raiz:** o valor no `.env` está entre aspas, e `split("=", 1)[1]` devolve o valor **com as
+aspas**. O cliente manda as aspas como parte da senha. Bibliotecas de dotenv tiram; o seu `split`
+não.
+
+**Solução:** aplique `strip()` e remova aspas simples e duplas das pontas — ou use
+`python-dotenv`/`dotenv_values` em vez de parsear à mão.
+
+**Como não perder tempo de novo:** antes de suspeitar da credencial, imprima o **comprimento** do
+valor lido (nunca o valor). Dois caracteres a mais que o esperado são as aspas.
+
+**Ref:** Empresa Milionária, Fase 0, 2026-08-11. Custou ~20 minutos e uma tentativa desnecessária de
+`ALTER ROLE`; a credencial estava correta desde o começo.
+
+---
+
+## Substituição mecânica de identidade (fork/rebrand) falsifica log histórico e inverte os seus próprios comentários {#sed-identidade-falsifica-historico}
+
+tags: fork, rebrand, renomear produto, sed, find replace, substituicao em massa, migracao de marca, comentario invertido, log de incidente, copy de marketing, llms.txt, revisar diff, telefone hardcoded
+
+**Contexto:** ao derivar um produto de outro, você roda uma substituição em massa de nome, domínio e
+slug sobre o repositório inteiro. Os testes passam e o grep fica limpo — mas o resultado tem três
+classes de estrago que nenhum teste pega:
+
+1. **Seus próprios comentários viram mentira.** Você escreve "o fork herdou aqui a API do Produto A"
+   e o script troca por "do Produto B", invertendo exatamente o sentido do aviso.
+2. **Log histórico é falsificado.** Um comentário que reproduz saída real
+   (`[REMOTE_LOGOUT] device Produto_A`, com timestamp) passa a registrar um evento que nunca
+   aconteceu. Documentação factual vira ficção.
+3. **A copy fica sintaticamente certa e semanticamente absurda:** "Transforme sua família em uma
+   empresa milionária"; "Produto B — plataforma de gestão financeira pessoal e familiar", nome novo
+   com a descrição do produto antigo.
+
+**Solução:**
+
+- Nos comentários que você escrever, refira-se ao outro produto como **"o produto de origem"**, sem
+  citar o nome. Assim o teste de identidade pode ser **estrito** (falhar em qualquer menção) sem
+  conflitar com a documentação.
+- Em log ou histórico reproduzido, anonimize o identificador (`device <do produto de origem>`) em
+  vez de trocar o nome — preserva o fato sem afirmar coisa falsa.
+- Em documento que lista **vários** produtos do mesmo grupo (termos de uso, mapa de produtos), o
+  produto novo é **acrescentado**; ele não substitui o irmão que continua existindo.
+- **Leia o diff, não só o resultado do grep.** Grep limpo é condição necessária, não suficiente.
+
+**Irmão:** número de telefone e JID hardcoded não casam com padrão de nome nem de domínio, e escapam
+de qualquer varredura por marca. Procure também por identificadores numéricos, ou o usuário do
+produto novo vai cair no WhatsApp do antigo.
+
+**Ref:** Empresa Milionária, Fase 0, 2026-08-11. O número do produto de origem estava em 8 telas: o
+review cross-provider pegou 1, o grep por número pegou as outras 7.
