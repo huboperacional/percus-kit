@@ -95,7 +95,8 @@ percus-kit/                          ← raiz do canon (canon + plugin = "percus
 │   ├── CLAUDE / AGENTS / HANDOFF / PLANO / mock-audit / adr-0000 (.template.md)
 │   ├── settings.template.json       ← .claude/settings.json canônico (v6.11.0)
 │   ├── catalog-info.yaml.template · CHECKLIST_AUTH · MIGRATION_KIT_AUTH · .gitignore.example
-│   └── login-ui/                    ← template React de tela de login (alinhado com @percus/auth)
+│   ├── login-ui/                    ← template React de tela de login (alinhado com @percus/auth)
+│   └── permissoes-por-perfil/       ← seletor de acessos: permissões por perfil de usuário
 │
 ├── scripts/                         ← automações (raiz do canon)
 │   ├── deepseek-impl.{ps1,sh}       ← wrapper DeepSeek implementador (R13)

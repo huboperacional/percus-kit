@@ -18,6 +18,8 @@ Cada tipo de pedido visual tem uma ferramenta correta. Não trate todos como "pr
 
 | Tipo | Ferramenta | Por quê |
 |---|---|---|
+| Tela de permissões / perfis de acesso | **template do kit** — `templates/permissoes-por-perfil/` | Padrão já fechado e testado (contador que ignora a busca, mestre tri-state, busca que abre grupo). Gerar do zero diverge do padrão e repete bugs já resolvidos |
+| Tela de login | **template do kit** — `templates/login-ui/` | Alinhado com `@percus/auth`; ver `PADRAO_AUTH_SERVICE.md` |
 | Componente isolado (button, card, modal, form, table) | **shadcn MCP** | Adiciona via CLI direto no repo Vite/Next; código pronto, padrão Percus (Tailwind 4 + shadcn) |
 | Tela nova / fluxo novo, alta fidelidade | **v0.dev** | Browser próprio Vercel, créditos próprios, exporta React/Tailwind alinhado ao stack Percus |
 | Iteração sobre tela existente | Edição local + `npm run dev` | A própria tela é o feedback loop — não precisa mockup |
@@ -166,3 +168,4 @@ Antes de declarar "tela pronta":
 - ❌ Copiar código do v0 mantendo dados mock — vira bug de demo (R3)
 - ❌ Adicionar shadcn como **pacote** (`npm install @shadcn/...`) — shadcn é "copiar pro repo", não dependência
 - ❌ Usar v0.dev pra componente isolado que shadcn já tem — desperdiça créditos Vercel
+- ❌ Recriar tela de permissões/perfis do zero (v0, shadcn ou à mão) tendo `templates/permissoes-por-perfil/` — o padrão já resolveu contador, busca e mestre tri-state, e cada recriação reintroduz os mesmos bugs
