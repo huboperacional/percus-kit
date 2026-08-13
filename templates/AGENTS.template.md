@@ -80,7 +80,7 @@ Versão completa: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md`
 
 ### Comentários
 
-- No código: **inglês**
+- No código: **português**
 - Em docs/markdown do projeto: **português**
 
 ---

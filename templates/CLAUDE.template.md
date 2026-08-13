@@ -267,7 +267,7 @@ Ver `checklists/CHECKLIST_ENCERRAR_SESSAO.md`. HANDOFF + PLANO + mock-audit atua
 - Classes: `PascalCase`
 - Constantes: `UPPER_SNAKE_CASE`
 - Arquivos Python: `snake_case.py`
-- Comentários no código em **inglês**, documentação de projeto em **português**
+- Comentários no código em **português**, documentação de projeto em **português**
 
 ## Referências externas
 

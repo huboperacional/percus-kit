@@ -165,7 +165,7 @@ Setup: ver `comandos/SETUP_REVIEW_ROUTING.md`.
 
 ## Convenções deste repositório
 
-- **Idioma:** documentação em português, código/scripts em inglês
+- **Idioma:** documentação e **comentários de código** em português
 - **Branches:** `main` = última fase estável; `fase<N>-<topic>` = trabalho em andamento; merge em main no fim de cada fase com tag `vN.0.0`
 - **Specs:** versionadas em `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
 - **R11 no kit:** mudanças no kit seguem R11 como qualquer projeto (mesmo gate de review cross-provider) — **sem exceção** (a isenção, dead-letter, foi removida pós-v6.14.0). Disciplina adicional, aditiva ao review: plano explícito + revisão do usuário + checagem de refs mortas. Detalhes em `01_REGRAS_INEGOCIAVEIS.md` R11.
