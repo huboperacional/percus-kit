@@ -268,6 +268,11 @@
 - [Bug de LLM "não reproduz mais": o GATILHO envelhece, o MECANISMO não — cace a frase vizinha medindo o extrator offline](#gatilho-llm-envelhece-mecanismo-fica)
 - ["A cobertura da guarda é parcial" não é ordem de alargar — meça o que o alargamento QUEBRA, não só o que ele pega](#alargar-matcher-de-guarda-troca-miss-por-alvo-errado)
 - [Multi-tenant: a checagem de FOREIGN KEY do PostgreSQL NÃO passa pela RLS — a FK simples deixa o filho apontar para pai de outro tenant](#fk-nao-passa-por-rls-multitenant)
+- [O `autogenerate` do Alembic não vê `CHECK`, RLS nem `REVOKE` — e o `alembic check` fica verde assim mesmo](#alembic-autogenerate-nao-ve-check-rls-revoke)
+- [Dois módulos de teste passam sozinhos e quebram juntos: cada preparo limpa só o que ELE conhece](#preparo-de-teste-limpa-so-o-que-conhece)
+- [`refresh()` depois do `commit()` quebra sob RLS — o contexto é `SET LOCAL` e morre no commit](#refresh-apos-commit-perde-contexto-rls)
+- [A tabela que decide o acesso também tem RLS: consultar o papel antes de declarar o usuário nega o próprio login](#contexto-antes-da-tabela-que-decide-acesso)
+- [Teardown de teste não consegue dropar tabela com FK auto-referencial: desligue a checagem, em AUTOCOMMIT](#drop-table-fk-auto-referencial-no-teardown)
 - [Recurso finito consumido por N filhos: travar só a linha PAI errada deixa a soma estourar](#lock-no-pai-errado-soma-estoura)
 - [Estorno por soft-delete faz o relatório do mês passado mudar depois de entregue — use contra-lançamento](#estorno-soft-delete-muda-relatorio-ja-entregue)
 - [RLS ligada, política escrita, e o app continua vendo tudo: faltou `FORCE`, ou o role é superusuário](#rls-sem-force-dono-ignora-politica)
@@ -295,6 +300,8 @@
 - [`Enum(native_enum=False)` do SQLAlchemy grava o NAME do membro, não o `.value` — invisível pela suíte, quebra query manual](#sqlalchemy-enum-grava-name)
 - [Gate escapado 80 vezes em 30 dias não é indisciplina — é regex errado pra código em português](#gate-escapado-em-massa-e-regex-errado)
 - [Fix deployado, correto e mutation-testado — e prod segue com o comportamento velho: o caminho debounced pula os handlers pré-dispatch](#debounce-pula-handlers-pre-dispatch)
+- [Escolher escopo pela OFERTA e reportar como se fosse demanda](#oferta-nao-e-demanda)
+- [Enriquecer o texto que um motor de regras analisa CONTAMINA as regras vizinhas](#enriquecer-texto-analisado-contamina-regras)
 
 ---
 
@@ -2666,6 +2673,38 @@ pode falhar"*. E num analyze pediu para especificar o que dois requisitos já es
 Sonnet)** com o prompt e **mande ele ler os arquivos** que o artefato cita. Foi o único membro que
 produziu achado real nas duas rodadas — inclusive um CRITICAL que teria feito uma fatia inteira ir
 a produção sem mudar nada.
+
+### 🔧 O CONSERTO (verificado 2026-08-13): o orquestrador diagnostica e não deixa consertar
+
+O `council-orchestrator.ps1` hoje **emite o diagnóstico exato** em `respostas_degradadas`:
+
+```
+deepseek: empty -- resposta VAZIA: o modelo gastou o teto de tokens RACIOCINANDO e nao sobrou
+nada pra resposta -- suba -MaxTokens. (completion=8192 reasoning=8192 finish_reason=length)
+```
+
+🪤 **Mas `-MaxTokens` NÃO é parâmetro do orquestrador** — ele existe só no wrapper do provider
+(`plugin/percus-review/providers/deepseek.ps1`, `[int]$MaxTokens = 8192`) e o orquestrador **não
+repassa**. Ou seja: a ferramenta imprime uma instrução que ela própria não aceita. Quem lê o aviso
+e tenta `-MaxTokens` no orquestrador leva erro de parâmetro e conclui que não tem jeito.
+
+**Fix imediato — chamar o provider DIRETO, fora do orquestrador:**
+
+```powershell
+& "…\percus-kit\plugin\percus-review\providers\deepseek.ps1" `
+    -PromptFile "d:\tmp\prompt.txt" -MaxTokens 32000 -Model "deepseek-v4-pro"
+```
+
+Medido no mesmo prompt (~4,4k tokens de entrada, spec de frente): com 8192 → `content` vazio,
+**duas rodadas seguidas**; com 32000 → resposta completa, `status: ok`, 1.530 caracteres, com
+veredito e uma **discordância substantiva** da outra perna (que era exatamente o valor de ter a
+perna). O `deepseek-v4-pro` é modelo de RACIOCÍNIO: o teto tem que caber pensamento **+** resposta,
+e 8192 não cabe nem o pensamento de uma spec média.
+
+**Consequência pro canon:** `-MaxTokens` precisa virar parâmetro do orquestrador (repassado por
+provider). Enquanto não for, "DeepSeek voltou vazio" **não é** motivo pra declarar conselho
+degradado — é motivo pra re-rodar a perna direto com o teto maior. Declarar 1,5 de 3 sem tentar
+isso subestima o conselho e pode aprovar spec com uma perna a menos sem necessidade.
 
 **Reporte sempre "N de 3 responderam".** Conselho parcial apresentado como completo é pior que
 conselho nenhum.
@@ -9495,6 +9534,286 @@ qualquer projeto Percus com o gatilho "é (ou pode virar) multi-tenant" marcado.
 
 ---
 
+## O `autogenerate` do Alembic não vê `CHECK`, RLS nem `REVOKE` — e o `alembic check` fica verde assim mesmo {#alembic-autogenerate-nao-ve-check-rls-revoke}
+
+tags: alembic, autogenerate, migration incompleta, alembic check, CHECK constraint, row level security, RLS na migration, REVOKE, baseline, include_object, include_name, use_alter, schema drift, migration nao reflete o modelo
+
+**Contexto:** o modelo está certo, os testes leem o `Base.metadata` e passam, e a migration foi
+gerada por `alembic revision --autogenerate`. Parece fechado.
+
+Não está. O autogenerate **compara** metadata com banco por um conjunto de regras que deixa de
+fora justamente o que costuma carregar regra de negócio:
+
+- **`CHECK` constraint em tabela que já existe.** Num baseline, onde toda tabela é nova, o
+  `op.create_table` renderiza a definição inteira e os `CHECK` entram. Numa migration seguinte,
+  acrescentar ou mudar um `CHECK` **não gera nada**.
+- **Política de RLS, `FORCE`, `GRANT`/`REVOKE`.** Não existem para o Alembic. São DDL escrito à
+  mão dentro do arquivo, e somem sem aviso se alguém regenerar a migration.
+- **FK com `use_alter=True`** (dependência circular entre tabelas). Ela aparece **declarada**
+  dentro do `op.create_table` e **não é criada** — o Alembic ignora `use_alter` ali. Precisa de
+  `op.create_foreign_key` depois das tabelas e `op.drop_constraint` antes dos drops.
+
+**A parte que engana:** `alembic check` **não** cobre esse buraco. Ele compara pelas mesmas
+regras do autogenerate, então é cego exatamente para o que o autogenerate não vê. Um `check`
+verde significa "nada que o autogenerate saiba comparar divergiu", não "o banco tem o que o
+modelo declara". Ele ainda vale a pena — foi ele que pegou as FKs `use_alter` ausentes —, mas
+como rede secundária, nunca como garantia.
+
+**Solução — verificação em dois níveis:**
+
+*Nível barato, na suíte padrão, sem banco nenhum.* `alembic upgrade head --sql` roda em modo
+offline e emite o DDL como texto sem abrir conexão. Compare esse texto com o que as declarações
+do projeto prometem. Três detalhes decidem se funciona:
+
+- Capture com **`cfg.output_buffer`**, não `cfg.stdout` — com `stdout` o buffer volta VAZIO e o
+  DDL sai no terminal. Um teste escrito assim procura ausência numa string vazia e passa sempre.
+  Ponha uma asserção de "emitiu alguma coisa" antes das outras.
+- **Force a URL do dialeto de produção** por variável de ambiente. O modo offline nunca conecta,
+  mas escolhe o dialeto pela URL — e se a suíte roda em SQLite, você confere o DDL errado.
+- **Asserte contra `head`**, o encadeamento inteiro, e não contra o arquivo do baseline. Assim o
+  teste continua correto quando a migration seguinte mudar a declaração.
+
+*Nível caro, marcador de infra externa.* Construa o banco com `alembic upgrade head` em vez de
+`create_all` e rode sondas de **comportamento** contra ele: o INSERT que deve ser recusado, a
+política que deve esconder a linha, o `UPDATE` que o `REVOKE` deve derrubar. Comparar estrutura
+pega menos que exercitar comportamento.
+
+**A armadilha dentro da solução:** um teste que confere só o **nome** da constraint passa com a
+constraint esvaziada. FK que mantém `fk_titulo_categoria_empresa` e perde a coluna de tenant
+reabre o vazamento inteiro, e a string do nome continua no SQL. `CHECK` que mantém o nome e vira
+`CHECK (true)` idem. **Asserte nome + conteúdo** — colunas da FK na ordem, expressão do `CHECK`
+normalizada por espaço em branco.
+
+E ao **falsificar** o teste, mude o que a regressão real mudaria: renomear a constraint prova
+pouco, porque o caso perigoso preserva o nome.
+
+**Dois vizinhos que mordem no mesmo terreno:**
+
+- **Filtrar o autogenerate é `include_object`, não `include_name`.** Os dois existem e nenhum
+  levanta erro, então a troca é silenciosa. `include_name` filtra nomes vindos da **reflexão do
+  banco**; `include_object` filtra objeto do **metadata**, que é de onde vem "tabela nova a
+  criar". Com o errado, a migration nasce com o domínio inteiro que você queria excluir.
+- **Modelo que não é importado pelo `__init__.py` do pacote é invisível.** O `env.py` faz
+  `import app.models` e nada mais; um modelo que só carrega por import transitório aparece na
+  suíte (que importa mais coisa) e some do autogenerate. Trave com um teste em **subprocesso** —
+  dentro da suíte o metadata já está poluído e a comparação não teria sentido.
+
+**Ref:** Empresa Milionária, baseline da Fase A, 2026-08-13. Entrada irmã:
+`#fk-nao-passa-por-rls-multitenant`. Vale para qualquer projeto Percus com Alembic — e vale
+mais ainda onde `CHECK` carrega regra de negócio (sinal de estorno, saldo não-negativo), porque
+lá o silêncio do autogenerate é o silêncio da regra.
+
+---
+
+## Dois módulos de teste passam sozinhos e quebram juntos: cada preparo limpa só o que ELE conhece {#preparo-de-teste-limpa-so-o-que-conhece}
+
+tags: teste de integracao, fixture, banco compartilhado, drop_all, create_all, alembic_version, ordem alfabetica, interferencia entre modulos, DependentObjectsStillExistError, DROP SCHEMA CASCADE, estado externo, teste flaky por ordem
+
+**Contexto:** dois módulos de teste batem no mesmo banco real e montam o schema de formas
+diferentes — um por `create_all` de um recorte de tabelas, outro por `alembic upgrade head`.
+Cada um passa sozinho. Juntos, um deles fica todo vermelho, e trocar a ordem muda quem quebra.
+
+**O que está acontecendo:** o preparo de cada módulo foi escrito olhando só para o que **aquele
+módulo** cria. Isso é invisível enquanto ele é o único no banco, e vira defeito no dia em que
+outro chega. Os dois sintomas são complementares e parecem problemas diferentes:
+
+- **Limpar por lista de tabelas** falha quando existe uma tabela FORA da lista apontando para
+  dentro dela: `DependentObjectsStillExistError: cannot drop table X because other objects
+  depend on it`. A lista está certa sobre o módulo dela e errada sobre o banco.
+- **Decidir a limpeza por um marcador** — "se `alembic_version` existe, faço `downgrade`" —
+  falha quando o outro módulo monta o schema por `create_all`, que não grava marcador nenhum.
+  A fixture conclui "banco limpo", pula a limpeza, e o `upgrade` estoura em tabela existente.
+
+A causa é a mesma nos dois: **preparo baseado em conhecimento parcial do que existe no banco**.
+
+**A correção que NÃO resolve:** zerar o banco antes de rodar a suíte. Isso conserta a rodada,
+não a suíte — que continua correta só enquanto ninguém rodar um módulo isolado, interromper uma
+rodada no meio, ou renomear um arquivo para antes do outro na ordem alfabética. Estado externo
+como pré-condição não declarada é a mesma classe de defeito, só que mais difícil de ver.
+
+**Solução:** o preparo não pergunta nada ao banco — derruba o schema inteiro e recria.
+
+```python
+async def zerarSchema(url: str) -> None:
+    exigirBancoDeTeste(url)          # ver a guarda abaixo
+    motor = create_async_engine(url, poolclass=NullPool)
+    try:
+        async with motor.begin() as conexao:
+            await conexao.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+            await conexao.execute(text("CREATE SCHEMA public"))
+    finally:
+        await motor.dispose()
+```
+
+`CASCADE` é o ponto: ele derruba a tabela **e o que depende dela** na mesma operação, que é
+exatamente o que uma lista escrita à mão não faz quando está incompleta. Cada módulo chama isso
+no próprio setup, e aí ordem de coleta e estado anterior deixam de existir como variáveis.
+
+**A guarda que tem que vir junto.** A limpeza passou a ser destrutiva de verdade: antes, apontar
+a URL de teste para o banco errado custava as tabelas do recorte; agora custaria o banco inteiro
+do produto vizinho no mesmo servidor. Exija que o nome do banco termine em `_test` e levante
+quando não terminar — com teste que prova a recusa citando o banco de produção pelo nome. **Não
+deixe essa guarda para depois:** ela é o que mantém o preço do engano do mesmo tamanho que ele
+já tinha.
+
+**Como provar que fechou** — rodar duas vezes não basta, porque a segunda herda o estado
+saudável que a primeira deixou. Rode partindo de cada estado hostil:
+
+1. banco no estado que quebrava (migrado, no caso de origem);
+2. imediatamente de novo, sem tocar em nada;
+3. **ordem invertida** dos módulos, explicitamente na linha de comando;
+4. banco montado pelo OUTRO mecanismo (`create_all` sem marcador de versão);
+5. a suíte inteira do marcador, para o número oficial.
+
+**Sobre o cronômetro:** se a suíte roda contra banco em VPS por túnel SSH, meça o round-trip
+antes de acusar a suíte de travada. Medido no caso de origem: ~470 ms por round-trip, 4,6–7,1 s
+para abrir conexão, 27 s num `create_all` de 9 tabelas — nove minutos de rodada que são quase
+todos latência de rede, e que estouram o timeout de qualquer comando em foreground. Rode em
+background e não confunda lento com travado.
+
+**Ref:** Empresa Milionária, Fase A, 2026-08-13 — `test_isolamento_fk_postgres.py` (recorte por
+`create_all`, prova que o dialeto aceita o DDL) e `test_migration_postgres.py` (schema por
+`alembic upgrade head`, prova que o banco nasce da migration). 8 erros juntos, 0 separados.
+Entradas vizinhas: `#alembic-autogenerate-nao-ve-check-rls-revoke`,
+`#rls-sem-force-dono-ignora-politica`.
+
+---
+
+## `refresh()` depois do `commit()` quebra sob RLS — o contexto é `SET LOCAL` e morre no commit {#refresh-apos-commit-perde-contexto-rls}
+
+tags: RLS, row level security, SET LOCAL, set_config, session.refresh, commit, multi-tenant, contexto de tenant, endpoint cria e nao le, politica nega leitura, sqlite nao pega, teste verde em dev quebra em prod
+
+**Contexto:** endpoint multi-tenant com RLS. A dependência aplica o contexto
+(`SET LOCAL app.empresa_id`), o handler chama o caso de uso, faz `commit()` e depois
+`session.refresh(objeto)` para montar a resposta. Todos os testes passam.
+
+**O que acontece em produção:** `SET LOCAL` vale pela **transação**. O `commit()` a encerra, e
+o `refresh()` seguinte abre uma transação NOVA, sem contexto. A política de RLS então nega a
+leitura da linha que o próprio handler acabou de criar — e a falha é a mais confusa possível:
+o dado está gravado, e o endpoint que o gravou não consegue lê-lo.
+
+**Por que a suíte não pega:** se ela roda em SQLite, não há RLS nenhuma para negar. O código
+passa dos dois jeitos, e o defeito só aparece no primeiro deploy — ou pior, na primeira vez que
+duas empresas dividem o banco.
+
+**Solução:** monte a resposta **antes** do commit, com os dados que o `flush()` já deixou no
+objeto.
+
+```python
+resposta = Resposta.deObjeto(objeto)   # atributos já carregados pelo flush
+await session.commit()
+return resposta
+```
+
+Se precisar mesmo reler depois do commit, reaplique o contexto antes — mas prefira não
+precisar: reler o que você acabou de escrever é quase sempre sinal de que a resposta foi montada
+tarde demais.
+
+**Vizinho que morde junto:** uma função que aplica o contexto só quando o dialeto é PostgreSQL
+(para a suíte SQLite não estourar em `set_config`) deixa um segundo buraco — **esquecer de
+chamá-la não quebra teste nenhum**. Cubra com um teste que espione a chamada, e
+monkeypatche **no módulo que USA**, não no que define: quem importou o nome não vê a troca feita
+na origem, e o teste passa espionando nada.
+
+**Ref:** Empresa Milionária, Task 15 da Fase A, 2026-08-13. Achado relendo o código, não por
+teste; o teste do espião entrou depois, por apontamento do review cross-provider. Entrada irmã:
+`#rls-sem-force-dono-ignora-politica`.
+
+---
+
+## A tabela que decide o acesso também tem RLS: consultar o papel antes de declarar o usuário nega o próprio login {#contexto-antes-da-tabela-que-decide-acesso}
+
+tags: RLS, row level security, multi-tenant, papeis, autorizacao, 404 em tudo, SET LOCAL, ordem do contexto, politica circular, sqlite nao pega, bug so em producao
+
+**Sintoma:** com a RLS ligada, **todo** endpoint do domínio responde 404 / "não encontrado",
+inclusive para usuário que tem acesso. A suíte inteira está verde.
+
+**Causa:** a dependência que autoriza consulta a tabela de vínculo (`papeis`, `memberships`,
+`acessos`) **antes** de declarar o contexto. Só que essa tabela também tem política — e ela não
+pode ser isolada pelo tenant, porque é ela que responde *de qual tenant o usuário é*: isolá-la
+assim seria circular no login. Então ela é isolada pelo **usuário**.
+
+Resultado: sem o contexto de usuário declarado, a política nega a linha que decide o acesso. O
+vínculo "não existe", a dependência recusa, e o produto inteiro fica inacessível — falhando
+fechado, que é seguro e completamente inútil.
+
+**Por que a suíte não pega:** se ela roda em SQLite, não há política nenhuma, a consulta acha o
+vínculo e todos os testes de endpoint passam. O defeito nasce e vive invisível até o primeiro
+banco real.
+
+**Solução — a ordem é load-bearing, e por isso as duas coisas não podem ser uma função só:**
+
+```python
+await aplicarContextoDoUsuario(session, usuario.id)      # ANTES da consulta
+papel = await buscarPapel(session, usuario.id, tenantId)
+if papel is None:
+    raise HTTPException(404, ...)
+await aplicarContextoDoTenant(session, tenantId)         # DEPOIS de o papel existir
+```
+
+Um helper único que aplique os dois de uma vez **não tem como estar certo**: chamado cedo,
+declara tenant que ainda não foi autorizado; chamado tarde, a consulta do papel já falhou.
+
+**Como travar em SQLite, onde o mecanismo não existe:** espione as duas chamadas e asserte a
+**sequência**, não a presença — `assert chamadas == [("usuario", ...), ("tenant", ...)]`. Um
+teste que só conte chamadas fica verde com a ordem invertida, que é exatamente o defeito.
+
+**Como isso foi achado, e a lição maior:** por um harness que roda os endpoints contra o banco
+REAL, com a política ligada, pelo caminho HTTP. Nenhuma quantidade de teste em SQLite acharia —
+e a prova de que o contexto chega não é o caso negativo (o vizinho não aparece), é o
+**positivo**: a listagem devolver o dado da própria empresa. Com a política negando tudo, o
+negativo passa e a resposta vem vazia, que é o modo de falhar mais fácil de confundir com
+sucesso.
+
+**Ref:** Empresa Milionária, Task 13 da Fase A, 2026-08-13. Entradas irmãs:
+`#refresh-apos-commit-perde-contexto-rls`, `#rls-sem-force-dono-ignora-politica`.
+
+---
+
+## Teardown de teste não consegue dropar tabela com FK auto-referencial: desligue a checagem, em AUTOCOMMIT {#drop-table-fk-auto-referencial-no-teardown}
+
+tags: sqlite, PRAGMA foreign_keys, drop_all, teardown, FOREIGN KEY constraint failed, FK composta, auto-referencia, StaticPool, conftest, erro aparece no teste seguinte
+
+**Sintoma:** o teardown da suíte estoura `FOREIGN KEY constraint failed` num `DROP TABLE`, e o
+erro aparece no **setup do teste seguinte** — longe da causa. Some quando você roda o teste
+sozinho, porque sozinho ele não deixa dado commitado para trás.
+
+**Causa:** a tabela tem FK **auto-referencial** (linha que aponta para outra linha da mesma
+tabela — contra-lançamento, hierarquia, versão anterior), e o SQLite verifica FK no DELETE
+implícito do `DROP TABLE`. Com FK **composta** o caso é ainda mais fácil de disparar. Só afeta
+teste que **commita**: os que trabalham em transação e dão rollback nunca deixam a linha lá.
+
+**Solução — desligar a checagem só para derrubar as tabelas:**
+
+```python
+conexao = await ENGINE.connect()
+conexao = await conexao.execution_options(isolation_level="AUTOCOMMIT")
+try:
+    await conexao.exec_driver_sql("PRAGMA foreign_keys=OFF")
+    await conexao.run_sync(Base.metadata.drop_all)
+finally:
+    await conexao.exec_driver_sql("PRAGMA foreign_keys=ON")   # OBRIGATÓRIO
+    await conexao.close()
+```
+
+**Dois detalhes que decidem se funciona:**
+
+- **`AUTOCOMMIT` não é enfeite.** Dentro de uma transação o SQLite **ignora** este PRAGMA em
+  silêncio — sem erro, sem aviso, e a checagem continua valendo 1. Confira lendo
+  `PRAGMA foreign_keys` depois de desligar.
+- **Religar é obrigatório, e merece trava.** Com `StaticPool` (o padrão para SQLite in-memory
+  em teste) a conexão é **uma só** para a sessão inteira: uma FK deixada desligada não volta
+  sozinha, e todo teste de integridade referencial que rodar depois passa **sem exercer
+  constraint nenhuma** — verde e vazio. Ponha no setup um
+  `assert (PRAGMA foreign_keys) == 1` com mensagem explicando; ele custa uma query por teste e
+  derruba na hora quem esquecer.
+
+**Ref:** Empresa Milionária, Task 15 da Fase A, 2026-08-13 — `baixas` com
+`(baixa_estornada_id, empresa_id) → baixas` (contra-baixa do ADR-0007 sobre FK composta do
+ADR-0008). Entrada irmã: `#preparo-de-teste-limpa-so-o-que-conhece`.
+
+---
+
 ## Recurso finito consumido por N filhos: travar só a linha PAI errada deixa a soma estourar {#lock-no-pai-errado-soma-estoura}
 
 tags: with_for_update, race condition, TOCTOU, soma excede, saldo, alocacao, N:N, baixa, pagamento parcial, SELECT FOR UPDATE, concorrencia, teto, over-allocation, conciliacao
@@ -9846,6 +10165,37 @@ com o log dela**. O resultado correto na resposta ao usuário não distingue "a 
 
 ---
 
+## Escolher escopo pela OFERTA e reportar como se fosse demanda {#oferta-nao-e-demanda}
+
+tags: oferta vs demanda, volume de busca, keyword planner, estoque, catalogo, feed, area descoberta, regiao sem cobertura, recorte geografico, bairro, escolha de escopo, campanha, google ads, midia paga, CPC, justificativa invertida
+
+**Sintoma.** Uma proposta de estrutura de anúncios (grupo, campanha, recorte geográfico) é
+justificada por um número que não é de procura: volume de estoque do cliente, quantidade de itens
+no feed, ou "esta área está descoberta pela campanha que já roda". A proposta passa em todas as
+checagens de forma e mesmo assim escolhe errado.
+
+**Como reconhecer.** Pergunte de que lado da equação veio o número que sustenta a escolha. Se veio
+do que o cliente TEM (estoque, catálogo, cobertura de outra campanha), é OFERTA. Demanda só aparece
+medindo busca.
+
+**Why.** Área descoberta costuma estar descoberta **porque não tem demanda** — o vazio é
+consequência, não oportunidade. E estoque grande num bairro não implica que alguém pesquise por ele.
+Medido em 2026-08-13, duas vezes no mesmo dia: 5 bairros escolhidos por estoque, e um deles com
+**zero** busca no Keyword Planner apesar de 13 imóveis; e um recorte geográfico proposto por estar
+descoberto que valia **4,1% da demanda** vizinha com clique **2× mais caro**.
+
+**How to apply.** Antes de propor, rode `KeywordPlanIdeaService.generate_keyword_ideas` com o geo
+real e ordene por `avg_monthly_searches`, lendo junto `high_top_of_page_bid_micros` — volume baixo
+com clique caro é o pior par possível. **Demanda escolhe, estoque desempata**, e demanda sem estoque
+vira clique em listagem vazia. Traga a tabela junto da recomendação.
+
+**Corolário de processo.** Foi a segunda passada adversarial (subagente cego, §8 da skill
+`auditoria-de-conta`) que pegou os dois casos — e no mesmo dia ela também acusou uma magnitude
+**errada** ("27× menos" que medido virou 57% retido). Trate o revisor como levantador de hipótese:
+o que ele aponta se mede, não se aceita nem se descarta.
+
+---
+
 ## "Antes/depois" corrigido no olho fica MAIS exagerado que o original — meça o realce especular só no objeto {#antes-depois-sem-instrumento-de-brilho}
 
 `tags: before after, drag to compare, slider, brilho, gloss, ceramic coating, imagem gerada, gpt-image-2, images/edits, exagerado, delta medio engana, realce especular, sharp, medir so o objeto, ads4agencies-site, escalade`
@@ -9899,3 +10249,44 @@ mecanismo) · [#mutacao-sobrevive-por-guarda-redundante] (medir antes de fabrica
 **Ref:** ads4agencies-site, `public/window-tint/shared/vehicles/ceramic/escalade-black-before.webp`
 (asset compartilhado por 382 sites), 2026-08-13. Medição com `sharp` (`extract` + `greyscale` +
 `raw`). R23.
+
+## Enriquecer o texto que um motor de regras analisa CONTAMINA as regras vizinhas {#enriquecer-texto-analisado-contamina-regras}
+
+tags: enriquecer texto, concatenar contexto no prompt, motor de regras, deteccao de periodo, mes fantasma, contaminacao entre regras, efeito colateral, canal separado, handler, resolucao de alvo, fuzzy match, resposta numerada, LLM semantico, portao recusa indevida
+
+**Sintoma.** Um handler resolve o alvo por fora (LLM semântico, escolha numerada num menu, fuzzy
+match) e o motor de decisão exige que o *texto* nomeie esse alvo. A tentação é concatenar o nome
+resolvido ao texto antes de chamar o motor. Funciona — até o nome do alvo conter um termo que outra
+regra lê. Caso real (Família Milionária, 2026-08-13): compra chamada **"Fone de junho"** anexada ao
+texto fez o detector de período enxergar um mês que o usuário nunca disse; o portão passou a exigir
+uma parcela de junho e **recusou cinco parcelas vencidas**. A mesma armadilha existia com uma
+recorrência "Seguro de junho" no caminho da resposta numerada.
+
+**Causa.** O texto do usuário é a fonte de VÁRIAS regras ao mesmo tempo (é pergunta? há incerteza?
+qual período?). Injetar dado do sistema nele satisfaz a regra que você queria e envenena as outras,
+porque nenhuma delas sabe distinguir o que veio do usuário do que você acrescentou.
+
+**Conserto.** Entregue o alvo resolvido por um **canal separado** que só a regra pretendida lê. Se o
+motor já tem um canal de contexto ("o alvo pode vir dos últimos turnos"), use-o: é exatamente esse o
+caso de uso. O texto do usuário permanece intocado e continua sendo a única fonte para pergunta,
+incerteza e período.
+
+```python
+# ERRADO — o nome resolvido entra na mesma string que as outras regras leem
+texto=f"{texto} {compra['descricao']}"
+
+# CERTO — canal separado; `resolverPorPeriodo` só olha `texto`
+texto=texto, contexto=[Turno("enviado", compra["descricao"])]
+```
+
+**Generalização.** Vale para qualquer pipeline em que um campo alimenta múltiplos extratores:
+prompt de LLM que recebe metadados concatenados, query string que acumula filtros derivados, mensagem
+de log parseada por mais de um alerta. Se você precisa dizer algo ao passo B, não escreva no canal
+que A, B e C leem juntos.
+
+**Como pegar antes de doer.** Nomeie a entidade com um termo que outra regra reconhece e veja se o
+comportamento muda. No teste, escolha esse termo de forma DETERMINÍSTICA e distante do dado real
+(ex.: um mês a 6 meses de distância do mês corrente), com um assert de coerência: sem isso, rodar a
+suíte no mês "errado" deixa o teste verde sem exercer bloqueio nenhum.
+
+Relacionado: [[#guarda-inalcancavel-meca-o-alcance]] (a guarda existe mas a frase não chega nela).
