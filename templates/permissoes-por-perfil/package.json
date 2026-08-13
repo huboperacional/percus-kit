@@ -1,0 +1,18 @@
+{
+  "name": "@percus/permissoes-por-perfil-template",
+  "version": "6.36.0",
+  "private": true,
+  "description": "Template canônico copy-paste do editor de permissões por perfil de usuário (seletor de acessos Percus).",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6",
+    "@testing-library/react": "^16",
+    "@testing-library/user-event": "^14",
+    "jsdom": "^25",
+    "react": "^19",
+    "react-dom": "^19",
+    "vitest": "^2.0.0"
+  }
+}
