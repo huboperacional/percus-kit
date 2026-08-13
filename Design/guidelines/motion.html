@@ -1,0 +1,37 @@
+<!-- @dsCard group="Brand" viewport="700x200" name="Motion & states" subtitle="Hover lifts, press sinks 1px, media zooms 1.04" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Motion & states</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { padding: 20px; background: var(--bg-app); }
+  .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<style>
+  .sw { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+  .chip { width: 104px; }
+  .chip i { display: block; height: 46px; border-radius: var(--radius-tile); border: 1px solid var(--border-card); }
+  .chip b { display: block; font-size: var(--text-2xs); font-weight: var(--weight-semibold); margin-top: 6px; }
+  .chip s { display: block; font-size: var(--text-2xs); color: var(--text-tertiary); text-decoration: none; font-family: ui-monospace, monospace; }
+
+</style>
+<div style="display:flex;gap:var(--space-4);flex-wrap:wrap;align-items:flex-start">
+  <div style="width:200px;background:var(--bg-surface);border:1px solid var(--border-card);border-radius:var(--radius-card);overflow:hidden;transition:box-shadow var(--dur-base) var(--ease-out),transform var(--dur-base) var(--ease-out)" onmouseover="this.style.boxShadow='var(--shadow-card-hover)';this.style.transform='translateY(var(--lift-card))';this.querySelector('img').style.transform='scale(var(--zoom-media))'" onmouseout="this.style.boxShadow='none';this.style.transform='none';this.querySelector('img').style.transform='none'">
+    <img src="https://picsum.photos/seed/pk-motion/400/266" alt="" style="width:100%;aspect-ratio:3/2;object-fit:cover;transition:transform var(--dur-slow) var(--ease-out)">
+    <div style="padding:10px 12px;font-size:var(--text-2xs);color:var(--text-tertiary)">hover me — lift −2px, zoom 1.04</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px;font-size:var(--text-2xs);color:var(--text-tertiary);font-family:ui-monospace,monospace">
+    <span>--dur-fast 150ms · background, borders</span>
+    <span>--dur-base 180ms · shadow, lift</span>
+    <span>--dur-slow 300ms · media zoom</span>
+    <span>--ease-out cubic-bezier(.22,1,.36,1)</span>
+    <span>:active translateY(1px)</span>
+    <span>:focus-visible 2px accent, offset 2</span>
+  </div>
+</div>
+</body>
+</html>

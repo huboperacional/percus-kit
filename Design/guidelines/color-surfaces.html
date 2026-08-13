@@ -1,0 +1,24 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Surfaces" subtitle="The ground, the panels and the wells inside them" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Surfaces</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { padding: 20px; background: var(--bg-app); }
+  .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<style>
+  .sw { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+  .chip { width: 104px; }
+  .chip i { display: block; height: 46px; border-radius: var(--radius-tile); border: 1px solid var(--border-card); }
+  .chip b { display: block; font-size: var(--text-2xs); font-weight: var(--weight-semibold); margin-top: 6px; }
+  .chip s { display: block; font-size: var(--text-2xs); color: var(--text-tertiary); text-decoration: none; font-family: ui-monospace, monospace; }
+
+</style>
+<div class="sw"><span class="chip"><i style="background:var(--bg-app)"></i><b>app</b><s>var(--bg-app)</s></span><span class="chip"><i style="background:var(--bg-surface)"></i><b>surface</b><s>var(--bg-surface)</s></span><span class="chip"><i style="background:var(--bg-inset)"></i><b>inset</b><s>var(--bg-inset)</s></span><span class="chip"><i style="background:var(--bg-muted)"></i><b>muted</b><s>var(--bg-muted)</s></span><span class="chip"><i style="background:var(--border-card)"></i><b>border card</b><s>var(--border-card)</s></span><span class="chip"><i style="background:var(--border-input)"></i><b>border input</b><s>var(--border-input)</s></span></div>
+</body>
+</html>

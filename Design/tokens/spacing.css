@@ -1,0 +1,37 @@
+:root {
+  /* Every step is a multiple of 4. There are no in-between values — if a gap
+     needs 14px, the layout is wrong, not the scale. */
+  --space-0: 0;
+  --space-px: 1px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+
+  /* Surface padding — named so a panel is never padded by eye */
+  --pad-panel: var(--space-5) var(--space-6) var(--space-6);
+  --pad-header: var(--space-5) var(--space-6);
+  --pad-card: var(--space-3) var(--space-4) var(--space-4);
+  --pad-well: var(--space-3) var(--space-4);
+  --pad-modal: var(--space-6);
+  --pad-rail: var(--space-4);
+
+  /* Gaps with one job each */
+  --gap-stack: var(--space-6);   /* between panels */
+  --gap-grid: var(--space-4);    /* between cards in a grid */
+  --gap-row: var(--space-3);     /* between stacked rows inside a panel */
+  --gap-inline: var(--space-2);  /* between controls sitting side by side */
+  --gap-label: var(--space-1);   /* label → control → hint */
+
+  /* Layout constants */
+  --sidebar-width: 276px;
+  --content-max: 1180px;
+  --card-min: 236px;
+  --media-badge-inset: var(--space-2);
+}

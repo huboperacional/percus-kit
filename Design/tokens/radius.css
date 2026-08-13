@@ -1,0 +1,8 @@
+:root {
+  --radius-input: 10px;
+  --radius-tile: 12px;   /* thumbnails, nav items */
+  --radius-card: 16px;   /* field/media cards */
+  --radius-panel: 20px;  /* the white panels */
+  --radius-modal: 24px;  /* dialogs, the login card */
+  --radius-pill: 999px;  /* every button, chip and badge */
+}

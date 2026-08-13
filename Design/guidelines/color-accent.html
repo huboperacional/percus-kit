@@ -1,0 +1,24 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Accent" subtitle="One red voice: base, hover, press, text and tints" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accent</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { padding: 20px; background: var(--bg-app); }
+  .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<style>
+  .sw { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+  .chip { width: 104px; }
+  .chip i { display: block; height: 46px; border-radius: var(--radius-tile); border: 1px solid var(--border-card); }
+  .chip b { display: block; font-size: var(--text-2xs); font-weight: var(--weight-semibold); margin-top: 6px; }
+  .chip s { display: block; font-size: var(--text-2xs); color: var(--text-tertiary); text-decoration: none; font-family: ui-monospace, monospace; }
+
+</style>
+<div class="sw"><span class="chip"><i style="background:var(--accent)"></i><b>accent</b><s>var(--accent)</s></span><span class="chip"><i style="background:var(--accent-hover)"></i><b>hover</b><s>var(--accent-hover)</s></span><span class="chip"><i style="background:var(--accent-press)"></i><b>press</b><s>var(--accent-press)</s></span><span class="chip"><i style="background:var(--accent-text)"></i><b>text</b><s>var(--accent-text)</s></span><span class="chip"><i style="background:var(--accent-tint)"></i><b>tint</b><s>var(--accent-tint)</s></span><span class="chip"><i style="background:var(--accent-tint-strong)"></i><b>tint strong</b><s>var(--accent-tint-strong)</s></span></div>
+</body>
+</html>

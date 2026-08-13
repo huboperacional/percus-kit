@@ -1,0 +1,29 @@
+<!-- @dsCard group="Brand" viewport="700x210" name="Imagery" subtitle="Full colour, cover-cropped, 3:2 stills and 16:9 video with a glass play badge" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Imagery</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { padding: 20px; background: var(--bg-app); }
+  .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<style>
+  .sw { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+  .chip { width: 104px; }
+  .chip i { display: block; height: 46px; border-radius: var(--radius-tile); border: 1px solid var(--border-card); }
+  .chip b { display: block; font-size: var(--text-2xs); font-weight: var(--weight-semibold); margin-top: 6px; }
+  .chip s { display: block; font-size: var(--text-2xs); color: var(--text-tertiary); text-decoration: none; font-family: ui-monospace, monospace; }
+
+</style>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-4)">
+  <div style="position:relative;border-radius:var(--radius-card);overflow:hidden;background:var(--neutral-200)"><img src="https://picsum.photos/seed/pk-i1/400/266" alt="" style="aspect-ratio:3/2;width:100%;object-fit:cover"><span style="position:absolute;left:8px;top:8px;background:var(--overlay-badge);color:var(--text-inverse);font-size:var(--text-2xs);letter-spacing:var(--tracking-pill);text-transform:uppercase;padding:3px 8px;border-radius:var(--radius-pill)">Before</span></div>
+  <div style="position:relative;border-radius:var(--radius-card);overflow:hidden;background:var(--neutral-200)"><img src="https://picsum.photos/seed/pk-i2/400/266" alt="" style="aspect-ratio:3/2;width:100%;object-fit:cover"></div>
+  <div style="position:relative;border-radius:var(--radius-tile);overflow:hidden;background:var(--neutral-200)"><img src="https://picsum.photos/seed/pk-i3/400/225" alt="" style="aspect-ratio:16/9;width:100%;object-fit:cover"><span style="position:absolute;inset:0;display:grid;place-items:center"><span style="width:40px;height:40px;border-radius:var(--radius-pill);background:var(--overlay-glass);box-shadow:var(--shadow-float);display:grid;place-items:center"><svg width="15" height="15" viewBox="0 0 24 24" fill="var(--accent)"><path d="M8 5v14l11-7z"/></svg></span></span></div>
+</div>
+<div style="font-size:var(--text-2xs);color:var(--text-tertiary);margin-top:10px">Never tint, duotone or desaturate content imagery — the picture is the label.</div>
+</body>
+</html>

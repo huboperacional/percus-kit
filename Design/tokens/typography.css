@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&display=swap');
+
+:root {
+  --font-display: "Archivo", system-ui, -apple-system, sans-serif;
+  --font-body: "Archivo", system-ui, -apple-system, sans-serif;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-display: 800;
+
+  /* Sizes — the panel scale. Nothing between 15 and 17: UI copy or headings, no in-between. */
+  --text-2xs: 11px;   /* pills, kickers, hints */
+  --text-xs: 12px;    /* labels, inline status */
+  --text-sm: 13px;    /* secondary copy, small buttons */
+  --text-base: 14px;  /* buttons, inputs, body UI */
+  --text-md: 15px;    /* item titles */
+  --text-lg: 17px;    /* group headings */
+  --text-xl: 22px;
+  --text-2xl: 26px;   /* secondary page heading */
+  --text-3xl: 30px;   /* page heading */
+  --text-4xl: 38px;
+
+  --leading-tight: 1.18;
+  --leading-snug: 1.35;
+  --leading-body: 1.55;
+
+  --tracking-display: -0.03em;  /* every display/heading size */
+  --tracking-normal: 0em;
+  --tracking-kicker: 0.1em;     /* uppercase kickers */
+  --tracking-pill: 0.06em;      /* uppercase pills */
+}

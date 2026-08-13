@@ -1,0 +1,56 @@
+<!-- @dsCard group="Components" viewport="700x300" name="Dialog" subtitle="Dialog — states and variants" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dialog</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body { padding: 20px; background: var(--bg-app); }
+  .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/pk-jsx">
+    const NS = (function () {
+  if (window.PanelKit && window.PanelKit.Button) return window.PanelKit;
+  for (const k of Object.keys(window)) {
+    try { const v = window[k]; if (v && typeof v === 'object' && v.Button && v.Panel) return v; } catch (e) {}
+  }
+  return {};
+})();
+  function Card() {
+    const { Dialog, Button } = NS;
+    return (
+      <div style={{ position: 'relative', height: 260, borderRadius: 'var(--radius-panel)', overflow: 'hidden', background: 'var(--bg-surface)', boxShadow: 'var(--shadow-sm)' }}>
+        <div style={{ position: 'absolute', inset: 0 }}>
+          <Dialog title="Remove this photo?" description="The slot goes empty on the live site until you upload a new one."
+            actions={<><Button>Cancel</Button><Button variant="danger">Remove</Button></>} />
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<Card />);
+</script>
+<script>
+  /* Explicit transform so a failure surfaces with a real message instead of Babel's
+     opaque auto-run "Script error." */
+  (function () {
+    var node = document.querySelector('script[type="text/pk-jsx"]');
+    try {
+      var js = Babel.transform(node.textContent, { presets: [['react', { runtime: 'classic' }]] }).code;
+      new Function(js)();
+    } catch (e) {
+      console.error('[PanelKit] page script failed:', e && e.message, e);
+      document.body.insertAdjacentHTML('beforeend', '<pre style="padding:16px;color:var(--accent-text);white-space:pre-wrap">' + (e && e.message) + '</pre>');
+    }
+  })();
+</script>
+</body>
+</html>

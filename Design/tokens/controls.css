@@ -1,0 +1,45 @@
+/* CONTROL SIZING
+   Controls are sized by padding, never by height. Every control of a given size
+   shares one padding-block, one line-height and one border width, so a button and
+   an input on the same row land on the same height without either knowing about
+   the other. Change a control's size in one place here — never in a component. */
+
+:root {
+  --control-line: 20px;        /* the shared line box every control renders into */
+  --control-border: 1px;       /* every variant, incl. filled ones (transparent) */
+
+  --control-pad-y-sm: 5px;     /* → 5 + 20 + 5 + 2 borders = 32 */
+  --control-pad-x-sm: var(--space-3);
+  --control-text-sm: var(--text-sm);
+  --control-h-sm: 32px;
+
+  --control-pad-y-md: 9px;     /* → 9 + 20 + 9 + 2 = 40 */
+  --control-pad-x-md: var(--space-4);
+  --control-text-md: var(--text-base);
+  --control-h-md: 40px;
+
+  --control-pad-y-lg: 12px;    /* → 12 + 20 + 12 + 2 = 46 */
+  --control-pad-x-lg: var(--space-5);
+  --control-text-lg: var(--text-base);
+  --control-h-lg: 46px;
+
+  --control-gap: var(--space-2);       /* icon → label inside a control */
+  --control-pad-icon-only: 0;          /* square footprint, centred glyph */
+  --control-pad-x-inset: 32px;         /* x-padding when a leading icon is inside */
+
+  /* Pills and badges size the same way, one step tighter */
+  --pill-pad-y: var(--space-1);
+  --pill-pad-x: 10px;
+  --pill-pad-y-sm: 2px;
+  --pill-pad-x-sm: var(--space-2);
+}
+
+/* Touch: one override lifts every control past the 44px target — components
+   don't branch on pointer type. */
+@media (pointer: coarse) {
+  :root {
+    --control-pad-y-sm: 9px;  --control-h-sm: 40px;
+    --control-pad-y-md: 13px; --control-h-md: 48px;
+    --control-pad-y-lg: 15px; --control-h-lg: 52px;
+  }
+}

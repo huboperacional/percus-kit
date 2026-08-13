@@ -1,0 +1,251 @@
+<!-- @dsCard group="Content panel" viewport="1280x760" name="Content panel" subtitle="Sidebar + panel stack: the system's canonical app view" -->
+<!-- @startingPoint section="Screens" subtitle="Sidebar app shell with searchable sections and media/field cards" viewport="1280x900" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Content panel — PanelKit UI kit</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  #root { min-height: 100vh; }
+  @media (max-width: 900px) {
+    .pk-shell { grid-template-columns: 1fr !important; }
+    .pk-shell aside { position: static !important; width: auto !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/pk-jsx">
+const NS = (function () {
+  if (window.PanelKit && window.PanelKit.Button) return window.PanelKit;
+  for (const k of Object.keys(window)) {
+    try { const v = window[k]; if (v && typeof v === 'object' && v.Button && v.Panel) return v; } catch (e) {}
+  }
+  return {};
+})();
+const { Button, IconButton, TextInput, Field, Pill, StatusLine, Panel, PageHeader, Sidebar, NavItem, MediaCard, FieldRow } = NS;
+
+const Ico = ({ d, size = 15, w = 2 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">{d.map((p, i) => <path key={i} d={p} />)}</svg>
+);
+const UP = ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M7 10l5-5 5 5', 'M12 5v12'];
+const CHEV_L = ['m15 18-6-6 6-6'], CHEV_R = ['m9 18 6-6-6-6'], OUT = ['M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4', 'm16 17 5-5-5-5', 'M21 12H9'];
+const SEARCH = <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.3-4.3" /></svg>;
+
+const img = seed => 'https://picsum.photos/seed/' + seed + '/464/310';
+const photo = (id, label, hint, badge) => ({ kind: 'photo', id, label, hint: hint || '', badge: badge || '', src: img(id) });
+const video = (id, label, hint, yt) => ({ kind: 'video', id, label, hint, yt });
+
+const SECTIONS = [
+  { id: 'home', name: 'Home', desc: 'The landing page — brand marks, hero video, service cards and the main gallery.', groups: [
+    { name: 'Brand', note: 'Rarely changed', fields: [photo('pk-logo', 'Logo', 'Header and footer'), photo('pk-favicon', 'Favicon', 'Browser tab icon')] },
+    { name: 'Hero', fields: [video('pk-hero', 'Hero background video', 'Plays muted behind the headline', 'tto9XoR9Hwg')] },
+    { name: 'Gallery', fields: [photo('pk-g1', 'Gallery photo 1'), photo('pk-g2', 'Gallery photo 2'), photo('pk-g3', 'Gallery photo 3'), photo('pk-g4', 'Gallery photo 4'), video('pk-gv', 'Gallery video', 'Shown after photo 4', 'aqz-KE-bpKQ')] },
+    { name: 'Before / after', fields: [photo('pk-b1', 'Sedan tint', 'Pair 1', 'BEFORE'), photo('pk-a1', 'Sedan tint', 'Pair 1', 'AFTER')] }
+  ] },
+  { id: 'service', name: 'Service page', desc: 'A single service — header video plus the feature band photos.', groups: [
+    { name: 'Header', fields: [video('pk-svc', 'Header video', 'Top of the page', 'ScMzIvxBSi4')] },
+    { name: 'Feature band', fields: [photo('pk-f1', 'Feature photo 1'), photo('pk-f2', 'Feature photo 2'), photo('pk-f3', 'Feature photo 3')] }
+  ] },
+  { id: 'about', name: 'About', desc: 'The story — team photo and the workshop shot.', groups: [
+    { name: 'Shop', fields: [photo('pk-t1', 'Team photo'), photo('pk-t2', 'Workshop photo')] }
+  ] }
+];
+
+const parseYouTube = raw => {
+  const s = (raw || '').trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+  const m = s.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+};
+const countFields = sec => sec.groups.reduce((n, g) => n + g.fields.length, 0);
+
+const PLAY = (
+  <span style={{ width: 40, height: 40, borderRadius: 'var(--radius-pill)', background: 'var(--overlay-glass)', boxShadow: 'var(--shadow-float)', display: 'grid', placeItems: 'center' }}>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="var(--accent)"><path d="M8 5v14l11-7z" /></svg>
+  </span>
+);
+
+const BrandMark = ({ sub }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: '2px 4px' }}>
+    <span style={{ width: 32, height: 32, borderRadius: 'var(--radius-input)', background: 'var(--accent)', color: 'var(--text-inverse)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 14 }}>P</span>
+    <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
+      <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 14 }}>PanelKit</span>
+      <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-tertiary)' }}>{sub}</span>
+    </span>
+  </div>
+);
+
+function LoginScreen({ onSignIn }) {
+  return (
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 'var(--space-8)', background: 'radial-gradient(120% 90% at 100% 0%, var(--accent-tint) 0%, var(--bg-app) 55%)' }}>
+      <div style={{ width: '100%', maxWidth: 940, display: 'grid', gridTemplateColumns: '1fr 0.9fr', background: 'var(--bg-surface)', borderRadius: 'var(--radius-modal)', boxShadow: 'var(--shadow-modal)', overflow: 'hidden' }}>
+        <div style={{ padding: '44px 40px', display: 'flex', flexDirection: 'column', gap: 26 }}>
+          <BrandMark sub="Content panel" />
+          <div>
+            <h2>Welcome back</h2>
+            <p style={{ margin: '6px 0 0', fontSize: 'var(--text-base)', color: 'var(--text-tertiary)' }}>Sign in to manage the photos and videos on your site.</p>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-grid)' }}>
+            <Field label="Email"><TextInput type="email" defaultValue="owner@example.com" size="lg" /></Field>
+            <Field label="Password"><TextInput type="password" defaultValue="············" size="lg" /></Field>
+            <Button variant="primary" size="lg" block onClick={onSignIn}>Sign in</Button>
+          </div>
+          <div style={{ borderTop: '1px solid var(--border-card)', paddingTop: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Password changes are made on the server — contact your administrator.</div>
+        </div>
+        <div style={{ background: 'var(--accent)', color: 'var(--text-inverse)', padding: '44px 38px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 'var(--text-2xs)', letterSpacing: 'var(--tracking-kicker)', textTransform: 'uppercase', opacity: 0.85 }}>Owner access</span>
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, letterSpacing: 'var(--tracking-display)', fontSize: 32, lineHeight: 1.08 }}>Swap a photo.<br />Ship it.</div>
+            <p style={{ margin: '14px 0 0', fontSize: 'var(--text-base)', opacity: 0.92, maxWidth: '30ch' }}>Every image and video on your site is editable here. Changes go live in seconds.</p>
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <Pill tone="onAccent">{SECTIONS.length} sections</Pill>
+            <Pill tone="onAccent">{SECTIONS.reduce((n, s) => n + countFields(s), 0)} fields</Pill>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VideoField({ field, saved, error, draft, onDraft, onSave }) {
+  const id = saved || field.yt;
+  return (
+    <FieldRow
+      preview={<div style={{ position: 'relative', aspectRatio: '16 / 9' }}>
+        <img src={'https://img.youtube.com/vi/' + id + '/hqdefault.jpg'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <span style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>{PLAY}</span>
+        <span style={{ position: 'absolute', left: 8, top: 8 }}><Pill tone="overlay" uppercase>Video</Pill></span>
+      </div>}
+      title={field.label} hint={field.hint}
+      control={<Field label="Video link"><TextInput value={draft} invalid={!!error} placeholder="https://youtu.be/tto9XoR9Hwg" onChange={e => onDraft(e.target.value)} /></Field>}
+      action={<Button variant="primary" onClick={onSave}>Save</Button>}
+      status={<StatusLine state={error ? 'error' : saved ? 'saved' : 'idle'}>
+        {error || (saved ? 'Saved — live on the site' : 'Paste the link from YouTube’s Share button.')}
+      </StatusLine>} />
+  );
+}
+
+function App() {
+  const [view, setView] = React.useState('panel');
+  const [active, setActive] = React.useState('home');
+  const [query, setQuery] = React.useState('');
+  const [drafts, setDrafts] = React.useState({});
+  const [ids, setIds] = React.useState({});
+  const [status, setStatus] = React.useState({});
+  const timers = React.useRef({});
+
+  const flash = (id, patch, ttl) => {
+    setStatus(s => ({ ...s, [id]: patch }));
+    clearTimeout(timers.current[id]);
+    if (ttl) timers.current[id] = setTimeout(() => setStatus(s => { const n = { ...s }; delete n[id]; return n; }), ttl);
+  };
+  const draftOf = f => drafts[f.id] !== undefined ? drafts[f.id] : 'https://youtu.be/' + (ids[f.id] || f.yt);
+  const saveVideo = f => {
+    const parsed = parseYouTube(draftOf(f));
+    if (!parsed) return flash(f.id, { error: 'That doesn’t look like a YouTube link. Paste the one from the Share button.' });
+    setIds(m => ({ ...m, [f.id]: parsed }));
+    flash(f.id, { saved: parsed }, 3200);
+  };
+
+  if (view === 'login') return <LoginScreen onSignIn={() => setView('panel')} />;
+
+  const q = query.trim().toLowerCase();
+  const sectionIdx = SECTIONS.findIndex(s => s.id === active);
+  const section = SECTIONS[sectionIdx];
+  const groups = q
+    ? (() => {
+        const hits = [];
+        SECTIONS.forEach(sec => sec.groups.forEach(g => g.fields.forEach(f => {
+          if ((sec.name + ' ' + g.name + ' ' + f.label + ' ' + (f.hint || '')).toLowerCase().includes(q)) hits.push({ ...f, hint: sec.name + ' · ' + g.name });
+        })));
+        return hits.length ? [{ name: 'Matching fields', fields: hits }] : [];
+      })()
+    : section.groups;
+
+  return (
+    <div className="pk-shell" style={{ display: 'grid', gridTemplateColumns: 'var(--sidebar-width) minmax(0, 1fr)', gap: 'var(--gap-stack)', padding: 'var(--gap-stack)', alignItems: 'start', maxWidth: 'calc(var(--content-max) + var(--sidebar-width) + var(--gap-stack) * 3)' }}>
+      <Sidebar
+        brand={<BrandMark sub="Content panel" />}
+        search={<TextInput pill leadingIcon={SEARCH} placeholder="Search all fields" value={query} onChange={e => setQuery(e.target.value)} />}
+        footer={<>
+          <div style={{ background: 'var(--bg-inset)', borderRadius: 'var(--radius-tile)', padding: '12px 14px' }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'var(--text-xs)' }}>All changes published</div>
+            <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-tertiary)', marginTop: 2 }}>Last update today, 10:42 AM</div>
+          </div>
+          <Button align="left" icon={<Ico d={OUT} />} onClick={() => setView('login')}>Sign out</Button>
+        </>}>
+        {SECTIONS.map(s => (
+          <NavItem key={s.id} label={s.name} count={countFields(s)} active={!q && s.id === active} onClick={() => { setActive(s.id); setQuery(''); }} />
+        ))}
+      </Sidebar>
+
+      <main style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 'var(--gap-stack)' }}>
+        {q ? (
+          <PageHeader kicker="Search" title={groups.length ? groups[0].fields.length + ' fields match “' + query + '”' : 'Nothing matches that'}
+            description="Across every section. Clear the search to go back to a single section." />
+        ) : (
+          <PageHeader badge={<Pill tone="accent" uppercase>{'Section ' + String(sectionIdx + 1).padStart(2, '0') + ' / ' + String(SECTIONS.length).padStart(2, '0')}</Pill>}
+            meta={countFields(section) + ' editable fields'} title={section.name} description={section.desc}
+            actions={<>
+              <IconButton label="Previous section" onClick={() => setActive(SECTIONS[(sectionIdx + SECTIONS.length - 1) % SECTIONS.length].id)}><Ico d={CHEV_L} size={16} /></IconButton>
+              <Button iconRight={<Ico d={CHEV_R} size={16} />} onClick={() => setActive(SECTIONS[(sectionIdx + 1) % SECTIONS.length].id)}>Next</Button>
+            </>} />
+        )}
+
+        {groups.map(g => {
+          const videos = g.fields.filter(f => f.kind === 'video');
+          const photos = g.fields.filter(f => f.kind === 'photo');
+          return (
+            <Panel key={g.name} title={g.name} meta={g.fields.length + ' fields'} note={g.note ? <Pill>{g.note}</Pill> : null}>
+              {videos.length ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-row)', marginBottom: photos.length ? 'var(--space-4)' : 0 }}>
+                  {videos.map(f => {
+                    const st = status[f.id] || {};
+                    return <VideoField key={f.id} field={f} saved={st.saved || ids[f.id]} error={st.error} draft={draftOf(f)}
+                      onDraft={val => { setDrafts(d => ({ ...d, [f.id]: val })); if ((status[f.id] || {}).error) flash(f.id, {}); }}
+                      onSave={() => saveVideo(f)} />;
+                  })}
+                </div>
+              ) : null}
+              {photos.length ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(var(--card-min), 1fr))', gap: 'var(--gap-grid)' }}>
+                  {photos.map(f => (
+                    <MediaCard key={f.id} src={f.src} title={f.label} hint={f.hint}
+                      badge={f.badge ? <Pill tone="overlay" uppercase>{f.badge}</Pill> : null}
+                      actions={<Button size="sm" icon={<Ico d={UP} size={14} />} onClick={() => flash(f.id, { saved: true }, 3200)}>Change</Button>}
+                      status={(status[f.id] || {}).saved ? <StatusLine state="saved">Saved</StatusLine> : <StatusLine>{''}</StatusLine>} />
+                  ))}
+                </div>
+              ) : null}
+            </Panel>
+          );
+        })}
+      </main>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+<script>
+  /* Explicit transform so a failure surfaces with a real message instead of Babel's
+     opaque auto-run "Script error." */
+  (function () {
+    var node = document.querySelector('script[type="text/pk-jsx"]');
+    try {
+      var js = Babel.transform(node.textContent, { presets: [['react', { runtime: 'classic' }]] }).code;
+      new Function(js)();
+    } catch (e) {
+      console.error('[PanelKit] page script failed:', e && e.message, e);
+      document.body.insertAdjacentHTML('beforeend', '<pre style="padding:16px;color:var(--accent-text);white-space:pre-wrap">' + (e && e.message) + '</pre>');
+    }
+  })();
+</script>
+</body>
+</html>

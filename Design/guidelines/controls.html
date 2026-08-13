@@ -1,0 +1,57 @@
+<!-- @dsCard group="Spacing" viewport="700x300" name="Control sizing" subtitle="Padding-based sizing: why a button and an input always match" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Control sizing</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { padding: 20px; }
+  .mono { font-family: ui-monospace, monospace; font-size: var(--text-2xs); color: var(--text-tertiary); }
+</style>
+</head>
+<body>
+<div style="display:flex;flex-direction:column;gap:var(--space-5)">
+  
+  <div style="display:flex;align-items:flex-end;gap:var(--gap-inline)">
+    <span class="mono" style="width:26px">sm</span>
+    <div style="flex:1;position:relative;display:flex">
+      <input class="pk-probe" placeholder="Text input" style="width:100%;min-height:var(--control-h-sm);padding:var(--control-pad-y-sm) var(--control-pad-x-sm);font:inherit;font-size:var(--control-text-sm);line-height:var(--control-line);border:var(--control-border) solid var(--border-input);border-radius:var(--radius-input);background:var(--bg-surface);box-shadow:var(--shadow-inset-input);outline:none">
+    </div>
+    <button style="display:inline-flex;align-items:center;justify-content:center;min-height:var(--control-h-sm);padding:var(--control-pad-y-sm) var(--control-pad-x-sm);font-family:var(--font-display);font-weight:800;font-size:var(--control-text-sm);line-height:var(--control-line);border:var(--control-border) solid transparent;border-radius:var(--radius-pill);background:var(--accent);color:var(--text-inverse);box-shadow:var(--shadow-accent);cursor:pointer">Save</button>
+    <button aria-label="More" style="width:var(--control-h-sm);height:var(--control-h-sm);padding:0;display:inline-flex;align-items:center;justify-content:center;border:var(--control-border) solid var(--border-input);border-radius:var(--radius-pill);background:var(--bg-surface);box-shadow:var(--shadow-sm);cursor:pointer">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+    <span class="mono" style="width:132px">pad 5/12 → 32px</span>
+  </div>
+  <div style="display:flex;align-items:flex-end;gap:var(--gap-inline)">
+    <span class="mono" style="width:26px">md</span>
+    <div style="flex:1;position:relative;display:flex">
+      <input class="pk-probe" placeholder="Text input" style="width:100%;min-height:var(--control-h-md);padding:var(--control-pad-y-md) var(--control-pad-x-md);font:inherit;font-size:var(--control-text-md);line-height:var(--control-line);border:var(--control-border) solid var(--border-input);border-radius:var(--radius-input);background:var(--bg-surface);box-shadow:var(--shadow-inset-input);outline:none">
+    </div>
+    <button style="display:inline-flex;align-items:center;justify-content:center;min-height:var(--control-h-md);padding:var(--control-pad-y-md) var(--control-pad-x-md);font-family:var(--font-display);font-weight:800;font-size:var(--control-text-md);line-height:var(--control-line);border:var(--control-border) solid transparent;border-radius:var(--radius-pill);background:var(--accent);color:var(--text-inverse);box-shadow:var(--shadow-accent);cursor:pointer">Save</button>
+    <button aria-label="More" style="width:var(--control-h-md);height:var(--control-h-md);padding:0;display:inline-flex;align-items:center;justify-content:center;border:var(--control-border) solid var(--border-input);border-radius:var(--radius-pill);background:var(--bg-surface);box-shadow:var(--shadow-sm);cursor:pointer">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+    <span class="mono" style="width:132px">pad 9/16 → 40px</span>
+  </div>
+  <div style="display:flex;align-items:flex-end;gap:var(--gap-inline)">
+    <span class="mono" style="width:26px">lg</span>
+    <div style="flex:1;position:relative;display:flex">
+      <input class="pk-probe" placeholder="Text input" style="width:100%;min-height:var(--control-h-lg);padding:var(--control-pad-y-lg) var(--control-pad-x-lg);font:inherit;font-size:var(--control-text-lg);line-height:var(--control-line);border:var(--control-border) solid var(--border-input);border-radius:var(--radius-input);background:var(--bg-surface);box-shadow:var(--shadow-inset-input);outline:none">
+    </div>
+    <button style="display:inline-flex;align-items:center;justify-content:center;min-height:var(--control-h-lg);padding:var(--control-pad-y-lg) var(--control-pad-x-lg);font-family:var(--font-display);font-weight:800;font-size:var(--control-text-lg);line-height:var(--control-line);border:var(--control-border) solid transparent;border-radius:var(--radius-pill);background:var(--accent);color:var(--text-inverse);box-shadow:var(--shadow-accent);cursor:pointer">Save</button>
+    <button aria-label="More" style="width:var(--control-h-lg);height:var(--control-h-lg);padding:0;display:inline-flex;align-items:center;justify-content:center;border:var(--control-border) solid var(--border-input);border-radius:var(--radius-pill);background:var(--bg-surface);box-shadow:var(--shadow-sm);cursor:pointer">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+    <span class="mono" style="width:132px">pad 12/20 → 46px</span>
+  </div>
+  <div class="mono" style="line-height:1.6">
+    height = --control-pad-y ×2 + --control-line + --control-border ×2 — no component sets height.<br>
+    Filled variants keep a transparent 1px border so they can’t end up 2px shorter than outlined ones.<br>
+    Icon-only buttons take --control-h-* as a square and drop the x-padding.<br>
+    @media (pointer: coarse) raises pad-y once: every control clears 44px, no component changes.
+  </div>
+</div>
+</body>
+</html>

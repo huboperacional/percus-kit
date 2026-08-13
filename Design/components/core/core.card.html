@@ -1,0 +1,82 @@
+<!-- @dsCard group="Components" viewport="700x340" name="Core — buttons, pills, inputs, status" subtitle="Every core control in its variants and states" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Core</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>body { padding: 20px; } .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/pk-jsx">
+  const NS = (function () {
+  if (window.PanelKit && window.PanelKit.Button) return window.PanelKit;
+  for (const k of Object.keys(window)) {
+    try { const v = window[k]; if (v && typeof v === 'object' && v.Button && v.Panel) return v; } catch (e) {}
+  }
+  return {};
+})();
+  const Ico = ({ d, size = 15 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d.map((p, i) => <path key={i} d={p} />)}</svg>
+  );
+  const UP = ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M7 10l5-5 5 5', 'M12 5v12'];
+  const CHEV_L = ['m15 18-6-6 6-6'], CHEV_R = ['m9 18 6-6-6-6'], OUT = ['M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4', 'm16 17 5-5-5-5', 'M21 12H9'];
+  const SEARCH = <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.3-4.3" /></svg>;
+
+  function Card() {
+    const { Button, IconButton, Pill, StatusLine, TextInput, Field } = NS;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-grid)' }}>
+        <div className="row">
+          <Button variant="primary">Save</Button>
+          <Button>Secondary</Button>
+          <Button variant="ghost">Ghost</Button>
+          <Button variant="danger">Remove</Button>
+          <Button disabled>Disabled</Button>
+          <IconButton label="Previous"><Ico d={CHEV_L} size={16} /></IconButton>
+        </div>
+        <div className="row">
+          <Button size="sm" icon={<Ico d={UP} size={14} />}>Change</Button>
+          <Button iconRight={<Ico d={CHEV_R} />}>Next</Button>
+          <Button size="lg" variant="primary">Sign in</Button>
+          <Button align="left" icon={<Ico d={OUT} />}>Sign out</Button>
+        </div>
+        <div className="row">
+          <Pill tone="accent" uppercase>Section 01 / 07</Pill>
+          <Pill>26</Pill>
+          <Pill tone="overlay" uppercase>Before</Pill>
+          <Pill tone="solid">Live</Pill>
+          <StatusLine state="saved">Saved — live on the site</StatusLine>
+          <StatusLine state="error">That link isn’t recognised.</StatusLine>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-4)', alignItems: 'end' }}>
+          <Field label="Email"><TextInput defaultValue="mike@autoworxnj.com" /></Field>
+          <Field label="Video link"><TextInput defaultValue="not-a-link" invalid /></Field>
+          <TextInput pill placeholder="Search all fields" leadingIcon={SEARCH} />
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<Card />);
+</script>
+<script>
+  /* Explicit transform so a failure surfaces with a real message instead of Babel's
+     opaque auto-run "Script error." */
+  (function () {
+    var node = document.querySelector('script[type="text/pk-jsx"]');
+    try {
+      var js = Babel.transform(node.textContent, { presets: [['react', { runtime: 'classic' }]] }).code;
+      new Function(js)();
+    } catch (e) {
+      console.error('[PanelKit] page script failed:', e && e.message, e);
+      document.body.insertAdjacentHTML('beforeend', '<pre style="padding:16px;color:var(--accent-text);white-space:pre-wrap">' + (e && e.message) + '</pre>');
+    }
+  })();
+</script>
+</body>
+</html>

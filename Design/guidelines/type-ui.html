@@ -1,0 +1,30 @@
+<!-- @dsCard group="Type" viewport="700x200" name="UI text" subtitle="Body, labels, hints and the uppercase kicker" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UI text</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { padding: 20px; background: var(--bg-app); }
+  .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<style>
+  .sw { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+  .chip { width: 104px; }
+  .chip i { display: block; height: 46px; border-radius: var(--radius-tile); border: 1px solid var(--border-card); }
+  .chip b { display: block; font-size: var(--text-2xs); font-weight: var(--weight-semibold); margin-top: 6px; }
+  .chip s { display: block; font-size: var(--text-2xs); color: var(--text-tertiary); text-decoration: none; font-family: ui-monospace, monospace; }
+
+</style>
+<div style="display:flex;flex-direction:column;gap:10px">
+  <div style="font-size:var(--text-base)">Every image and video on your site is editable here. <span class="pk-muted" style="font-size:var(--text-2xs)">14px / body & controls</span></div>
+  <div style="font-size:var(--text-sm);color:var(--text-tertiary)">The landing page — brand marks, hero video and the main gallery. <span style="font-size:var(--text-2xs)">13px / description</span></div>
+  <div style="font-size:var(--text-xs);color:var(--text-secondary)">Video link <span class="pk-muted" style="font-size:var(--text-2xs)">12px / label & status</span></div>
+  <div style="font-size:var(--text-2xs);color:var(--text-tertiary)">Home · Gallery — 11px / hint & pill</div>
+  <div class="pk-kicker">Sections — 11px uppercase, tracking .1em</div>
+</div>
+</body>
+</html>

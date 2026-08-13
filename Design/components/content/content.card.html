@@ -1,0 +1,84 @@
+<!-- @dsCard group="Components" viewport="700x460" name="Media cards & field rows" subtitle="Media cards & field rows — states and variants" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Media cards & field rows</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body { padding: 20px; background: var(--bg-app); }
+  .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/pk-jsx">
+    const NS = (function () {
+  if (window.PanelKit && window.PanelKit.Button) return window.PanelKit;
+  for (const k of Object.keys(window)) {
+    try { const v = window[k]; if (v && typeof v === 'object' && v.Button && v.Panel) return v; } catch (e) {}
+  }
+  return {};
+})();
+  const Ico = ({ d, size = 15, w = 2 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">
+      {d.map((p, i) => <path key={i} d={p} />)}
+    </svg>
+  );
+  const UP = ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M7 10l5-5 5 5', 'M12 5v12'];
+  const CHEV_L = ['m15 18-6-6 6-6'], CHEV_R = ['m9 18 6-6-6-6'];
+  const OUT = ['M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4', 'm16 17 5-5-5-5', 'M21 12H9'];
+  const PLAY = (
+    <span style={{ width: 40, height: 40, borderRadius: 'var(--radius-pill)', background: 'var(--overlay-glass)', display: 'grid', placeItems: 'center', boxShadow: 'var(--shadow-float)' }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="var(--accent)"><path d="M8 5v14l11-7z" /></svg>
+    </span>
+  );
+  function Card() {
+    const { MediaCard, FieldRow, Pill, Button, StatusLine, TextInput, Field } = NS;
+    const [state, setState] = React.useState('idle');
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-grid)' }}>
+        <FieldRow
+          preview={<div style={{ position: 'relative', aspectRatio: '16 / 9' }}>
+            <img src="https://picsum.photos/seed/pk-video/440/248" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <span style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>{PLAY}</span>
+            <span style={{ position: 'absolute', left: 8, top: 8 }}><Pill tone="overlay" uppercase>Video</Pill></span>
+          </div>}
+          title="Hero background video" hint="Plays muted behind the headline"
+          control={<Field label="Video link"><TextInput defaultValue="https://youtu.be/tto9XoR9Hwg" /></Field>}
+          action={<Button variant="primary" onClick={() => setState('saved')}>Save</Button>}
+          status={<StatusLine state={state}>{state === 'saved' ? 'Saved — live on the site' : 'Paste the link from the Share button.'}</StatusLine>} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(var(--card-min), 1fr))', gap: 'var(--gap-grid)' }}>
+          {[['pk-a', 'Gallery photo 1', ''], ['pk-b', 'Sedan tint', 'BEFORE'], ['pk-c', 'Sedan tint', 'AFTER']].map(([seed, title, badge]) => (
+            <MediaCard key={seed} src={'https://picsum.photos/seed/' + seed + '/464/310'} title={title} hint="Home · Gallery"
+              badge={badge ? <Pill tone="overlay" uppercase>{badge}</Pill> : null}
+              actions={<Button size="sm" icon={<Ico d={UP} size={14} />}>Change</Button>}
+              status={<StatusLine>{''}</StatusLine>} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<Card />);
+</script>
+<script>
+  /* Explicit transform so a failure surfaces with a real message instead of Babel's
+     opaque auto-run "Script error." */
+  (function () {
+    var node = document.querySelector('script[type="text/pk-jsx"]');
+    try {
+      var js = Babel.transform(node.textContent, { presets: [['react', { runtime: 'classic' }]] }).code;
+      new Function(js)();
+    } catch (e) {
+      console.error('[PanelKit] page script failed:', e && e.message, e);
+      document.body.insertAdjacentHTML('beforeend', '<pre style="padding:16px;color:var(--accent-text);white-space:pre-wrap">' + (e && e.message) + '</pre>');
+    }
+  })();
+</script>
+</body>
+</html>

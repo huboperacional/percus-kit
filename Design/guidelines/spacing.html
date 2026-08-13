@@ -1,0 +1,35 @@
+<!-- @dsCard group="Spacing" viewport="700x280" name="Spacing scale" subtitle="Strict 4px steps, plus the named surface paddings and gaps" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Spacing scale</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { padding: 20px; }
+  .mono { font-family: ui-monospace, monospace; font-size: var(--text-2xs); color: var(--text-tertiary); }
+</style>
+</head>
+<body>
+<div style="display:flex;gap:var(--space-7);flex-wrap:wrap">
+  <div style="display:flex;flex-direction:column;gap:var(--space-1)">
+    <div style="display:flex;align-items:center;gap:var(--space-3)"><span style="height:10px;width:var(--space-1);background:var(--accent);border-radius:2px"></span><span class="mono">--space-1</span></div><div style="display:flex;align-items:center;gap:var(--space-3)"><span style="height:10px;width:var(--space-2);background:var(--accent);border-radius:2px"></span><span class="mono">--space-2</span></div><div style="display:flex;align-items:center;gap:var(--space-3)"><span style="height:10px;width:var(--space-3);background:var(--accent);border-radius:2px"></span><span class="mono">--space-3</span></div><div style="display:flex;align-items:center;gap:var(--space-3)"><span style="height:10px;width:var(--space-4);background:var(--accent);border-radius:2px"></span><span class="mono">--space-4</span></div><div style="display:flex;align-items:center;gap:var(--space-3)"><span style="height:10px;width:var(--space-5);background:var(--accent);border-radius:2px"></span><span class="mono">--space-5</span></div><div style="display:flex;align-items:center;gap:var(--space-3)"><span style="height:10px;width:var(--space-6);background:var(--accent);border-radius:2px"></span><span class="mono">--space-6</span></div><div style="display:flex;align-items:center;gap:var(--space-3)"><span style="height:10px;width:var(--space-7);background:var(--accent);border-radius:2px"></span><span class="mono">--space-7</span></div><div style="display:flex;align-items:center;gap:var(--space-3)"><span style="height:10px;width:var(--space-8);background:var(--accent);border-radius:2px"></span><span class="mono">--space-8</span></div><div style="display:flex;align-items:center;gap:var(--space-3)"><span style="height:10px;width:var(--space-9);background:var(--accent);border-radius:2px"></span><span class="mono">--space-9</span></div><div style="display:flex;align-items:center;gap:var(--space-3)"><span style="height:10px;width:var(--space-10);background:var(--accent);border-radius:2px"></span><span class="mono">--space-10</span></div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:var(--space-2)">
+    <b style="font-size:var(--text-xs)">Named paddings</b>
+    <span class="mono">--pad-panel &nbsp;20 24 24</span>
+    <span class="mono">--pad-header &nbsp;20 24</span>
+    <span class="mono">--pad-card &nbsp;&nbsp;&nbsp;12 16 16</span>
+    <span class="mono">--pad-well &nbsp;&nbsp;&nbsp;12 16</span>
+    <span class="mono">--pad-rail &nbsp;&nbsp;&nbsp;16</span>
+    <span class="mono">--pad-modal &nbsp;&nbsp;24</span>
+    <b style="font-size:var(--text-xs);margin-top:var(--space-2)">Named gaps</b>
+    <span class="mono">--gap-stack &nbsp;24 · between panels</span>
+    <span class="mono">--gap-grid &nbsp;&nbsp;16 · between cards</span>
+    <span class="mono">--gap-row &nbsp;&nbsp;&nbsp;12 · stacked rows</span>
+    <span class="mono">--gap-inline &nbsp;8 · side-by-side controls</span>
+    <span class="mono">--gap-label &nbsp;&nbsp;4 · label → control → hint</span>
+  </div>
+</div>
+</body>
+</html>

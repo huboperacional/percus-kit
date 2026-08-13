@@ -1,0 +1,29 @@
+<!-- @dsCard group="Type" viewport="700x220" name="Display & headings" subtitle="Archivo 800, tracking −0.03em at every size" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Display & headings</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { padding: 20px; background: var(--bg-app); }
+  .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<style>
+  .sw { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+  .chip { width: 104px; }
+  .chip i { display: block; height: 46px; border-radius: var(--radius-tile); border: 1px solid var(--border-card); }
+  .chip b { display: block; font-size: var(--text-2xs); font-weight: var(--weight-semibold); margin-top: 6px; }
+  .chip s { display: block; font-size: var(--text-2xs); color: var(--text-tertiary); text-decoration: none; font-family: ui-monospace, monospace; }
+
+</style>
+<div style="display:flex;flex-direction:column;gap:10px">
+  <div style="font-family:var(--font-display);font-weight:800;letter-spacing:var(--tracking-display);font-size:var(--text-3xl)">Swap a photo. Ship it. <span class="pk-muted" style="font-size:var(--text-2xs);font-weight:400;letter-spacing:0">30px / page heading</span></div>
+  <div style="font-family:var(--font-display);font-weight:800;letter-spacing:var(--tracking-display);font-size:var(--text-2xl)">26 fields match “tint” <span class="pk-muted" style="font-size:var(--text-2xs);font-weight:400;letter-spacing:0">26px / secondary heading</span></div>
+  <div style="font-family:var(--font-display);font-weight:800;letter-spacing:var(--tracking-display);font-size:var(--text-lg)">Home gallery <span class="pk-muted" style="font-size:var(--text-2xs);font-weight:400;letter-spacing:0">17px / group heading</span></div>
+  <div style="font-family:var(--font-display);font-weight:800;font-size:var(--text-md)">Hero background video <span class="pk-muted" style="font-size:var(--text-2xs);font-weight:400">15px / item title</span></div>
+</div>
+</body>
+</html>

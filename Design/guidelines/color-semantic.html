@@ -1,0 +1,24 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Semantic & overlays" subtitle="Success, danger, warning and the two image overlays" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Semantic & overlays</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { padding: 20px; background: var(--bg-app); }
+  .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<style>
+  .sw { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+  .chip { width: 104px; }
+  .chip i { display: block; height: 46px; border-radius: var(--radius-tile); border: 1px solid var(--border-card); }
+  .chip b { display: block; font-size: var(--text-2xs); font-weight: var(--weight-semibold); margin-top: 6px; }
+  .chip s { display: block; font-size: var(--text-2xs); color: var(--text-tertiary); text-decoration: none; font-family: ui-monospace, monospace; }
+
+</style>
+<div class="sw"><span class="chip"><i style="background:var(--success)"></i><b>success</b><s>var(--success)</s></span><span class="chip"><i style="background:var(--success-tint)"></i><b>success tint</b><s>var(--success-tint)</s></span><span class="chip"><i style="background:var(--danger)"></i><b>danger</b><s>var(--danger)</s></span><span class="chip"><i style="background:var(--warning)"></i><b>warning</b><s>var(--warning)</s></span><span class="chip"><i style="background:var(--overlay-badge)"></i><b>badge</b><s>var(--overlay-badge)</s></span><span class="chip"><i style="background:var(--overlay-scrim)"></i><b>scrim</b><s>var(--overlay-scrim)</s></span></div>
+</body>
+</html>

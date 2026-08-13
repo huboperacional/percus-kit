@@ -1,0 +1,54 @@
+:root {
+  /* Ground & surfaces */
+  --bg-app: #f6f5f4;        /* the desk the panels sit on */
+  --bg-surface: #ffffff;    /* panels and cards */
+  --bg-inset: #f6f5f4;      /* wells inside a panel: search, status block */
+  --bg-muted: #f1efee;      /* neutral pills, nav hover */
+
+  /* Ink */
+  --text-primary: #201e1d;
+  --text-secondary: #605d5d;
+  --text-tertiary: #7d7979;
+  --text-inverse: #ffffff;
+
+  /* Lines */
+  --border-card: #eeebe9;
+  --border-input: #e2dedc;
+  --border-strong: #d7d3d3;
+
+  /* Accent — one voice, red. Swap these six values to rebrand. */
+  --accent: #ec3013;
+  --accent-hover: #dd2b0f;
+  --accent-press: #ae1800;
+  --accent-text: #ae1800;   /* accent-colored text on light ground (AA) */
+  --accent-tint: #fff2ef;   /* tinted fills, active nav, success chips */
+  --accent-tint-strong: #ffe0d9;
+
+  /* Neutral ramp */
+  --neutral-100: #f8f4f4;
+  --neutral-200: #eae7e7;
+  --neutral-300: #d7d3d3;
+  --neutral-400: #bab6b6;
+  --neutral-500: #9b9797;
+  --neutral-600: #7d7979;
+  --neutral-700: #605d5d;
+  --neutral-800: #444141;
+  --neutral-900: #2d2b2b;
+
+  /* Semantic — derived from the accent so the system stays mono unless it must not be */
+  --success: #1f7a4d;
+  --success-tint: #e8f5ee;
+  --danger: var(--accent-press);
+  --danger-tint: var(--accent-tint);
+  --warning: #a86a00;
+  --warning-tint: #fdf1dd;
+
+  /* Overlays */
+  --overlay-badge: rgba(32, 30, 29, 0.72);   /* labels over imagery */
+  --overlay-glass: rgba(255, 255, 255, 0.92); /* play badge over imagery */
+  --overlay-on-accent: rgba(255, 255, 255, 0.18);
+  --overlay-scrim: rgba(32, 30, 29, 0.45);   /* dialog backdrop */
+
+  /* Focus */
+  --focus-ring: var(--accent);
+}
