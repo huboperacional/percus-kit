@@ -1,8 +1,10 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.35.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.36.0`
 
-> Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`). Os dois são sincronizados via tag no repo `huboperacional/percus-kit`. Quando você lê `plugin.json` versão X, o canon na pasta `_Novo_Projeto/` daquela tag também é versão X.
+> Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
+>
+> ⚠️ **A sincronização é por commit em `main`, NÃO por tag.** O texto anterior aqui dizia "sincronizados via tag" — medido em 2026-08-13, a última tag do repo é `v6.7.2` e o canon estava em `6.35.0`: o tagging morreu 28 versões atrás e este parágrafo apontava para um mecanismo que não existe mais. Quem quiser saber a versão de um commit lê o cabeçalho acima, não `git describe`. Retomar o tagging é decisão em aberto; enquanto não for retomado, este texto descreve o que realmente acontece.
 >
 > ⚠️ **O plugin INSTALADO (em `plugins/cache/`) pode ficar ATRÁS do canon-source — isso é ESPERADO para os GATES, e NÃO é esperado para os HOOKS.** O republish/retag do plugin foi descartado (decisão do operador, 01/07/2026), então o tooling novo é **repo-only**: os projetos continuam lendo o plugin em cache (hoje 6.28.0/6.29.0). Isso funciona para os **gates de commit**, que chegam via `v2/gates/instalar-gates.sh` (git hook self-contained, zero dependência de publicação).
 >
@@ -20,6 +22,69 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.36.0 — 2026-08-13
+
+**O versionamento deixa de depender de alguém lembrar.** Os 6 testes de
+`version-alignment.tests.ps1` provavam que os 4 arquivos de versão **concordam** — nunca que a
+versão **andou**. `6.35.0` nos quatro, com um template novo dentro, passa nos seis e mente. O que
+faltava era o gatilho, e o gatilho era memória minha.
+
+- **`scripts/bump-canon.ps1 <versao>`** (novo). A versão mora em **7 pontos** espalhados por 4
+  arquivos — cabeçalho e changelog do `CANON_VERSION.md`, `version` e `description` do
+  `plugin.json`, os mesmos dois do `marketplace.json`, e `.percus-version`. Fazer na mão é o que
+  produz drift. Edita por regex no texto cru de propósito: reserializar o JSON reformataria o
+  arquivo e produziria diff ilegível. Recusa semver inválido, bump para trás ou repetido, e
+  **aborta se já houver drift** entre os 4 arquivos — sem essa última guarda o bump seria parcial e
+  silencioso: o script troca a string da versão antiga, então o arquivo já divergente não casa com o
+  padrão e sobrevive ao comando que deveria eliminá-lo. A checagem de drift cobre os **6** pontos
+  numéricos, inclusive o prefixo `vX.Y.Z |` das descrições — que driftam sozinhas justamente porque
+  são reescritas por regex que não olha o valor antigo. Valida tudo **antes** de escrever qualquer
+  coisa. 9 testes em `bump-canon.tests.ps1`.
+- **Checagem 4 no `v2/gates/percus-gate.sh`** (nova). Barra commit com conteúdo staged em
+  `plugin/`, `templates/`, `v2/`, `scripts/` ou `0[1-6]_*.md` enquanto a versão do
+  `CANON_VERSION.md` **não avançar** sobre a de `origin/main` — isto é, enquanto você estiver
+  acrescentando kit numa versão já publicada. Três detalhes que o review cross-provider extraiu, e
+  que sem eles o gate seria teatro:
+  - A comparação é contra `origin/main`, não contra "o cabeçalho mudou neste commit", senão o
+    segundo commit da mesma versão exigiria bump de novo — e gate que atrapalha ensina a ser
+    escapado (ver `#gate-escapado-em-massa-e-regex-errado`).
+  - Lê do **índice** (`git show :CANON_VERSION.md`), não do working tree: bumpar e esquecer o
+    `git add` deixaria entrar commit com conteúdo novo em versão velha.
+  - Exige **avanço**, não igualdade: repo atrasado em relação ao remoto também está commitando em
+    versão já publicada.
+  - Quem decide se o repo é o canon é o **remoto** (`origin/main` tem `CANON_VERSION.md`), não o
+    disco. Ancorar em `[ -f CANON_VERSION.md ]` dava duas portas grátis para desligar o gate —
+    `git rm --cached` e `git rm` — e as duas passavam caladas.
+  - Comparação semver em `awk`, não `sort -V`: `-V` é GNU-only e o gate roda em qualquer sh.
+
+  Pula sozinha fora do canon e em clone sem `origin/main`. 13 testes em `gate-versao.tests.ps1`.
+
+  **O que NÃO exige bump, de propósito:** `conhecimento/`, `docs/`, `images/`, `Design/`,
+  `comandos/` e `checklists/`. A versão significa *"mudou o que um projeto consome como código"* —
+  `Design/` é referência visual declarada (não é código), e `comandos/`/`checklists/` são prosa de
+  procedimento que muda toda semana. Incluí-los faria cada ajuste de texto exigir bump, e versão
+  inflacionada é o caminho conhecido para o gate virar estorvo e o escape virar rotina.
+- **As duas peças são uma só.** Gate sem script vira estorvo; script sem gate continua dependendo
+  de memória.
+- **Correção de rota:** o parágrafo do topo dizia que canon e plugin são sincronizados **via tag**.
+  A última tag é `v6.7.2` contra canon `6.35.0` — o mecanismo descrito não existia mais há 28
+  versões. Texto corrigido para descrever o que de fato acontece.
+
+**Padrão visual novo: seletor de acessos.** `templates/permissoes-por-perfil/` — editor de
+permissões por perfil de usuário, arquitetura de informação da tela "Invite members" da Cloudflare,
+direções visuais do PanelKit, implementação em Tailwind + shadcn conforme `02_INFRA`. 35 testes.
+`comandos/DESIGN_WORKFLOW.md` passa a rotear tela de permissões para o template antes de cogitar
+v0/shadcn.
+
+**PanelKit (`Design/`) versionado e classificado como referência visual**, não fonte de código —
+cravado no topo do `Design/readme.md`, na `Design/SKILL.md` (que antes mandava copiar para
+produção) e na tabela do `DESIGN_WORKFLOW.md`.
+
+**Comentários de código passam a ser em PT-BR** (`README.md`, `templates/CLAUDE.template.md`,
+`templates/AGENTS.template.md`). Identificadores seguem sem regra: o review cross-provider mostrou
+que o código real usa nomes em português (`zerarSchema`, `conexao`, `resolverPorPeriodo`), então
+cravar "identificadores em inglês" criaria regra que o código já viola em massa.
 
 ## Changelog v6.35.0 — 2026-08-07
 

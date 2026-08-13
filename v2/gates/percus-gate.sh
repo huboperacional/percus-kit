@@ -129,6 +129,57 @@ for f in conhecimento/*.md referencia/conhecimento/*.md; do
   fi
 done
 
+# ---------- 4. Conteudo de kit staged sem bump de versao ----------
+# Os 6 testes de version-alignment provam que os 4 arquivos de versao CONCORDAM.
+# Nao provam que a versao ANDOU: 6.35.0 nos quatro, com template novo dentro,
+# concorda e mente. Este bloco e o gatilho que faltava (Sec. 6: regra que depende
+# de alguem lembrar ja falhou -- e o versionamento era a maior violacao disso).
+#
+# Compara com origin/main, nao com "o cabecalho mudou neste commit": senao o
+# segundo commit da mesma versao exigiria bump de novo, e gate que atrapalha
+# ensina a ser escapado.
+#
+# QUEM decide se este repo e o canon e o REMOTO, nao o disco: o gatilho e
+# "origin/main tem CANON_VERSION.md". Ancorar em [ -f CANON_VERSION.md ] daria
+# duas portas pra desligar o gate de graca -- `git rm --cached` (some do indice)
+# e `git rm` (some do disco) -- e as duas passariam calado.
+# Em repo de projeto e em clone sem origin/main: pulado, como as demais checagens.
+versao_do_cabecalho() { # le stdin, devolve X.Y.Z do cabecalho
+  grep '^\*\*Vers' | sed -n 's/.*`\([0-9][0-9.]*\)`.*/\1/p' | head -1
+}
+
+# Compara X.Y.Z sem depender de `sort -V` (GNU-only; BSD/macOS nao tem).
+# Ecoa "maior" se $1 > $2, senao "nao".
+versao_avancou() {
+  printf '%s %s\n' "$1" "$2" | awk '{
+    n = split($1, a, "."); split($2, b, ".")
+    for (i = 1; i <= 3; i++) {
+      x = a[i] + 0; y = b[i] + 0
+      if (x > y) { print "maior"; exit }
+      if (x < y) { print "nao";   exit }
+    }
+    print "nao"
+  }'
+}
+
+v_origin=$(git show origin/main:CANON_VERSION.md 2>/dev/null | versao_do_cabecalho)
+if [ -n "$v_origin" ]; then
+  staged=$(git diff --cached --name-only 2>/dev/null || true)
+  if printf '%s\n' "$staged" | grep -Eq '^(plugin|templates|v2|scripts)/|^0[1-6]_.*\.md$'; then
+    # Le do INDICE, nao do working tree: bumpar e esquecer o `git add` do
+    # CANON_VERSION.md deixaria o commit entrar com conteudo novo em versao
+    # velha, que e exatamente o estado que este gate existe para impedir.
+    v_local=$(git show :CANON_VERSION.md 2>/dev/null | versao_do_cabecalho)
+    if [ -z "$v_local" ]; then
+      violacao "CANON_VERSION.md sumiu do indice (rm/rm --cached) enquanto ha conteudo de kit staged -- o arquivo de versao e obrigatorio no canon"
+    elif [ "$(versao_avancou "$v_local" "$v_origin")" != "maior" ]; then
+      # Exige AVANCO, nao apenas diferenca: repo atrasado em relacao ao remoto
+      # tambem esta commitando conteudo novo numa versao ja publicada.
+      violacao "conteudo de kit staged na versao $v_local, que nao avanca sobre a $v_origin de origin/main -- rode scripts/bump-canon.ps1 <nova-versao> antes de commitar"
+    fi
+  fi
+fi
+
 # ---------- Resultado ----------
 if [ "$FAIL" -ne 0 ]; then
   printf '\n  Gate Percus V2 barrou o commit.\n' >&2
