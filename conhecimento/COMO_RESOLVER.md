@@ -282,6 +282,8 @@
 - [n8n `$('Node').item` (paired item) aborta com "Multiple matches found" assim que o fluxo carrega 2+ itens](#n8n-paired-item-multiple-matches)
 - [API rejeita `*_id` com `InvalidType` porque o driver do Postgres devolve `BIGINT` como STRING](#bigint-vira-string-e-api-rejeita-int)
 - [Teste de fuso passa VERDE na sua máquina e o código quebra em produção — o teste validou o `TZ` do dev, não o do runtime](#teste-timezone-passa-por-coincidencia-da-maquina)
+- [Helper de teste aceita override e o DESCARTA em silêncio — os testes passam por coincidência](#helper-de-teste-descarta-override-em-silencio)
+- [Guarda nova pode ser INALCANÇÁVEL pela frase que reproduz o defeito — meça o ALCANCE, não o veredito](#guarda-inalcancavel-meca-o-alcance)
 - ["Recebi a mesma mensagem 2x" num teste onde todos os registros apontam pro MESMO destino não é duplicata — é o teste que não consegue distinguir](#teste-mesmo-destino-nao-distingue-duplicata)
 - [n8n: 0 linhas num node Postgres sem `alwaysOutputData` pula o `IF` seguinte inteiro — webhook fica pendurado sem resposta](#n8n-alwaysoutputdata-ausente-pendura-webhook)
 - [`iptables DOCKER-USER` bloqueando 100% do tráfego externo pra uma porta publicada, sem exceção nenhuma (nem pro seu próprio serviço)](#docker-user-drop-total-sem-excecao)
@@ -8875,6 +8877,67 @@ três, o teste está verde porque mediu o ambiente errado, não porque o código
 reprovou 2 dos 3 testes, devolvendo `08:00:00.000Z` onde o teste exigia `12:00:00.000Z` — as mesmas
 4h que apareciam gravadas em `next_send_at` no banco de produção.
 
+### Receita do conserto (2026-08-13) — as duas metades
+
+**JS — nunca reparseie string; leia partes e reconstrua.** `formatToParts` dá a hora de parede no
+fuso alvo sem passar por string ambígua, e o caminho de volta é offset explícito:
+
+```js
+function wallParts(date, zone) {            // hora de parede em `zone`, independe da maquina
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone, hourCycle: 'h23',       // NAO hour12:false -- ver armadilha abaixo
+    year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit',
+  });
+  const p = {}; for (const x of fmt.formatToParts(date)) p[x.type] = x.value;
+  return { y:+p.year, mo:+p.month, d:+p.day, h:+p.hour % 24, mi:+p.minute, s:+p.second };
+}
+function tzOffsetMs(date, zone) {           // parede - UTC (negativo a oeste)
+  const w = wallParts(date, zone);
+  return Date.UTC(w.y, w.mo-1, w.d, w.h, w.mi, w.s) - (date.getTime() - date.getMilliseconds());
+}
+function utcFromWall(y, mo, d, h, mi, zone) {   // hora de parede -> instante UTC
+  const wallAsUtc = Date.UTC(y, mo-1, d, h, mi, 0, 0);
+  let guess = wallAsUtc;
+  for (let i = 0; i < 2; i++) guess = wallAsUtc - tzOffsetMs(new Date(guess), zone);
+  return new Date(guess);                       // 2 passadas cobrem virada de DST
+}
+```
+
+E **role o dia em `Date.UTC`**, nunca com `setDate()` num Date construído a partir da hora de parede
+— `setDate`/`setHours` operam no fuso do processo e reintroduzem o bug pela porta dos fundos.
+
+⚠️ **Armadilha do `hour12: false`:** algumas implementações formatam meia-noite como hora **"24"**
+(ciclo h24). Peça `hourCycle: 'h23'`. Os dois **não coexistem** — se `hour12` estiver presente, ele
+sobrescreve `hourCycle`, então trocar um pelo outro é obrigatório, não cosmético.
+
+**Teste — matriz de fusos, não "rodar nos dois".** Deixar isso na disciplina de quem roda garante
+que um dia não roda. Faça o arquivo se re-executar:
+
+```js
+const TZ_MATRIX = ["UTC", "America/Campo_Grande", "Asia/Tokyo", "America/Los_Angeles"];
+if (!process.env.MEU_TZ_CHILD) {
+  const { spawnSync } = await import("node:child_process");
+  let falhou = false;
+  for (const tz of TZ_MATRIX) {
+    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url)],
+      { env: { ...process.env, TZ: tz, MEU_TZ_CHILD: "1" }, encoding: "utf-8" });
+    process.stdout.write(`\n== TZ=${tz} ==\n${r.stdout || ""}`);
+    if (r.status !== 0) { falhou = true; process.stderr.write(r.stderr || ""); }
+  }
+  process.exit(falhou ? 1 : 0);
+}
+```
+
+Do lado do Postgres o equivalente é forçar `SET TIME ZONE '<tz>'` na sessão dentro do teste e exigir
+**o mesmo resultado** em todos — é isso que prova que o `AT TIME ZONE` explícito está fazendo o
+trabalho, e não o default do servidor.
+
+**Pegue o caso que sai do fuso da equipe.** Os 3 primeiros testes que escrevi usavam
+`America/Campo_Grande` e passaram de primeira — o defeito real só apareceu no caso `Asia/Tokyo`
+(UTC+9), e por um motivo que nem era o fuso: ver
+[#helper-de-teste-descarta-override-em-silencio].
+
 ---
 
 ## n8n `$('Node').item` (paired item) aborta com "Multiple matches found" assim que o fluxo carrega 2+ itens {#n8n-paired-item-multiple-matches}
@@ -9379,15 +9442,55 @@ A combinação impossível passa a ser recusada pelo próprio banco. Custo: uma 
 tabela-pai (que em geral já é coberta pelo índice da PK) e a coluna de tenant na FK do filho.
 
 **Teste que pega:** insira o filho com `tenant_id` de A e FK para pai de B e espere
-`IntegrityError`. Tem que rodar contra **Postgres real** — em SQLite este teste não prova nada.
+`IntegrityError`.
+
+> ⚠️ **Correção de 2026-08-13, por medição.** Esta entrada dizia que o teste "tem que rodar
+> contra Postgres real — em SQLite não prova nada". **Está errado, e o erro custa caro:**
+> empurra o teste para o marcador de infra externa, que quase nunca roda, e guarda que não roda
+> é guarda que não existe. Medido: o **SQLite com `PRAGMA foreign_keys=ON` aplica FK composta e
+> `RESTRICT` igual ao PostgreSQL** — o teste de *comportamento* cabe na suíte padrão. A
+> confusão vinha de misturar com RLS: aquela sim não existe em SQLite.
+>
+> O que **só** o Postgres prova é outra coisa: que o dialeto de produção **aceita o DDL**.
+> SQLite é permissivo com definição de constraint. Guarde para o teste `postgres` a FK composta
+> **auto-referencial** (tabela que é pai e filha de si mesma) e a `UNIQUE` redundante com a PK
+> — e confira as constraints **por nome** em `pg_constraint`, porque um `create_all` sem erro
+> prova só que nada estourou, não que a FK nasceu.
+
+**Três armadilhas na implementação, todas medidas:**
+
+1. **Tire a FK simples da coluna ao compor** — mas saiba o motivo certo. Em SQLAlchemy, manter
+   `ForeignKey(...)` no `mapped_column` além do `ForeignKeyConstraint` cria duas FKs na mesma
+   coluna. **Isso NÃO reabre o vazamento** (medido: constraints de FK são conjuntivas, as duas
+   têm que passar, e a composta continua recusando o cruzamento) — cuidado com a intuição
+   contrária, que é fácil de escrever e passa em review. O que a simples faz é ser redundante,
+   cobrar uma checagem por INSERT, e **mentir para quem lê**: o modelo passa a dizer que a
+   referência é só por id, e a próxima pessoa conclui que a coerência de tenant não está no
+   banco. É daí que o furo volta — quem vê duas FKs para a mesma coisa remove uma, e remover a
+   composta reabre tudo em silêncio.
+2. **`ON DELETE SET NULL` numa FK composta anula o `tenant_id` junto.** O PostgreSQL gera
+   `SET "categoria_id" = NULL, "empresa_id" = NULL`; como `tenant_id` é NOT NULL, o DELETE
+   falha com violação de NOT NULL — um `RESTRICT` disfarçado, com erro que não explica nada.
+   O PostgreSQL 15+ tem `ON DELETE SET NULL (coluna)` para resolver, mas o **SQLAlchemy
+   (medido na 2.0.35) recusa emitir**: `validate_sql_phrase` valida `ondelete` contra
+   `^(?:RESTRICT|CASCADE|SET NULL|NO ACTION|SET DEFAULT)$` e estoura `CompileError`. Na
+   prática, FK composta e `SET NULL` não convivem sem hook de compilação — o que costuma ser
+   sinal de que o `SET NULL` é que estava errado.
+3. **Nem toda FK cross-tenant é bug.** Se a relação é cross-tenant *por requisito* (par
+   espelhado entre duas empresas do mesmo grupo, por exemplo), compor por `tenant_id` mata a
+   feature. Aí o discriminante certo é o nível **acima** (`grupo_id`), desnormalizado no filho
+   e travado contra divergência por uma segunda FK `(tenant_id, grupo_id)` para a tabela de
+   tenant. Escreva a exceção num registro declarado, com teste de cobertura que derrube a
+   suíte quando alguém "consertar" a exceção de volta para o padrão.
 
 **Quando decidir:** antes do baseline da migration. Depois que a tabela tem dado com retenção
 fiscal, virar FK simples em composta é migration com backfill e janela de inconsistência.
 Antes, é uma linha a mais no modelo.
 
-**Ref:** Empresa Milionária, Fase A Task 8, 2026-08-12. Achado pelo revisor cross-provider (R11)
-sobre `Movimento`; o mesmo buraco estava em `Titulo` (3 FKs) já commitado. Vale para qualquer
-projeto Percus com o gatilho "é (ou pode virar) multi-tenant" marcado.
+**Ref:** Empresa Milionária, Fase A Task 8, 2026-08-12 (achado pelo revisor cross-provider R11
+sobre `Movimento`; o mesmo buraco estava em `Titulo` já commitado). Implementado — e esta
+entrada corrigida — em 2026-08-13, ADR-0008: 9 FKs, das quais 1 compõe por grupo. Vale para
+qualquer projeto Percus com o gatilho "é (ou pode virar) multi-tenant" marcado.
 
 ---
 
@@ -9639,3 +9742,103 @@ equivalente de `LOCAL`, e ele **não é opcional** num pool de conexões: valor 
 **Ref:** Empresa Milionária, Fase A Task 12, 2026-08-12. O container de teste nasceu com o app
 role superusuário na primeira tentativa; o defeito só apareceu porque a privilegiação foi
 comparada com a de produção antes de escrever o teste.
+
+---
+
+## Helper de teste aceita override e o DESCARTA em silêncio — os testes passam por coincidência {#helper-de-teste-descarta-override-em-silencio}
+
+`tags: helper de teste, factory, fixture, **kwargs, override ignorado, INSERT com colunas hardcoded, teste passa por coincidencia, defaults do schema, falso verde, assinatura permissiva`
+
+**Sintoma:** um teste novo, escrito pra exercitar um parâmetro específico, **falha** — e a
+investigação mostra que o parâmetro nunca chegou no sistema sob teste. Pior: os testes **anteriores**,
+que usavam o mesmo helper, estavam passando sem nunca terem exercitado nada.
+
+**Causa raiz:** o helper/factory aceita `**overrides` (ou um dict de opções) na assinatura, mas a
+lista de colunas/campos que ele realmente usa está **hardcoded** no corpo. Chave desconhecida entra
+pelo `**kwargs`, é mesclada no dict de defaults, e simplesmente **não é lida** na hora de montar o
+INSERT/objeto. Nenhum erro, nenhum aviso.
+
+```python
+def _insert_channel(conn, **overrides):
+    defaults = dict(tenant_id="teste", channel_key="whatsapp-01", ...)
+    defaults.update(overrides)                     # aceita timezone=...
+    cur.execute(
+        "INSERT INTO canais (tenant_id, channel_key, ...) "   # <- mas NAO insere timezone
+        "VALUES (%(tenant_id)s, %(channel_key)s, ...)", defaults)
+```
+
+**Por que os testes anteriores passavam:** eles pediam justamente o valor que o **schema já usa como
+default**. `_insert_channel(timezone="America/Campo_Grande")` produz uma linha com
+`timezone='America/Campo_Grande'` — não porque o override funcionou, mas porque é o `DEFAULT` da
+coluna. O teste afirma uma coisa e mede outra, e o verde é coincidência.
+
+**Solução:** monte a lista de campos **a partir do dict**, e faça o helper **falhar alto** em chave
+que ele não sabe aplicar. Aceitar em silêncio é o bug; recusar é barato:
+
+```python
+COLUNAS_OPCIONAIS = {"timezone", "active_start", "active_end", "enabled"}
+desconhecidas = set(overrides) - set(defaults) - COLUNAS_OPCIONAIS
+# `raise`, NÃO `assert`: sob `python -O` o assert é REMOVIDO do bytecode e o
+# helper volta a descartar override em silêncio — reintroduzindo exatamente o
+# defeito que esta entrada documenta. Guarda que só existe em modo debug não é
+# guarda. (Achado da review cross-provider, 2026-08-13.)
+if desconhecidas:
+    raise ValueError(f"override(s) que o helper nao sabe inserir: {sorted(desconhecidas)}")
+defaults.update(overrides)
+colunas = ", ".join(defaults)
+valores = ", ".join(f"%({k})s" for k in defaults)
+cur.execute(f"INSERT INTO canais ({colunas}) VALUES ({valores}) RETURNING id;", defaults)
+```
+
+**Como achar sem sorte:** escreva pelo menos um caso cujo valor **difere do default do schema**. Foi
+o que expôs este — 3 testes de fuso com `America/Campo_Grande` (o default) passaram; o 4º, com
+`Asia/Tokyo`, reprovou e revelou que nenhum dos 4 estava configurando fuso nenhum. Vale como regra:
+**se o teste existe pra provar que um parâmetro importa, o valor tem que ser diferente do default.**
+
+**Irmão conceitual:** [#teste-passa-em-cima-do-defeito] e
+[#teste-timezone-passa-por-coincidencia-da-maquina] — nos três o verde vem do ambiente/valor
+escolhido, não do código estar certo.
+
+**Ref:** Kommo-Disparo-WhatsApp, 2026-08-13, `tests/test_claim_queries.py::_insert_channel`.
+Descoberto ao escrever `test_reagendamento_respeita_um_fuso_diferente_do_padrao`.
+
+## Guarda nova pode ser INALCANÇÁVEL pela frase que reproduz o defeito — meça o ALCANCE, não o veredito {#guarda-inalcancavel-meca-o-alcance}
+
+`tags: guarda, cadeia, defer, llm, smoke, medicao, alcance, falso-positivo, evidencia`
+
+**Sintoma.** Você mede o defeito offline (reproduz 3/3), a sua função devolve o veredito certo,
+você sobe pra produção e manda a frase. **O sistema responde CERTO.** Parece prova. Não é: a sua
+guarda nunca rodou — um elo ANTERIOR da cadeia interceptou o turno e o desfecho correto veio do
+caminho de fallback.
+
+**Medido em 2026-08-12 (tiatendo, frente E1).** A guarda de variante subiu em produção. A frase
+medida devolveu o total certo (R$ 125,00 em vez de R$ 175,00) e **zero eventos** no banco; o log
+dizia `ask_variant → fluxo determinístico`. O extrator emitia `perguntar_tamanho` **junto** com as
+linhas erradas, e o elo `ask_variant` retorna antes de qualquer guarda posterior. A medição offline
+olhava só o campo que a minha função consome e **não olhava os campos que os elos anteriores
+consomem** — media um caminho que a cadeia real não alcança.
+
+**Why.** Numa cadeia de guardas com `return` antecipado, "o defeito reproduz" e "o defeito chega na
+minha guarda" são perguntas DIFERENTES, e a segunda é a que importa. É a irmã de
+[#gatilho-llm-envelhece-mecanismo-fica], e um degrau acima dele: lá o erro é confiar na FRASE; aqui
+o gatilho está certo, a função está certa, e mesmo assim o turno desvia antes.
+
+**How to apply.** Antes de gastar um teste caro (smoke real, bateria em produção), rode o produtor
+N× e classifique cada saída por **onde o turno PARA na ordem real da cadeia** — não pelo veredito da
+sua função:
+
+```python
+if saida.campoDoElo1:            onde = "elo 1 (retorna antes)"
+elif saida.campoDoElo2:          onde = "elo 2 (retorna antes)"
+elif vereditoDoElo3 == "falha":  onde = "elo 3"
+elif meuVeredito == "dispara":   onde = "🎯 a MINHA guarda"
+else:                            onde = "segue o caminho normal"
+```
+
+Frases equivalentes divergem muito: no caso medido, a variante com preço colado caía no elo
+anterior 3/3 e a variante com verbo alcançava a guarda 3/3. **Escolha a frase do teste pelo ALCANCE
+medido, não pelo defeito reproduzido.**
+
+E o corolário para a evidência de "pronto": a prova tem que ser o **evento da sua guarda cruzado
+com o log dela**. O resultado correto na resposta ao usuário não distingue "a minha guarda agiu" de
+"outro elo desviou o turno".
