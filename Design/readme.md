@@ -1,5 +1,28 @@
 # PanelKit — a design system for internal tools
 
+> ## ⚠️ Status no Percus: REFERÊNCIA VISUAL — não é código de produção
+>
+> O PanelKit é o **norte** de design: dele saem as decisões de raio de canto, densidade,
+> hierarquia de tipo, espaçamento, e as regras de foco/hover/erro. **O código sai do stack
+> Percus** — Tailwind 4 + shadcn/ui, copiar-pro-repo (`02_INFRA_E_STACK_PERCUS.md:629`).
+>
+> **Não copie os `.jsx` desta pasta para um projeto.** Eles usam objeto de estilo inline lendo
+> CSS custom properties, que é justamente o que `02_INFRA_E_STACK_PERCUS.md:642` veta. Leia-os
+> como especificação — traduza para classe Tailwind no destino.
+>
+> Consequência prática: os defeitos abaixo, levantados no review cross-provider de 2026-08-13,
+> **ficam sem conserto de propósito** — são de material de referência, não de código que roda:
+>
+> - `_ds_bundle.js` — Babel standalone via CDN com `new Function` (exige `unsafe-eval`, sem SRI)
+> - `components/core/Button.jsx` — `HOVER`/`PRESS` sem fallback: variante inválida some com o fundo
+> - `components/content/MediaCard.jsx` — card clicável sem `role`/`tabIndex`/`onKeyDown`
+> - `tokens/typography.css` — `@import` de fonte do Google, dependência externa bloqueando render
+>
+> Se algum dia o PanelKit virar código de produção, esses quatro são pré-requisito.
+>
+> Exemplo de aplicação correta: `templates/permissoes-por-perfil/` — arquitetura de informação
+> da Cloudflare, direções visuais do PanelKit, implementação em Tailwind + shadcn.
+
 PanelKit is the generic, brand-neutral extraction of the AutoWorx content-panel redesign: a **soft-modernist admin aesthetic** — a light grey desk, white rounded panels floating on it, pill-shaped controls, one red accent, and image-first cards where the picture is the label.
 
 It exists so design and engineering start every new internal tool from the same footing: same tokens, same components, same layout shell, same feedback rules. It is deliberately **product-agnostic** — nothing in here names a client, a service or an industry.

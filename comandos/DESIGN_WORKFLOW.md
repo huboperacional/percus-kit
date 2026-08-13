@@ -26,6 +26,12 @@ Cada tipo de pedido visual tem uma ferramenta correta. Não trate todos como "pr
 | Diagrama / wireframe / arquitetura | **Excalidraw** ou **Mermaid** em markdown | Versionável, sem dependência externa, abre no Claude Code |
 | Rascunho descartável quando Claude artifacts está disponível | Claude artifacts | OK pra brainstorm visual rápido, **não** pra produção |
 
+**De onde saem as decisões visuais:** `Design/` (PanelKit) é o **norte** — raio de canto,
+densidade, hierarquia de tipo, espaçamento, foco/hover/erro. Ele responde *como deve parecer*;
+a tabela acima responde *de onde vem o código*. Os `.jsx` do PanelKit são **especificação, não
+fonte**: use estilo inline lendo CSS vars é vetado por `02_INFRA_E_STACK_PERCUS.md:642`, então
+traduza para Tailwind no destino. Ver o bloco de status no topo de `Design/readme.md`.
+
 ---
 
 ## Caminho 1 — Componente isolado (shadcn MCP)
