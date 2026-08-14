@@ -312,6 +312,18 @@
 - [Escrita remota multi-linha vinda do Windows chega com CRLF e corrompe crontab/.sh/.env](#stdin-text-mode-crlf-remoto)
 - [`psql -tAc` imprime o command tag junto com o RETURNING — e `INSERT 0 0` é truthy](#psql-command-tag-truthy)
 - [Nota de bloqueio sem data de RECONFERÊNCIA sobrevive à própria correção](#nota-de-bloqueio-vencida)
+- [Teste de infra cria/limpa o schema por LISTA escrita à mão — FK nova quebra os N testes de uma vez](#lista-de-tabelas-a-mao-quebra-com-fk-nova)
+- [Falsificação NÃO fica vermelha — e a trava está boa; o TESTE é que está fraco](#falsificacao-verde-porque-outra-camada-barrou)
+- [Crase na mensagem de commit por `-m` some do commit (shell executa como comando)](#crase-em-commit-m-some)
+- [Limpeza de fixture sob RLS não apaga nada — e o erro estoura no INSERT seguinte, culpando o lugar errado](#delete-sob-rls-nao-apaga-erro-no-insert)
+- [Teste de concorrência com `asyncio.gather` não produz corrida — e fica VERDE sem a constraint](#gather-nao-produz-corrida)
+- [Falsificação feita POR FORA do que a fixture reconstrói não falsifica nada](#falsificacao-desfeita-pela-fixture)
+- [Grade com contagem de colunas fixa promete "sem fileira órfã" e só cumpre para um total](#colunas-fixas-prometem-fileira-inteira-para-um-total-so)
+- [Repositório com DOIS `.env`: a credencial que vale depende do diretório de onde você sobe a app](#dois-env-a-credencial-depende-da-cwd)
+- [Regra de esconder feita para um IFRAME também esconde o `<video>` que a substituiria](#hide-rule-do-iframe-mata-o-video-hospedado)
+- [Regex de escrita `\.campo\s*=` casa o primeiro `=` de uma COMPARAÇÃO `==`](#regex-de-escrita-casa-comparacao)
+- [Review cross-provider lê o `git diff` — arquivo NOVO é untracked e vira "finding fantasma"](#review-le-o-diff-arquivo-novo-parece-ausente)
+- [Trava mecânica validada por SUBSTRING passa com o símbolo citado em comentário](#trava-por-substring-aceita-mencao)
 
 ---
 
@@ -10710,3 +10722,467 @@ a mesma decisão?"*. Se sim, **a decisão é o defeito, não os requisitos** —
 
 **Ref:** memória `feedback_conselho_reprovando_2x_e_sinal_de_direcao_nao_de_spec`;
 `loops/conselho.md` (regra de parada: teto de 2 rounds).
+
+---
+
+## Repositório com DOIS `.env`: a credencial que vale depende do diretório de onde você sobe a app {#dois-env-a-credencial-depende-da-cwd}
+
+tags: dois env, env_file relativo a cwd, credencial errada, variavel preenchida nas duas leituras, pydantic settings env_file
+
+**Sintoma:** uma credencial "está no `.env`" — o operador confirma, você confirma lendo o arquivo
+— e mesmo assim a aplicação se comporta como se ela estivesse errada ou ausente. Ou pior: funciona
+na sua máquina, rodando de um diretório, e falha no deploy, rodando de outro. A variável está
+preenchida nas duas leituras, então nenhum diagnóstico baseado em "existe/não existe" acha nada.
+
+**Causa raiz:** `pydantic-settings` com `SettingsConfigDict(env_file=".env")` resolve esse caminho
+**relativo à CWD do processo**, não ao arquivo que declara o `Settings`. Num monorepo com
+`raiz/.env` e `raiz/servico/.env`, subir de `servico/` lê um arquivo e subir da raiz lê o outro.
+Se a mesma variável existir nos dois com valores diferentes, você tem duas verdades e nenhuma
+mensagem de erro. Vale igual para `dotenv`, `docker compose --env-file` e afins.
+
+**Como confirmar (evidência, ~30s) — compare por HASH, nunca imprimindo o valor:**
+```bash
+python - <<'PY'
+import pathlib, hashlib
+ALVO = "MINHA_CHAVE"
+for c in ["servico/.env", ".env"]:
+    p = pathlib.Path(c)
+    if not p.exists(): print(f"{p}: nao existe"); continue
+    for n, l in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        if l.strip().startswith("#") or "=" not in l: continue
+        nome, _, v = l.strip().partition("=")
+        if nome.strip() == ALVO:
+            v = v.strip().strip('"').strip("'")
+            print(f"{p}:{n} len={len(v)} sha256[:12]={hashlib.sha256(v.encode()).hexdigest()[:12]}")
+PY
+```
+Hash diferente entre os dois arquivos = você achou. Compare também com o que o `Settings`
+**carrega de fato** — é ele que decide, não o arquivo que você abriu.
+
+**Distinguir "digitação quebrada" de "outro segredo": conte coincidência por POSIÇÃO.** Duas
+strings hex aleatórias de 64 chars coincidem em ~4 posições (1/16 × 64). Se der ~4, não é erro de
+cópia da outra — é outra credencial, e a pergunta muda de "conserta o typo" para "de onde veio
+esta".
+
+**Armadilha que fecha o cerco: endpoint anti-enumeração responde IGUAL para os dois erros.**
+Serviços de auth costumam responder `202 Accepted` tanto para "enviei" quanto para "descartei
+porque a conta não existe" — de propósito, para não virar oráculo de quem tem conta. Consequência
+prática: **chave errada e chave certa produzem o mesmo status HTTP.** Um smoke que valide pelo
+código de resposta passa nos dois casos. A prova é o efeito observável do outro lado (a mensagem
+chegar, a linha nascer no banco), nunca o status.
+
+**🔴 A armadilha que inverte o diagnóstico: "a chamada funcionou, logo a chave é minha" é FALSO.**
+Num serviço multi-consumer, o segredo **é** a identidade de quem chama — o resolver compara o
+header contra **todos** os secrets registrados e devolve o consumer que casar. Apresentar a
+credencial de OUTRO produto não dá 401: dá **200, atendendo você como aquele produto**. O dado
+nasce com a `origin` errada, no lugar errado, sem erro nenhum. Aconteceu de verdade: um teste de
+provisionamento devolveu `identity_id`, isso foi lido como "minha chave é válida", e a conclusão
+saiu invertida a ponto de quase apagar a credencial certa por "desconhecida".
+
+**Corolário para diagnóstico:** sucesso de credencial bearer prova que **ela** vale, nunca **de
+quem** ela é. Só quem guarda os secrets pode dizer de quem é — peça o `sha256[:12]` calculado
+dentro do serviço e compare com o seu. É a única forma de casar sem trocar segredo por mensagem.
+
+**Solução:** uma credencial, um dono. Apague a duplicata em vez de sincronizar as duas — variável
+sincronizada à mão diverge na primeira rotação, e a divergência é invisível. Se os dois arquivos
+precisarem mesmo do valor, faça o segundo derivar do primeiro (symlink, `env_file` explícito e
+absoluto, ou Docker Secret único), não copiar.
+
+**Ref:** Empresa Milionária, Task 16, 2026-08-14. O operador salvou a chave no `.env` do projeto
+que a GEROU (auth-service) e depois uma segunda, diferente, no `.env` da RAIZ do consumidor — a que
+funcionava estava numa terceira posição. Descoberto comparando hashes; nenhuma leitura de arquivo
+sozinha teria mostrado.
+
+## Trava mecânica validada por SUBSTRING passa com o símbolo citado em comentário {#trava-por-substring-aceita-mencao}
+
+tags: trava por substring, mencao em comentario passa, teste fraco, verificacao textual, grep como gate
+
+**Sintoma.** Um teste anti-bypass afirma "todo sítio de escrita consulta o portão" e está verde —
+mas a garantia é `if "decidirERegistrar" not in corpo`. Um comentário (`# passa por
+decidirERegistrar mais tarde`), uma docstring ou uma string literal com o nome satisfazem a
+checagem sem que a função chame coisa alguma. A trava vira teatro no dia em que mais importa: a
+sessão em que alguém **remove** a chamada e deixa a menção.
+
+**Causa.** Substring mede TEXTO; a regra é sobre CHAMADA. É a mesma "heurística de co-ocorrência"
+que costuma ser rejeitada no desenho ("o corpo contém X e também Y?") entrando pela porta dos
+fundos na implementação do próprio guard.
+
+**Fix.** Perguntar à AST se existe uma `ast.Call` cujo `func` (Name ou Attribute) tem o
+identificador. Em 2026-08-14 (Família Milionária, FR-6 do portão de escrita) o helper certo já
+existia no mesmo arquivo desde uma task anterior — era só reusar:
+
+```python
+def _nomeDaChamada(func):
+    if isinstance(func, ast.Attribute): return func.attr   # gate.Foo.bar(...) -> "bar"
+    if isinstance(func, ast.Name): return func.id
+    return None
+
+def _chamadasEmFonte(fonte, nome):
+    return [no.lineno for no in ast.walk(ast.parse(fonte))
+            if isinstance(no, ast.Call) and _nomeDaChamada(no.func) == nome]
+```
+
+**Regra durável.** Todo guard mecânico precisa de teste de MUTAÇÃO nos dois sentidos: que ele PEGA
+o desvio e que NÃO acusa o caminho certo. Para este, os casos que separam substring de AST são
+comentário, docstring e string literal — se os três passam, a trava é decorativa.
+
+**Corolário (mesma sessão).** Um inventário fechado precisa da varredura INVERSA: entrada
+registrada que não corresponde mais a nenhuma função real vira documentação que mente, e ninguém lê
+inventário com lixo. E **isenção sem trava é porta**: quando um sítio é legitimamente isento
+("protegido por construção"), sustente a isenção por um teste de COMPORTAMENTO das defesas próprias
+dele — não por leitura de código —, e congele a lista de isentos com um teste de igualdade, para
+que a segunda isenção obrigue alguém a justificar.
+
+---
+
+## Regex de escrita `\.campo\s*=` casa o primeiro `=` de uma COMPARAÇÃO `==` {#regex-de-escrita-casa-comparacao}
+
+tags: regex atribuicao, casa comparacao, falso positivo em varredura, auditoria de codigo por regex, igual duplo
+
+**Sintoma.** Uma varredura que procura escrita (`\.dataPagamento\s*=`) acusa uma função que só LÊ
+(`where(L.dataPagamento == hoje)`), e o inventário nasce com sítio fantasma. Pior que o ruído: o
+falso positivo é indistinguível de achado real, então ou alguém "conserta" código correto, ou passa
+a ignorar a varredura inteira.
+
+**Fix.** `=(?!=)` em todos os ramos de atribuição:
+
+```python
+_ESCRITA_RE = re.compile(
+    r"\.status\s*=(?!=)\s*[\"'](pago|recebido)[\"']|"
+    r"\.valorPago\s*=(?!=)|\.dataPagamento\s*=(?!=)|"
+    r"pagarProximaParcela\(|pagarParcela\("
+)
+```
+
+**Como saber que pegou.** Um teste que afirma o NEGATIVO com a linha real de leitura:
+`assert _ESCRITA_RE.search("select(L).where(L.dataPagamento == hoje)") is None`. Sem ele, a
+correção do regex é indistinguível de nunca ter tido o problema.
+
+**Contexto.** Família Milionária, 2026-08-14: o regex sem o lookahead devolvia 10 sítios de escrita;
+com ele, 9 — o extra era `_jaPagoHoje`, uma função de leitura pura.
+
+## Regra de esconder feita para um IFRAME também esconde o `<video>` que a substituiria {#hide-rule-do-iframe-mata-o-video-hospedado}
+
+tags: css hide iframe, video sumiu, seletor largo demais, display none generico, troca de player
+
+**Sintoma.** Um clipe ambiente (hero, faixa full-bleed) não aparece em nenhum celular. O código tem
+os dois caminhos — arquivo próprio (`<video muted playsinline>`) e embed do YouTube (`<iframe>`) — e
+o arquivo, sozinho, autoplaya no iOS sem problema. Mesmo assim nada se move.
+
+**Causa.** A regra que esconde o clipe foi escrita quando só existia o iframe, e mira o **wrapper**
+comum aos dois: `@media (prefers-reduced-motion:reduce),(pointer:coarse),(hover:none),(max-width:820px)
+{ .layer{display:none} }`. As 3 últimas condições existem por defeitos que são **do iframe**: o iOS
+recusa o autoplay dele, o player desenha os próprios controles por cima do H1 e engole o toque
+destinado ao CTA. Um `<video>` local sem `controls` não tem chrome pra desenhar e o iOS **toca**. A
+regra, porém, não distingue: migrar pra arquivo hospedado não muda nada enquanto ela seguir única.
+
+**Correção.** Emitir a regra em função do caminho que vai renderizar. Só
+`prefers-reduced-motion:reduce` para o arquivo (é promessa sobre MOVIMENTO, vale pros dois); a lista
+inteira segue valendo para o iframe:
+```
+`@media ${video.videoSrc ? '(prefers-reduced-motion:reduce)' : LISTA_COMPLETA}{.${layerClass}{display:none}}`
+```
+
+**Como verificar (e por que o teste verde não basta).** A suíte pode passar inteira sem cobrir isso:
+os testes existentes alimentavam só o caminho do iframe, então continuaram verdes com o bug vivo.
+Duas provas valem:
+1. **Vermelho→verde**: reverta a linha da divisão e rode o arquivo de teste — um caso, e só um, tem
+   que falhar (asserte a AUSÊNCIA de `pointer:coarse`/`hover:none`/`max-width` na regra do arquivo).
+2. **No navegador, no HTML SERVIDO** (não no código): num viewport de celular, `getComputedStyle` do
+   layer tem que dar `display:block`, e `currentTime` tem que AVANÇAR entre duas leituras. "A tag
+   está lá" não é prova de que toca.
+
+**Detalhe que assusta e é inofensivo:** o React pode emitir `autoPlay=""`/`playsInline=""` em
+camelCase no HTML. O parser de HTML normaliza nome de atributo pra minúsculo — medido no browser, as
+propriedades `video.autoplay`/`video.playsInline` vêm `true`. Não "conserte" isso; confirme no DOM.
+
+**Custo a declarar ao operador:** o clipe passa a ser baixado no celular (alguns MB por rota) onde
+antes não baixava byte de vídeo. É decisão dele, não detalhe de implementação.
+
+## Grade com contagem de colunas fixa promete "sem fileira órfã" e só cumpre para um total {#colunas-fixas-prometem-fileira-inteira-para-um-total-so}
+
+tags: grid colunas fixas, fileira orfa, layout quebra com total diferente, grade responsiva, ultima linha incompleta
+
+**Sintoma.** Uma grade some com um tile, ou termina numa fileira incompleta, depois de alguém
+adicionar itens — apesar de um comentário no CSS afirmando que fileiras órfãs não acontecem.
+
+**Causa.** `grid-template-columns: repeat(5,1fr)` com um comentário do tipo "5 colunas fixas (não
+`auto-fill`) para que os 10 tiles caiam em 2 fileiras inteiras". A promessa depende do **total nunca
+mudar**. Ao virar 12, renderiza 5+5+2. O comentário continua lá, agora mentindo.
+
+**Correção.** Derivar a contagem do total e testar a PROPRIEDADE, não os casos:
+```ts
+export function columnCount(n: number): number {
+  for (const c of [5, 4, 3]) if (n > 0 && n % c === 0) return c;
+  return 5; // sem divisor no conjunto: fileira curta, declarada
+}
+```
+Teste a invariante (`n % columnCount(n) === 0` para todo n que fatora), não só 10/12/15.
+
+**Duas armadilhas na hora de documentar a limitação:**
+- Dizer "só falha em total primo" é **errado**: 14 = 2×7 fatora e também não tem divisor em {5,4,3}.
+  A condição real é "sem divisor no conjunto de candidatos".
+- Incluir `2` no conjunto para "cobrir 14" troca uma fileira curta por 7 fileiras de dois — pior
+  página. A limitação certa é **assumida e escrita**, e o conserto pertence à decisão de curadoria
+  (escolher um total que fatore), não à função.
+
+---
+
+## Review cross-provider lê o `git diff` — arquivo NOVO é untracked e vira "finding fantasma" {#review-le-o-diff-arquivo-novo-parece-ausente}
+
+tags: finding fantasma, arquivo untracked, modulo nao existe, review nao ve arquivo novo, git add antes do review
+
+**Sintoma:** o revisor automático abre finding de severidade `bug` dizendo que um módulo
+importado "não existe", que falta uma migration, ou que um atributo de modelo não foi criado —
+e nada disso é verdade. A suíte está verde, a aplicação sobe, e o finding descreve uma falha
+que não acontece.
+
+**Causa raiz:** o wrapper de review monta o contexto a partir do **`git diff`**, que por
+definição só mostra arquivo **rastreado**. Arquivo novo ainda está em `??` (untracked) e não
+aparece — então o revisor vê o `import` do lado do consumidor e **não vê** o arquivo importado.
+A inferência dele é correta *dado o que ele viu*; o que faltou foi o arquivo.
+
+Vale para toda mudança que o diff não carrega: coluna que já existia (o modelo não mudou, logo
+não há diff), constante definida em commit anterior, migration antiga que já contempla o campo.
+
+**Como confirmar (evidência, ~10s):**
+```bash
+git status --short          # os '??' sao o que o revisor NAO viu
+git diff --stat             # o que ele viu
+```
+Se o alvo do finding está em `??`, é fantasma. Confirme que o arquivo existe e que os testes
+que dependem dele passam — isso basta para rejeitar.
+
+**Solução — duas, e a segunda é melhor:**
+
+1. **Rejeitar com evidência**, registrando no commit *por que* o finding não procede. Custa uma
+   linha e evita que a próxima pessoa reabra a mesma discussão.
+2. **`git add` ANTES de rodar o review.** Com os arquivos no índice, o revisor passa a enxergar
+   o conjunto completo e para de gerar o fantasma. ⚠️ Cuidado com o gate de pre-commit que exige
+   artefato de review recente: `add` e `commit` continuam em chamadas separadas, e o review roda
+   entre eles.
+
+**Por que isto merece registro:** o fantasma é convincente. Ele descreve um `ModuleNotFoundError`
+plausível, com caminho de arquivo certo, em severidade `bug`. Quem trata findings em série tende
+a "consertar" — e o conserto de um problema inexistente é como se acrescenta código morto, ou
+pior, uma migration duplicada de coluna que já existe.
+
+**Ref:** Empresa Milionária, Fase B, 2026-08-14. O mesmo padrão gerou finding em três commits
+diferentes (`listar_titulos.py`, `test_endpoints_edicao.py`, `parcelar_titulo.py`), sempre com o
+mesmo texto de "não está no diff".
+
+---
+
+## Teste de infra cria/limpa o schema por LISTA escrita à mão — FK nova quebra os N testes de uma vez {#lista-de-tabelas-a-mao-quebra-com-fk-nova}
+
+tags: create_all lista tabelas, UndefinedTable relation does not exist, fixture estoura todos os
+testes, recorte de schema, drop_all lista, teste postgres setup error, FK aponta para fora da lista
+
+**Sintoma:** um arquivo de teste que roda contra banco real passa a dar **E** (erro de setup, não
+falha de asserção) em TODOS os seus testes, logo depois de alguém acrescentar uma tabela nova ao
+domínio. A mensagem é `UndefinedTableError: relation "<tabela_nova>" does not exist` vindo de um
+`create_all` — e a tabela nova nem é citada no arquivo de teste.
+
+**Causa raiz:** a fixture cria (ou limpa) um **recorte** do schema a partir de uma tupla escrita à
+mão — `TABELAS = ("grupos", "empresas", ...)`. Quando uma tabela DE DENTRO do recorte ganha FK para
+uma tabela DE FORA dele, o `CREATE TABLE` referencia uma relação que a fixture não criou. Quem
+escreveu a lista não tinha como saber; quem acrescentou a FK não sabia que a lista existia.
+
+É a mesma classe do preparo que **limpa** por lista (`#preparo-limpa-so-o-que-conhece`, se houver):
+lista escrita à mão só conhece o que conhecia no dia em que foi escrita, e o banco não perdoa.
+
+**Solução — duas camadas:**
+
+1. **Imediata:** acrescente a tabela nova à lista, com comentário dizendo POR QUE ela está lá
+   (é alvo de FK de alguém do recorte), não só que está.
+2. **Estrutural:** tudo que puder ser **derivado do metadata**, derive. No mesmo arquivo havia um
+   conjunto `esperadas = {"fk_a", "fk_b", ...}` de constraints a conferir — trocado por uma
+   compreensão sobre `Base.metadata`, com um `assert len(esperadas) >= N` para não passar
+   trivialmente com conjunto vazio. **Isso não é auto-referencial:** o metadata diz o que o modelo
+   QUER, o `pg_constraint` diz o que o banco ACEITOU, e o teste é a distância entre os dois.
+
+**Como não descobrir isso tarde:** o recorte `postgres` costuma ficar fora da suíte padrão e rodar
+só no fechamento. Ao acrescentar tabela ao domínio, `grep` pelos arquivos de teste que citam
+tabelas por nome antes de considerar a task pronta.
+
+**Ref:** Empresa Milionária, Fase B Task 6 (recorrência), 2026-08-14. `titulos` ganhou
+`fk_titulo_recorrencia_empresa` e derrubou os 8 testes de `test_isolamento_fk_postgres.py` no
+setup — a suíte padrão, com 300 testes do domínio, ficou verde o tempo todo.
+
+---
+
+## Falsificação NÃO fica vermelha — e a trava está boa; o TESTE é que está fraco {#falsificacao-verde-porque-outra-camada-barrou}
+
+tags: falsificacao verde, teste nao pega regressao, defesa em profundidade esconde teste, mutante
+sobrevive, remover filtro e teste passa, resumo parcial esconde defeito
+
+**Sintoma:** você quebra de propósito a coisa que o teste deveria proteger — tira o filtro, inverte
+a condição — e a suíte continua **verde**. A leitura fácil é "o código está certo de outro jeito" ou
+"o teste é redundante". Em sistema com defesa em profundidade, quase sempre é outra coisa.
+
+**Causa raiz:** **outra camada barrou o efeito visível.** O defeito aconteceu de verdade, e o que o
+teste mede não muda porque uma guarda mais abaixo o compensou. Exemplo medido: removi o filtro
+`empresa_id` da consulta de um job de varredura. O job passou a varrer o tenant inteiro — mas cada
+linha alheia era recusada adiante pela guarda do caso de uso e caía no `except` como *falha
+tolerada*. O contador de sucessos não mudou, nada vazou, e o teste chamado
+`test_o_job_nao_alcanca_a_empresa_VIZINHA` ficou verde com o job varrendo o vizinho inteiro.
+
+**Solução:** quando a falsificação não fica vermelha, **desconfie do teste antes do código**, e
+pergunte *qual camada absorveu o efeito*. Em varredura, asserte o **resumo inteiro** — inclusive
+os contadores de erro e de item pulado — em vez de só o efeito final. Foi o contador de falhas que
+denunciou: com o filtro fora, ele deixa de ser zero.
+
+**Corolário de desenho:** um `except Exception` amplo em varredura (que existe por boa razão — uma
+linha ruim não pode derrubar a rodada) **converte vazamento de escopo em "falha tolerada"**. Conte
+as falhas num campo próprio, senão "processou tudo" e "errou em tudo" produzem o mesmo resumo de
+zeros.
+
+**Ref:** Empresa Milionária, Fase B Task 6, 2026-08-14. Das seis falsificações da task, cinco
+ficaram vermelhas na primeira tentativa; a sexta expôs um teste fraco que eu tinha escrito
+acreditando que cobria isolamento de tenant.
+
+---
+
+## Crase na mensagem de commit por `-m` some do commit (shell executa como comando) {#crase-em-commit-m-some}
+
+tags: command not found no meio do commit, mensagem de commit truncada, backtick shell
+substitution, markdown na mensagem de commit, palavra sumiu da mensagem
+
+**Sintoma:** a mensagem aparece no histórico com uma frase **faltando uma palavra**, e no output
+do git aparece um `command not found` solto que passa por ruído. O commit é criado normalmente,
+com exit 0 — nada indica erro.
+
+**Causa raiz:** a mensagem foi passada por `-m` num shell POSIX e continha **crase** — o idioma
+natural de quem escreve markdown (`` `tabela` ``). O shell trata crase como *command substitution*:
+executa o conteúdo e **substitui pelo stdout**, que é vazio. A palavra some da mensagem, e o
+`command not found` vai para o stderr do shell, não do git.
+
+O mesmo vale para `$` (expansão de variável) e, em shell interativo, `!` (history expansion).
+
+**Solução:** mensagem longa vai por **`-F <arquivo>`**. Escreva o texto num arquivo temporário e
+aponte o `-F` para ele — imune a crase, cifrão e aspas.
+
+⚠️ **Exceção onde `-F` NÃO serve:** gate que lê a **linha de comando** (no Percus, o `mock-scan`
+procurando o prefixo `MOCK-OK:`). Nesses casos o `-m` é obrigatório — então tire as crases do
+texto, não troque o mecanismo.
+
+**Como confirmar depois:** `git log -1 --format=%B` e leia. Se a frase perdeu o sujeito, foi isto.
+Conserto com `--amend -F <arquivo>`, seguro enquanto não houve push.
+
+**Irmã desta, mesma causa:** o hook `pre-commit-check` do Percus é *PreToolUse* e casa a string do
+comando na linha inteira — um script que apenas **cite** o comando de commit dentro de um heredoc
+é bloqueado como se fosse commitar. Escreva o script em arquivo e execute o arquivo.
+
+**Ref:** Empresa Milionária, Fase B Task 6, 2026-08-14.
+
+---
+
+## Limpeza de fixture sob RLS não apaga nada — e o erro estoura no INSERT seguinte, culpando o lugar errado {#delete-sob-rls-nao-apaga-erro-no-insert}
+
+tags: duplicate key violates unique constraint pkey, fixture postgres RLS, DELETE nao apaga,
+row level security FORCE, teste passa isolado falha em sequencia, preparo de teste multi-tenant
+
+**Sintoma:** num arquivo de teste contra PostgreSQL com RLS, os primeiros testes passam e os
+seguintes morrem **no preparo**, com `duplicate key value violates unique constraint "<t>_pkey"`.
+O INSERT acusado é o mesmo que funcionou no primeiro teste. Rodar o teste isolado passa.
+
+**Causa raiz:** a fixture limpa com `DELETE FROM <tabela>` **antes** de declarar o contexto de
+tenant. Com `FORCE ROW LEVEL SECURITY`, a política não torna nenhuma linha visível — e `DELETE`
+sem linha visível **afeta 0 linhas e retorna com sucesso**. Não há erro, não há aviso: a limpeza
+simplesmente não aconteceu. O primeiro teste passa porque o banco estava vazio; o segundo tenta
+inserir a mesma PK e estoura.
+
+A mensagem aponta para o **INSERT**, que está correto. O defeito é o DELETE silencioso, três
+linhas acima.
+
+**Solução:** toda limpeza de tabela com política vai **dentro do contexto**, e na ordem das FKs:
+
+```python
+for empresa in (EMPRESA_A, EMPRESA_B):
+    await definirEmpresaDaTransacao(s, empresa)   # <- primeiro o contexto
+    await s.execute(text("DELETE FROM titulos"))          # filho
+    await s.execute(text("DELETE FROM recorrencias_pj"))  # pai do filho
+    await s.execute(text("DELETE FROM pessoas"))          # avô
+    await s.commit()
+```
+
+Lembre que o contexto é `SET LOCAL`: ele **morre no commit**, então cada bloco transacional
+precisa redeclará-lo.
+
+**Alternativa mais grossa, quando serve:** zerar o schema inteiro entre módulos
+(`DROP SCHEMA public CASCADE`), que não depende de política nenhuma — é o que o preparo de
+schema do Percus faz. `DELETE` seletivo só vale a pena quando recriar o schema é caro.
+
+**Parente próximo:** a mesma cegueira em leitura produz o oposto — resposta **vazia** confundida
+com sucesso. Por isso a prova de que o contexto chegou é sempre o **caso positivo** (o dado da
+própria empresa aparecendo), nunca "o vizinho não apareceu".
+
+**Ref:** Empresa Milionária, Fase B Task 6, 2026-08-14.
+
+---
+
+## Teste de concorrência com `asyncio.gather` não produz corrida — e fica VERDE sem a constraint {#gather-nao-produz-corrida}
+
+tags: teste de concorrencia, asyncio gather, race condition, constraint unica idempotencia,
+teste passa sem a constraint, asyncio Barrier, corrida serializada
+
+**Sintoma:** um teste que se chama "corrida" — N execuções do mesmo caso de uso via
+`asyncio.gather`, contra banco real — passa. Depois você **derruba a constraint única** que ele
+deveria estar exercitando, e ele **continua passando**.
+
+**Causa raiz:** `gather` agenda corrotinas no mesmo event loop; ele **não garante intercalação**.
+Na prática a primeira execução chega ao commit antes de a segunda fazer a leitura, a segunda
+encontra o registro pela consulta comum e devolve "já existia". O caminho medido é o feliz, não a
+corrida — e o caminho feliz não precisa de constraint nenhuma.
+
+**Solução — sincronizar explicitamente no ponto anterior à escrita:**
+
+```python
+barreira = asyncio.Barrier(quantidade)
+original = CasoDeUso._buscarExistente
+
+async def buscaSincronizada(self, *a, **k):
+    achado = await original(self, *a, **k)
+    if not getattr(self, "_jaSincronizou", False):   # <- ver armadilha abaixo
+        self._jaSincronizou = True
+        await barreira.wait()
+    return achado
+```
+
+Com isso as N leituras acontecem **antes** de qualquer INSERT, que é o instante que a constraint
+existe para resolver: uma vence, as outras batem na violação e recuperam.
+
+⚠️ **`asyncio.Barrier` é CÍCLICA.** Se o caso de uso chamar o método interceptado uma segunda vez
+(a releitura da recuperação, por exemplo), a segunda espera fica aguardando participantes que já
+terminaram e o teste **trava até o timeout** em vez de falhar. Marque no `self` que aquela
+execução já sincronizou — cada execução tem sua própria instância.
+
+**Ref:** Empresa Milionária, Fase B Task 6, 2026-08-14. Com a barreira e sem a constraint, o teste
+passou a acusar `as duas execuções disseram [True, True]: ou as duas criaram (o dinheiro dobrou)`.
+
+---
+
+## Falsificação feita POR FORA do que a fixture reconstrói não falsifica nada {#falsificacao-desfeita-pela-fixture}
+
+tags: falsificacao nao pega, teste continua verde, fixture recria schema, drop constraint psql,
+alembic upgrade na fixture, mutante revertido
+
+**Sintoma:** para conferir que um teste realmente pega a regressão, você quebra o alvo **no
+ambiente** — dropa a constraint no banco com `psql`, apaga o arquivo, muda a linha na tabela — e o
+teste continua **verde**. A conclusão tentadora é "o teste não presta".
+
+**Causa raiz:** alguma fixture **reconstrói** aquilo antes do teste rodar. No caso medido, a
+fixture de schema tinha escopo de módulo e fazia `zerarSchema` + `alembic upgrade head` a cada
+rodada — recriando exatamente a constraint que eu tinha acabado de dropar por fora.
+
+**Solução:** ataque a **fonte** do estado, não o estado. Se o schema vem da migration, a
+falsificação é remover a linha **da migration**; se o dado vem de um seed, é o seed que muda.
+Antes de concluir que um teste não pega, pergunte **quem constrói aquilo que você quebrou** — e
+confirme lendo a fixture, não a intuição.
+
+**Parente:** esta é a terceira forma de "falsificação que fica verde" registrada no mesmo dia. As
+outras duas são #falsificacao-verde-porque-outra-camada-barrou (outra camada absorveu o efeito) e
+#gather-nao-produz-corrida (a concorrência nunca aconteceu). O padrão comum: **falsificação verde
+é informação sobre o TESTE, e vale investigar até saber qual das três é.**
+
+**Ref:** Empresa Milionária, Fase B Task 6, 2026-08-14.
