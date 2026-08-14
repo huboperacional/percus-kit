@@ -591,6 +591,16 @@ no deploy (o script segue em frente com o código antigo, sem avisar que "ignoro
    (`SELECT version_num FROM alembic_version`) antes de seguir.
 4. Reconfirme com o critério de pronto do seu pedido (query da row, `cors-smoke.sh`, endpoint real).
 
+**🔴 Armadilha #2b — `alembic_version.version_num` é `VARCHAR(32)`.** Nome de revision com mais de
+32 caracteres passa em tudo (arquivo criado, imagem buildada, rollout OK) e só explode no **UPDATE
+final** do `upgrade`, com `StringDataRightTruncation`. A transação reverte inteira — banco fica no
+head anterior, sem aplicação parcial —, mas você já queimou um build+rollout. **Conte os caracteres
+antes**, e se precisar renomear, mude o **nome do arquivo e o campo `revision` juntos**: o script
+deriva o head esperado do nome do arquivo, então mudar só um faz o head check comparar coisas
+diferentes. Caso real: `024_ads4pros_site_audience_backfill` (35) → `024_ads4pros_site_backfill`
+(26), auth-service 2026-08-14. A convenção `NNN_nome_descritivo` do projeto já roça o teto —
+`023_empresa_milionaria_audience` tem 31.
+
 **Armadilha #3 (não entre em pânico):** logo após `docker service update --force --image ...`, o
 smoke do PRÓPRIO script (`sleep 3` + `curl /health`) costuma pegar a janela do rolling restart —
 **502/504 nos primeiros ~30-60s são normais**, os dois replicas ainda estão de pé/derrubando.
