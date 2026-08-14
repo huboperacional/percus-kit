@@ -25,6 +25,7 @@
 - [Fechar subagent-driven-development num worktree nativo do harness (`EnterWorktree`)](#subagent-driven-worktree-nativo) — merge não é `cd` livre; plano tem que estar commitado
 - [Negativar concorrentes em conta de mídia paga sem fogo amigo](#negativas-sem-fogo-amigo) — cruze com o catálogo do cliente ANTES; ampla de 2 palavras salva marca ambígua
 - [Escapar o mock-scan sem sujar o assunto do commit](#mock-ok-no-corpo) — `MOCK-OK:` casa em QUALQUER linha, não só no assunto
+- [Deploy do auth-service com migration nova (`auth-service-deploy.sh`)](#auth-service-deploy-migration-nova) — o script só CHECA divergência, não roda a migration; puxa do `origin/main`, não do working tree local
 
 ---
 
@@ -512,3 +513,52 @@ ação (ver `COMO_RESOLVER.md#guarda-casa-a-mensagem-nao-a-acao`). Use a ferrame
 arquivo, não `cat`/heredoc.
 
 **Ref:** tiatendo, frente C18 (2026-08-11) e correção na frente C20 (mesmo dia, plugin v6.35.0). R23.
+
+---
+
+## Deploy do auth-service com migration nova (`auth-service-deploy.sh`) {#auth-service-deploy-migration-nova}
+
+`tags: auth-service, deploy, alembic, migration, skip-migration-check, git pull, origin main, rollout, health 502, health 504, rolling restart, secret reconcile`
+
+**Quando:** commit que adiciona código E uma migration Alembic nova ao mesmo tempo (ex.: registrar
+uma audience nova) e o deploy vai por `auth-service-deploy` (symlink pro script versionado em
+`D:\Claud Automations\auth-service\deploy\scripts\`).
+
+**O que o script NÃO faz (armadilha #1):** ele só **compara** o head esperado (maior arquivo em
+`alembic/versions/`) contra `alembic_version` no banco, lido via `docker exec` no container **que
+já está rodando** (a imagem VELHA). Se divergir, ele **aborta** com `FATAL: migration head
+divergence` e sugere `docker exec "$C" python -m alembic upgrade head` — mas essa sugestão só
+funciona se o container atual **já tiver** o arquivo da migration nova no disco, o que não é o caso
+na primeira vez (a migration só existe na imagem NOVA, ainda não buildada).
+
+**Armadilha #2:** o script começa com `git pull --ff-only origin main` — ele deploya o que está no
+**GitHub remoto**, não o seu working tree local. Um commit local sem `push` simplesmente não entra
+no deploy (o script segue em frente com o código antigo, sem avisar que "ignorou" seu commit).
+
+**Passos corretos, nessa ordem:**
+1. `git push origin main` (o commit com código + migration precisa estar no remoto).
+2. `auth-service-deploy --skip-migration-check` — deixa o script **buildar e fazer o rollout** da
+   imagem nova mesmo com o head divergente. Seguro **só se a migration for puramente aditiva**
+   (`INSERT ... ON CONFLICT DO NOTHING`, sem DDL que quebre queries do código velho ainda em voo
+   durante o rolling update).
+3. **Depois** do rollout convergir, rode a migration contra o container **novo**:
+   ```bash
+   C=$(docker ps --filter name=auth_service_api --format '{{.Names}}' | head -1)
+   docker exec "$C" python -m alembic upgrade head
+   ```
+   Confira o log: tem que aparecer `Running upgrade <de> -> <para>, <mensagem>` — se não aparecer
+   nada além das duas linhas de `Context impl`/`transactional DDL`, a migration **não rodou**
+   (alembic achou que já estava em head porque leu o arquivo errado) — verifique direto no banco
+   (`SELECT version_num FROM alembic_version`) antes de seguir.
+4. Reconfirme com o critério de pronto do seu pedido (query da row, `cors-smoke.sh`, endpoint real).
+
+**Armadilha #3 (não entre em pânico):** logo após `docker service update --force --image ...`, o
+smoke do PRÓPRIO script (`sleep 3` + `curl /health`) costuma pegar a janela do rolling restart —
+**502/504 nos primeiros ~30-60s são normais**, os dois replicas ainda estão de pé/derrubando.
+Antes de tratar como outage: `docker service ps auth_service_api` (replicas `Running` há segundos =
+janela normal) + `curl /health` de novo depois de meio minuto. Só é incidente real se continuar
+falhando depois disso.
+
+**Ref:** registro da audience `empresa-milionaria`, auth-service 2026-08-14 (commit `b66b306`,
+deploy `deploy-1786709899`). Script: `deploy/scripts/auth-service-deploy.sh` (comentário no topo do
+próprio arquivo documenta o fluxo, mas não a ordem skip-check→build→migrate-pós-rollout).
