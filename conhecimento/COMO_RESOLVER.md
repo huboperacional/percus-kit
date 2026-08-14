@@ -17,6 +17,9 @@
 
 ## Índice
 
+- [Varredura de identidade que cobre só o backend deixa o FRONTEND com a identidade do produto de origem](#varredura-de-identidade-nao-alcanca-o-frontend)
+- [Perna do conselho volta 429 ou vazio — declarei "N de 3" sem re-disparar](#perna-conselho-nao-e-perna-morta)
+- [Conselho reprova a MESMA spec 2× — remendei os RF em vez de rever a DIREÇÃO](#conselho-2x-e-direcao-nao-spec)
 - [Middleware edge-safe (só shape do cookie) sem 2ª camada real nos route handlers = bypass de auth](#edge-middleware-second-layer-nunca-implementada)
 - [`Response`/`fetch` com corpo em status 204/205/304 lança TypeError — mesmo ArrayBuffer vazio não é `null`](#response-204-corpo-lanca-typeerror)
 - [Guarda de ação externa barra o COMMIT porque a MENSAGEM cita a ação](#guarda-casa-a-mensagem-nao-a-acao)
@@ -306,6 +309,9 @@
 - [Hook de pre-commit que lê o working tree em vez do índice afere o que não vai ser commitado](#gate-le-working-tree-nao-o-indice)
 - [Replace cross-repo por string literal mede a STRING, não a REGRA — e meio par commitado é pior que nenhum](#replace-cross-repo-mede-string-nao-regra)
 - [Commit passa sem review R11 e ninguém percebe: hook novo não registrado nesta máquina](#r11-hook-nao-registrado-maquina)
+- [Escrita remota multi-linha vinda do Windows chega com CRLF e corrompe crontab/.sh/.env](#stdin-text-mode-crlf-remoto)
+- [`psql -tAc` imprime o command tag junto com o RETURNING — e `INSERT 0 0` é truthy](#psql-command-tag-truthy)
+- [Nota de bloqueio sem data de RECONFERÊNCIA sobrevive à própria correção](#nota-de-bloqueio-vencida)
 
 ---
 
@@ -10471,3 +10477,236 @@ registro do hook pro `.claude/settings.json` de cada repo já clonado.
 
 **Ref:** auth-service, registro da audience `empresa-milionaria`, 2026-08-14. Plugin instalado
 6.35.0, kit em 6.36.0 no momento do incidente.
+
+---
+
+## Escrita remota multi-linha vinda do Windows chega com CRLF e corrompe crontab/.sh/.env {#stdin-text-mode-crlf-remoto}
+
+`tags: subprocess, text=True, input, CRLF, 
+, crontab, ssh, windows, newline translation, vpsx, infra compartilhada, command not found`
+
+**Contexto:** script Python no Windows que escreve arquivo numa VPS Linux por SSH
+(`subprocess.run([...ssh...], text=True, input=conteudo)`), inclusive `cat > arquivo` e `crontab -`.
+
+**Sintoma:** o arquivo remoto fica com `
+` no fim de TODA linha. Um `.sh` deixa de passar no
+`bash -n`; um `.env` vira `CHAVE=valor
+` (host/senha errados); um **crontab** vira
+`/opt/x/run.sh
+`, que o `sh` lê como `run.shr` → *command not found* e o job simplesmente para —
+**inclusive os jobs de outros projetos**, se o crontab for compartilhado.
+
+**Causa raiz:** em modo TEXTO (`text=True`), o Python no Windows traduz `
+` → `
+
+` **na
+escrita** do stdin. Não é o SSH nem o Linux: é a camada de texto do próprio Python.
+
+**Solução:**
+1. Mandar stdin em **bytes**: `input=conteudo.encode("utf-8")`, sem `text=True`, decodificando
+   `stdout`/`stderr` na mão. Corrige na origem, para todos os chamadores.
+2. Defesa em profundidade no destino: `cat > f && sed -i 's/
+$//' f`, na MESMA cadeia.
+3. Nunca `crontab -` direto: vá por `mktemp`, normalize lá, **confira** (`tr -cd '
+' < f | wc -c`)
+   e só então instale — relendo depois pra comparar.
+4. Detector portável: `tr -cd '
+'` ou `grep "$(printf '
+')"`. **Não** use `grep $'
+'`: é
+   sintaxe de bash e passa mudo em `dash`, dando falsa segurança exatamente onde você quer certeza.
+
+**Armadilha:** o script imprime "instalado" e tudo parece certo. A verificação que vale é rodar o
+**interpretador** contra o resultado (`bash -n`), olhar **bytes** (`od -c`) e conferir permissão
+(`stat -c %a`) — não a própria saída do script.
+
+**Ref:** `D:\Claud Automations\Kommo-Disparo-WhatsApp\libpsx.py` (`sh()`),
+`execution/instalar_cron_divergencia.py`, `tests/test_vpsx.py`. Incidente de 2026-08-13.
+
+---
+
+## `psql -tAc` imprime o command tag junto com o RETURNING — e `INSERT 0 0` é truthy {#psql-command-tag-truthy}
+
+`tags: psql, -tAc, command tag, INSERT 0 0, RETURNING, truthy, dedupe, guard de 24h, falso positivo`
+
+**Contexto:** guard de deduplicação em SQL (`INSERT ... SELECT ... WHERE NOT EXISTS ... RETURNING id`)
+com o resultado interpretado por código que faz `if saida:`.
+
+**Sintoma:** o dedupe funciona **no banco** (a tabela tem 1 linha só, conferido), mas o código acha
+que inseriu toda vez — então o alerta que deveria sair 1× por dia sai a cada execução.
+
+**Causa raiz:** com `-tAc`, o psql escreve o **command tag** (`INSERT 0 1`, `INSERT 0 0`,
+`UPDATE 0`) no stdout, junto com as linhas do `RETURNING`. Um INSERT suprimido devolve a string
+`'INSERT 0 0'` — não-vazia, portanto **truthy**.
+
+**Solução:** ler o número do próprio tag (`^INSERT \d+ (\d+)$`), que é o Postgres dizendo quantas
+linhas gravou. Nunca decidir por "a saída veio não-vazia".
+
+**Nota de escopo, para não virar caça-fantasma:** isso só morde quem interpreta saída de
+INSERT/UPDATE. Quem roda `SELECT` com `-tA`, ou quem checa `"ERROR"`/`"(0 rows)"` em script
+multi-statement, não é afetado — conferido um a um antes de registrar.
+
+**Ref:** `D:\Claud Automations\Kommo-Disparo-WhatsApp\executionerificar_divergencia_fila.py`
+(`_quantas_inseridas`). 2026-08-13.
+
+---
+
+## Nota de bloqueio sem data de RECONFERÊNCIA sobrevive à própria correção {#nota-de-bloqueio-vencida}
+
+`tags: handoff, plano, tracking, bloqueio, documentacao vencida, metadado que mente, R2, reconferencia`
+
+**Contexto:** `PLANO.md`/`HANDOFF.md` com uma nota de "🚨 BLOQUEIO" que trava uma fase inteira.
+
+**Sintoma:** dias depois, a nota continua lá e alguém (humano ou agente) planeja trabalho em cima
+dela — no caso real, um runbook inteiro pedindo ação do operador num sistema que **já funcionava**.
+
+**Causa raiz:** a nota tinha data de CRIAÇÃO e nenhuma de reconferência. Ela foi escrita quando era
+verdade, o problema foi corrigido no mesmo dia por outro caminho, e ninguém voltou pra fechá-la.
+Metadado que mente é pior que metadado ausente, porque é lido como verdade.
+
+**Solução:**
+1. Antes de agir sobre qualquer bloqueio com mais de um dia, **confirme no dado** que ele existe.
+2. Toda nota de bloqueio nasce com o **comando que a refuta** ao lado ("se isto devolver X, o
+   bloqueio acabou"). O bloco "Reproduza você mesmo" do PLANO desse projeto é o modelo.
+3. Sinal de que a nota está vencida: ela descreve consequência que o banco não confirma. Exemplo
+   real — a nota dizia "os itens ficam presos em `triggered` pra sempre", e a tabela tinha **zero**
+   itens em `triggered` e 12 fechados com `variant` preenchido, que só a tag produz.
+
+**Ref:** `D:\Claud Automations\Kommo-Disparo-WhatsApp\docs\PLANO.md` (frente Fase 5),
+`docs/runbooks/RUNBOOK_TAG_DE_RESULTADO_SALESBOT.md`. 2026-08-14.
+
+---
+
+## Varredura de identidade que cobre só o backend deixa o FRONTEND com a identidade do produto de origem {#varredura-de-identidade-nao-alcanca-o-frontend}
+
+`tags: identidade, fork, audience, invalid_audience, varredura, sweep, frontend, backend, login quebrado, produto derivado, 401, teste nao alcanca arquivo`
+
+**Sintoma:** produto derivado por fork tem a troca de identidade "concluída", com teste dedicado
+e verde, e mesmo assim o login quebra em produção com `invalid_audience` — ou pior, funciona e
+emite token para o produto ERRADO. No caso medido, o frontend pedia
+`audience: 'familia'` (o produto de origem) enquanto o backend validava a audience própria: todo
+token seria recusado com 401, e nenhum dos 2,7 mil testes acusava.
+
+**Causa raiz — duas frestas ao mesmo tempo, e é a combinação que engana:**
+
+1. **A varredura não alcança o frontend.** O teste de identidade costuma nascer no repo do
+   backend e varrer `app/**/*.py`. O frontend nunca esteve no alcance dele — então não é que a
+   asserção falhou, é que ela nunca foi executada contra aquele arquivo.
+2. **A regex procura o nome COMPOSTO, e o que sobrevive é a string NUA.** Um padrão como
+   `familia[-_]milionaria|familiamilionaria` casa domínio e slug, mas **não** casa
+   `audience: 'familia'`. O valor perigoso é justamente o mais curto, porque é o identificador
+   técnico — e é ele que viaja para o serviço de auth.
+
+Somadas: o teste existe, está verde, e a coisa que ele foi escrito para impedir está no
+repositório.
+
+**Como confirmar (evidência, ~20s):**
+```bash
+# 1. O teste de identidade alcanca o frontend?
+grep -n "rglob\|glob\|Path(" <repo>/api/tests/test_identidade*.py   # varre so app/? entao nao alcanca
+# 2. Qual audience o frontend pede DE FATO?
+grep -rn "audience" <repo>/frontend/src --include=*.ts --include=*.tsx | grep -v generated
+```
+
+**Solução:** varredura DIRIGIDA ao valor, não ao nome do produto. Duas asserções e uma guarda:
+
+- **Guarda de cobertura primeiro** — asserte que a varredura achou N arquivos (`assert len > 50`).
+  Sem ela, mover ou renomear a pasta do frontend faz o teste passar **vazio**, que é exatamente
+  o modo de falhar que originou o defeito.
+- **Padrão que casa o VALOR:** `(?:audience\s*[:=]|AUDIENCE\s*=)\s*['"]([a-z0-9\-]+)['"]` e
+  compare o grupo capturado com a audience do projeto. Pega as três formas com que alguém
+  escreveria isso em `.ts`.
+- **Reuse o padrão de domínio do backend em vez de escrever um mais estreito.** O receio de
+  falso positivo com `familiaId`/`familia_id` **não se sustenta**: as alternativas do padrão
+  exigem `milionaria` logo depois do separador. Estreitar por medo custa as grafias com hífen,
+  underscore e acento — e a estreiteza vira o defeito.
+
+**Vale para além de audience:** device de mensageria, slug de produto em link de checkout, chave
+de storage, `origin` de identidade provisionada. A regra geral é: **todo valor que o cliente
+manda para um serviço COMPARTILHADO precisa de trava no repo de quem manda**, não só no de quem
+recebe — o serviço compartilhado aceita os dois produtos por construção e não tem como saber que
+o remetente se identificou errado.
+
+**Ref:** Empresa Milionária (fork da Família Milionária), Task 16, 2026-08-14. Achado ao consultar
+o auth-service sobre o registro da audience, não por teste. Falsificado nos dois sentidos.
+
+---
+
+## Perna do conselho volta 429 ou vazio — declarei "N de 3" sem re-disparar {#perna-conselho-nao-e-perna-morta}
+
+`tags: council, conselho, orchestrator, 429, too many requests, groq, llama, deepseek, vazio, empty, maxtokens, perna degradada, parcial, rate limit`
+
+**Contexto:** o `council-orchestrator` devolve `respostas_degradadas` e você escreve "2 de 3 pernas
+responderam" — que a regra do loop `conselho` exige. O problema não é a regra: é aceitar o
+diagnóstico do orquestrador como se fosse veredito final.
+
+**Causa raiz — DUAS causas diferentes, o mesmo erro de leitura:**
+
+| perna | sintoma | causa REAL |
+|---|---|---|
+| DeepSeek | `status: empty`, `content: ""` | **teto de saída**: `deepseek-v4-pro` é modelo de RACIOCÍNIO e gasta os 8192 tokens pensando, sem sobrar resposta |
+| groq-llama | HTTP **429** | **teto de tokens por MINUTO** — o orquestrador dispara as pernas em PARALELO e o burst estoura |
+
+Nos dois casos o orquestrador **diagnostica e não deixa consertar**: `-MaxTokens` só existe no
+wrapper do provider, e não há retry pro 429.
+
+**Solução:** antes de contar as pernas, **re-dispare cada uma que falhou, direto pelo wrapper**:
+
+```
+providers\deepseek.ps1   -PromptFile <arquivo> -MaxTokens 32000
+providers\groq-llama.ps1 -PromptFile <arquivo>
+```
+
+Medido (tiatendo, 13-14/08/2026): mesmo prompt, DeepSeek 8192 → vazio 2× e 32000 → resposta
+completa **que discordou da outra perna e mudou uma decisão de desenho**. groq: 429 sete vezes em
+3 dias, e o **mesmo prompt** que falhou respondeu em **3,8s** ao ser re-disparado (um ping de 71
+tokens também passou na hora — exclui conta bloqueada/cota diária).
+
+**Custo de não fazer:** publiquei "2 de 3" e tratei um CRITICAL como convergência de duas pernas.
+A que faltava, re-disparada, devolveu o **MESMO finding em 1º lugar** — o achado era **3/3**, e eu
+subestimei a evidência que sustentava a minha própria correção.
+
+**Regra:** erro de transporte (429/timeout) e resposta cortada (vazio por teto) **não são opinião
+ausente — são opinião que você não foi buscar.**
+
+**Ref:** memória `feedback_perna_do_conselho_que_falha_nao_e_perna_morta_re_dispare`;
+`loops/conselho.md` ("Nunca apresente conselho parcial como completo").
+
+---
+
+## Conselho reprova a MESMA spec 2× — remendei os RF em vez de rever a DIREÇÃO {#conselho-2x-e-direcao-nao-spec}
+
+`tags: council, conselho, spec, analyze, ajustar, bloqueada, round 2, remendo, brainstorming, abordagens, direcao, andando em circulos`
+
+**Contexto:** o conselho devolve `AJUSTAR`/`BLOQUEADA`, você corrige os requisitos apontados,
+re-roda — e volta reprovado com CRITICAL **novo**. Você vai pro round 3. Cada round acrescenta um
+requisito (RF4 → RF4b → RF10 → RF9b) e a spec engorda sem ficar melhor.
+
+**Causa raiz:** os findings não eram defeitos da spec — eram o **custo de uma decisão de direção
+que nunca foi comparada com alternativa**. O caminho arquitetural do brainstorming tem um passo
+explícito, *"proponha 2-3 abordagens com trade-offs"*, e ele foi pulado. **O conselho avalia a
+opção que você TROUXE**, não as que você não formulou; conselho unânime aprovando a única
+alternativa considerada ainda te deixa na direção errada.
+
+**Como reconhecer (o sinal é objetivo):** liste os findings dos 2 rounds e pergunte *"todos atacam
+a mesma decisão?"*. Se sim, **a decisão é o defeito, não os requisitos** — pare de corrigir RF.
+
+**Solução:**
+1. Volte um nível e formule 2-3 abordagens de verdade, com o que cada uma resolve e **o que
+   NÃO** resolve.
+2. **A medição que destrava costuma ser sobre o CONTEXTO, não sobre a sua função.** No caso real
+   (tiatendo F5, 13-14/08/2026), o que fechou a questão foi medir *o que o bot falou ANTES* de cada
+   ocorrência do defeito: num turno o cliente respondeu **"Adicionar"** a *"Quer adicionar
+   Refrigerante - 2 Litros?"* — palavra sem informação de item, que **nenhuma** esperteza de
+   matcher recupera. A direção defendida por 2 rounds **não resolvia o caso mais grave**, e nem eu
+   nem o conselho tinham notado porque a pergunta nunca foi feita.
+3. **Partir a frente costuma ser a saída:** defesa (subtrativa, pequena, fecha rápido) + recuperação
+   (o desenho difícil, com os achados já pagos herdados por escrito).
+4. Prefira a mudança **SUBTRATIVA** quando existir — a que só REMOVE não precisa de guarda nova em
+   cada consumidor. ⚠️ Mas **"subtrativo" não é "provado"**: quando o conselho disse que a
+   propriedade não valia para uma das peças, a resposta certa foi **medir** (aplicar a mudança em
+   memória sobre o corpus real e diferenciar a saída), não argumentar — e a garantia virou teste
+   direto em vez de raciocínio.
+
+**Ref:** memória `feedback_conselho_reprovando_2x_e_sinal_de_direcao_nao_de_spec`;
+`loops/conselho.md` (regra de parada: teto de 2 rounds).
