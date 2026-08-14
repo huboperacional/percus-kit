@@ -162,6 +162,9 @@ versao_avancou() {
   }'
 }
 
+# origin/main e ref de remote-tracking LOCAL: pode estar velha, porque hook de
+# pre-commit nao faz fetch (rede no caminho do commit e lento e quebra offline).
+# Limitacao assumida -- o push recusa o non-fast-forward depois de qualquer jeito.
 v_origin=$(git show origin/main:CANON_VERSION.md 2>/dev/null | versao_do_cabecalho)
 if [ -n "$v_origin" ]; then
   staged=$(git diff --cached --name-only 2>/dev/null || true)

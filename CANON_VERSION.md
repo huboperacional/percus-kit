@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.36.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.36.1`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,28 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.36.1 — 2026-08-14
+
+**Limitação do gate de versão documentada, em vez de escondida.** O review cross-provider apontou
+que `origin/main` é ref de *remote-tracking* **local** e pode estar velha, porque hook de pre-commit
+não roda `git fetch` — se outra pessoa publicou uma versão à frente, a checagem 4 compara com a
+antiga e libera. A limitação foi **aceita e escrita** (no gate e no verbete), não corrigida: pôr
+rede no caminho do commit é lento e quebra offline, e o dano é contido porque o `git push` recusa o
+non-fast-forward depois. Gate não substitui estar em dia com o remoto.
+
+**Conhecimento novo (R23), dois verbetes generalizáveis desta sessão:**
+
+- `#concordancia-nao-prova-avanco` — teste que prova que N cópias concordam nunca prova que o valor
+  andou. Vale para qualquer dado denormalizado, não só versão: a suíte afere concordância enquanto o
+  defeito real é estagnação, e todas as cópias erradas concordam entre si.
+- `#gate-le-working-tree-nao-o-indice` — hook de pre-commit que lê o disco afere o que não vai ser
+  gravado. Toda leitura que decide veredito sai de `git show :`, `git diff --cached` ou
+  `git ls-files`; `cat` e `[ -f ]` só decidem se a checagem **se aplica**.
+
+Este bump é ele próprio a primeira prova de fogo da checagem 4: mexer em `v2/gates/` na versão
+6.36.0 já publicada foi barrado, e o caminho de saída foi `scripts/bump-canon.ps1` — exatamente o
+desenho pretendido.
 
 ## Changelog v6.36.0 — 2026-08-13
 
