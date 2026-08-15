@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.36.1`
+**Versão canônica em `huboperacional/percus-kit`:** `6.36.2`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,63 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.36.2 — 2026-08-15
+
+**O conselho inteiro revisado contra os modelos que realmente existem hoje — e o medidor de gasto
+consertado.** Partiu de uma observação do operador no painel da DeepSeek: o gasto tinha subido muito.
+
+- **DeepSeek: `deepseek-v4-pro` → `deepseek-v4-flash`** em todos os caminhos (review R11, council,
+  providers, `_registry.json`, `deepseek-impl` do R13). O `-pro` nunca foi escolha de custo: entrou em
+  24/07 num conserto de emergência quando a DeepSeek descontinuou o alias `deepseek-chat` e **nenhum
+  commit passava**. O verbete escrito no mesmo dia (`#deepseek-chat-modelo-descontinuado`) já
+  recomendava `-flash`; o fix aplicou o outro. 3,1× mais barato nos dois lados
+  ($0.435/$0.87 → $0.14/$0.28), e o `-pro` é modelo de raciocínio pagando thinking para revisar diff
+  de 12 linhas de markdown.
+- **Cross-Claude sobe de geração:** Sonnet 4.6 → **Sonnet 5**, Opus 4.7 → **Opus 5**. Haiku 4.5 fica
+  no modo `consult` porque não existe Haiku 5. Llama fica: a Groq não tem Llama 4 em produção.
+- **`max_tokens` do `cross-claude.ps1`: 4096 → 16000**, e isso não é folga cosmética. Nos modelos 5 o
+  thinking vem **ligado por padrão** (em Sonnet 4.6 / Opus 4.7, omitir o campo significava não pensar)
+  e o teto limita pensamento **+** resposta juntos. Subir o modelo sem subir o teto reproduziria
+  `#resposta-vazia-teto-de-tokens` um degrau acima: HTTP 200, `content` vazio, e o orquestrador
+  contando a perna como respondida.
+- **Preços corrigidos em dois lugares que mediam errado.** O `_registry.json` e o
+  `analyze_council_spend.py` seguiam com o preço do `deepseek-chat` — o commit de emergência trocou o
+  nome do modelo e não os custos ao lado. Pior: `claude-opus-4-7` estava tabelado a **$15/$75**, que é
+  preço de Opus 4.1 — o relatório inflava o Opus em 3× enquanto subestimava o DeepSeek. Modelos
+  aposentados **continuam** na tabela de propósito: log de junho foi cobrado ao preço de junho.
+- **Fallback silencioso vira aviso.** `compute_cost` retornava `0.0` para modelo fora da tabela, sem
+  dizer nada — foi isso que deixou a troca de 24/07 passar três semanas sem aparecer em relatório
+  nenhum. Agora anota em `MODELOS_SEM_PRECO` e o markdown abre uma seção declarando que o total está
+  subestimado. Custo desconhecido não é custo zero.
+- **O marcador de review passa a gravar `model` e `usage`.** O `latest.jsonl` registrava timestamp,
+  diff_lines e findings — nada sobre qual modelo revisou nem quanto custou. Quem grava o veredito
+  grava o preço dele.
+
+**Regressão pega pelo próprio review (R11), e ela é a lição da versão.** O `ValidateSet` de
+`$CrossClaudeModel` continuava listando só a geração 4. Em PowerShell, `ValidateSet` de **parâmetro
+revalida a cada atribuição à variável** — então o router, ao atribuir `claude-sonnet-5` por modo,
+derrubaria o council em **toda** invocação, não apenas em quem usasse `-CrossClaudeModel`. Checagem
+estrutural nenhuma denuncia isso. Agora há teste em `cross-claude-mode-load.tests.ps1` que extrai o
+`ValidateSet` e o `switch` do arquivo e exige que todo modelo produzido esteja permitido, com guarda
+anti-vacuidade (regex que parasse de casar deixaria o teste verde sem aferir nada). Mutação
+confirmada: tirar um modelo do set derruba o teste.
+
+**BOM restaurado em 6 `.ps1`, e isto NÃO é cosmético.** O script que fez a troca de modelo gravou os
+arquivos com `UTF8Encoding($false)` — sem BOM. No PS 5.1 isso faz o arquivo ser lido como ANSI, e o
+`deepseek-review.ps1`, que tem prompt acentuado em PT-BR, **parou de parsear** (7 erros). Três dos
+seis (`scripts/bump-canon.ps1`, `bump-canon.tests.ps1`, `gate-versao.tests.ps1`) já estavam sem BOM
+desde a v6.36.0 — o diff deles nesta versão é de **exatamente uma linha**, a primeira. Ou seja: a
+suíte `ps51-compat` já vinha vermelha e passou despercebida porque as versões anteriores rodaram só
+os arquivos de teste diretamente ligados à mudança, não a suíte inteira. Um review cross-provider
+pediu para reverter o BOM; recusado — é o oposto do que `ps51-compat` exige.
+
+**Mapeamento spec-kit atualizado (v0.16.4, conferido em 14/08).** Os comandos deles agora são
+`/speckit.*`, e três não estavam na nossa tabela: `converge`, `taskstoissues` e `checklist`.
+
+310 testes verdes (10 pytest + 300 Pester). Restam 2 vermelhos em `conhecimento/COMO_RESOLVER.md`,
+de verbete que outra sessão está escrevendo agora (órfão do índice e sem `tags:`) — fora deste
+commit e fora do meu alcance.
 
 ## Changelog v6.36.1 — 2026-08-14
 

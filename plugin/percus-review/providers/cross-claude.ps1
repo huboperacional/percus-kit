@@ -40,8 +40,15 @@
 param(
     [string]$PromptFile,
     [string]$SystemPrompt,
-    [int]$MaxTokens = 4096,
-    [string]$Model = "claude-sonnet-4-6",
+    # 16000 e nao 4096: em Sonnet 5 / Opus 5 o thinking vem LIGADO por padrao (omitir o campo
+    # roda adaptive, ao contrario de Sonnet 4.6 / Opus 4.7), e max_tokens limita pensamento +
+    # resposta JUNTOS. Manter 4096 aqui repetiria o defeito de #resposta-vazia-teto-de-tokens
+    # um degrau acima: HTTP 200, content vazio, e o orquestrador contando como perna respondida.
+    # Vale para os tres modos, inclusive consult/Haiku 4.5 (teto de saida do Haiku e 64K, entao
+    # 16000 cabe). Teto NAO e consumo: subir o limite nao encarece resposta curta, so evita que
+    # ela seja cortada -- por isso um numero unico em vez de um teto por modo.
+    [int]$MaxTokens = 16000,
+    [string]$Model = "claude-sonnet-5",
     [string]$Endpoint = "https://api.anthropic.com/v1/messages",
     [ValidateSet("consult","review","pre-mortem","analyze")]
     [string]$Mode = "consult"

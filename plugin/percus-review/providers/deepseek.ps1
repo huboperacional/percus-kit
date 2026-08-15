@@ -1,7 +1,7 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-  Provider wrapper: DeepSeek (deepseek-v4-pro) — single-shot consult.
+  Provider wrapper: DeepSeek (deepseek-v4-flash) — single-shot consult.
 
 .DESCRIPTION
   Recebe prompt via -PromptFile (path) ou stdin. Chama DeepSeek API.
@@ -30,7 +30,7 @@ param(
     [string]$SystemPrompt = "Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos.",
     [double]$Temperature = 0.2,
     [int]$MaxTokens = 8192,
-    [string]$Model = "deepseek-v4-pro",
+    [string]$Model = "deepseek-v4-flash",
     [string]$Endpoint = "https://api.deepseek.com/v1/chat/completions"
 )
 . (Join-Path $PSScriptRoot "_resposta.ps1")

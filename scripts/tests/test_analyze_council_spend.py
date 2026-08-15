@@ -100,16 +100,33 @@ def test_parse_log_file_malformed_json(tmp_path):
 
 
 def test_compute_cost_provider_fallback():
-    """Model desconhecido mas provider conhecido deve usar pricing do provider."""
+    """Fallback por provider so vale onde o provider mapeia 1:1 num modelo estavel."""
     entry = {
-        "model": "claude-mystery",
-        "provider": "cross-claude",
+        "model": "llama-mystery",
+        "provider": "groq-llama",
         "tokens_in": 1_000_000,
         "tokens_out": 1_000_000,
     }
     cost = compute_cost(entry)
-    # cross-claude: in=3.00, out=15.00 por M tokens
-    assert cost == pytest.approx(3.00 + 15.00)
+    # groq-llama: in=0.59, out=0.79 por M tokens
+    assert cost == pytest.approx(0.59 + 0.79)
+
+
+def test_provider_ambiguo_no_tempo_nao_tem_fallback():
+    """`deepseek` e `cross-claude` trocaram de modelo no tempo, entao o alias por provider
+    foi removido: preferimos avisar a reprecificar o passado com o preco de hoje."""
+    from analyze_council_spend import MODELOS_SEM_PRECO
+
+    MODELOS_SEM_PRECO.clear()
+    entry = {
+        "model": "",
+        "provider": "deepseek",
+        "tokens_in": 1_000_000,
+        "tokens_out": 1_000_000,
+    }
+    assert compute_cost(entry) == 0.0
+    # e o zero nao pode ser calado -- tem que sobrar rastro pro relatorio avisar
+    assert "deepseek" in MODELOS_SEM_PRECO
 
 
 def test_render_markdown_empty_entries():

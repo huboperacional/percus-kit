@@ -14,15 +14,29 @@ from typing import Any, Iterable
 
 # Keys duplicadas (ex: "deepseek" e "deepseek-chat") sao aliases deliberados:
 # cobrem tanto o provider name retornado pela API quanto o model name nos logs.
+# Modelos APOSENTADOS ficam na tabela de proposito: log de marco/junho foi cobrado ao preco
+# daquela epoca, e apagar a linha faria o historico ser reprecificado (ou cair no fallback e
+# virar 0). Entrada nova nao substitui a velha -- acompanha.
 PRICING_PER_MTOKEN = {
-    "deepseek-chat":           {"in": 0.27, "out": 1.10},
-    "deepseek":                {"in": 0.27, "out": 1.10},
-    "llama-3.3-70b-versatile": {"in": 0.59, "out": 0.79},
-    "groq-llama":              {"in": 0.59, "out": 0.79},
-    "claude-haiku-4-5":        {"in": 1.00, "out": 5.00},
-    "claude-sonnet-4-6":       {"in": 3.00, "out": 15.00},
-    "claude-opus-4-7":         {"in": 15.00, "out": 75.00},
-    "cross-claude":            {"in": 3.00, "out": 15.00},
+    "deepseek-v4-flash":       {"in": 0.14,  "out": 0.28},   # default desde 2026-08-15
+    "deepseek-v4-pro":         {"in": 0.435, "out": 0.87},   # default 2026-07-24..2026-08-15
+    "deepseek-chat":           {"in": 0.27,  "out": 1.10},   # descontinuado 2026-07-24
+    "llama-3.3-70b-versatile": {"in": 0.59,  "out": 0.79},
+    # `groq-llama` sobrevive como alias porque mapeia 1:1 num unico modelo que nunca mudou de
+    # preco. Os aliases `deepseek` e `cross-claude` foram REMOVIDOS: eles resolvem por provider,
+    # e o provider trocou de modelo no tempo (deepseek-chat -> v4-pro -> v4-flash; sonnet 4.6 ->
+    # sonnet 5 / opus 5). Apontar o alias pro preco de hoje reprecificaria o passado -- que e o
+    # defeito que esta versao existe pra corrigir. Entrada sem `model` agora cai no aviso de
+    # MODELOS_SEM_PRECO, que e a resposta honesta: nao da pra saber qual modelo rodou.
+    "groq-llama":              {"in": 0.59,  "out": 0.79},
+    "claude-haiku-4-5":        {"in": 1.00,  "out": 5.00},
+    # Sonnet 5 esta em preco promocional de $2/$10 ate 2026-08-31. A tabela usa o preco REGULAR
+    # de proposito: medidor que subestima e o defeito que esta versao acabou de consertar, e a
+    # promo expira sozinha. Ate la o relatorio superestima o Sonnet 5 em ate 50%.
+    "claude-sonnet-5":         {"in": 3.00,  "out": 15.00},
+    "claude-opus-5":           {"in": 5.00,  "out": 25.00},
+    "claude-sonnet-4-6":       {"in": 3.00,  "out": 15.00},
+    "claude-opus-4-7":         {"in": 5.00,  "out": 25.00},  # era 15/75 aqui -- 3x pra cima
 }
 
 
@@ -73,14 +87,23 @@ def _estimate_tokens(prompt: str, completion: str) -> tuple[int, int]:
         return (len(prompt) // 4, len(completion) // 4)
 
 
+MODELOS_SEM_PRECO: set[str] = set()
+
+
 def compute_cost(entry: dict[str, Any]) -> float:
-    """Custo USD pra uma entry. Retorna 0 se modelo desconhecido."""
+    """Custo USD pra uma entry. Retorna 0 se modelo desconhecido -- e ANOTA o nome.
+
+    O 0.0 calado e o que deixou a troca de modelo de 2026-07-24 passar tres semanas sem
+    aparecer em relatorio nenhum: modelo fora da tabela nao custa zero, custa o-que-a-gente-
+    nao-sabe. Quem consome este modulo tem que ler MODELOS_SEM_PRECO junto com o total.
+    """
     model = entry.get("model", "")
     pricing = PRICING_PER_MTOKEN.get(model)
     if pricing is None:
         provider = entry.get("provider", "")
         pricing = PRICING_PER_MTOKEN.get(provider)
     if pricing is None:
+        MODELOS_SEM_PRECO.add(model or entry.get("provider", "") or "?")
         return 0.0
     return (entry["tokens_in"] / 1_000_000) * pricing["in"] + \
            (entry["tokens_out"] / 1_000_000) * pricing["out"]
@@ -119,6 +142,14 @@ def render_markdown(agg: dict, entries: list, days: int) -> str:
     for e in top:
         out.append(f"| {e['timestamp']} | {e['provider']} | {e['mode']} | "
                    f"${compute_cost(e):.4f} | {Path(e['source']).name} |")
+    if MODELOS_SEM_PRECO:
+        out.append("\n## AVISO -- modelo(s) sem preco na tabela\n")
+        out.append("Estas chamadas entraram no relatorio contadas como **custo zero**. "
+                   "O total acima esta SUBESTIMADO ate que sejam precificadas em "
+                   "`PRICING_PER_MTOKEN`:\n")
+        for m in sorted(MODELOS_SEM_PRECO):
+            out.append(f"- `{m}`")
+        out.append("")
     out.append("\n## Conclusao automatica\n")
     if total == 0:
         out.append("- Nenhum custo apurado. Possivel ausencia de logs no periodo.")
@@ -139,6 +170,10 @@ def render_markdown(agg: dict, entries: list, days: int) -> str:
 
 
 def main():
+    # MODELOS_SEM_PRECO e estado de MODULO: sem zerar aqui, um segundo relatorio no mesmo
+    # processo (ou o proximo teste do pytest) herda os modelos desconhecidos do anterior e
+    # acusa subestimacao num periodo que nao tem nenhuma.
+    MODELOS_SEM_PRECO.clear()
     p = argparse.ArgumentParser()
     p.add_argument("--root", default="D:/Claud Automations")
     p.add_argument("--days", type=int, default=30)

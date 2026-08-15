@@ -95,9 +95,10 @@ Describe "os tres providers usam o classificador, e nenhum grava 'ok' na mao" {
     }
 
     It "o teto de tokens sobe acima de 1024 nos tres -- 1024 foi o numero que quebrou" {
-        # Nao e crendice com o numero: em deepseek-v4-pro os reasoning_tokens contam DENTRO de
-        # completion_tokens, entao 1024 deixa um prompt dificil sem orcamento pra resposta. O teto
-        # certo depende do modelo, mas nenhum dos tres pode continuar em 1024.
+        # Nao e crendice com o numero: em modelo que pensa os reasoning_tokens contam DENTRO de
+        # completion_tokens (medido no deepseek-v4-pro), entao 1024 deixa um prompt dificil sem
+        # orcamento pra resposta. O teto certo depende do modelo, mas nenhum dos tres pode
+        # continuar em 1024.
         foreach ($p in @("deepseek.ps1","groq-llama.ps1","cross-claude.ps1")) {
             $t = Get-Content (Join-Path $script:provDir $p) -Raw
             if ($t -match '\[int\]\$MaxTokens\s*=\s*(\d+)') {

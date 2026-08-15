@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Prova COMPORTAMENTAL do bump-canon.ps1: roda o script de verdade num canon
 # temporario e afere os arquivos resultantes. Os 7 pontos de versao estao
 # espalhados por 4 arquivos -- e exatamente por isso que fazer na mao falha.

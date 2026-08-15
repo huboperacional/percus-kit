@@ -165,7 +165,7 @@ Review é obrigatório em **dois momentos:**
 
 | Cenário | Reviewer |
 |---|---|
-| Pre-commit rotineiro | DeepSeek (`deepseek-chat`) |
+| Pre-commit rotineiro | DeepSeek (`deepseek-v4-flash`) |
 | Pre-commit em pasta sensível (`auth/`, `payment*/`, `migrations/`, `.env*`) | DeepSeek + Cross-Claude duplo |
 | Pre-commit de saída DeepSeek (commit com trailer `Co-implemented-by: deepseek-v4`) | Cross-Claude apenas (Sonnet subagent) |
 | Marco | DeepSeek + Cross-Claude duplo |

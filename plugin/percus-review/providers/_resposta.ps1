@@ -16,10 +16,11 @@
   orquestrador devolveu as duas como sucesso. Quem lesse o log concluiria "3 providers
   consultados" e trataria como consenso o que era uma perna so.
 
-  A causa da primeira e o teto de 1024 tokens combinado com modelo de RACIOCINIO: em
-  deepseek-v4-pro os reasoning_tokens contam DENTRO de completion_tokens, entao um prompt
-  dificil faz o modelo gastar o teto inteiro pensando e devolver string vazia. Nao e erro de
-  API -- do ponto de vista do HTTP, deu 200.
+  A causa da primeira e o teto de 1024 tokens combinado com modelo de RACIOCINIO: em modelo que
+  pensa (era deepseek-v4-pro quando isto foi medido; vale pra qualquer um em thinking mode) os
+  reasoning_tokens contam DENTRO de completion_tokens, entao um prompt dificil faz o modelo gastar
+  o teto inteiro pensando e devolver string vazia. Nao e erro de API -- do ponto de vista do HTTP,
+  deu 200.
 
   Resposta vazia nao e resposta. Truncada nao e resposta inteira. As duas precisam ter nome
   proprio, e nenhuma pode se chamar "ok".

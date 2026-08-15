@@ -2,16 +2,16 @@
   "providers": [
     {
       "id": "deepseek",
-      "name": "DeepSeek (deepseek-v4-pro)",
+      "name": "DeepSeek (deepseek-v4-flash)",
       "type": "http",
       "endpoint": "https://api.deepseek.com/v1/chat/completions",
-      "model": "deepseek-v4-pro",
+      "model": "deepseek-v4-flash",
       "env_key": "DEEPSEEK_API_KEY",
       "auth_header": "Authorization: Bearer ${KEY}",
       "wrapper_ps1": "providers/deepseek.ps1",
       "wrapper_sh": "providers/deepseek.sh",
-      "cost_per_1m_in": 0.27,
-      "cost_per_1m_out": 1.10,
+      "cost_per_1m_in": 0.14,
+      "cost_per_1m_out": 0.28,
       "weight": 1,
       "specialty": "review cross-provider, codigo geral"
     },

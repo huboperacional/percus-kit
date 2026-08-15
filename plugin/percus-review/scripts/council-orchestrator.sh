@@ -13,7 +13,7 @@ PROVIDERS="deepseek,groq-llama"
 CROSS_CLAUDE_FILE=""
 MODE="consult"
 MAX_INPUT_TOKENS=8000
-DEEPSEEK_MODEL="deepseek-v4-pro"
+DEEPSEEK_MODEL="deepseek-v4-flash"
 GROQ_MODEL="llama-3.3-70b-versatile"
 CROSS_CLAUDE_MODEL=""
 # F2 params

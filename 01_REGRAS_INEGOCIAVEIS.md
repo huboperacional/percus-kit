@@ -405,7 +405,7 @@ Hook Layer 1+2 continua sendo backstop final — se agente esquecer auto-trigger
 
 | Cenário | Reviewer | Por quê |
 |---|---|---|
-| Pre-commit rotineiro | **DeepSeek** (`deepseek-chat`) | Cross-provider real (não-Anthropic), 9× mais barato que GPT-5, suficiente pra catch básico |
+| Pre-commit rotineiro | **DeepSeek** (`deepseek-v4-flash`) | Cross-provider real (não-Anthropic), barato, suficiente pra catch básico |
 | Pre-commit em pasta sensível — baseline (`**/auth/**`, `**/payment*/**`, `**/migrations/**`, `**/credentials/**`, `.env*`, ver `plugin/percus-review/scripts/sensitive-paths.txt`) **+ o que o projeto declarar em `.percus-review.json`** | **DeepSeek + Cross-Claude duplo** | Defesa em profundidade onde o risco × consequência paga o custo |
 | Pre-commit de saída DeepSeek (commit com trailer `Co-implemented-by: deepseek-v4` — ver R13) | **Cross-Claude apenas** (subagent Sonnet) | Princípio R11: revisor ≠ implementador. DeepSeek não pode auto-revisar |
 | Marco (fim de fase/feature/épico) | **DeepSeek + Cross-Claude duplo** | Frequência baixa, gate crítico — vale defesa em profundidade |

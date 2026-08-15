@@ -54,10 +54,15 @@ param(
     [ValidateSet("consult","pre-mortem","review","analyze")]
     [string]$Mode = "consult"
     ,[int]$MaxInputTokens = 8000
-    ,[string]$DeepSeekModel = "deepseek-v4-pro"
+    ,[string]$DeepSeekModel = "deepseek-v4-flash"
     ,[string]$GroqModel     = "llama-3.3-70b-versatile"
     ,[AllowEmptyString()]
-    [ValidateSet("claude-haiku-4-5","claude-sonnet-4-6","claude-opus-4-7","")]
+    # Os modelos de geracao 4 ficam para override de comparacao; o router usa os de geracao 5.
+    # ATENCAO: em PowerShell o ValidateSet de um parametro revalida em CADA atribuicao a
+    # variavel, nao so na entrada. Esquecer um modelo aqui nao quebra o override -- quebra o
+    # proprio router mais abaixo, que atribui a $CrossClaudeModel por modo (medido 2026-08-15).
+    [ValidateSet("claude-haiku-4-5","claude-sonnet-5","claude-opus-5",
+                 "claude-sonnet-4-6","claude-opus-4-7","")]
     [string]$CrossClaudeModel = ""
     # F2 — code context injection
     ,[string]$CodeContextDir = ""
@@ -296,11 +301,12 @@ if ($hasCodeContext) {
 # F.2 Automatic router: choose Cross-Claude model by mode (unless overridden)
 if (-not $CrossClaudeModel) {
     $CrossClaudeModel = switch ($Mode) {
+        # Haiku 4.5 continua: nao existe Haiku 5. Os outros subiram de geracao (2026-08-15).
         "consult"    { "claude-haiku-4-5" }
-        "review"     { "claude-sonnet-4-6" }
-        "pre-mortem" { "claude-opus-4-7" }
-        "analyze"    { "claude-sonnet-4-6" }
-        default      { "claude-sonnet-4-6" }
+        "review"     { "claude-sonnet-5" }
+        "pre-mortem" { "claude-opus-5" }
+        "analyze"    { "claude-sonnet-5" }
+        default      { "claude-sonnet-5" }
     }
 }
 

@@ -20,9 +20,16 @@ fase-introducao: Fase 6
 
 | Membro | Provider | Modelo | Custo (1M in/out) | Especialidade |
 |---|---|---|---|---|
-| **DeepSeek** | DeepSeek API | `deepseek-chat` | $0.27 / $1.10 | Review cross-provider, código geral |
-| **Cross-Claude** | Anthropic (subagent Sonnet) | `claude-sonnet-4-6` | incluso na assinatura Claude Code | Análise de design, raciocínio profundo |
+| **DeepSeek** | DeepSeek API | `deepseek-v4-flash` | $0.14 / $0.28 | Review cross-provider, código geral |
+| **Cross-Claude** | Anthropic (subagent) | por modo: `claude-haiku-4-5` (consult) · `claude-sonnet-5` (review/analyze) · `claude-opus-5` (pre-mortem) | incluso na assinatura Claude Code | Análise de design, raciocínio profundo |
 | **Llama** | Groq API | `llama-3.3-70b-versatile` | Free 30 req/min, depois $0.59 / $0.79 | Resposta rápida (~500 tok/s), consultor inline |
+
+> **Modelos revisados em 2026-08-15.** `deepseek-chat` foi descontinuado pela DeepSeek em 24/07 e o
+> substituto entrou como `-pro` numa correção de emergência — 3,1× mais caro que o `-flash`, sem
+> decisão de custo por trás. Cross-Claude subiu de geração (Sonnet 4.6 → 5, Opus 4.7 → 5) **com o teto
+> de `max_tokens` subindo junto de 4096 para 16000**: nos modelos 5 o thinking vem ligado por padrão e
+> o teto limita pensamento + resposta juntos. Llama continua: a Groq não tem Llama 4 em produção.
+> Não existe Haiku 5 — por isso o modo `consult` fica no 4.5.
 
 **Custo agregado estimado:** $5/mês com volume Percus atual (vs $200-400/mês do esquema single-provider anterior).
 
@@ -162,16 +169,22 @@ O método **Spec-Driven Development** do [spec-kit](https://github.com/github/sp
 canon adota **seletivamente** o front-end (specify/clarify/analyze) e mantém o back-end próprio
 (`[0]→[5-T]`), que é mais granular que o `implement` deles:
 
+Os comandos deles passaram a ser prefixados (`/speckit.*`) — a coluna abaixo já usa o nome atual,
+conferido contra a v0.16.4 (14/08/2026).
+
 | spec-kit | Percus (equivalente) | Status |
 |---|---|---|
-| `/constitution` | `01_REGRAS_INEGOCIAVEIS` + `02_INFRA_E_STACK_PERCUS` | Já temos (mais forte) |
-| `/specify` | `templates/spec.template.md` (gate `[S]`) | **Novo (v6.19.0)** |
-| `/clarify` | `/clarify` ≤5 perguntas via AskUserQuestion no `feature-flow` | **Novo (v6.19.0)** |
-| `/analyze` | Conselho Modo 5 (`/percus-review:spec-analyze`) | **Novo (v6.19.0)** |
-| `/plan` | `docs/PLANO.md` (o COMO; stack vive aqui, não na spec) | Já temos |
-| `/tasks` | Quebra em features/frentes no PLANO | Já temos |
-| `/implement` | Pipeline `[0]→[1-S]→[2-E]→[3-H]→[4-C]→[5-T]` | Já temos (mais granular) |
-| `/analyze` (pós-impl) | Review Modo 1 (R11) + `state-drift-check` | Já temos |
+| `/speckit.constitution` | `01_REGRAS_INEGOCIAVEIS` + `02_INFRA_E_STACK_PERCUS` | Já temos (mais forte) |
+| `/speckit.specify` | `templates/spec.template.md` (gate `[S]`) | **Novo (v6.19.0)** |
+| `/speckit.clarify` | `/clarify` ≤5 perguntas via AskUserQuestion no `feature-flow` | **Novo (v6.19.0)** |
+| `/speckit.analyze` | Conselho Modo 5 (`/percus-review:spec-analyze`) | **Novo (v6.19.0)** |
+| `/speckit.plan` | `docs/PLANO.md` (o COMO; stack vive aqui, não na spec) | Já temos |
+| `/speckit.tasks` | Quebra em features/frentes no PLANO | Já temos |
+| `/speckit.implement` | Pipeline `[0]→[1-S]→[2-E]→[3-H]→[4-C]→[5-T]` | Já temos (mais granular) |
+| `/speckit.analyze` (pós-impl) | Review Modo 1 (R11) + `state-drift-check` | Já temos |
+| `/speckit.converge` | — | **Sem equivalente declarado** — avaliar (ver abaixo) |
+| `/speckit.taskstoissues` | — | Não adotado (não usamos issues como unidade de trabalho) |
+| `/speckit.checklist` | Checklists em `checklists/` | Já temos (nosso é fixo, o deles é gerado por feature) |
 
 **Não adotamos:** a estrutura `.specify/` nem os 7 comandos como CLI. Só o que preenche gap real.
 

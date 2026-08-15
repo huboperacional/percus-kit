@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Prova COMPORTAMENTAL do gate de versao: monta repo git temporario com ref
 # origin/main de verdade e roda o gate real.
 #

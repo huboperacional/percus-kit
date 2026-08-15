@@ -106,9 +106,9 @@ $canon = [Environment]::GetEnvironmentVariable('PERCUS_CANON_DIR', 'User')
 
 | Key | Onde obter | Plano gratuito? |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | https://platform.deepseek.com | Não — pay-as-you-go, ~$0.27/Mtoken in |
+| `DEEPSEEK_API_KEY` | https://platform.deepseek.com | Não — pay-as-you-go, ~$0.14/Mtoken in (v4-flash) |
 | `GROQ_API_KEY` | https://console.groq.com | **Sim** — free tier 30 req/min |
-| `ANTHROPIC_API_KEY` | https://console.anthropic.com | Pay-as-you-go, $3-15/Mtoken in |
+| `ANTHROPIC_API_KEY` | https://console.anthropic.com | Pay-as-you-go, $1-5/Mtoken in (Haiku 4.5 $1 · Sonnet 5 $3 · Opus 5 $5) |
 | `PAINEL_API_URL` | Fixo em `https://api.ads4pros.com` (interno Percus) | — |
 | `CATALOG_INGEST_KEY` | Operador (você) — gerar/recuperar do Painel admin | — |
 

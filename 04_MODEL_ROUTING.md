@@ -18,8 +18,8 @@ ultima-atualizacao: 2026-05-17
 | Papel | Modelo | Provedor | Quando |
 |---|---|---|---|
 | **Arquiteto** | Claude Opus / Sonnet | Anthropic | Brainstorm, plano, decisão de arquitetura, revisão final, debug não-trivial, tasks em pasta sensível |
-| **Implementador** | DeepSeek V4 (`deepseek-chat`) | DeepSeek | Execução de plano explícito, scaffolding, refactor mecânico, boilerplate, testes triviais |
-| **Revisor cross-provider** | DeepSeek (`deepseek-chat`) + Cross-Claude (Sonnet subagent) | DeepSeek Inc + Anthropic | Pre-commit (R11) e marco (R11 ampliada) — router decide qual aciona |
+| **Implementador** | DeepSeek V4 (`deepseek-v4-flash`) | DeepSeek | Execução de plano explícito, scaffolding, refactor mecânico, boilerplate, testes triviais |
+| **Revisor cross-provider** | DeepSeek (`deepseek-v4-flash`) + Cross-Claude (subagent Sonnet 5) | DeepSeek Inc + Anthropic | Pre-commit (R11) e marco (R11 ampliada) — router decide qual aciona |
 
 Os papéis não se sobrepõem: cada modelo faz uma coisa, e a saída de cada um é validada por outro.
 
@@ -33,13 +33,13 @@ A partir da Fase 6, o roteamento ganha **camada explícita de Haiku 4.5** pra ta
 
 | Tarefa | Modelo | Custo (1M in/out) | Por quê |
 |---|---|---|---|
-| HANDOFF.md gerar/atualizar | **Haiku 4.5** | $0.80 / $4.00 | Padrão estável, não exige raciocínio profundo |
+| HANDOFF.md gerar/atualizar | **Haiku 4.5** | $1 / $5 | Padrão estável, não exige raciocínio profundo |
 | Lint/format/rename refactor | **Haiku 4.5** | idem | Mecânico |
 | Sumarização de logs/diff | **Haiku 4.5** | idem | Estrutural |
-| Review pre-commit típico | **DeepSeek + Llama (paralelo)** | $0.27/$1.10 + $0.59/$0.79 | Cross-provider rápido, Llama via Groq é grátis até 30 rpm |
+| Review pre-commit típico | **DeepSeek + Llama (paralelo)** | $0.14/$0.28 + $0.59/$0.79 | Cross-provider rápido, Llama via Groq é grátis até 30 rpm |
 | Review pre-commit em pasta sensível | **DeepSeek + Cross-Claude + Llama** | composto | Defesa em profundidade — 3 provedores diferentes |
-| Decisão de design (Plan mode) | **Sonnet 4.6** | $3 / $15 | Raciocínio profundo, contexto longo |
-| Brainstorming arquitetural | **Opus 4.7 + conselho 3-mem** | $15/$75 + conselho | Raro, alta criticidade |
+| Decisão de design (Plan mode) | **Sonnet 5** | $3 / $15 | Raciocínio profundo, contexto longo |
+| Brainstorming arquitetural | **Opus 5 + conselho 3-mem** | $5/$25 + conselho | Raro, alta criticidade |
 | Drift-detect cross-projeto | **Llama (first)** + DeepSeek fallback | grátis 30 rpm | Resposta rápida, suficiente |
 | Pre-mortem de plano | **Conselho 3-mem** (paralelo) | composto | Plural por design |
 | Pré-pergunta consulting | **Conselho 3-mem** (paralelo) | composto | Reduz interrupção do operador |
@@ -48,8 +48,8 @@ A partir da Fase 6, o roteamento ganha **camada explícita de Haiku 4.5** pra ta
 
 | Membro | Provider | Modelo | Custo aprox |
 |---|---|---|---|
-| DeepSeek | DeepSeek API | `deepseek-chat` | $0.27/$1.10 |
-| Cross-Claude | Anthropic (subagent) | `claude-sonnet-4-6` | incluso na assinatura Claude Code |
+| DeepSeek | DeepSeek API | `deepseek-v4-flash` | $0.14/$0.28 |
+| Cross-Claude | Anthropic (subagent) | `claude-sonnet-5` (default; ver tabela por modo) | incluso na assinatura Claude Code |
 | Llama 3.3 70B | Groq API | `llama-3.3-70b-versatile` | Free 30 req/min, depois $0.59/$0.79 |
 
 Total estimado: ~$5/mês com volume Percus atual.
@@ -240,7 +240,7 @@ Estrutura de report ao usuário:
 ```
 [DeepSeek] CONCLUÍDO
 
-Modelo: deepseek-chat (V3.1/V4)
+Modelo: deepseek-v4-flash
 Modo: <dry-run|apply>
 Tokens: prompt=X completion=Y total=Z (custo ~$W)
 Log: .deepseek/runs/<ts>.jsonl
@@ -274,9 +274,9 @@ Sem essas três camadas, output do DeepSeek **não vai pra produção**.
 
 ## Estimativa de economia
 
-Premissas (preços públicos em 2026-05):
-- Claude Opus 4.7: ~$15/M tokens input, ~$75/M output
-- DeepSeek V4: ~$0.27/M input (cache hit ~$0.07/M), ~$1.10/M output
+Premissas (preços públicos conferidos em 2026-08-15):
+- Claude Opus 5: $5/M tokens input, $25/M output (o texto anterior dizia $15/$75 — era preço de Opus 4.1)
+- DeepSeek V4 flash: $0.14/M input (cache hit $0.0028/M), $0.28/M output
 
 Para uma task de implementação de ~50k tokens (input plano+contexto, output código+diff):
 
@@ -321,10 +321,10 @@ Orchestrator escolhe modelo Cross-Claude por mode (override com `-CrossClaudeMod
 | Mode | Default | Racional |
 |---|---|---|
 | consult | claude-haiku-4-5 | Respostas curtas (<150 palavras), baixo custo |
-| review | claude-sonnet-4-6 | Findings cross-provider, qualidade alta |
-| pre-mortem | claude-opus-4-7 | Raciocinio profundo, 3 motivos concretos |
+| review | claude-sonnet-5 | Findings cross-provider, qualidade alta |
+| pre-mortem | claude-opus-5 | Raciocinio profundo, 3 motivos concretos |
 
-DeepSeek e Groq tambem aceitam `-DeepSeekModel` / `-GroqModel` (PS) ou `--deepseek-model` / `--groq-model` (bash). Default: `deepseek-chat` e `llama-3.3-70b-versatile`.
+DeepSeek e Groq tambem aceitam `-DeepSeekModel` / `-GroqModel` (PS) ou `--deepseek-model` / `--groq-model` (bash). Default: `deepseek-v4-flash` e `llama-3.3-70b-versatile`.
 
 Marker pro Agent tool dispatch passa a incluir bloco `---MODEL-HINT---<model>---END-MODEL-HINT---` em stderr, permitindo ao agente orquestrador saber qual modelo dispatchear para o subagent Cross-Claude.
 

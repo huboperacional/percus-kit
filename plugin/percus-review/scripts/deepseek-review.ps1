@@ -17,7 +17,7 @@
 [CmdletBinding()]
 param(
     [string]$Base = "",
-    [string]$Model = "deepseek-v4-pro",
+    [string]$Model = "deepseek-v4-flash",
     [double]$Temperature = 0.0,
     [string]$Endpoint = "https://api.deepseek.com/v1/chat/completions"
 )
@@ -146,12 +146,19 @@ if (-not (Test-Path $logDir)) {
 # nunca ler no meio da escrita.
 $logFile = Join-Path $logDir 'latest.jsonl'
 $logTmp  = Join-Path $logDir 'latest.jsonl.tmp'
+# model + usage no log (2026-08-15): sem eles o marcador nao diz QUAL modelo revisou nem
+# quanto custou, e a troca de deepseek-chat -> v4-pro (24/07) passou tres semanas invisivel
+# por aqui -- so apareceu no painel da DeepSeek. Quem grava o veredito grava o preco dele.
+# Campos ausentes na resposta viram $null em vez de quebrar a escrita do marcador: este
+# arquivo e o que libera o commit (R11), e nao pode falhar por causa de telemetria.
 @{
     timestamp  = (Get-Date -Format 'o')
     base       = $Base
     diff_lines = ($diff -split "`n").Count
+    model      = $Model
+    usage      = $response.usage
     findings   = $findings
-} | ConvertTo-Json -Compress | Out-File -FilePath $logTmp -Encoding utf8
+} | ConvertTo-Json -Depth 5 -Compress | Out-File -FilePath $logTmp -Encoding utf8
 Move-Item -Path $logTmp -Destination $logFile -Force
 # Auto-poda: o mecanismo agora e latest.jsonl unico. Remove marcadores
 # <timestamp>.jsonl irmaos (pilhas antigas drenam sozinhas no proximo review,

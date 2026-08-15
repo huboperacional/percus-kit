@@ -152,8 +152,8 @@ percus-kit/                          ← raiz do canon (canon + plugin = "percus
 ## Plugin `@percus/review`
 
 Conselho 3-membros obrigatório (R11) — 3 providers distintos reduzem viés single-provider:
-- **DeepSeek API** (`deepseek-chat`) — review cross-provider, código geral; pre-commit padrão
-- **Cross-Claude** (subagent Sonnet) — análise de design/raciocínio; quando a saída veio do próprio DeepSeek
+- **DeepSeek API** (`deepseek-v4-flash`) — review cross-provider, código geral; pre-commit padrão
+- **Cross-Claude** (subagent Sonnet 5 / Opus 5 conforme o modo) — análise de design/raciocínio; quando a saída veio do próprio DeepSeek
 - **Llama via Groq** (`llama-3.3-70b-versatile`) — consultor rápido inline + triagem de fact-check (v6.14.0)
 
 Opera em **4 modos**: review (pre-commit/marco), consult, pre-mortem, brainstorm. Pasta sensível ou marco escala pra duplo/triplo. Arquitetura completa em `06_CONSELHO_PERCUS.md`.

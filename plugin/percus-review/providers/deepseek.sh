@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Provider wrapper DeepSeek (deepseek-v4-pro) - single-shot consult
+# Provider wrapper DeepSeek (deepseek-v4-flash) - single-shot consult
 # Uso: echo "prompt" | ./deepseek.sh  OR  ./deepseek.sh --prompt-file path.txt
 
 set -eo pipefail
@@ -7,7 +7,7 @@ set -eo pipefail
 SYSTEM_PROMPT="Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
 TEMPERATURE="0.2"
 MAX_TOKENS="8192"
-MODEL="deepseek-v4-pro"
+MODEL="deepseek-v4-flash"
 ENDPOINT="https://api.deepseek.com/v1/chat/completions"
 PROMPT_FILE=""
 

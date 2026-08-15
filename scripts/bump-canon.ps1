@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Bumpa a versao do kit Percus nos 7 pontos, de uma vez.

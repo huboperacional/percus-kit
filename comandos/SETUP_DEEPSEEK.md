@@ -196,4 +196,4 @@ Próximos passos:
 - **Regra:** `percus-kit/01_REGRAS_INEGOCIAVEIS.md` R13
 - **Wrapper:** `percus-kit/scripts/deepseek-impl.ps1` + `.sh`
 - **Revisor cross-provider (DeepSeek+Cross-Claude):** `percus-kit/comandos/SETUP_REVIEW_ROUTING.md` + R11
-- **API DeepSeek:** https://api.deepseek.com (modelo: `deepseek-chat` = V3.1/V4)
+- **API DeepSeek:** https://api.deepseek.com (modelo: `deepseek-v4-flash`; `deepseek-chat` foi descontinuado em 2026-07-24)
