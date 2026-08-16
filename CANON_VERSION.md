@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.36.4`
+**Versão canônica em `huboperacional/percus-kit`:** `6.36.5`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,69 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.36.5 — 2026-08-16
+
+**O `canon-version-check` estava morto há muito tempo, respondendo verde — e a causa é uma classe
+que nenhuma guarda do kit cobria.** Era o achado que a 6.36.4 registrou como "em aberto, não
+corrigido aqui". Investigado e fechado.
+
+**O sintoma:** rodando sob `powershell.exe` 5.1 — que é o runtime real de todo hook — o
+`canon-version-check.ps1` saía com
+*"nao foi possivel extrair versao atual de CANON_VERSION.md - skip"* e **exit 0**. Sob `pwsh 7`
+o mesmo hook funcionava perfeitamente e listava as três divergências de `system-prompt-*.md`.
+
+**A causa raiz, medida:** no PS 5.1 o default de `Get-Content` é **ANSI (Windows-1252)**; no
+pwsh 7 é **UTF-8**. O `CANON_VERSION.md` é UTF-8 **sem BOM** — como todo markdown deve ser. Então
+o mesmo arquivo chega diferente nos dois runtimes:
+
+```
+pwsh 7 : # Canon Percus — versão atual        (correto)
+PS 5.1 : # Canon Percus â€” versÃ£o atual      (mojibake)
+```
+
+E o regex do hook é `Vers[aã]o can[oô]nica em.*?` — **acentuado**. Contra o mojibake ele não casa,
+`$currentVersion` fica `$null`, e o hook segue pelo caminho de skip. Controle que fecha o
+diagnóstico: forçando a leitura em UTF-8 sob o mesmo 5.1, o regex casa e extrai `6.36.4`.
+
+🔑 **Por que sobreviveu a todas as guardas — e esta é a lição:** o kit já conhecia a armadilha do
+BOM, mas na forma *"o `.ps1` **fonte** sem BOM não **parseia** no 5.1"*, e a guarda
+(`ps51-compat`) afere **parse**. Aqui o fonte parseia perfeitamente; o **dado lido** é que chega
+corrompido. Mesma origem (default de encoding do 5.1), classe diferente, guarda diferente:
+
+| classe | o que quebra | como se vê | conserto |
+|---|---|---|---|
+| conhecida (6.36.0/6.36.2) | `.ps1` **fonte** sem BOM | erro de parse | BOM no `.ps1` |
+| **nova (esta)** | `.md`/`.json` **lido** | regex acentuado não casa, **silêncio** | `-Encoding UTF8` na leitura |
+
+E **não dá para consertar botando BOM nos dados**: markdown não usa BOM, e JSON com BOM quebra
+parser alheio. Quem **lê** é que tem de declarar o encoding.
+
+**Alcance real, não hipotético:** 9 chamadas de `Get-Content` sem `-Encoding` em 4 hooks
+(`canon-version-check`, `enforcement-health`, `external-action-guard`, `on-stop-check`) — todas
+corrigidas. As de `enforcement-health` e `external-action-guard` liam **JSON**, que é UTF-8 por
+especificação, então string acentuada dentro deles vinha corrompida em silêncio. O
+`state-drift-check.ps1` **já** usava `-Encoding UTF8` desde antes: a lição existia em um hook e
+nunca tinha generalizado.
+
+**Segundo `Get-Content` do mesmo hook tinha o mesmo defeito** (linha 50, os `system-prompt-*.md`):
+os três arquivos têm acento e não têm BOM, então mesmo que a versão fosse extraída, a comparação
+rodaria sobre texto corrompido.
+
+**Teste novo `hooks-leitura-utf8.tests.ps1` (2 casos), um deles COMPORTAMENTAL:** ele executa o
+hook sob `powershell.exe` 5.1 de verdade e exige que a saída contenha `canon atual=` (anti-vacuidade
+— hook que não roda deixaria o teste verde por saída vazia) e **não** contenha
+`nao foi possivel extrair`. O segundo é estrutural: todo `Get-Content` em `hooks/` declara
+`-Encoding UTF8`, com strip de comentário e de continuação de linha. Mutação confirmada: tirar o
+`-Encoding` de uma linha derruba **os dois**.
+
+⚠️ **A primeira versão dessa guarda aceitava o próprio bug de volta** — ela exigia só a *presença*
+de `-Encoding`, e no PS 5.1 **`-Encoding Default` É o Windows-1252** que causou o mojibake
+(`ASCII` é pior ainda). Apontado pelo R11 revisando esta versão; agora a exigência é do **valor**
+`UTF8`, com mutação confirmada em `Default` e em `ASCII`. Guarda que aceita o defeito escrito por
+extenso é pior que guarda nenhuma, porque parece cobertura.
+
+Suíte: **323 Pester + 10 pytest, tudo verde.**
 
 ## Changelog v6.36.4 — 2026-08-16
 

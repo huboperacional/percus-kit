@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Hook SessionStart -- diz, no inicio de cada sessao, se o enforcement esta de fato ligado
 # e DE ONDE o codigo dele vem.
 #
@@ -51,7 +51,7 @@ try {
         exit 0
     }
 
-    $man   = Get-Content $manPath -Raw | ConvertFrom-Json
+    $man   = Get-Content -Encoding UTF8 $manPath -Raw | ConvertFrom-Json
     $vivos = @($man.hooks | Where-Object { $_.registrado })
 
     # ---- 1. De onde vem o codigo? -------------------------------------------------------
@@ -74,7 +74,7 @@ try {
     # ---- 2. O registro vivo bate com o manifesto? ---------------------------------------
     $hooksJsonPath = Join-Path $hooksDir "hooks.json"
     if (Test-Path $hooksJsonPath) {
-        $hj = Get-Content $hooksJsonPath -Raw | ConvertFrom-Json
+        $hj = Get-Content -Encoding UTF8 $hooksJsonPath -Raw | ConvertFrom-Json
         $registrados = @{}
         foreach ($ev in $hj.hooks.PSObject.Properties) {
             foreach ($bloco in @($ev.Value)) {
@@ -102,13 +102,13 @@ try {
     # ---- 4. A versao instalada e a do kit? ----------------------------------------------
     $verKit = $null; $verInst = $null
     $pjKit = Join-Path (Split-Path -Parent $hooksDir) "plugin.json"
-    if (Test-Path $pjKit) { $verKit = (Get-Content $pjKit -Raw | ConvertFrom-Json).version }
+    if (Test-Path $pjKit) { $verKit = (Get-Content -Encoding UTF8 $pjKit -Raw | ConvertFrom-Json).version }
     $cfg = $env:CLAUDE_CONFIG_DIR
     if (-not $cfg) { $cfg = Join-Path $env:USERPROFILE ".claude" }
     $instPath = Join-Path $cfg "plugins\installed_plugins.json"
     if (Test-Path $instPath) {
         try {
-            $inst = Get-Content $instPath -Raw | ConvertFrom-Json
+            $inst = Get-Content -Encoding UTF8 $instPath -Raw | ConvertFrom-Json
             $p = $inst.plugins.PSObject.Properties | Where-Object { $_.Name -like "percus-review@*" } | Select-Object -First 1
             if ($p) { $verInst = @($p.Value)[0].version }
         } catch { }

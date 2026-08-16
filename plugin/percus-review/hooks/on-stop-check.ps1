@@ -25,7 +25,7 @@ try {
     $handoffEdited = $false
 
     # foreach loop normal (NÃO ForEach-Object) pra preservar scope de variáveis no PS 5.1
-    $lines = Get-Content $transcriptPath -ErrorAction SilentlyContinue
+    $lines = Get-Content -Encoding UTF8 $transcriptPath -ErrorAction SilentlyContinue
     foreach ($line in $lines) {
         if ($line -match '"name"\s*:\s*"(Edit|Write|NotebookEdit)"') {
             if ($line -match '"file_path"\s*:\s*"([^"]+)"') {

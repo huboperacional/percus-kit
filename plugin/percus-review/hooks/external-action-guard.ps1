@@ -54,7 +54,7 @@ try {
     try {
         $authFile = Join-Path $cwd ".percus/acao-externa-autorizada.json"
         if (Test-Path $authFile) {
-            $auth = Get-Content $authFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            $auth = Get-Content -Encoding UTF8 $authFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
             # Comparacao em epoch puro, NUNCA converter pra hora local antes de subtrair --
             # subtracao de DateTime local e aritmetica de relogio de parede, nao tempo real
             # decorrido. Numa transicao de horario de verao isso podia fazer autorizacao
@@ -82,7 +82,7 @@ try {
     if (Test-Path $councilDir) {
         $latestCouncil = Get-ChildItem $councilDir -Filter "*.jsonl" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if ($latestCouncil -and ((Get-Date) - $latestCouncil.LastWriteTime).TotalMinutes -lt 60) {
-            $councilContent = Get-Content $latestCouncil.FullName -Raw
+            $councilContent = Get-Content -Encoding UTF8 $latestCouncil.FullName -Raw
             if ($councilContent -match '"premise_validity"\s*:\s*"(invalid|unverified)"') {
                 $councilBad = $true
                 $councilBadReason = "council log $($latestCouncil.Name) tem premise_validity=$($matches[1])"
