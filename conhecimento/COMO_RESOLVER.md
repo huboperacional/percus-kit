@@ -347,6 +347,9 @@
 - [Código no agendador de terceiro DISPARA, mas como `PageView`, sem cookie e sem click id](#tracking-em-agendador-de-terceiro-dispara-mas-nao-conta)
 - [`ValidateSet` de parâmetro revalida em CADA atribuição — a lista velha derruba o código novo](#validateset-revalida-em-cada-atribuicao)
 - [O teste que deveria pegar o defeito nasceu verde porque o regex casou o bloco errado](#teste-nasce-verde-vazio-regex-primeiro-match)
+- [Rastreamento por task diz `[4-C]` e o usuário continua vendo o app do fork](#tracking-por-task-esconde-o-que-o-usuario-alcanca)
+- [Assert que casa a classe no documento INTEIRO não prova markup — a folha de estilo mantém a string viva](#assert-casa-css-nao-prova-markup)
+- [Pesquisa externa: "não achei" ≠ "não existe", e quase nunca é o layout mobile](#nao-achei-nao-e-nao-existe-em-pesquisa-web)
 
 ---
 
@@ -1249,12 +1252,14 @@ Ver também [Devolutiva cross-time escrita da MEMÓRIA acusa o bug errado](#devo
 **Solução:**
 1. **Guard no código, por-item, no instante da ação** — não uma checagem de startup, não uma nota no runbook, não disciplina do agente. `if not is_within_quiet_hours(datetime.now(UTC), lead.state): skip`.
 2. **Falha = pular, não abortar o lote.** E **não marque no ledger** — o item volta no próximo run, dentro da janela dele.
-3. **No fuso/contexto do ALVO, não no seu.** 09:00 ET é 06:00 PT: checar no *seu* fuso libera envio ilegal. Desconhecido → o mais restritivo (ex.: `Pacific/Honolulu`, onde qualquer instante é o mais cedo localmente — só erra pro lado conservador). Isto é o mesmo princípio de [Guard checa o ALVO, não a intenção](#guard-checa-intencao-nao-alvo).
+3. **No fuso/contexto do ALVO, não no seu.** 09:00 ET é 06:00 PT: checar no *seu* fuso libera envio ilegal. Isto é o mesmo princípio de [Guard checa o ALVO, não a intenção](#guard-checa-intencao-nao-alvo).
+   🔴 **Correção 2026-08-16 — este item já recomendou "desconhecido → `Pacific/Honolulu`, o mais restritivo". Isso está ERRADO e foi provado errado no review do próprio fix.** **Nenhum fuso fixo é conservador nas duas bordas:** Honolulu é o mais cedo de manhã e, por isso mesmo, o mais *tarde* à noite — às 23:00 ET ele lê 17:00 e **libera** um envio ilegal. Um comentário afirmando "só erra pro lado conservador" não é prova; testar só a borda da manhã deixa a da noite passar. **O certo é o alvo desconhecido resolver para TODOS os fusos possíveis e exigir que todos permitam** (interseção das janelas). Pela mesma razão, estado que **atravessa** fuso (FL tem panhandle Central, TX tem El Paso Mountain, AZ tem a Nação Navajo com DST) resolve para a **tupla** dos fusos que ele toca, nunca um só.
 4. **Se a pré-condição venceu quando o R20 chegou, NÃO execute** — volte ao operador. "Ele já aprovou" não é autorização pra executar em condição diferente da que ele aprovou.
+5. **"Por-item" não basta se o relógio for lido no topo do laço** (medido 2026-08-16, mesmo projeto, defeito ainda vivo um mês depois do fix acima). O `dispatch_worker` chamava o guard **por item** — e mesmo assim com um `now` capturado uma vez, no início do tick, reusado para até 100 itens, cada um com sleep de jitter e ida-e-volta de rede. **O humano no meio é só a forma mais visível da espera; um laço longo é a mesma espera, sem ninguém pra culpar.** E a staleness sempre erra pro lado do ALLOW na borda da noite, porque relógio velho lê mais cedo do que a realidade. Regra afiada: **re-leia o relógio depois de qualquer coisa que consuma tempo — sleep, I/O de rede, commit — e antes da chamada que produz o efeito externo**, não antes da que decide tentar. Vale também pro carimbo: `sent_at` com hora do topo do tick faz a trilha de auditoria mentir na direção otimista.
 
-**Sinal de alerta:** se entre a sua verificação e a sua ação existe uma mensagem ao operador, **assuma que passaram horas**. Antes de executar um `--apply` aprovado, releia o relógio/estado. Se a resposta demorou e você não re-checou, você está executando às cegas com a confiança de quem checou.
+**Sinal de alerta:** se entre a sua verificação e a sua ação existe uma mensagem ao operador, **assuma que passaram horas**. Antes de executar um `--apply` aprovado, releia o relógio/estado. Se a resposta demorou e você não re-checou, você está executando às cegas com a confiança de quem checou. **A versão em código do mesmo sinal:** se entre o `if` do guard e a chamada que envia existe um `await`, o guard está velho.
 
-**Ref:** Scraper-prospeccao — 9 SMS fora da janela; fix = `is_within_quiet_hours`/`timezone_for_state` em `services/api/app/integrations/cohort_dispatch.py`, chamados por-envio em `run_cohort_dispatch.py` (17 testes; provado contra o timestamp REAL da violação). Memória `reference_tcpa_quiet_hours_violation_stale_check`.
+**Ref:** Scraper-prospeccao — 9 SMS fora da janela; fix = `is_within_quiet_hours`/`timezones_for_state` (tabela única em `services/api/app/integrations/us_timezones.py`, importada pelos dois remetentes), chamados por-envio em `run_cohort_dispatch.py` (17 testes; provado contra o timestamp REAL da violação). Segunda metade do fix, 2026-08-16: `services/api/app/workers/dispatch_worker.py` passou a ler `_now_utc()` por item **e de novo depois do jitter**, imediatamente antes do `send` (3 testes, com relógio que anda quando o worker gasta tempo — congelar o tempo esconde exatamente este defeito). Memória `reference_tcpa_quiet_hours_violation_stale_check`.
 
 ---
 
@@ -12048,3 +12053,129 @@ Gate que depende de recurso externo (mapa, fonte, embed, CDN de terceiro) tem fa
 rede. O sinal barato de que é isso: **a reprovação é num alvo fora do escopo do diff**. Reexecutar
 custa segundos; investigar custa a sessão. Mesma família de
 [Taxa alta de falha em lote = instrumento suspeito](#taxa-de-falha-alta-e-instrumento-suspeito).
+
+## Rastreamento por task diz `[4-C]` e o usuário continua vendo o app do fork {#tracking-por-task-esconde-o-que-o-usuario-alcanca}
+
+tags: fork, derivacao, tracking, handoff, plano, frontend, rota orfa, verificacao, curl grep, screenshot, produto no ar
+
+**Sintoma.** O rastreamento do projeto está honesto — cada task com a escala certa, suíte
+verde, build verde —, o produto sobe, o operador entra pela primeira vez e encontra **o app do
+produto de origem**. Menu, cores e telas do fork, com a logo nova em cima.
+
+**Causa.** Num projeto nascido de fork, o frontend chega **inteiro**. As telas novas nascem ao
+lado das herdadas, em rotas próprias, e **nada as conecta**: o login continua apontando para o
+dashboard antigo e o menu continua sendo o antigo. Medido num caso real: 42 páginas, **2** do
+domínio novo, ambas corretas e **nenhuma alcançável**.
+
+O rastreamento por task não mente — ele descreve **entrega**, não **alcance**. `[4-C]` diz "o
+componente existe", e existe. A pergunta que nenhuma escala responde é "o que a pessoa vê ao
+logar?".
+
+**Duas medições que expõem isso em segundos, e que valem em todo fork:**
+```bash
+# 1. quantas telas sao do dominio NOVO?
+find src/app -name page.tsx | wc -l
+find "src/app/(novo)" -name page.tsx | wc -l
+
+# 2. para onde o login manda?
+grep -rn "router.push\|/dashboard" src/app/login/page.tsx | head
+```
+Se a razão for 2/42 e o login apontar para a tela herdada, o produto **é** o do fork.
+
+**Correção de processo, e é a lição que sobrevive:**
+
+1. **O tracking ganha uma linha que não é por task:** *qual é a primeira tela depois do login,
+   e ela é do domínio novo?* Enquanto a resposta for "não", nenhuma fase está perto de fechar.
+2. **`curl` e `grep` não verificam tela.** Eles confirmam que uma string existe no HTML — e a
+   string foi escrita por quem está verificando. No caso real, a home pública exibia o nome do
+   produto de origem no mock de conversa do hero (`Assistente FM`) e a sigla dele num avatar,
+   com build verde e 494 testes passando. **Screenshot da tela renderizada, sempre.**
+3. **Rota órfã é dívida invisível.** Tela que nenhum menu alcança não aparece em teste de
+   navegação, não aparece em analytics e não aparece para o usuário — mas conta como entregue.
+   Ao criar rota nova num fork, o link para ela entra na MESMA entrega.
+
+**O que NÃO é a causa, e culpar isso faz perder tempo:** o plano estava certo e a ordem
+backend-primeiro estava certa. O que faltou foi dizer em voz alta a consequência —
+*"até esta fase terminar, quem loga vê o produto antigo"* — numa linha que o operador lesse
+antes de publicar.
+
+---
+
+## Assert que casa a classe no documento INTEIRO não prova markup — a folha de estilo mantém a string viva {#assert-casa-css-nao-prova-markup}
+
+tags: assert, css, markup, template, mutacao sobrevivente, teste frouxo, html, seletor, style, snapshot
+
+**Sintoma.** Você escreve um teste que garante a presença de um elemento (`assert "minha-classe"
+in html`), roda a contra-prova de mutação removendo o elemento — e **a mutação SOBREVIVE**. O teste
+fica verde com o elemento fora da página.
+
+**Causa raiz.** A página tem CSS embutido, e a folha de estilo declara `.minha-classe{...}`. A
+string continua no documento mesmo depois de o elemento sumir do corpo. O assert casou o **estilo**,
+não o **markup** — são coisas diferentes que só por acidente compartilham o mesmo texto.
+
+**Solução.** Recorte o documento antes de asserir presença de elemento:
+
+```python
+corpo = html.split("</style>")[-1]      # descarta a folha de estilo
+topo  = corpo.split("id-do-form")[0]    # e, se importa ONDE, recorte a região
+assert "minha-classe" in topo
+```
+
+A mesma classe de erro aparece em SQL: um assert `"coluna" in sql` continua verde quando a coluna
+sai do `SELECT` mas permanece no `GROUP BY` — foi medido no mesmo dia, noutro teste. **Se o que
+importa é a projeção, assere a projeção**:
+
+```python
+def _projecao(sql):
+    up = sql.upper()
+    return sql[up.index("SELECT"):up.index("FROM")]
+```
+
+**A lição que sobrevive:** um assert de substring casa o documento inteiro, e documento inteiro
+contém regiões com propósitos diferentes (estilo × corpo, projeção × agrupamento). **Mutação
+sobrevivente quase nunca é "teste fraco" no sentido vago — é o assert olhando a região errada.**
+
+**Ref:** tiatendo, 2026-08-16 (S8 `/aplicacao` e D2 da F5b, dois casos no mesmo dia).
+
+---
+
+## Pesquisa externa: "não achei" ≠ "não existe", e quase nunca é o layout mobile {#nao-achei-nao-e-nao-existe-em-pesquisa-web}
+
+tags: pesquisa, concorrente, scraping, preco, mobile, desktop, user agent, sitemap, 403, benchmark, mercado
+
+**Sintoma.** Um levantamento de concorrentes volta com muitos "não publica preço" e "não tem a
+feature". A hipótese natural é que o layout **mobile** esteja escondendo conteúdo (acordeão fechado,
+tabela truncada), e a correção óbvia é refazer tudo forçando desktop.
+
+**Causa raiz — a hipótese do mobile é FALSA, e foi medida.** Baixando as MESMAS URLs com UA mobile
+e UA desktop e comparando o texto: **delta de 0% em 5 de 6 sites**; o único delta (2,1%) era menu de
+navegação, sem preço. Acordeão fechado é CSS — o conteúdo sempre vem no HTML. E só **1 de 15** alvos
+devolvia 403 de verdade.
+
+**As 4 causas reais, em ordem de frequência:**
+
+1. **URL errada.** `/planos` dá 404 e a real é `/home/planos/`; ou é `/plano` **no singular**. Sozinha,
+   essa causa transformou "preço só existe em review de terceiro" em preço oficial confirmado.
+2. **Landing vertical fora do sitemap.** A home e a página-mãe de funcionalidades têm ZERO menção à
+   feature; ela só existe na página de segmento, alcançável apenas pelo nav. Sitemap quebrado
+   (1 entrada, `lastmod` de 3 anos atrás) é comum e faz o crawl inteiro passar ao largo.
+3. **Slug enganoso.** Varra o **texto** por `R$`/`$`, não o nome da URL: uma tabela de preço por
+   terminal vivia em `/smart-pos/`, e o sitemap de 2.752 URLs não tinha nenhuma página de preços.
+4. **Domínio morto ou errado.** Um `.com.br` redirecionava para **um arquivo PNG**; dois outros eram
+   NXDOMAIN (o real era `.com`). **4 de 19 alvos não eram sequer avaliáveis** — e nenhum veredito
+   anterior sobre eles significava coisa alguma.
+
+**E leia o que RENDERIZA, não só o texto.** Três armadilhas medidas: ✓/✗ escritos como
+`<i class="icon-check">` **somem** na extração de texto (produz "não tem" falso); uma página carrega
+7 preços no DOM dos quais **só 2 renderizam** (produz preço falso); e um domínio que usa `/<slug>`
+para storefront devolve **HTTP 200 com um cardápio de restaurante** em `/planos` — um regex de `R$`
+ali inventa preço com aparência de fato.
+
+**Solução de processo.** Antes de escrever "não publica" ou "não tem": tente as variantes de URL,
+entre pelas landings de segmento (não só pelo sitemap), varra o texto por moeda, confirme que o
+domínio existe. E **separe sempre "não achei" de "não existe" no relatório** — a diferença é o valor
+inteiro do levantamento. Uma afirmação estratégica publicada com base num "não achei" precisou de
+correção pública no mesmo dia.
+
+**Ref:** tiatendo, 2026-08-16 (pesquisa de precificação, 60+ concorrentes; re-verificação com
+controle mobile×desktop).
