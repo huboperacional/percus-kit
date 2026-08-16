@@ -151,6 +151,26 @@ if [[ -z "$FINDINGS" ]]; then
     exit 1
 fi
 
+# Vazia ja era barrada acima; CORTADA nao era. Resposta truncada tem texto -- passa no teste
+# de vazio -- mas a ultima frase nao terminou e a conclusao pode nem ter sido escrita. Aceitar
+# isso como review completa e a mesma classe de fail-open, so que mais dificil de ver.
+FINISH="$(printf '%s' "$RESPONSE" | jq -r '.choices[0].finish_reason // empty' 2>/dev/null)"
+if [[ "$FINISH" == "length" ]]; then
+    echo "[deepseek-review] REVIEW NAO CONCLUIDA -- resposta CORTADA no teto de tokens." >&2
+    echo "[deepseek-review] O marcador NAO foi escrito: o commit segue bloqueado (R11)." >&2
+    echo "[deepseek-review] Rode de novo. Se repetir, encolha o diff -- nao o teto." >&2
+    exit 3
+fi
+# Fail-open residual: barrar so "length" deixa passar finish_reason ausente (resposta
+# malformada) ou valor anomalo (content_filter, valor novo da API). Num gate, desconhecido
+# conta como falha. "stop" e o encerramento normal no formato OpenAI que a DeepSeek usa --
+# NAO generalize esta regra pro Cross-Claude, que devolve "end_turn".
+if [[ "$FINISH" != "stop" ]]; then
+    echo "[deepseek-review] REVIEW NAO CONCLUIDA -- finish_reason inesperado: '${FINISH:-<ausente>}'." >&2
+    echo "[deepseek-review] O marcador NAO foi escrito: o commit segue bloqueado (R11)." >&2
+    exit 3
+fi
+
 # === LOG ===
 LOG_DIR=".deepseek/reviews"
 mkdir -p "$LOG_DIR"

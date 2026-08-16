@@ -134,6 +134,9 @@
 - [Suite verde e boot morto: a versao da lib na IMAGEM nao e a da sua maquina](#skew-lib-imagem-vs-local)
 - [Log de diagnóstico "no ar" que nunca emitiu: sob uvicorn o root logger é mudo](#uvicorn-root-logger-mudo)
 - [Cross-Claude do conselho retorna 400 — `temperature` num modelo Opus 4.7+](#cross-claude-400-sampling)
+- [Teto de tokens que cai NO MEIO da faixa de raciocínio: a mesma pergunta volta ok, cortada ou vazia na sorte](#teto-no-meio-da-faixa-de-raciocinio)
+- [Gate que escreve o marcador de liberação antes de olhar se a resposta serve (fail-open no R11)](#gate-marcador-antes-de-validar)
+- [Pester expande `<algo>` no nome do teste: um `<->` no título mata o bloco inteiro antes de rodar](#pester-placeholder-no-nome-do-teste)
 - [Imagem local em Docker Swarm crash-loopa com "pull access denied" (sem registry)](#swarm-local-image-resolve)
 - [Guard `try/except` fail-open esconde import errado: a feature vira no-op silencioso](#fail-open-esconde-import-errado)
 - [Conversa escalada pra humano fica MUDA e ninguém percebe (54 msgs em 34 min)](#handoff-mudo-sem-salvaguarda)
@@ -767,6 +770,12 @@ senão a flag do tenant fica off e o caminho que você quer testar (CALM) nem ex
 **Solução:** (1) **não enviar `temperature`/`top_p`/`top_k`** — o mais simples e à prova de futuro é remover do body de vez (steering vai por prompt, não por sampling); assim o router pode migrar pra Sonnet 5 / Opus 4.8 sem quebrar. (2) O `catch` do wrapper deve expor `$_.ErrorDetails.Message` (corpo JSON do erro da Anthropic), não só `$_.Exception.Message` — que num 400 é o cego "(400) Bad Request". (3) **Antes de acusar um model ID de inválido, conferir no catálogo autoritativo** (skill `claude-api` → seção "Current Models" / `shared/models.md`), **nunca de memória**.
 
 **Ref:** fix 2026-07-11, commit `adbe3a4` (`plugin/percus-review/providers/cross-claude.ps1`); cópia instalada patchada por `cp` na mesma sessão. Router de modelo por modo: `council-orchestrator.ps1` (F.2, `$CrossClaudeModel` switch).
+
+⚠️ **REINCIDIU DUAS VEZES depois disso — e a segunda ficou um mês invisível.** 2026-08-15 (6.36.3): o mesmo `temperature` vivia no `fact-check.sh`, pego só porque alguém foi trocar o modelo ali. 2026-08-16 (6.36.4): vivia no **`providers/cross-claude.sh`** — o provider bash em si — e derrubava **toda** chamada da perna bash do conselho, em 1,2s, desde que a 6.36.2 subiu o modelo pra Sonnet 5. Três arquivos, mesmo defeito, três descobertas separadas.
+
+**A lição que faltava, e é ela que vale mais que o fix:** quando o defeito é de PARÂMETRO, procurar por MODELO não acha. O teste de paridade escrito na 6.36.3 compara a tabela de modelos dos dois orquestradores e ficava **verde** enquanto o wrapper bash estava 100% quebrado — paridade de modelo não é paridade de parâmetro. Ao trocar um modelo, `grep` o nome do parâmetro proibido em **todos** os `.ps1` **e** `.sh` que falam com aquele provider, não só no arquivo que você está editando. E veja que o `.ps1` já trazia o comentário explicando por que não manda `temperature`: **a lição estava escrita no repo e mesmo assim o arquivo ao lado quebrou** — comentário documenta, teste é o que impede. Guarda atual: `provider-limites.tests.ps1`, que varre sampling param em `.ps1` e `.sh` com strip de comentário e anti-vacuidade.
+
+**Por que o smoke não pegou:** o teste de fumaça usa prompt trivial. Perna que responde "PONG" não prova nada — ela nem chega a exercitar o caminho. Valide perna de conselho com pergunta que force raciocínio.
 
 ---
 
@@ -12179,3 +12188,73 @@ correção pública no mesmo dia.
 
 **Ref:** tiatendo, 2026-08-16 (pesquisa de precificação, 60+ concorrentes; re-verificação com
 controle mobile×desktop).
+
+---
+
+## Teto de tokens que cai NO MEIO da faixa de raciocínio: a mesma pergunta volta ok, cortada ou vazia na sorte {#teto-no-meio-da-faixa-de-raciocinio}
+
+`tags: max_tokens, reasoning_tokens, modelo de raciocinio, deepseek-v4-flash, thinking, resposta vazia, truncated, finish_reason length, intermitente, flaky, variancia, system prompt, conselho, council`
+
+**Sintoma:** uma perna de conselho (ou qualquer chamada a modelo que raciocina) volta vazia **às vezes**. Você reroda e funciona. Reroda de novo e volta cortada. Não há erro de API — todos os HTTP são 200. O aviso diz "gastou o teto raciocinando, suba `max_tokens`", você sobe um pouco, parece resolver, e três dias depois volta.
+
+**Causa raiz — e é aqui que quase todo mundo erra o diagnóstico:** o teto não estava "pequeno demais". Ele estava **dentro da faixa de variação** do raciocínio daquele modelo para aquele tipo de prompt. Medido em 2026-08-16, `deepseek-v4-flash`, **o mesmo prompt**, três chamadas, teto 8192:
+
+| chamada | reasoning_tokens | finish_reason | resultado |
+|---|---|---|---|
+| 1 | 8192 (bateu no teto) | length | **vazia** |
+| 2 | 7649 | length | **cortada** no meio |
+| 3 | 6784 | stop | ok, com 673 tokens de folga |
+
+Três resultados diferentes, zero mudança de entrada. Um teto que fica na faixa de 6800–8200 produz os **três** estados na sorte. Por isso o bug parece intermitente e por isso "subir um pouco" não resolve: move a moeda, não tira a moeda.
+
+**O multiplicador que ninguém olha: o system prompt.** O MESMO prompt de usuário, trocando só o system prompt do provider (genérico) pelo do modo `review`, **dobrou** o raciocínio — de ~3100 para 6784–8192+. Um system prompt que pede postura analítica (revisar, criticar, achar defeito) faz o modelo pensar muito mais. Ao medir teto, meça com o system prompt **de produção**, não com o default do wrapper.
+
+**Solução:**
+1. **Dimensione o teto pela faixa medida, não pelo pior caso que você viu uma vez.** Meça 3+ chamadas com o system prompt real e deixe folga de pelo menos 2×. 8192 → 16000 aqui.
+2. **Não encolha o teto para economizar.** Em modelo que raciocina o teto cobre pensamento **+** resposta; cortar faz o modelo gastar tudo pensando e devolver vazio — você paga a chamada inteira e recebe nada. Encolha o **prompt**, não o teto.
+3. **Suba o timeout junto.** São acoplados: chamadas que RESPONDERAM levaram 67s e 80s já no teto antigo. Subir teto sem subir timeout só troca "resposta vazia" por "erro de rede" — o defeito muda de nome e continua igualmente invisível.
+4. **Classifique três estados** (`ok`/`empty`/`truncated`), nunca dois — ver [#conselho-perna-vazia-teto-tokens](#conselho-perna-vazia-teto-tokens).
+
+**Como suspeitar rápido:** se `reasoning_tokens ≈ max_tokens`, é este bug. Se `reasoning_tokens` fica entre 70% e 100% do teto **em chamadas que funcionaram**, é este bug esperando acontecer.
+
+**Ref:** percus-kit 6.36.4, 2026-08-16. Origem: a 6.36.2 trocou `deepseek-v4-pro` → `-flash` por custo e não reavaliou o teto ao lado. Guarda: `provider-limites.tests.ps1` (teto mínimo por provider que raciocina + timeout comportando o teto).
+
+---
+
+## Gate que escreve o marcador de liberação antes de olhar se a resposta serve (fail-open no R11) {#gate-marcador-antes-de-validar}
+
+`tags: gate, fail-open, R11, deepseek-review, latest.jsonl, marcador, commit liberado, review vazia, truncated, hook, PreToolUse, silencio`
+
+**Sintoma:** nenhum. É esse o problema. O commit passa, o review "rodou", e o arquivo que o hook checa está lá, fresquinho. Só que ele está vazio.
+
+**Causa raiz:** o `deepseek-review.ps1` escrevia `.deepseek/reviews/latest.jsonl` — **o arquivo cuja existência libera o commit** — incondicionalmente, logo depois da chamada HTTP. Se o modelo devolvesse `content` vazio (gastou o teto raciocinando) ou cortado, o marcador era escrito do mesmo jeito, com `findings: ""`. O hook só verifica se existe marcador recente; ele não lê o conteúdo. Resultado: **commit aprovado com zero review, e nada dizendo.**
+
+Duas agravantes que valem por si:
+- **Resposta CORTADA passa em qualquer teste de "vazio".** Ela tem texto. O que falta é o fim — inclusive a conclusão, que é justamente onde mora o finding mais grave. Checar `-z "$FINDINGS"` não basta: tem que olhar `finish_reason == "length"`.
+- **O lado bash e o PowerShell divergiam na direção contrária da usual.** O `.sh` já barrava resposta vazia desde sempre; o `.ps1` não barrava nada. Ao procurar paridade, não assuma que o runtime "principal" é o mais correto.
+
+**Solução:** classifique a resposta **antes** de escrever o marcador e, quando não for `ok`, **não escreva o marcador** e saia com código não-zero. Sem marcador fresco, o gate segue fechado por construção — não é preciso um bloqueio novo, basta não mentir. Mensagem tem que dizer o que fazer: "rode de novo; se repetir, encolha o diff".
+
+**A regra geral, que vale pra qualquer gate:** o artefato que libera não pode ser produzido no mesmo fôlego da tentativa. Fail-open num gate é pior que não ter gate — sem gate você sabe que não tem.
+
+**Como caçar em outros lugares:** procure a escrita do artefato de liberação (marcador, flag, cache "verificado", `touch`) e olhe o que existe **entre** ela e a checagem de sucesso. Se não existe nada, é este bug.
+
+**Ref:** percus-kit 6.36.4, 2026-08-16 (`scripts/deepseek-review.ps1` + `.sh`). Guarda: `provider-limites.tests.ps1`, Describe "R11 nao libera commit com review vazia ou cortada" — compara índice da classificação com índice da escrita do marcador. Relacionado: [#conselho-status-ok-content-vazio](#conselho-status-ok-content-vazio).
+
+---
+
+## Pester expande `<algo>` no nome do teste: um `<->` no título mata o bloco inteiro antes de rodar {#pester-placeholder-no-nome-do-teste}
+
+`tags: pester, powershell, teste, Describe, It, ForEach, placeholder, template, CommandNotFoundException, bloco sumiu, falso verde, nome de teste`
+
+**Sintoma:** um `Describe` inteiro falha com `CommandNotFoundException: The term '$-' is not recognized as a name of a cmdlet`, apontando pra `<ScriptBlock>, <No file>:1` — um arquivo que não existe, uma linha que não é sua. Nenhuma asserção do bloco roda. O relatório mostra o bloco como falha única, sem detalhe, e o resto da suíte parece normal.
+
+**Causa raiz:** o Pester 5 trata `<algo>` em nome de `Describe`/`It` como **placeholder de dado** (é o mecanismo que faz `It "<Prov> responde" -ForEach @(...)` virar "deepseek responde"). A expansão troca `<algo>` por `$algo` e avalia. Um título com **`<->`** — escrito pra dizer "ida e volta", como em `paridade .ps1 <-> .sh` — vira `$-`, que é uma variável automática do PowerShell, e a avaliação explode. O bloco morre na **discovery**, antes de qualquer teste.
+
+**Por que é perigoso além do susto:** o modo de falha é "o bloco não roda", não "o teste falha". Num arquivo grande, um `Describe` que some do relatório é fácil de ler como "não tinha nada ali". Se o bloco fosse o único guardando uma classe de defeito, você fica sem guarda **achando** que tem.
+
+**Solução:** não use `<` `>` em nome de teste a não ser como placeholder de verdade. Escreva "ps1 vs sh", "ida e volta", "A para B". Se precisar de seta literal, use `->` sozinho (não dispara) ou o nome por extenso.
+
+**Como reconhecer na hora:** erro de `CommandNotFoundException` com nome de variável estranho (`$-`, `$>`) + origem `<No file>:1` + um `Describe` inteiro sem detalhe = placeholder no título, não bug no seu código.
+
+**Ref:** percus-kit 6.36.4, 2026-08-16 — custou um relatório de "8 falhas" que eram 1 bloco não-executado.

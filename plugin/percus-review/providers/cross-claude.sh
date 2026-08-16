@@ -9,9 +9,18 @@ set -eo pipefail
 
 SYSTEM_PROMPT=""
 SYSTEM_PROMPT_EXPLICIT=0
-TEMPERATURE="0.2"
-MAX_TOKENS="4096"
-MODEL="claude-sonnet-4-6"
+# NAO existe TEMPERATURE aqui: a familia Opus 4.7+ / Sonnet 5 / Fable 5 removeu os sampling
+# params e devolve HTTP 400 se receber um. Medido 2026-08-16: este arquivo ainda mandava
+# temperature depois que a 6.36.2 subiu o modelo pra Sonnet 5, e a perna bash do conselho
+# ficou 100% muda -- toda chamada, nao de vez em quando. Steering vai por prompt, nao por
+# sampling. A mesma correcao ja tinha sido feita no cross-claude.ps1 e no fact-check.sh; este
+# arquivo, que e o provider em si, passou batido porque o teste de paridade da 6.36.3 compara
+# a tabela de MODELOS dos orquestradores, nao os parametros do wrapper.
+# 16000, nao 4096: em Sonnet 5 / Opus 5 o thinking vem LIGADO por padrao e o teto cobre
+# pensamento + resposta juntos. Tem que bater com o default do cross-claude.ps1 -- o
+# orquestrador bash nao passa --max-tokens, entao quem manda no runtime e este default.
+MAX_TOKENS="16000"
+MODEL="claude-sonnet-5"
 ENDPOINT="https://api.anthropic.com/v1/messages"
 PROMPT_FILE=""
 MODE="consult"
@@ -20,7 +29,6 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --prompt-file)    PROMPT_FILE="$2"; shift 2;;
         --system-prompt)  SYSTEM_PROMPT="$2"; SYSTEM_PROMPT_EXPLICIT=1; shift 2;;
-        --temperature)    TEMPERATURE="$2"; shift 2;;
         --max-tokens)     MAX_TOKENS="$2"; shift 2;;
         --model)          MODEL="$2"; shift 2;;
         --endpoint)       ENDPOINT="$2"; shift 2;;
@@ -87,14 +95,12 @@ BODY_FILE=$(mktemp)
 trap 'rm -f "$BODY_FILE"' EXIT
 jq -n \
     --arg model "$MODEL" \
-    --argjson temp "$TEMPERATURE" \
     --argjson max "$MAX_TOKENS" \
     --arg sys "$SYSTEM_PROMPT" \
     --arg usr "$USER_PROMPT" \
     '{
         model: $model,
         max_tokens: $max,
-        temperature: $temp,
         system: [
             {
                 type: "text",
@@ -108,7 +114,10 @@ jq -n \
     }' > "$BODY_FILE"
 
 START_MS=$(date +%s%3N)
-RESP=$(curl -s --max-time 60 -X POST "$ENDPOINT" \
+# 180s, nao 60s: com thinking ligado e teto 16000, resposta LEGITIMA ja levou 80s (medido
+# 2026-08-16 no lado DeepSeek, mesma classe). Subir o teto sem subir o timeout so troca
+# "resposta vazia" por "erro de rede" -- o defeito muda de nome e continua.
+RESP=$(curl -s --max-time 180 -X POST "$ENDPOINT" \
     -H "x-api-key: $ANTHROPIC_API_KEY" \
     -H "anthropic-version: 2023-06-01" \
     -H "Content-Type: application/json" \

@@ -23,6 +23,16 @@ param(
 )
 $ErrorActionPreference = "Stop"
 
+# Mesmo classificador dos tres providers do conselho: HTTP 200 nao quer dizer que houve
+# resposta. Aqui pesa mais do que la, porque este script libera commit (R11).
+# UM child path por Join-Path. O parametro -AdditionalChildPath (que aceita 3+ argumentos)
+# so existe do PowerShell 6 em diante; no 5.1 -- que e o runtime real dos hooks -- a chamada
+# morre com "Nao e possivel localizar um parametro posicional que aceite o argumento
+# 'providers'". Pego pelo proprio R11 em 2026-08-16: a suite roda em pwsh 7, onde funciona,
+# e o ps51-compat afere PARSE, nao runtime -- isto passaria verde nos dois.
+$percusProvidersDir = Join-Path (Split-Path $PSScriptRoot -Parent) "providers"
+. (Join-Path $percusProvidersDir "_resposta.ps1")
+
 # Force UTF-8 console (Windows PS 5.1 default is Win-1252, mangles PT-BR)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -132,6 +142,42 @@ try {
 } catch {
     Write-Host "[deepseek-review] ERRO: $_" -ForegroundColor Red
     exit 1
+}
+
+# === GATE: resposta nao utilizavel NAO libera commit ===
+# Ate 2026-08-16 o marcador abaixo era escrito incondicionalmente. Se o modelo devolvesse
+# content vazio (gastou o teto raciocinando) ou cortado no meio, o commit passava com ZERO
+# review e NADA dizia -- o hook so olha se existe marcador fresco. Fail-open num gate e pior
+# que gate nenhum: gate nenhum voce sabe que nao tem.
+# O lado bash (deepseek-review.sh) ja barrava resposta vazia desde sempre; o PowerShell nao.
+$cls = Get-StatusResposta -Conteudo $findings `
+                          -FinishReason $response.choices[0].finish_reason `
+                          -Usage $response.usage
+if ($cls.Status -ne "ok") {
+    Write-Host "[deepseek-review] REVIEW NAO CONCLUIDA -- $($cls.Aviso)" -ForegroundColor Red
+    Write-Host "[deepseek-review] O marcador NAO foi escrito: o commit segue bloqueado (R11)." -ForegroundColor Red
+    Write-Host "[deepseek-review] Rode de novo. Se repetir, encolha o diff -- nao o teto." -ForegroundColor Yellow
+    exit 3
+}
+
+# Fail-open residual, apontado pelo proprio R11 em 2026-08-16: o classificador so conhece
+# "length" como corte, entao QUALQUER outro finish_reason anomalo (content_filter, ausente
+# por resposta malformada, valor novo que a API passe a devolver) chegava aqui como "ok" e
+# liberava o commit. Num gate, desconhecido tem que contar como falha, nao como sucesso.
+#
+# Por que esta regra mora AQUI e nao no _resposta.ps1 compartilhado: o vocabulario e por
+# provider. "stop" e o encerramento normal da DeepSeek (formato OpenAI); a Anthropic devolve
+# "end_turn", e o cross-claude so traduz max_tokens -> length. Um "!= stop" no classificador
+# compartilhado reprovaria TODA resposta do Cross-Claude -- a correcao obvia quebraria a perna
+# que acabou de ser consertada.
+$finish = "$($response.choices[0].finish_reason)"
+if ($finish -ne "stop") {
+    $rotulo = if ([string]::IsNullOrWhiteSpace($finish)) { "<ausente>" } else { $finish }
+    Write-Host "[deepseek-review] REVIEW NAO CONCLUIDA -- finish_reason inesperado: '$rotulo'." -ForegroundColor Red
+    Write-Host "[deepseek-review] Encerramento normal da DeepSeek e 'stop'. Qualquer outro valor" -ForegroundColor Red
+    Write-Host "[deepseek-review] significa que a resposta nao terminou como deveria." -ForegroundColor Red
+    Write-Host "[deepseek-review] O marcador NAO foi escrito: o commit segue bloqueado (R11)." -ForegroundColor Red
+    exit 3
 }
 
 # === LOG ===

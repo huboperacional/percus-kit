@@ -138,7 +138,11 @@ $headers = @{
 
 $start = Get-Date
 try {
-    $resp = Invoke-RestMethod -Uri $Endpoint -Method Post -Headers $headers -Body $bodyBytes -TimeoutSec 60
+    # 180s, nao 60s: com thinking ligado e teto 16000 a chamada demora de verdade -- medido em
+    # 2026-08-16, resposta LEGITIMA levou 67s e 80s no teto antigo, e o tempo cresce junto com o
+    # teto. 60s cortava resposta boa no meio e o erro chegava como falha de rede, escondendo a
+    # causa. A 6.36.3 ja tinha registrado este 60s hardcoded como limite conhecido.
+    $resp = Invoke-RestMethod -Uri $Endpoint -Method Post -Headers $headers -Body $bodyBytes -TimeoutSec 180
     # NAO use content[0]: com o modelo em Sonnet 5 / Opus 5 o thinking vem LIGADO por padrao (a
     # mesma razao que forcou MaxTokens=16000 la em cima), e a resposta chega em DOIS blocos --
     # content[0].type='thinking' (sem campo .text) e content[1].type='text'. Medido em 2026-08-15

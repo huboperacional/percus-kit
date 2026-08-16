@@ -35,7 +35,9 @@ if (-not $currentVersion) {
 
 # Itera system-prompt-*.md
 $baseDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path }
-$providersDir = Join-Path $baseDir ".." "providers"
+# UM child path por Join-Path: -AdditionalChildPath e do PS 6+. Este arquivo e um HOOK, e hook
+# roda sob powershell.exe 5.1 -- com tres argumentos a linha lanca e o hook vira guarda morta.
+$providersDir = Join-Path (Split-Path $baseDir -Parent) "providers"
 $promptFiles = Get-ChildItem -Path $providersDir -Filter "system-prompt-*.md" -ErrorAction SilentlyContinue
 if (-not $promptFiles) { exit 0 }
 

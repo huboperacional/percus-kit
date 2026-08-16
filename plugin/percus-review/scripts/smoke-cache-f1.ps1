@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Smoke test: prova que cache Anthropic ativa no wrapper cross-claude.
@@ -20,7 +20,9 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Wrapper = (Join-Path (Split-Path $PSScriptRoot) "providers" "cross-claude.ps1")
+    # UM child path por Join-Path: -AdditionalChildPath so existe do PS 6+; no 5.1 a chamada
+    # lanca. Como isto e valor DEFAULT de parametro, quebraria so quando alguem omitisse -Wrapper.
+    [string]$Wrapper = (Join-Path (Join-Path (Split-Path $PSScriptRoot) "providers") "cross-claude.ps1")
 )
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

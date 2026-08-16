@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Varredura como GATE, nao como ato de memoria: o pre-mortem do conselho apontou que uma
 # referencia escapa e quebra em silencio, so aparecendo quando trava em producao. Historico
 # (plans, specs, handoffs, contracts, .archive, changelog) fica de fora por desenho:
@@ -36,6 +36,15 @@ Describe "nenhum arquivo VIVO referencia o path legado do kit" {
             '\\docs\\handoffs\\',
             '\\docs\\contracts\\',
             '\\CANON_VERSION\.md$',              # changelog = registro
+            # Isenta o ARQUIVO, nao a pasta: uma referencia acidental futura em qualquer outro
+            # arquivo de conhecimento/ tem que continuar pintando vermelho (R11, 2026-08-16).
+            '\\conhecimento\\COMO_RESOLVER\.md$', # verbete = registro de incidente, mesma razao
+                                                 # do changelog. E em #claudemd-caminho-canon-stale
+                                                 # o nome antigo e o ASSUNTO do verbete: ele existe
+                                                 # pra explicar que aquele path morreu. Reescrever
+                                                 # apaga a pista que faz o verbete achavel por quem
+                                                 # bate no erro. (2026-08-16: esta ausencia deixava
+                                                 # a suite vermelha por 6 ocorrencias legitimas.)
             '\\renomear-kit-local\.ps1$',        # aqui o nome antigo e o ASSUNTO: renomeia DE la
             '\\renomear-kit-local\.tests\.ps1$',
             '\\no-legacy-kit-path\.tests\.ps1$'

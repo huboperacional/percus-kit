@@ -6,7 +6,11 @@ set -eo pipefail
 
 SYSTEM_PROMPT="Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
 TEMPERATURE="0.2"
-MAX_TOKENS="8192"
+# 16000: o deepseek-v4-flash raciocina e os reasoning_tokens contam DENTRO de completion_tokens.
+# Medido 2026-08-16: 6784..8192+ tokens gastos so raciocinando num prompt de review real, ou
+# seja, 8192 caia no meio da faixa e a mesma pergunta voltava ok/truncada/vazia na sorte.
+# Tem que bater com o default do deepseek.ps1 -- os dois runtimes respondem a mesma pergunta.
+MAX_TOKENS="16000"
 MODEL="deepseek-v4-flash"
 ENDPOINT="https://api.deepseek.com/v1/chat/completions"
 PROMPT_FILE=""
@@ -61,7 +65,8 @@ jq -n \
     '{model: $model, temperature: $temp, max_tokens: $max, messages: [{role:"system",content:$sys},{role:"user",content:$usr}]}' > "$BODY_FILE"
 
 START_MS=$(date +%s%3N)
-RESP=$(curl -s --max-time 60 -X POST "$ENDPOINT" \
+# 180s: com teto 16000 e modelo que raciocina, resposta legitima ja levou 80s (medido 2026-08-16).
+RESP=$(curl -s --max-time 180 -X POST "$ENDPOINT" \
     -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
     -H "Content-Type: application/json; charset=utf-8" \
     --data-binary "@$BODY_FILE" || echo "")

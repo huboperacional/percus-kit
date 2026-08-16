@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.36.3`
+**Versão canônica em `huboperacional/percus-kit`:** `6.36.4`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,121 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.36.4 — 2026-08-16
+
+**A perna bash do Cross-Claude estava 100% muda, e ninguém tinha visto porque o smoke usa
+prompt trivial.** Esta versão nasceu da verificação que a 6.36.3 mandou fazer — rodar o conselho
+com uma pergunta de design real, não com "responda PONG". A verificação achou quatro defeitos.
+
+**1. `providers/cross-claude.sh` mandava `temperature` → HTTP 400 em toda chamada.**
+`temperature is deprecated for this model`. Não é intermitente: **toda** invocação, em 1,2s. A
+própria 6.36.3 tirou esse parâmetro do `fact-check.sh` e o `cross-claude.ps1` já trazia o
+comentário explicando por quê — e o provider bash, que é o arquivo onde isso mais importa, ficou
+de fora. O teste de paridade da 6.36.3 compara a tabela de **modelos** dos dois orquestradores,
+então ficou verde enquanto o wrapper estava quebrado. Modelo igual, parâmetro diferente.
+
+**2. `cross-claude.sh` tinha `MAX_TOKENS="4096"` e o orquestrador bash não passa `--max-tokens`.**
+Quem manda no runtime bash é o default do arquivo. Com Sonnet 5 (thinking ligado) 4096 reproduz
+`#resposta-vazia-teto-de-tokens`. Consertado junto: 16000, igual ao `.ps1`. O `MODEL` default
+também estava em `claude-sonnet-4-6`. Prova depois do conserto: `status=ok`, 4455 chars,
+**7652 tokens de completion** — acima do teto antigo, ou seja, os dois consertos eram necessários.
+
+**3. Teto do DeepSeek: 8192 contra raciocínio medido de 6784–8192+.** A 6.36.2 trocou
+`-pro` → `-flash` e não reavaliou o teto ao lado. O `-flash` raciocina, e `reasoning_tokens`
+contam **dentro** de `completion_tokens`. Medido em 2026-08-16, três chamadas do **mesmo** prompt
+em modo review: 6784, 7649 e 8192+. Ou seja, 8192 não era "pequeno demais" de forma limpa —
+caía **no meio da faixa de variação**, e a mesma pergunta voltava `ok`, `truncated` ou `empty`
+na sorte. Subiu para 16000 nos dois runtimes. O system prompt do modo `review` **dobra** o
+raciocínio: com o system prompt default do provider a mesma pergunta gastou ~3100.
+
+**4. Timeout de 60s já estava marginal.** Chamadas que **responderam** levaram 67s e 80s ainda no
+teto antigo. Subir o teto sem subir o timeout apenas troca "resposta vazia" por "erro de rede" —
+o defeito muda de nome e continua. 60s → 180s nos quatro arquivos, com paridade travada por teste.
+
+**5. R11 liberava commit com review vazia — fail-open num gate.** O `deepseek-review.ps1` escrevia
+`latest.jsonl`, que é **o arquivo que libera o commit**, incondicionalmente. Resposta vazia ou
+cortada virava "commit aprovado" sem uma palavra. O lado bash já barrava vazia desde sempre
+(divergência na direção contrária da usual), mas **nenhum dos dois** barrava **cortada** — que tem
+texto, passa no teste de vazio, e chega com a conclusão faltando. Agora os dois classificam com
+`Get-StatusResposta` e saem com código 3 **sem escrever o marcador**: sem marcador fresco, o hook
+mantém o commit bloqueado. Nota medida: o `deepseek-review` **não** define `max_tokens` e o default
+da API é ≥22494 tokens, então o teto não era o gatilho aqui — o fail-open era estrutural.
+
+**6. Fail-open residual, apontado pelo próprio R11 ao revisar esta versão.** Barrar apenas
+`finish_reason == "length"` deixava passar o campo **ausente** (resposta malformada) e qualquer
+valor anômalo (`content_filter`, valor novo da API): ambos chegavam como "ok" e liberavam o commit.
+Num gate, desconhecido conta como falha. Agora os dois runtimes exigem `stop`.
+⚠️ **A correção óbvia estaria errada:** o reviewer sugeriu levar o `!= "stop"` para o
+`_resposta.ps1` **compartilhado** — e isso reprovaria **toda** resposta do Cross-Claude, porque a
+Anthropic devolve `end_turn`, não `stop`. O vocabulário de encerramento é por provider; a regra
+mora no consumidor DeepSeek, não no classificador comum. Consertar a perna recém-consertada seria
+o desfecho irônico desta versão.
+(O mesmo review levantou um segundo ponto — `--temperature` removido do parser do `cross-claude.sh`
+quebraria chamadores — que é **falso positivo**: nenhum chamador passa a flag, e o parser tem
+`*) shift;;`, então flag desconhecida é ignorada, não é erro.)
+
+**7. `Join-Path` com 3+ argumentos morre no PS 5.1 — e havia um HOOK assim.** Também apontado pelo
+R11, revisando esta versão: o dot-source que eu tinha acabado de adicionar
+(`Join-Path $PSScriptRoot ".." "providers" "_resposta.ps1"`) **quebra sob PowerShell 5.1**. O
+parâmetro `-AdditionalChildPath`, que aceita mais de um child path, só existe do PS 6 em diante;
+no 5.1 a chamada lança *"Não é possível localizar um parâmetro posicional que aceite o argumento
+'providers'"*. Ou seja: o gate R11 que esta versão criou teria morrido no runtime que de fato roda
+os hooks.
+
+**Por que nenhuma guarda pegava, e esta é a lição:** o `ps51-compat` afere **parse**, e isso
+parseia perfeitamente — quebra só em **runtime**. E a suíte roda em pwsh 7, onde funciona. Verde
+nos dois lugares, morto no único que importa. Varredura do kit achou **3 sítios**, e um deles é
+`hooks/canon-version-check.ps1` — **um hook**, portanto o caso real da classe, não hipótese.
+Corrigidos os três (um child path por `Join-Path`), com teste varrendo `.ps1` de produção
+(testes ficam de fora: só rodam sob Pester em pwsh 7). Mutação confirmada.
+
+🔎 **Achado separado, NÃO corrigido aqui:** rodando `canon-version-check.ps1` sob 5.1 para conferir,
+ele sai `0` com *"nao foi possivel extrair versao atual de CANON_VERSION.md - skip"* — ou seja, esse
+hook já vinha pulando por **outro** motivo, antes de chegar no `Join-Path`. É guarda morta
+respondendo verde, mesma família do incidente de 2026-07-30, e merece investigação própria.
+
+⚠️ **O BOM caiu três vezes nesta sessão, e a terceira fui eu automatizando.** O harness de mutação
+restaurava o arquivo com `ReadAllText` → `WriteAllText`, e esse par **descarta o BOM** (o default
+do .NET é UTF-8 sem BOM). Quem escreve script que reescreve `.ps1` do kit tem de passar
+`UTF8Encoding($true)` explicitamente — foi exatamente assim que a 6.36.0 perdeu 6 arquivos.
+
+**Teste novo `provider-limites.tests.ps1` (18 casos), guardando a classe e não os quatro casos:**
+sampling param proibido por família de modelo; teto mínimo para provider que raciocina; paridade
+`.ps1`/`.sh` de teto **e** de timeout; timeout comportando o teto; e o fail-closed do R11 nos dois
+runtimes. Mutação confirmada nos três eixos (devolver o `temperature`, baixar o teto, remover o
+gate — cada um derruba o teste). Anti-vacuidade em todos os regex.
+
+⚠️ **Armadilha nova, registrada no teste:** não use `<->` em nome de `Describe`/`It`. O Pester
+trata `<algo>` como placeholder de dado e expande para `$algo`; `<->` vira `$-` e o bloco inteiro
+morre com `CommandNotFoundException` **antes** de rodar qualquer asserção — verde nenhum, vermelho
+nenhum, só um bloco que some do relatório. Custou um falso "8 falhas" nesta sessão.
+
+⚠️ **`Edit` em `.ps1` pode comer o BOM.** O `deepseek-review.ps1` perdeu o BOM ao ser editado e
+voltou a dar 9 erros de parse no PS 5.1 — a mesma classe da 6.36.2, três semanas depois. Só a
+suíte inteira pegou: os testes "do tema" (provider-limites) estavam todos verdes.
+
+**Também nesta versão:** `no-legacy-kit-path.tests.ps1` ganhou `conhecimento/` na allowlist. As 6
+ocorrências do nome antigo vivem no verbete `#claudemd-caminho-canon-stale`, cujo **assunto** é
+justamente aquele path ter morrido — mesma razão pela qual o changelog já era isento. Esta falha
+**precedia** esta sessão (teste e arquivo idênticos em 7e9939c).
+
+Suíte: **321 Pester + 10 pytest, tudo verde.**
+
+**As próprias guardas novas passaram por duas rodadas de aperto, também vindas do R11:** a allowlist
+de `conhecimento/` isentava a **pasta** (agora isenta só o arquivo, para que uma referência stale
+futura em outro verbete continue pintando vermelho), e a varredura de `Join-Path` não via nem
+continuação de linha com backtick nem `-AdditionalChildPath` explícito. A primeira versão do aperto
+introduziu **falso positivo em 4 arquivos**, porque `\s` casa através de quebra de linha — separador
+entre argumentos agora é espaço horizontal, e comentário é removido antes de casar (senão a guarda
+acusa o comentário que **explica** o bug). Mutação confirmada nas três formas: 3 args na mesma
+linha, 3 args quebrados com backtick, e `-AdditionalChildPath` explícito.
+
+**Nota de método, porque ela é o ponto desta versão inteira:** os defeitos 6 e 7 foram achados pelo
+**próprio R11** revisando o commit que consertava o R11. Um deles (o `Join-Path`) era regressão que
+esta mesma versão tinha acabado de introduzir e que nenhum dos 320 testes pegava. O review
+cross-provider pagou o próprio custo em um commit — e o único motivo de ele ter podido fazer isso é
+que a perna estava viva. Perna muda não reprova nada.
 
 ## Changelog v6.36.3 — 2026-08-15
 

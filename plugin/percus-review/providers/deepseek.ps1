@@ -18,7 +18,7 @@
   Default: 0.2 (consult = pouco mais criativo que review=0.0).
 
 .PARAMETER MaxTokens
-  Default: 1024.
+  Default: 16000 -- dimensionado pra modelo de raciocinio (ver comentario no param block).
 
 .EXAMPLE
   Get-Content prompt.txt | .\deepseek.ps1 > out.json
@@ -29,7 +29,13 @@ param(
     [string]$PromptFile,
     [string]$SystemPrompt = "Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos.",
     [double]$Temperature = 0.2,
-    [int]$MaxTokens = 8192,
+    # 16000, nao 8192. O deepseek-v4-flash RACIOCINA, e os reasoning_tokens contam DENTRO de
+    # completion_tokens -- o teto cobre pensamento + resposta juntos. Medido 2026-08-16 com
+    # prompt de design real em modo review: 6784, 7649 e 8192+ tokens gastos SO raciocinando,
+    # em tres chamadas do MESMO prompt. Ou seja, 8192 nao era "pequeno demais" de forma limpa:
+    # ficava DENTRO da faixa de variacao, e a mesma pergunta voltava ok, truncada ou vazia na
+    # sorte. A 6.36.2 trocou o modelo de -pro pra -flash e nao reavaliou o teto ao lado.
+    [int]$MaxTokens = 16000,
     [string]$Model = "deepseek-v4-flash",
     [string]$Endpoint = "https://api.deepseek.com/v1/chat/completions"
 )
@@ -92,7 +98,10 @@ $headers = @{
 
 $start = Get-Date
 try {
-    $resp = Invoke-RestMethod -Uri $Endpoint -Method Post -Headers $headers -Body $bodyBytes -TimeoutSec 60
+    # 180s, nao 60s: medido 2026-08-16, chamadas que RESPONDERAM levaram 67s e 80s ja no teto
+    # antigo de 8192. Com 16000 o tempo cresce junto. Subir o teto sem subir o timeout apenas
+    # troca "resposta vazia" por "erro de rede".
+    $resp = Invoke-RestMethod -Uri $Endpoint -Method Post -Headers $headers -Body $bodyBytes -TimeoutSec 180
     $content = $resp.choices[0].message.content
     $latency = [int]((Get-Date) - $start).TotalMilliseconds
 
