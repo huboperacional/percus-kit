@@ -23,6 +23,10 @@
 - [Card promete forma de resposta que ninguém lê — audite pelo ESTADO de sessão, não pelo nome do handler](#card-promete-resposta-que-ninguem-le)
 - [Trava que nasceria VERMELHA é trava desligada — inventário fechado que só encolhe](#trava-vermelha-no-dia-1)
 - [Smoke que depende de serviço externo precisa distinguir DEGRADADO de ERRADO](#smoke-degradado-vs-errado)
+- [Login diz "código inválido ou expirado" e o código está certo — quem recusou foi o CORS da SUA API](#cors-derruba-login-e-a-tela-culpa-o-codigo)
+- [Provar um caminho de UPLOAD em produção sem mudar o que o visitante vê — suba o MESMO arquivo do fallback](#smoke-de-upload-com-arquivo-identico)
+- [Ao trocar o formato de um valor persistido, pergunte o que a rota NOVA faz com o valor VELHO](#manifesto-guarda-contrato-aposentado)
+- [Reprovação de gate em arquivo que a sua mudança não toca: rode de novo ANTES de investigar](#gate-falso-negativo-por-rede)
 - [Medi a silhueta por subtracao de fundo e ela mentiu (objeto e fundo com a mesma luminosidade)](#mascara-fundo-objeto-mesma-luminancia)
 - [Diretorio de saida de lote idempotente preserva o REPROVADO e o entrega como aprovado](#lote-idempotente-preserva-reprovado)
 - [Varredura de identidade que cobre só o backend deixa o FRONTEND com a identidade do produto de origem](#varredura-de-identidade-nao-alcanca-o-frontend)
@@ -341,6 +345,8 @@
 - [Mensagem de erro de serviço alheio virou "causa raiz" e documentou escassez que não existia](#mensagem-de-erro-alheia-promovida-a-diagnostico)
 - [Parser de dinheiro assume um idioma e lê mil vezes menos — `1.500` vira R$ 1,50](#parser-de-dinheiro-assume-locale)
 - [Código no agendador de terceiro DISPARA, mas como `PageView`, sem cookie e sem click id](#tracking-em-agendador-de-terceiro-dispara-mas-nao-conta)
+- [`ValidateSet` de parâmetro revalida em CADA atribuição — a lista velha derruba o código novo](#validateset-revalida-em-cada-atribuicao)
+- [O teste que deveria pegar o defeito nasceu verde porque o regex casou o bloco errado](#teste-nasce-verde-vazio-regex-primeiro-match)
 
 ---
 
@@ -11852,3 +11858,193 @@ terceiro, a mensagem não alcança handler nenhum — e "não aconteceu nada" é
 - Melhor ainda: tenha **pelo menos um caso que não dependa do terceiro**. Caminhos determinísticos
   (regex/roteamento que roda antes da chamada externa) provam a mudança mesmo com o serviço fora —
   foi o único caso que deu PASS ao vivo numa noite com a API de LLM sem crédito.
+
+## Login diz "código inválido ou expirado" e o código está certo — quem recusou foi o CORS da SUA API {#cors-derruba-login-e-a-tela-culpa-o-codigo}
+
+tags: cors, otp, login, auth-service, preflight, options, 400, fastapi, starlette, frontend_url, cors_origins, mensagem que aponta para o lugar errado
+
+**Sintoma.** O usuário recebe o código no WhatsApp, digita, e a tela responde **"Código inválido
+ou expirado"**. Reenviar não adianta. O código está certo.
+
+**A evidência que desmonta a mensagem.** No auth-service:
+```
+otp.request.accepted  audience=<produto> outcome=accepted
+gowa.sent             destination=+55... status=200
+otp.validate.ok       audience=<produto> outcome=success     <-- validou!
+```
+E, na SUA API, no mesmo segundo:
+```
+"OPTIONS /api/v1/auth/me HTTP/1.1" 400 Bad Request
+```
+
+**Causa.** O OTP terminou bem e o navegador recebeu os tokens. O passo seguinte — a primeira
+chamada autenticada à sua API — morreu no **preflight de CORS**, porque a origem de produção não
+estava na lista permitida. `fetch` que falha por CORS não devolve status ao JavaScript: dá
+`TypeError: Failed to fetch`. O `catch` do fluxo de login trata isso como falha de validação e
+imprime a única mensagem que ele conhece — **a que culpa o código**.
+
+Por isso o defeito é caro: a mensagem manda investigar o auth-service, que é o único componente
+sem defeito nenhum.
+
+**Diagnóstico em 1 comando** — reproduz o preflight sem navegador:
+```
+curl -s -i -X OPTIONS "https://api.SEU-DOMINIO/api/v1/auth/me" \
+  -H "Origin: https://SEU-DOMINIO" \
+  -H "Access-Control-Request-Method: GET" \
+  -H "Access-Control-Request-Headers: authorization" | head -3
+# 200 = ok   |   400 "Disallowed CORS origin" = achou
+```
+
+**Correção estrutural — derive, não configure duas vezes.** `FRONTEND_URL` e `CORS_ORIGINS`
+descrevem a mesma coisa ("quem é o frontend deste produto") e divergem em silêncio: localmente as
+duas são localhost e tudo passa; no deploy uma sobe e a outra fica.
+
+```python
+@property
+def origensPermitidas(self) -> list[str]:
+    frontend = self.FRONTEND_URL.rstrip("/")
+    conhecidas = [o.rstrip("/") for o in self.CORS_ORIGINS]
+    return list(dict.fromkeys([*conhecidas, frontend])) if frontend else conhecidas
+```
+```python
+app.add_middleware(CORSMiddleware, allow_origins=settings.origensPermitidas, ...)
+```
+Trave com teste que o middleware usa a lista **derivada** — trocar de volta para a crua deixa os
+outros testes verdes e devolve o defeito à produção.
+
+**Dois ruídos que fazem perder tempo neste diagnóstico:**
+1. **`docker service ls` dizendo `1/1` não significa que a task NOVA já responde.** Com
+   `order: start-first` a antiga fica de pé durante a troca, e o `curl` logo após o deploy bate
+   nela. Reteste depois de `docker service ps <svc>` mostrar a task nova em `Running`.
+2. **A origem CORS é string exata.** `https://x.app` e `https://x.app/` são diferentes, e
+   `http` ≠ `https`. Normalize a barra final dos dois lados antes de comparar.
+
+**Mensagem de erro é parte do conserto.** Se o `catch` do login não distingue "servidor recusou o
+código" de "a requisição nem chegou", ele vai culpar o código toda vez. Trate `TypeError: Failed
+to fetch` como falha de rede/CORS e diga isso.
+
+---
+
+## `ValidateSet` de parâmetro revalida em CADA atribuição — a lista velha derruba o código novo {#validateset-revalida-em-cada-atribuicao}
+
+`tags: powershell, ValidateSet, parametro, atribuicao, revalidacao, router por modo, cannot validate argument, lista de modelos, guarda de entrada, quebra em runtime`
+
+**Sintoma:** você troca os valores que uma função produz internamente (ex.: um `switch` que escolhe
+modelo por modo) e tudo parece certo — mas a função passa a estourar `The variable cannot be
+validated because the value X is not a valid value` em **toda** invocação, não só quando alguém
+passa o parâmetro.
+
+**Causa raiz:** em PowerShell, um atributo de validação declarado num **parâmetro** fica colado na
+**variável**, não só na entrada. Toda atribuição posterior àquela variável é revalidada:
+
+```powershell
+function T { param([ValidateSet("a","b")][string]$M = "a") ; $M = "novo" }   # <-- estoura AQUI
+```
+
+Isso inverte a intuição: você lê `[ValidateSet]` como "quem me chama tem que passar um destes", e
+ele também significa "eu mesmo nunca posso atribuir outra coisa". Um router que resolve o default
+internamente (`$M = switch (...) {...}`) é exatamente o caso que quebra.
+
+**Solução:** ao mudar os valores que o corpo da função atribui, atualize o `ValidateSet` na mesma
+edição — ou tire o atributo do parâmetro e valide explicitamente no corpo, se a lista de saída for
+mais rica que a de entrada. Guarde com teste que extraia **os dois** do arquivo e exija que todo
+valor produzido esteja permitido; sem anti-vacuidade esse teste nasce verde (ver
+[#teste-nasce-verde-vazio-regex-primeiro-match](#teste-nasce-verde-vazio-regex-primeiro-match)).
+
+**Como detectar antes de doer:** verificação estrutural não pega — o arquivo parseia, o atributo
+existe, os valores existem. Só runtime. Rode a função uma vez com cada caminho que atribui.
+
+**Ref:** percus-kit 6.36.2, 2026-08-15. O router por modo do `council-orchestrator.ps1` passou a
+atribuir `claude-sonnet-5`/`claude-opus-5` enquanto o `ValidateSet` listava só a geração 4 — o
+conselho inteiro cairia em toda chamada. Achado pelo revisor cross-provider (R11), confirmado em
+runtime com uma função de três linhas.
+
+---
+
+## O teste que deveria pegar o defeito nasceu verde porque o regex casou o bloco errado {#teste-nasce-verde-vazio-regex-primeiro-match}
+
+`tags: teste vazio, falso verde, regex, primeiro match, Match vs Matches, anti-vacuidade, guarda de paridade, teste que nao afere nada, ancorar regex, dois blocos iguais`
+
+**Sintoma:** você escreve um teste que extrai algo do código-fonte por regex e compara. Ele passa.
+Você injeta o defeito de propósito e ele **continua passando** — ou passa limpo mas com zero itens
+comparados.
+
+**Causa raiz:** o regex casou a **primeira** ocorrência, e a primeira não é a que interessa.
+Arquivos reais têm blocos parecidos: dois `case "$MODE" in` (um é o parser de argumentos), dois
+`[ValidateSet(...)]` (um é de outro parâmetro), dois `switch` no mesmo script. `Match` devolve o
+primeiro; o bloco certo é o segundo. O laço então itera sobre nada, e **iterar sobre nada passa em
+qualquer asserção de "todos os itens satisfazem X"**.
+
+**Solução — duas regras juntas, uma não vale sem a outra:**
+
+1. **Ancore na coisa específica, não no formato genérico.** Ancore no identificador que só existe no
+   bloco certo (`...\)\]\s*\r?\n\s*\[string\]\$CrossClaudeModel`, ou o próprio nome da variável
+   atribuída), em vez de no delimitador que se repete.
+2. **Guarda anti-vacuidade obrigatória.** Antes de comparar, afirme que extraiu algo:
+   `$itens.Count | Should -BeGreaterThan 0`. Sem isso, o dia em que o regex parar de casar (porque
+   alguém reformatou o arquivo) o teste vira decoração silenciosa.
+
+**Verificação que fecha:** teste de mutação. Injete o defeito no arquivo, rode, confirme que
+**falha**, restaure, confirme que passa. Um teste de guarda que nunca foi visto falhando não é
+guarda — é esperança. Cuidado ao roteirizar a mutação: se o script que restaura o arquivo usar uma
+variável de nome comum (`$p`, `$m`), o Pester pode sobrescrevê-la e o arquivo fica mutado.
+
+**Ref:** percus-kit 6.36.3, 2026-08-16. Aconteceu **duas vezes no mesmo dia**: primeiro numa
+verificação ad-hoc do `ValidateSet` (casou o `[ValidateSet]` do `$Mode`, acusou falha falsa), depois
+no teste de paridade `.ps1` ↔ `.sh` (casou o primeiro `case "$MODE" in`, nasceu verde com zero
+modos comparados).
+
+## Provar um caminho de UPLOAD em produção sem mudar o que o visitante vê {#smoke-de-upload-com-arquivo-identico}
+
+`tags: smoke de upload em producao, provar rota atras do middleware, unitario nao prova a rota, arquivo identico ao fallback, 307 vira 200, num_redirects 0, md5 identico, reversao provada, credencial fica no servidor, risco visual zero`
+
+**Sintoma / impasse.** O teste unitário do handler está verde, mas ele não prova a rota atrás do
+middleware, do proxy e do TLS. O smoke de verdade exige subir um arquivo em produção — e isso muda o
+que o cliente vê. Resultado comum: o furo fica declarado no plano e nunca fecha.
+
+**Saída: suba exatamente o arquivo que o fallback já serve.** Quando a rota de leitura tem um ramo de
+fallback (307 para um asset estático ou para outro host), os dois estados possíveis passam a
+renderizar **pixel idêntico** — então não existe janela em que o site fique diferente, e o que você
+mede é só o CAMINHO:
+
+- antes: `GET /api/asset/<...>` → **307** para o fallback
+- depois do upload: **200, `num_redirects=0`**, servido do disco, `md5` idêntico ao da origem
+- restaura (apaga arquivo + entrada do manifesto): volta a **307**, `md5` igual
+
+Isso cobre a cadeia inteira — `401` sem cookie, login, `multipart` por HTTPS com o middleware na
+frente, escrita no volume, releitura pela rota — com risco visual zero e reversão provada, não
+prometida. Rodar o smoke **a partir do próprio servidor** mantém a credencial no `.env` de lá e fora
+do shell local.
+
+Medido em 2026-08-16 (`ads4agencies-site` v44, painel AutoWorx passando a aceitar mp4).
+
+## Ao trocar o formato de um valor persistido, pergunte o que a rota NOVA faz com o valor VELHO {#manifesto-guarda-contrato-aposentado}
+
+`tags: migracao de formato, valor persistido antigo, manifesto, contrato aposentado, ENOENT degrada, bug latente, dado velho no campo novo, JSON.parse em valor legado, interpolar valor velho em URL`
+
+**Sintoma.** Nenhum — é justamente o problema. O armazenamento (manifesto, coluna, cache) continua
+guardando valores gravados pelo contrato **anterior**, e eles só aparecem quando alguém olha.
+
+Caso real: o manifesto de produção tinha `"hero.video": "tto9XoR9Hwg"` — um id do YouTube cru,
+escrito pelo painel antigo, num campo que o contrato novo define como URL. Não quebrou porque a rota
+nova trata a entrada como "existe override" → tenta ler o arquivo em disco → **`ENOENT` → cai no
+fallback**. Foi sorte projetada: o ramo de ENOENT existia por causa de outro bug antigo.
+
+**A pergunta que separa "degrada" de "explode":** o que a rota nova faz com o valor velho? Se a
+resposta for *"interpola numa URL"*, *"faz `JSON.parse`"* ou *"assume o shape novo"*, é bug latente
+esperando um dado antigo aparecer — e ele aparece no dia em que ninguém está olhando. Se for *"tenta,
+falha e degrada pro default"*, está coberto. **Migração de formato não é só o código novo: é o que
+acontece com o que já está gravado.**
+
+## Reprovação de gate em arquivo que a sua mudança não toca: rode de novo ANTES de investigar {#gate-falso-negativo-por-rede}
+
+`tags: gate falso negativo, CORS de terceiro, Google Maps widget, verify-render, reprovacao fora do escopo do diff, flaky por rede, rode de novo, recurso externo`
+
+`verify-render` reprovou um site com 3 erros de console vindos do widget do Google Maps (CORS em
+`maps.googleapis.com`). O site era de um archetype que a mudança nem tocava. **Segunda passada: 6/6
+verde, sem alterar uma linha.**
+
+Gate que depende de recurso externo (mapa, fonte, embed, CDN de terceiro) tem falso negativo por
+rede. O sinal barato de que é isso: **a reprovação é num alvo fora do escopo do diff**. Reexecutar
+custa segundos; investigar custa a sessão. Mesma família de
+[Taxa alta de falha em lote = instrumento suspeito](#taxa-de-falha-alta-e-instrumento-suspeito).
