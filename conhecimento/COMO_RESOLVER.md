@@ -17,6 +17,8 @@
 
 ## Índice
 
+- [Medi a silhueta por subtracao de fundo e ela mentiu (objeto e fundo com a mesma luminosidade)](#mascara-fundo-objeto-mesma-luminancia)
+- [Diretorio de saida de lote idempotente preserva o REPROVADO e o entrega como aprovado](#lote-idempotente-preserva-reprovado)
 - [Varredura de identidade que cobre só o backend deixa o FRONTEND com a identidade do produto de origem](#varredura-de-identidade-nao-alcanca-o-frontend)
 - [Perna do conselho volta 429 ou vazio — declarei "N de 3" sem re-disparar](#perna-conselho-nao-e-perna-morta)
 - [Conselho reprova a MESMA spec 2× — remendei os RF em vez de rever a DIREÇÃO](#conselho-2x-e-direcao-nao-spec)
@@ -333,6 +335,54 @@
 - [Mensagem de erro de serviço alheio virou "causa raiz" e documentou escassez que não existia](#mensagem-de-erro-alheia-promovida-a-diagnostico)
 - [Parser de dinheiro assume um idioma e lê mil vezes menos — `1.500` vira R$ 1,50](#parser-de-dinheiro-assume-locale)
 - [Código no agendador de terceiro DISPARA, mas como `PageView`, sem cookie e sem click id](#tracking-em-agendador-de-terceiro-dispara-mas-nao-conta)
+
+---
+
+## Medi a silhueta por subtração de fundo e ela mentiu (objeto e fundo com a mesma luminosidade) {#mascara-fundo-objeto-mesma-luminancia}
+
+`tags: imagem, visao, mascara, subtracao de fundo, background subtraction, silhueta, bounding box, luminancia, contraste, render, foto de estudio, carro preto, falso negativo, metrica quebrada, olhar antes de medir`
+
+**Sintoma:** uma métrica de geometria sobre imagem (altura, silhueta, linha do teto, bounding box) devolve "quase não mudou" para duas imagens que, a olho nu, são **claramente objetos diferentes** — ou o contrário, acusa mudança enorme onde nada mudou. A conta roda sem erro e o número parece plausível.
+
+**Causa raiz:** a máscara sai de **subtração de fundo** (`|pixel - cor_de_fundo| > limiar`), e isso só separa objeto de fundo quando os dois têm **luminosidade diferente**. Objeto escuro sobre fundo escuro (ou claro sobre claro) mata a premissa: a máscara passa a marcar o **degradê/vinheta do próprio fundo** e a ignorar o objeto. O resultado deixa de descrever o objeto e passa a descrever a iluminação da cena.
+
+**Como detectar sem precisar de olho treinado** — a máscara denuncia sozinha se você imprimir os extremos:
+- a borda detectada **encosta na borda da imagem** (`topo y=0`, `base y=altura-1`): o fundo entrou na máscara;
+- a área marcada é implausível (perto de 0%, ou perto de 100%);
+- a bounding box tem a largura inteira do quadro.
+
+Imprima **sempre** o extremo junto com a média. Foi `ponto mais alto do teto: y=0` que denunciou — `y=0` é a borda de cima da imagem, não o topo de objeto nenhum — e o número da média, sozinho, parecia perfeitamente razoável.
+
+**Solução:**
+1. **Olhe a imagem antes de calcular.** Duas imagens abertas lado a lado resolvem em segundos o que a métrica errou, e calibram qual conta vale a pena escrever. Métrica sobre imagem é para **medir** uma diferença que você já viu, não para **descobrir** se ela existe.
+2. Se precisar de máscara mesmo: segmente por **gradiente/borda** (Sobel, Canny) em vez de por cor absoluta — borda sobrevive a objeto e fundo da mesma luminosidade. Ou use o **canal alfa**, se o render tiver.
+3. Diferença **entre duas imagens** (`|A - B| > limiar`) continua válida nesse cenário e responde "o que mudou e onde" — foi ela que deu a resposta certa (23,7% dos pixels, concentrados na carroceria, com fundo e sombra intactos). O que quebra é medir **geometria absoluta de um objeto** contra o fundo.
+
+**Ref:** AutoWorx, 2026-08-15 — comparação Model Y × Model 3 (carro **preto** sobre fundo de estúdio **escuro**). A métrica de linha de teto disse "1–2% mais baixo, silhueta praticamente igual"; as imagens mostravam um crossover e um sedan. Relacionado: `#reproduzir-antes-de-fixar` (hipótese errada de root cause), memória `reference_configurador_renders_derivam_da_mesma_base`.
+
+---
+
+## Diretório de saída de lote idempotente preserva o REPROVADO e o entrega como aprovado {#lote-idempotente-preserva-reprovado}
+
+`tags: lote, batch, idempotente, idempotencia, skip se existe, gate, aprovado, reprovado, quarentena, api paga, custo, processo concorrente, ps -ef, scratchpad, md5, contagem`
+
+**Sintoma:** um lote idempotente ("pula o que já existe") é retomado a partir de um diretório que a documentação descreve como "só os aprovados". Ele roda, completa, e o resultado entra em produção **contendo itens que um gate já havia reprovado** — sem erro, sem log, sem nada a estranhar.
+
+**Causa raiz:** duas premissas que se combinam mal.
+1. `[ -f "$alvo" ] && continue` trata **"existe"** como **"está bom"**. A idempotência protege contra gasto duplicado; ela **não** sabe distinguir saída boa de saída ruim.
+2. O diretório de saída **acumula**: reprovado que ninguém apagou continua lá. Quem escreveu "já apaguei os reprovados" no handoff apagou da **cópia curada**, não do diretório de trabalho — e as duas divergiram em silêncio.
+
+**Solução:**
+- **Rode o gate ANTES de gastar** a chamada cara. Se o gate for local e barato (medida sobre arquivo, checksum, lint), medir o que já existe custa segundos e diz exatamente o que aproveitar. Isso inverte a ordem usual (gerar → medir) e é o que impede pagar de novo pelo que presta e entregar o que não presta.
+- **Reconstrua o diretório de entrada a partir da fonte curada, comparando por NOME e HASH — nunca por contagem.** Contagem esconde troca (um a mais e um a menos fecha a conta) e é onde o olho erra: `diff <(ls -1 A | sort) <(ls -1 B | sort)` e `md5sum` decidem.
+- **Quarentene, não apague**, o que reprovar — mover para `saida-reprovado/` deixa o lote regerar e preserva a evidência de por que reprovou.
+- **Confira também os INSUMOS** (a base/entrada de onde a saída deriva). Se o insumo divergir entre as cópias, o que já estava aprovado passa a ser medido contra outro insumo e **reprova falsamente** — e a leitura vira "o pipeline quebrou", mandando debugar o que está são.
+
+🔴 **Antes de disparar lote caro, `ps -ef | grep` pelo script.** Havia um segundo lote da sessão anterior ainda rodando, gravando **no mesmo diretório** e consumindo a mesma API em paralelo. O sinal foi indireto: arquivos aparecendo **fora da ordem** do meu script, e `.tmp` órfãos de dois PIDs. **O segundo processo é invisível no log do primeiro**, e cada um cobra. Sessão encerrada (`/clear`) não mata processo que ela disparou em background.
+
+**Quando o gate reprova, regere o item culpado, não o grupo inteiro.** O grupo costuma ser a unidade do **veredito** (só o conjunto revela a inconsistência), mas raramente é a unidade do **conserto**: identificar qual item está fora e regerar só ele fecha o grupo por uma fração do custo.
+
+**Ref:** AutoWorx, 2026-08-15 — lote de 45 renders com gate de rampa. O diretório dito "21 aprovados" tinha **38 arquivos**, 17 deles reprovados. Memória `reference_lote_dir_nao_e_o_conjunto_aprovado`. Relacionado: `#alvo-do-spec-stale` (handoff descrevendo estado que não é o real).
 
 ---
 
