@@ -139,7 +139,14 @@ $headers = @{
 $start = Get-Date
 try {
     $resp = Invoke-RestMethod -Uri $Endpoint -Method Post -Headers $headers -Body $bodyBytes -TimeoutSec 60
-    $content = $resp.content[0].text
+    # NAO use content[0]: com o modelo em Sonnet 5 / Opus 5 o thinking vem LIGADO por padrao (a
+    # mesma razao que forcou MaxTokens=16000 la em cima), e a resposta chega em DOIS blocos --
+    # content[0].type='thinking' (sem campo .text) e content[1].type='text'. Medido em 2026-08-15
+    # chamando a API crua. Pegar o indice 0 devolvia $null e o provider reportava status='empty'
+    # com stop_reason='end_turn' e 5015 tokens gastos: a perna respondia e o parser jogava fora.
+    # Passou despercebido porque prompt trivial ("responda PONG") nao dispara bloco de thinking --
+    # o teste de fumaca via verde enquanto todo review real voltava vazio.
+    $content = ($resp.content | Where-Object { $_.type -eq 'text' } | Select-Object -First 1).text
     $latency = [int]((Get-Date) - $start).TotalMilliseconds
 
     # A API da Anthropic chama de stop_reason, e "max_tokens" e o equivalente de "length".

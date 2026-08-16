@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.36.2`
+**Versão canônica em `huboperacional/percus-kit`:** `6.36.3`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,38 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.36.3 — 2026-08-15
+
+**A perna Cross-Claude respondia e o parser jogava a resposta fora — desde o 6.36.2.** A 6.36.2 subiu
+o modelo para `claude-sonnet-5` e ajustou `MaxTokens` para 16000 justamente porque **em Sonnet 5 /
+Opus 5 o thinking vem LIGADO por padrão**. Mas a extração da resposta continuou em
+`$resp.content[0].text`, e com thinking ligado a API devolve **dois blocos**:
+
+```
+content[0].type = "thinking"   (não tem campo .text)
+content[1].type = "text"       (a resposta)
+```
+
+Índice 0 devolvia `$null`. O provider reportava `status="empty"` com `stop_reason="end_turn"` e
+5015 tokens de completion gastos: a chamada era paga, a resposta existia, e o parser descartava.
+
+- `providers/cross-claude.ps1` — `($resp.content | Where-Object { $_.type -eq 'text' } | Select-Object -First 1).text`
+- `providers/cross-claude.sh` — mesmo defeito no `jq`, mesma correção: `[.content[] | select(.type=="text") | .text] | first`
+
+🔑 **Por que passou batido:** o teste de fumaça usa prompt trivial (`responda PONG`), e resposta
+curta **não dispara bloco de thinking** — o smoke via verde enquanto todo review real voltava vazio.
+Perna de conselho tem de ser validada com prompt que force raciocínio; confirmar que a API responde
+não é confirmar que o provider entrega.
+
+⚠️ **Limites do provider que ficam conhecidos** (não corrigidos aqui): `-TimeoutSec 60` é hardcoded,
+sem parâmetro — diff grande + thinking estoura. E **não reduza `MaxTokens`** para compensar: em
+Sonnet 5 o teto cobre pensamento + resposta juntos, então 4000 fez o modelo gastar tudo pensando e
+voltar `finish_reason=length` com conteúdo vazio. Encolha o prompt, não o teto.
+
+Medido em 2026-08-15 chamando a API crua para inspecionar a forma da resposta, e confirmado com um
+review real de 154 linhas de hook (voltou `status=ok` com 2 achados substantivos, sendo um crítico
+de fail-open que a perna DeepSeek não viu).
 
 ## Changelog v6.36.2 — 2026-08-15
 

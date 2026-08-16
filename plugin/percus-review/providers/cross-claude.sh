@@ -139,7 +139,12 @@ if echo "$RESP" | jq -e '.error' >/dev/null 2>&1; then
     exit 1
 fi
 
-CONTENT=$(echo "$RESP" | jq -r '.content[0].text // ""')
+# NAO use .content[0]: com Sonnet 5 / Opus 5 o thinking vem LIGADO por padrao e a resposta chega em
+# DOIS blocos -- content[0].type="thinking" (sem campo .text) e content[1].type="text". Pegar o
+# indice 0 devolve "" e o provider reporta status="empty" com stop_reason="end_turn". Medido em
+# 2026-08-15 no .ps1 (mesmo contrato de API). Prompt trivial nao dispara thinking, entao o teste de
+# fumaca via verde enquanto todo review real voltava vazio.
+CONTENT=$(echo "$RESP" | jq -r '[.content[] | select(.type=="text") | .text] | first // ""')
 ACTUAL_MODEL=$(echo "$RESP" | jq -r '.model // ""')
 INPUT_TOKENS=$(echo "$RESP" | jq -r '.usage.input_tokens // 0')
 OUTPUT_TOKENS=$(echo "$RESP" | jq -r '.usage.output_tokens // 0')
