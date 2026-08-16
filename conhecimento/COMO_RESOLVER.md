@@ -354,6 +354,8 @@
 - [Rastreamento por task diz `[4-C]` e o usuário continua vendo o app do fork](#tracking-por-task-esconde-o-que-o-usuario-alcanca)
 - [Assert que casa a classe no documento INTEIRO não prova markup — a folha de estilo mantém a string viva](#assert-casa-css-nao-prova-markup)
 - [Pesquisa externa: "não achei" ≠ "não existe", e quase nunca é o layout mobile](#nao-achei-nao-e-nao-existe-em-pesquisa-web)
+- [Regex `(?m)...$` não casa em arquivo CRLF: o `\r` fica sobrando e a linha inteira é dada como inválida](#regex-multiline-crlf-dollar-nao-casa)
+- [Teste chama o script no mesmo processo e "prova" silêncio: `Write-Host` e `[Console]::Error` não passam pelo `2>&1`](#teste-in-process-nao-captura-console-error)
 
 ---
 
@@ -12302,3 +12304,59 @@ Compartilham a origem (default de encoding do 5.1) e exigem guardas diferentes: 
 **Como testar de verdade:** teste estrutural (`todo Get-Content declara -Encoding`) pega a reincidência, mas quem prova o conserto é o **teste comportamental** — execute o script sob `powershell.exe` de verdade e exija uma marca da saída de sucesso. Com anti-vacuidade: sem exigir a marca positiva, um script que nem rodou deixa o teste verde por saída vazia.
 
 **Ref:** percus-kit 6.36.5, 2026-08-16. Eram 9 chamadas em 4 hooks; o `state-drift-check.ps1` já usava `-Encoding UTF8` desde antes — a lição existia em **um** arquivo e nunca generalizou, que é como toda reincidência começa.
+
+---
+
+## Regex `(?m)...$` não casa em arquivo CRLF: o `\r` fica sobrando e a linha inteira é dada como inválida {#regex-multiline-crlf-dollar-nao-casa}
+
+`tags: regex, .net, powershell, multiline, CRLF, \r\n, ancora $, fim de linha, markdown, parser, casou zero, windows`
+
+**Sintoma:** um regex multilinha que parece obviamente certo casa **zero** ocorrências num arquivo do Windows. O mesmo padrão testado num literal digitado à mão funciona. Tipicamente aparece como "esperava 1 título, achei 0" num validador que lê `.md`.
+
+**Causa raiz:** no .NET (e portanto no PowerShell), com `RegexOptions.Multiline`, o `$` casa **antes do `\n`** — não depois do `\r`. Num arquivo CRLF a linha termina em `\r\n`, então na posição em que o `$` casa **ainda falta consumir o `\r`**. Se o padrão exigir algo que não aceite `\r` imediatamente antes do `$`, ele não casa:
+
+```powershell
+# arquivo CRLF, linha: "## Titulo {#slug}\r\n"
+'(?m)^##\s+(.+?)\s*\{#([^}]+)\}[^\S\r\n]*$'   # NAO casa: [^\S\r\n] exclui o \r
+'(?m)^##[ \t]+(.+?)[ \t]*\{#([^}]+)\}[ \t]*\r?$'  # casa
+```
+
+A armadilha é que a classe "espaço horizontal" escrita como `[^\S\r\n]` — que é o jeito canônico de dizer "branco menos quebra de linha" — **exclui justamente o `\r`** que precisa ser consumido.
+
+**Solução:** termine o padrão com `\r?$` sempre que for casar fim de linha em arquivo que pode ser CRLF. Alternativas: normalizar o texto para LF antes de casar (só se você **não** for reescrever o arquivo — normalizar e gravar de volta produz diff de arquivo inteiro), ou usar `\s*$`, que aceita `\r` mas também atravessa linhas em branco e costuma casar demais.
+
+**Onde mais morde:** `$` em `-split`, `-match`, `Select-String -Pattern` e validadores de formato que leem `.md`/`.csv`/`.txt` versionados no Windows. Se o repo tem `core.autocrlf` ligado, o arquivo no disco é CRLF mesmo que no git seja LF — o script vê CRLF.
+
+**Como reconhecer na hora:** "casou 0" num padrão que você consegue verificar visualmente na linha. Antes de reescrever o regex, teste com `\r?$` no fim — se passar a casar, era isto.
+
+**Ref:** percus-kit 6.36.6, 2026-08-16 — validador do mesclador de conhecimento recusava toda entrada como "sem título".
+
+---
+
+## Teste chama o script no mesmo processo e "prova" silêncio: `Write-Host` e `[Console]::Error` não passam pelo `2>&1` {#teste-in-process-nao-captura-console-error}
+
+`tags: powershell, pester, teste, 2>&1, redirecionamento, Write-Host, Console::Error, stderr, stdout, in-process, processo filho, assercao vazia, falso verde, LASTEXITCODE`
+
+**Sintoma:** um teste afirma que o script emite certa mensagem (`Should -Match 'ADIA'`) e falha dizendo que o padrão não casou com **string vazia** — mesmo você vendo a mensagem aparecer no terminal quando roda o script na mão. Pior variante: a asserção é `Should -Not -Match`, e aí o teste passa **verde** aferindo nada.
+
+**Causa raiz:** chamar `& .\script.ps1` de dentro do teste roda o script **no mesmo processo** do Pester, e nesse modo nem `Write-Host` nem `[Console]::Error.WriteLine` atravessam o `2>&1 | Out-String`:
+
+- `Write-Host` escreve no **host** (stream de informação), não no stream de saída.
+- `[Console]::Error.WriteLine` escreve **direto no stderr do processo**, sem passar pelo stream de erro do PowerShell — que é o único que o `2>&1` do PowerShell redireciona.
+
+Ou seja, o `2>&1` não é inútil: ele redireciona o *error stream do PowerShell*. Quem escreve fora dele (Console, host) simplesmente não é visto. Captura vazia.
+
+**Solução:** rode o script como **processo filho** no teste. Aí o stderr e o stdout são reais, `2>&1` captura os dois, e `$LASTEXITCODE` passa a ser o código de saída de verdade:
+
+```powershell
+$exe = if ($PSVersionTable.PSEdition -eq 'Core') { Join-Path $PSHOME 'pwsh.exe' } else { Join-Path $PSHOME 'powershell.exe' }
+$saida = & $exe -NoProfile -ExecutionPolicy Bypass -File $script -Raiz $raiz 2>&1 | Out-String
+```
+
+Bônus: processo filho é como hook, gate e checkpoint realmente invocam — o teste passa a exercitar a invocação de produção em vez de uma que só existe no teste.
+
+⚠️ **A alternativa "troque `[Console]::Error` por `Write-Error`" conserta a captura e ESTRAGA o script:** `Write-Error` vira `ErrorRecord` com stack trace, polui a saída de hook, e em `$ErrorActionPreference = "Stop"` aborta. Para script de linha de comando, `[Console]::Error` é o certo — quem se adapta é o teste.
+
+**Como reconhecer na hora:** asserção de mensagem falhando contra `<empty>` enquanto o comportamento observável está correto. Se o teste afere **mensagem** ou **código de saída**, ele tem de rodar processo filho.
+
+**Ref:** percus-kit 6.36.6, 2026-08-16 — mesclador da caixa de conhecimento; a primeira versão do helper chamava in-process e 5 asserções liam string vazia.

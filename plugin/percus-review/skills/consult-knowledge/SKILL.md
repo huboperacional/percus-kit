@@ -20,21 +20,47 @@ Base cross-projeto versionada no canon. Dois arquivos, dois propósitos:
 > ⚠️ **Não dependa de `grep` por string literal.** Sintomas reais variam em wording, stack e locale —
 > a mesma falha aparece com mensagens diferentes. Grep dá falso-negativo na maioria das consultas.
 
-1. **Leia o arquivo inteiro** (`COMO_RESOLVER.md` é pequeno e cabe no contexto) — ou ao menos o Índice.
-2. **Case por CLASSE de sintoma**, não por texto exato: a linha `tags:` de cada entrada lista a classe
+1. **Comece pelo Índice** (o bloco `- [...](#ancora)` no topo), não pelo arquivo.
+   ⚠️ **Não leia o arquivo inteiro.** A instrução anterior aqui dizia que ele "é pequeno e cabe no
+   contexto" — era verdade quando foi escrita e hoje é falso: `COMO_RESOLVER.md` passou de
+   **900 KB / ~230k tokens** (medido 2026-08-16).
+   **Tamanhos reais, para você escolher com informação:** o Índice sozinho tem **339 linhas / ~45 KB
+   (~13k tokens)** — cabe, mas não é de graça; um verbete típico tem **3–6 KB**. Precisa de visão
+   ampla? Leia o Índice. Já tem hipótese de classe? Busque no Índice pelos termos da classe e leia
+   só o verbete escolhido.
+2. **Olhe também a caixa de entrada** — `conhecimento/entrada/resolver/` e `conhecimento/entrada/fazer/`.
+   São verbetes já escritos que ainda não foram mesclados no monólito (o merge acontece no
+   `checkpoint`). Cada arquivo é um verbete, e o **nome do arquivo é o slug** — dá pra varrer os nomes
+   e ler só o que interessa. Pular a caixa é reintroduzir o problema de conhecimento escrito e
+   invisível, que já custou 5 entradas perdidas de vista.
+3. **Case por CLASSE de sintoma**, não por texto exato: a linha `tags:` de cada entrada lista a classe
    de erro, componente e termos locale-independentes. Raciocine sobre relevância ("meu erro é um parser
    error num `.ps1` rodado via `.cmd`" → casa com `ps51-ascii-hooks` mesmo que a mensagem seja outra).
-3. Se houver entrada que case a classe, **tente a solução de lá primeiro** antes de investigar do zero.
-4. Se **nada** casar, debugue normalmente — e ao resolver, volte pra registrar (passo abaixo).
+4. Se houver entrada que case a classe, **tente a solução de lá primeiro** antes de investigar do zero.
+5. Se **nada** casar, debugue normalmente — e ao resolver, volte pra registrar (passo abaixo).
 
 ## Como registrar (após resolver algo novo)
 
-Adicione uma entrada no arquivo certo, com `tags:` rica (é o que faz o próximo lookup achar):
+**Escreva na CAIXA DE ENTRADA, não no monólito** — um verbete por arquivo:
 
-- Troubleshooting → `COMO_RESOLVER.md`: `## <sintoma> {#ancora}` · `tags:` · Contexto · Causa raiz · Solução · Ref.
-- Procedimento → `COMO_FAZER.md`: `## <objetivo> {#ancora}` · `tags:` · Quando · Passos · Comando · Armadilhas.
+```
+conhecimento/entrada/resolver/<slug>.md    # troubleshooting
+conhecimento/entrada/fazer/<slug>.md       # procedimento
+```
 
-Atualize o Índice do arquivo. Use **caminho absoluto** nas refs.
+O **nome do arquivo tem de ser exatamente o slug** da âncora (`{#slug}`) — o gate barra se divergir.
+Formato do conteúdo é o mesmo de sempre, e a `tags:` continua sendo o que faz o próximo lookup achar:
+
+- Troubleshooting: `## <sintoma> {#ancora}` · `tags:` · Contexto · Causa raiz · Solução · Ref.
+- Procedimento: `## <objetivo> {#ancora}` · `tags:` · Quando · Passos · Comando · Armadilhas.
+
+**Não atualize o Índice à mão, e não edite `COMO_RESOLVER.md` direto.** O `checkpoint` roda
+`scripts/mesclar-conhecimento.ps1`, que anexa o verbete e insere a linha de índice sozinho.
+
+**Por quê:** o monólito tem centenas de verbetes num arquivo só, e o git resolve conflito em
+**arquivo**. Duas sessões escrevendo lições sobre assuntos diferentes colidiam assim mesmo — medido
+2026-08-16, um commit levaria junto o rascunho inacabado de outra sessão. Arquivos separados = colisão
+zero. Use **caminho absoluto** nas refs.
 
 ## Anti-padrões
 

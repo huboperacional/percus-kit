@@ -838,8 +838,21 @@ Convenção é **sugestão**, não trava: projetos full-stack (FastAPI + Next) p
 **Regra:** antes de gastar tempo debugando um problema que **parece conhecido**, consulte
 `conhecimento/COMO_RESOLVER.md` (via skill `percus-review:consult-knowledge`). Se houver entrada que
 case com a **classe** do sintoma, tente a solução de lá **primeiro**. Depois de resolver um problema
-**novo** (não trivial, que custou tempo), **registre** uma entrada nova em `COMO_RESOLVER.md`. Padrões
-de procedimento recorrentes vão pra `conhecimento/COMO_FAZER.md`.
+**novo** (não trivial, que custou tempo), **registre** uma entrada nova — escrevendo **um arquivo por
+verbete na caixa de entrada**, `conhecimento/entrada/resolver/<slug>.md` (procedimento recorrente vai
+pra `conhecimento/entrada/fazer/<slug>.md`). O nome do arquivo **é** o slug da âncora.
+
+**A consulta cobre os dois lugares:** o monólito (`COMO_RESOLVER.md`/`COMO_FAZER.md`) **e** a caixa —
+verbete que ainda não foi mesclado é conhecimento igual, e pular a caixa recria o problema de
+"escrito e invisível".
+
+**Não edite o monólito direto.** O `checkpoint` roda `scripts/mesclar-conhecimento.ps1`, que anexa o
+verbete e insere a linha de índice. **Por quê:** o monólito tem centenas de verbetes num arquivo só e o
+git resolve conflito em **arquivo** — duas sessões escrevendo lições sobre assuntos diferentes
+colidiam assim mesmo (medido 2026-08-16: um commit levaria junto o rascunho inacabado de outra sessão,
+e o gate barrou o commit legítimo). Arquivo separado por verbete = colisão zero. Se o mesclador disser
+**ADIA**, outra sessão está com o monólito aberto; as entradas esperam o próximo checkpoint, e isso é
+de graça porque a caixa é durável.
 
 **Forbidden:**
 - Reabrir do zero um problema já catalogado em `COMO_RESOLVER.md` sem ter consultado (retrabalho).
@@ -852,6 +865,8 @@ versionada no git, consultável por **classe de sintoma** (lookup semântico, n�
 variam em wording/stack/locale), sincroniza pra todas as máquinas via `git pull`.
 
 **Gate de verificação:**
+0. `percus-gate.sh` bloco 3c afere a caixa: um verbete por arquivo, slug == nome do arquivo, `tags:`
+   presente, fence fechado. Entrada fora de gate é entrada que nasce invisível.
 1. `conhecimento/COMO_RESOLVER.md` e `conhecimento/COMO_FAZER.md` existem no canon (sincronizados via git).
 2. Ao bater num erro conhecido, há evidência de consulta antes do debug (a skill loga / o agente declara).
 3. `CHECKLIST_ENCERRAR_SESSAO.md` tem o passo "problema novo resolvido foi pra COMO_RESOLVER?"; o

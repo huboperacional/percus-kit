@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.36.5`
+**Versão canônica em `huboperacional/percus-kit`:** `6.36.6`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,236 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.36.6 — 2026-08-16
+
+**Caixa de entrada de conhecimento — sessões concorrentes param de colidir no `COMO_RESOLVER.md`.**
+Etapa 1 de 2 (a etapa 2, o split em um-arquivo-por-verbete, fica para depois e continua opcional).
+
+**O problema, medido:** o `COMO_RESOLVER.md` tem 335 verbetes num arquivo de **912 KB**, e toda sessão
+de todo projeto escreve nele. O git resolve conflito em **arquivo**, então duas sessões escrevendo
+lições sobre assuntos completamente diferentes colidem assim mesmo. Nesta mesma data isso custou:
+um commit levaria junto o rascunho inacabado de outra sessão, o gate barrou um commit legítimo, e
+uma sessão chegou a classificar como "trabalho de outra sessão" um verbete escrito pela própria.
+
+**A caixa:**
+
+```
+conhecimento/entrada/resolver/<slug>.md  ->  COMO_RESOLVER.md
+conhecimento/entrada/fazer/<slug>.md     ->  COMO_FAZER.md
+```
+
+Um verbete por arquivo, formato idêntico ao de sempre, e o **nome do arquivo é o slug** da âncora —
+não é estética: é o que torna o merge determinístico hoje e o split mecânico depois. Arquivos
+diferentes não dão conflito de git, então a escrita fica livre de colisão **sempre**.
+
+**`scripts/mesclar-conhecimento.ps1`**, chamado pelo `checkpoint`, anexa cada verbete e insere a
+linha de índice sozinho.
+
+🔑 **A regra que sustenta o desenho: se o monólito já está modificado na árvore — outra sessão
+mexendo — o mesclador NÃO mescla. Ele ADIA**, e as entradas ficam na caixa para o próximo
+checkpoint, saindo com código **0**, porque adiar não é erro. Isso só é aceitável porque a caixa é
+**durável**: sem ela, adiar significava perder o verbete ou travar o commit. É a inversão que faz o
+mecanismo funcionar — colisão vira adiamento, e adiamento é de graça. Git indisponível ou pasta que
+não é repo também contam como "ocupado": num script que reescreve a base inteira, desconhecido não
+é sinal verde.
+
+Entrada **inválida** também fica na caixa (descartar perderia o verbete), mas o script sai != 0 para
+denunciar — e **uma entrada podre não retém as saudáveis**.
+
+**Gate (`percus-gate.sh` bloco 3c):** a caixa tem bloco **próprio**, não um glob a mais nos blocos
+2/3. Motivo: a checagem 2 exige que a âncora apareça como `(#ancora)` no **mesmo arquivo**, o que num
+arquivo de um verbete só nunca é verdade — estender o glob reprovaria **toda** entrada válida. O
+bloco novo afere um verbete por arquivo, slug == nome do arquivo, `tags:` presente e fence fechado.
+Entrada fora de gate é entrada que nasce invisível, que é exatamente o que a caixa deveria evitar.
+
+**Visibilidade — o risco real desta mudança.** `consult-knowledge` e R23 passam a mandar consultar a
+caixa **junto com** o monólito. Sem isso, esta versão recriaria na hora o problema do commit
+`9cecfdb` ("8 entradas de produção, e 5 delas estavam INVISÍVEIS").
+
+⚠️ **Defeito corrigido de carona, e ele era grave:** a skill `consult-knowledge` instruía *"Leia o
+arquivo inteiro (`COMO_RESOLVER.md` é pequeno e cabe no contexto)"*. Era verdade quando foi escrita e
+hoje é falso por duas ordens de grandeza — **~230k tokens**. A skill mandava o agente fazer algo que
+não cabe no contexto, o que na prática empurrava todo mundo para o `grep` literal que a própria skill
+proíbe no parágrafo de cima. Agora: leia o **Índice**, depois o verbete escolhido (~3 KB).
+
+**Testado, e testado no arquivo de verdade.** 9 casos comportamentais sobre fixture (merge, roteamento
+por pasta, adiamento com árvore suja, slug divergente, `tags:` ausente, slug duplicado, caixa vazia,
+uma podre não retendo as boas, CRLF preservado) + 5 casos no gate. Mutação confirmada em quatro
+eixos. **E foi rodado de verdade contra o `COMO_RESOLVER.md` real**, com estes dois verbetes desta
+sessão: **58 adições, 0 remoções**, 12362 quebras de linha todas `\r\n`, zero LF solto, sem BOM.
+
+⚠️ **CRLF não é detalhe:** o arquivo é CRLF e um mesclador que normalizasse para LF produziria um
+diff de 12 mil linhas no primeiro uso. Tem teste só para isso.
+
+**Cinco defeitos achados pelo próprio R11 revisando esta versão — e um deles atacava a premissa
+central do desenho:**
+
+1. **`Remove-Item` da entrada acontecia ANTES de gravar o monólito.** Se a gravação falhasse (disco,
+   permissão, lock), o verbete se perdia — trocando colisão de git por **perda**, que é o único
+   desfecho pior que o problema original. A durabilidade da caixa é o que torna "adiar" de graça;
+   sem ela o desenho inteiro cai. Agora grava uma vez e só então remove; se a gravação falhar, as
+   entradas ficam e o script diz "nada foi perdido". Teste força o caso deixando o destino
+   read-only.
+2. **Gate e mesclador discordavam sobre fence.** O gate ignora `## {#slug}` dentro de bloco de
+   código; o mesclador não. Um verbete com exemplo de markdown passava no gate e era recusado no
+   merge. Gate que aprova o que o passo seguinte recusa é pior que os dois errarem juntos: o commit
+   passa e o checkpoint quebra depois.
+3. **Blockquote consumia a janela do `tags:` no mesclador.** O awk do gate pula linhas `>` **sem**
+   incrementar o contador — e o comentário dele registra que sem isso ele acusava "sem tags:" um
+   verbete que TEM tags, barrando commit legítimo. O mesclador reintroduzia exatamente esse bug.
+   Agora espelha a ordem do awk: fence, blockquote, título, contador.
+4. **Gravava o monólito mesmo sem ter mesclado nada**, e o join era CRLF fixo — num arquivo LF isso
+   normalizaria o arquivo inteiro. Agora só grava se algo mudou, e a quebra de linha é **detectada
+   do arquivo** em vez de assumida.
+5. **O gate não checava slug duplicado**, então o checkpoint falhava depois do gate ter aprovado.
+   Passou a checar no gate também.
+
+Mutação confirmada nos quatro eixos do mesclador (inclusive o de durabilidade, que derruba 5 testes
+quando revertido).
+
+**Segunda rodada do R11, mais três — e o primeiro é a MESMA classe de novo:**
+
+6. **Gate e mesclador discordavam sobre a âncora.** O awk usava `/^## .*\{#/`, que aceita
+   `## Título {#slug} sobra depois` e recusa `##<TAB>Título` — o mesclador faz o inverso nos dois
+   casos. Padrão agora é estrito e idêntico dos dois lados: `##` + espaço **ou tab**, âncora
+   **fechando** a linha, com mensagem própria para o caso do texto sobrando.
+7. **A inserção de índice duplicava a última linha quando o índice era a última linha do arquivo.**
+   `$linhas[($fim+1)..($Count-1)]` vira `Count..Count-1`, e no PowerShell **range decrescente conta
+   para trás**: devolve `@($null, último)`. Só acontece em arquivo sem quebra de linha final — e a
+   primeira versão do teste tinha quebra final, então passava **sem exercitar o bug**. Corrigido o
+   teste antes do código; com a reprodução correta o índice vinha com 2 linhas em vez de 1.
+8. **Falha ao remover a entrada depois do merge saía como exceção crua.** O verbete já estava no
+   monólito e continuava na caixa, e o próximo checkpoint acusaria slug duplicado sem explicar a
+   causa. Agora a mensagem diz o que já aconteceu e o que fazer.
+
+**Terceira rodada do R11, mais quatro — e o primeiro é CRLF outra vez, do outro lado:**
+
+9. **Os `awk` do bloco 3c não toleravam `\r`.** No Git Bash o CR é absorvido e os testes passam;
+   em bash nativo/CI com working tree CRLF (`core.autocrlf` desligado), o `$` do awk não casa e
+   **toda entrada válida** seria denunciada como malformada. O mesclador já usava `\r?$` — era a
+   mesma divergência gate↔mesclador, agora por quebra de linha. Agora os três `awk` recebem o
+   arquivo por `tr -d '\r'`.
+10. **A checagem de duplicata não pulava fence**, ao contrário de todo o resto do bloco 3c: um
+    verbete que **cita** `{#slug}` como exemplo dentro de ``` bloqueava uma entrada nova legítima
+    com aquele slug.
+11. **Mensagens operacionais saíam por `Write-Host`** — que no PS 5.1 escreve no host e pode não
+    atravessar o stdout quando o processo é capturado. É a lição do verbete
+    `#teste-in-process-nao-captura-console-error`, escrito **nesta mesma versão**, e o script a
+    violava. Agora `[Console]::Out.WriteLine`.
+12. **A skill dizia "~3 KB" para Índice + verbete.** Medido: o Índice sozinho tem **339 linhas /
+    ~45 KB (~13k tokens)**; verbete típico, 3–6 KB. Errado por 15×, e subestimar custo de contexto
+    numa skill que existe para reduzir custo de contexto reintroduz o problema pela porta dos
+    fundos. Corrigido com os números reais e orientação de quando ler o índice inteiro.
+
+**Quarta rodada do R11, mais três — todas gate↔mesclador, e uma delas contra um item deste próprio
+changelog:**
+
+13. **A correção do item 10 só tinha sido feita no mesclador.** O gate continuava fazendo
+    `grep -qF "{#slug}"` no monólito cru, sem pular fence. Declarar corrigido de um lado e deixar o
+    outro para trás é o modo mais fácil de um changelog mentir. Agora o gate passa o destino por
+    um `awk` que descarta fence antes do `grep`.
+14. **`##` sem âncora no corpo:** o gate acusava, o mesclador ignorava. Alinhado na direção
+    **segura** — o gate estava certo. Verbete usa `**Negrito:**` para seção, nunca `##`; um `##`
+    solto viraria **verbete novo** depois do merge, sem âncora e sem `tags:`, e o gate seguinte
+    barraria o arquivo inteiro sem que ninguém entendesse por quê.
+15. **Área desconhecida em `entrada/` passava no gate.** O mesclador só processa `resolver` e
+    `fazer`, então um `entrada/qualquer-coisa/x.md` seria aprovado e **ignorado para sempre** —
+    conhecimento escrito e invisível, o cenário exato que o bloco 3c existe para impedir.
+
+**Quinta rodada, mais três:**
+
+16. **Título vazio (`## {#slug}`)** era aceito pelo gate e recusado pelo mesclador, cujo regex exige
+    pelo menos um caractere de título — sem título não há como montar a linha de índice.
+17. **Duplicata divergia na caixa alta/baixa:** `-match` do PowerShell é case-insensitive,
+    `grep -F` é case-sensitive. Alinhado na direção segura (ambos recusam), porque âncora que
+    difere só em maiúscula colide na renderização.
+18. **Subpasta dentro de área válida era invisível dos DOIS lados.** O glob `entrada/*/*.md` do
+    gate e o `Get-ChildItem` não-recursivo do mesclador ignoravam `entrada/resolver/sub/x.md` em
+    silêncio — escrito e invisível **para sempre**. Agora o gate afere a **posição** antes do
+    conteúdo: qualquer `.md` fora de `entrada/<area>/<slug>.md` é violação (exceto o `LEIA-ME.md`).
+
+⚠️ **Dois defeitos meus na correção do 18, ambos clássicos de shell:** `-mindepth`/`-maxdepth` são
+opções **globais** do `find`, não predicados — dentro de `\( \)` não filtram nada, e a primeira
+versão acusava até o próprio `LEIA-ME.md`. E `find | while` roda em **subshell**, então o `FAIL=1`
+de dentro do `violacao` se perderia: o gate acusaria e ainda assim sairia 0. Por isso o laço é `for`.
+
+🔎 **Achado de ambiente, virou verbete:** `grep -iF` **aborta com SIGABRT** (rc=134) neste build do
+Git Bash — cada flag sozinha funciona, é a combinação que quebra. Como a contagem vinha de `$( )`,
+o abort virou string vazia e só apareceu duas camadas depois como
+`[: : integer expression expected`. Contorno portátil: baixar a caixa dos dois lados com `tr` em vez
+de pedir `-i` ao grep. Registrado em `#grep-if-aborta-git-bash`.
+
+**Sexta rodada, mais duas — as duas sobre o que conta como âncora:**
+
+19. **Menção inline a `{#slug}` em prosa contava como âncora existente**, bloqueando entrada nova
+    legítima. E isso não é hipótese: a base de conhecimento **fala de si mesma** o tempo todo — o
+    verbete `#grep-if-aborta-git-bash`, escrito nesta versão, cita `{#slug}` em prosa. Agora âncora
+    é só o que está em **linha de título**, fora de fence, dos dois lados.
+20. **Título começando com `{` divergia**: o gate exigia que o primeiro caractere não fosse `{`
+    (restrição que eu tinha introduzido para barrar título vazio), e o mesclador aceitava. Alinhado
+    para "≥1 caractere antes da âncora final", que barra `## {#slug}` e aceita `## {chave} ... {#slug}`.
+    Junto: o gate extraía **todas** as ocorrências de `{#...}` da linha e o mesclador só a final,
+    então `## Usar {#fake} e {#slug}` virava 2 âncoras de um lado e 1 do outro.
+
+**Sétima rodada, mais quatro — e aqui a severidade já tinha caído para entrada exótica:**
+
+21. **Word splitting no `for x in $(find ...)`** partia caminho com espaço em vários argumentos.
+    Corrigido fixando `IFS` só em quebra de linha.
+22. **Separador `---` duplicado** se o monólito já terminasse em `---`. Ao consertar, errei de
+    novo: `(?m)^---$` casa **qualquer** separador do meio do arquivo, então o script nunca
+    acrescentaria o dele. A checagem tem de olhar a **última linha**, não o arquivo.
+23. **Caixa com entrada e monólito de destino ausente** era aprovada pelo gate e falhava no
+    mesclador. Ao fechar isso, quatro testes existentes ficaram vermelhos — e estavam certos em
+    ficar: o `New-CaixaRepo` **nunca criava o monólito**, ou seja, o fixture testava um estado que
+    não existe em repo real. Corrigido o fixture, não a regra.
+24. **Linha `##` pelada** (sem título, sem âncora, sem espaço) não era pega por **nenhum** dos dois
+    lados — não era divergência, era lacuna compartilhada. Mesclada, viraria título vazio no
+    monólito, denunciado só por um gate posterior e sem explicar a causa.
+
+**Oitava rodada, mais uma — e é BOM, pela quarta vez nesta sessão:**
+
+25. **Entrada gravada com BOM divergia.** Editor do Windows grava `.md` com BOM sem avisar; o
+    `ReadAllText(UTF8)` do mesclador descarta o BOM sozinho e aceita, enquanto o `awk` do gate via
+    `\xEF\xBB\xBF## Título`, não casava `^##` e rejeitava com "achei 0 títulos". As quatro
+    passagens do bloco 3c agora tiram o BOM com `sed '1s/^\xEF\xBB\xBF//'` antes do `tr`/`awk`.
+    ⚠️ **Não use `tr -d` para isso:** `tr` opera em **bytes** e apagaria `\xEF`/`\xBB`/`\xBF` em
+    qualquer posição, corrompendo UTF-8 legítimo. `sed` só na primeira linha, só no início.
+
+**Ficou de fora, declarado:** o `LEIA-ME.md` e a skill listam `**Ref:**` como parte do formato, mas
+nem o gate nem o mesclador o exigem. É decisão de política (tornar o gate mais estrito ou afrouxar
+o texto), não defeito — fica para o operador.
+
+**Oito rodadas de R11 nesta versão, 25 defeitos**, e o padrão dominante tem nome: sempre que uma
+regra existe em dois lugares (gate e mesclador, `.ps1` e `.sh`), a divergência **não** aparece nos
+testes de nenhum dos dois lados — ela só aparece quando alguém compara os dois. Foi o mesmo padrão
+da 6.36.4 (`temperature` em três arquivos) e da 6.36.3 (tabela de modelos duplicada). A conclusão
+prática: **regra duplicada precisa de teste que compare as duas cópias**, não de dois testes
+independentes — cada um deles fica verde sozinho.
+
+**Escopo declarado:** o mesclador é só PowerShell, sem par `.sh`. Diferente dos providers do conselho
+(que têm caminho bash real no `council-orchestrator.sh`), este script só é chamado pelo `checkpoint`.
+Decisão explícita, não esquecimento.
+
+🔎 **Achado NÃO corrigido aqui:** a autorização R20 **sobrevive ao uso**. Depois de `registrar-uso`,
+o `.percus/acao-externa-autorizada.json` continua válido pelo resto da janela de 60 min — qualquer
+ação externa seguinte passa sem nova aprovação. Apareceu porque o teste do `external-action-guard`
+ficou vermelho com a autorização do push desta sessão ainda viva. Merece decisão própria: consumir no
+`registrar-uso` ou encurtar a janela.
+
+Suíte: **362 Pester + 10 pytest, tudo verde**, e o gate limpo no repo real.
+
+**Onde eu parei, e por quê:** as rodadas 1–4 do R11 acharam `bug` que quebrariam na prática (perda
+de verbete, guarda morta, commit liberado sem review). Da 5 em diante a severidade caiu para
+`risco` em entrada exótica — título começando com `{`, âncora citada em prosa, `##` pelado. Fechei
+esses porque eram baratos, e paro aqui: R11 exige **tratar** os achados, não zerá-los, e continuar
+refinando bordas de markdown que ninguém escreve tem retorno decrescente. O que sobrar aparece na
+próxima versão que tocar nestes arquivos.
+
+**A caixa foi usada de verdade nesta própria versão**, três vezes: dois verbetes mesclados no
+`COMO_RESOLVER.md` real (58 adições, 0 remoções) e um terceiro que o mesclador **adiou** — porque o
+monólito estava modificado na árvore, exatamente a condição que a regra existe para tratar. O
+mecanismo disparou sozinho, no arquivo de verdade, pelo motivo certo.
 
 ## Changelog v6.36.5 — 2026-08-16
 

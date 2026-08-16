@@ -129,6 +129,148 @@ for f in conhecimento/*.md referencia/conhecimento/*.md; do
   fi
 done
 
+# ---------- 3c. Caixa de entrada de conhecimento (um verbete por arquivo) ----------
+# Antes de aferir CONTEUDO, aferir POSICAO: o glob abaixo so enxerga entrada/<area>/<slug>.md.
+# Um .md em subpasta de area valida, ou solto na raiz da caixa, escapa do gate E do mesclador
+# -- escrito e invisivel PARA SEMPRE, que e exatamente o que este bloco existe pra impedir.
+# LEIA-ME.md fica de fora por ser a documentacao da caixa, nao verbete.
+# NAO usar -mindepth/-maxdepth aqui: sao opcoes GLOBAIS do find, nao predicados, e dentro de
+# \( \) elas nao filtram nada -- a primeira versao disto acusava ate o proprio LEIA-ME.md.
+# O for (e nao 'find | while') tambem e de proposito: pipeline roda em subshell e o FAIL=1
+# de dentro do violacao se perderia, deixando o gate acusar e ainda assim sair 0.
+if [ -d conhecimento/entrada ]; then
+  # IFS so em quebra de linha: sem isso o word splitting do $(find) parte caminho com espaco
+  # em varios argumentos e a checagem de posicao afere pedaco de nome (R11, 2026-08-16).
+  _ifs_old=$IFS
+  IFS='
+'
+  for x in $(find conhecimento/entrada -type f -name '*.md' 2>/dev/null); do
+    IFS=$_ifs_old
+    rel=${x#conhecimento/entrada/}
+    case "$rel" in
+      LEIA-ME.md) ;;
+      */*/*) violacao "$x -- profundidade errada na caixa; verbete tem de ser entrada/<area>/<slug>.md (em subpasta ele nunca seria mesclado)" ;;
+      */*)   ;;
+      *)     violacao "$x -- solto na raiz da caixa; verbete tem de ser entrada/<area>/<slug>.md (aqui ele nunca seria mesclado)" ;;
+    esac
+    IFS='
+'
+  done
+  IFS=$_ifs_old
+
+  # Caixa com entrada e monolito de destino ausente: o mesclador falha nesse caso, entao o
+  # gate nao pode aprovar. Mesma classe gate<->mesclador, agora com o destino inexistente.
+  for d in resolver:COMO_RESOLVER.md fazer:COMO_FAZER.md; do
+    _area=${d%%:*}; _dest=${d#*:}
+    for y in conhecimento/entrada/$_area/*.md; do
+      [ -f "$y" ] || continue
+      if [ ! -f "conhecimento/$_dest" ]; then
+        violacao "conhecimento/$_dest ausente, mas a caixa tem entrada em entrada/$_area (o mesclador falharia)"
+      fi
+      break
+    done
+  done
+fi
+
+# A caixa (conhecimento/entrada/<area>/<slug>.md) existe pra sessoes concorrentes pararem de
+# colidir no monolito: arquivos diferentes nao dao conflito de git. Mas entrada fora de gate e
+# entrada que nasce invisivel -- exatamente o que a caixa deveria evitar.
+#
+# Por que bloco PROPRIO e nao mais um glob nos blocos 2/3: a checagem 2 exige que a ancora
+# apareca como (#ancora) no MESMO arquivo. Num arquivo de UM verbete isso nunca e verdade, e
+# estender o glob reprovaria toda entrada valida. Aqui a regra e outra: o NOME DO ARQUIVO e o
+# indice. E e ele que torna o merge deterministico e o split futuro mecanico.
+for f in conhecimento/entrada/*/*.md; do
+  [ -f "$f" ] || continue
+  base=$(basename "$f" .md)
+
+  # Fence primeiro: fence impar cega as checagens abaixo, entao acusar e parar por aqui.
+  aberto=$(awk '/^```/{fence=!fence; if (fence) linha=NR} END{print (fence ? linha : 0)}' "$f")
+  if [ "$aberto" -gt 0 ]; then
+    violacao "$f -- bloco de codigo aberto na linha $aberto e nunca fechado (o gate fica cego dali pra frente)"
+    continue
+  fi
+
+  # Padrao ESTRITO e igual ao do mesclador: '##' + espaco OU TAB, e a ancora fechando a linha.
+  # O padrao frouxo ('/^## .*\{#/') aceitava '## Titulo {#slug} sobra' e recusava '##<TAB>Titulo'
+  # -- nos dois casos gate e mesclador discordavam sobre o que e valido, e gate que aprova o
+  # que o passo seguinte recusa faz o checkpoint quebrar depois do commit (R11, 2026-08-16).
+  # tr -d '\r' antes do awk: arquivo CRLF no working tree (core.autocrlf desligado, ou
+  # Windows) faz o '$' do awk nao casar, e TODA entrada valida seria denunciada como
+  # malformada. No Git Bash passa; em bash nativo/CI, nao. O mesclador ja usa '\r?$' --
+  # esta era a mesma divergencia gate/mesclador de novo, agora por quebra de linha.
+  # Titulo VAZIO ('## {#slug}') tambem e malformado: o mesclador precisa do titulo pra montar
+  # a linha de indice, entao sem ele o gate aprovaria algo que o merge recusa (R11, 2026-08-16).
+  malformado=$(sed '1s/^\xEF\xBB\xBF//' "$f" | tr -d '\r' | awk '/^```/{fence=!fence; next} fence{next} (/^##[ \t]/ || /^##$/) && !/^##[ \t]+..*\{#[^}]+\}[ \t]*$/{print NR}' 2>/dev/null | head -1)
+  if [ -n "$malformado" ]; then
+    violacao "$f -- titulo na linha $malformado: a ancora {#slug} tem de FECHAR a linha (sem texto depois)"
+    continue
+  fi
+
+  # sed pega SO a ancora do fim da linha, como o regex do mesclador (que ancora em $). O
+  # 'grep -oE' anterior extraia TODAS as ocorrencias, entao '## Usar {#fake} e {#slug}' virava
+  # 2 ancoras no gate e 1 no mesclador -- divergencia de novo, agora em titulo exotico.
+  ancoras=$(sed '1s/^\xEF\xBB\xBF//' "$f" | tr -d '\r' | awk '/^```/{fence=!fence; next} fence{next} /^##[ \t]+..*\{#[^}]+\}[ \t]*$/{print}' 2>/dev/null \
+            | sed -E 's/.*\{#([^}]+)\}[ \t]*$/\1/')
+  n=$(printf '%s\n' "$ancoras" | grep -c '[^[:space:]]' || true)
+  if [ "$n" -ne 1 ]; then
+    violacao "$f -- a caixa e UM verbete por arquivo (achei $n titulos '## ... {#slug}')"
+    continue
+  fi
+  if [ "$ancoras" != "$base" ]; then
+    violacao "$f -- slug '#$ancoras' diverge do nome do arquivo '$base' (o nome do arquivo E o slug)"
+  fi
+
+  # Mesma janela de 4 linhas do bloco 3, e a crase continua opcional pelo mesmo motivo.
+  semtags=$(sed '1s/^\xEF\xBB\xBF//' "$f" | tr -d '\r' | awk '
+    /^```/ { fence = !fence; next }
+    fence { next }
+    /^[[:space:]]*>/ { next }
+    /^##[ \t]+.*\{#/ { if (p != "") print p; p=$0; c=0; next }
+    p != "" { c++; if ($0 ~ /^`?tags:/) p=""; else if (c >= 4) { print p; p="" } }
+    END { if (p != "") print p }
+  ')
+  if [ -n "$semtags" ]; then
+    violacao "$f -- verbete sem linha tags: (a busca de conhecimento nao acha)"
+  fi
+
+  # Duplicata: acusar AQUI e nao so no mesclador. Gate que aprova o que o passo seguinte
+  # recusa faz o checkpoint quebrar depois do commit ter passado -- e ensina a ignorar gate.
+  area=$(basename "$(dirname "$f")")
+  case "$area" in
+    resolver) destino="conhecimento/COMO_RESOLVER.md" ;;
+    fazer)    destino="conhecimento/COMO_FAZER.md" ;;
+    *)
+      # Area que o mesclador nao processa = verbete que fica na caixa PARA SEMPRE. Gate que
+      # aprova o que o passo seguinte ignora e o cenario exato que o bloco 3c existe pra
+      # impedir: conhecimento escrito e invisivel.
+      violacao "$f -- area '$area' desconhecida; o mesclador so processa 'resolver' e 'fazer' (o verbete ficaria na caixa pra sempre)"
+      continue
+      ;;
+  esac
+  if [ -f "$destino" ]; then
+    # Fora de fence, como TODAS as outras checagens deste bloco: um verbete que apenas CITA
+    # '{#slug}' como exemplo dentro de ``` nao pode bloquear uma entrada nova legitima.
+    # Comparacao sem distincao de caixa (ancora que difere so em maiuscula colide na
+    # renderizacao), mas feita baixando a caixa dos DOIS lados em vez de usar 'grep -i':
+    # neste Git Bash, `grep -iF` ABORTA com SIGABRT (rc=134) -- medido 2026-08-16. `-cF`
+    # sozinho funciona; e a combinacao -i + -F que quebra.
+    # grep -c em vez de -q: o -q sai no primeiro casamento, o tr/awk a montante levam SIGPIPE
+    # e o bash imprime "Done ..." no meio da saida do gate, sujando o diagnostico.
+    # Ancora e SO o que esta na linha de titulo. Varrer o texto todo fazia uma mencao inline
+    # em prosa ("a ancora e escrita como {#slug}") bloquear entrada nova legitima -- e a base
+    # de conhecimento fala de si mesma o tempo todo (R11 round 5, 2026-08-16).
+    base_lc=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
+    dup=$(sed '1s/^\xEF\xBB\xBF//' "$destino" | tr -d '\r' \
+          | awk '/^```/{fence=!fence; next} fence{next} /^##[ \t]+..*\{#[^}]+\}[ \t]*$/{print}' \
+          | sed -E 's/.*\{#([^}]+)\}[ \t]*$/\1/' \
+          | tr '[:upper:]' '[:lower:]' | grep -cxF "$base_lc")
+    if [ "$dup" -gt 0 ]; then
+      violacao "$f -- o slug '#$base' JA existe em $destino (duplicata quebraria os links das duas)"
+    fi
+  fi
+done
+
 # ---------- 4. Conteudo de kit staged sem bump de versao ----------
 # Os 6 testes de version-alignment provam que os 4 arquivos de versao CONCORDAM.
 # Nao provam que a versao ANDOU: 6.35.0 nos quatro, com template novo dentro,
