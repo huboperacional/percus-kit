@@ -58,6 +58,9 @@
 - [Teste que verifica ESTADO FINAL não pega regressão de ORDEM entre duas chamadas assíncronas](#teste-estado-final-nao-pega-ordem)
 - [Reusar "o mesmo discriminador" de uma função irmã sem copiar TODOS os ramos reintroduz o bug que a irmã já corrigiu](#discriminador-parcial-reintroduz-bug)
 - [Postgres reclama de "column X does not exist" onde X é um VALOR seu (aspas comidas pelo ssh)](#ssh-heredoc-come-aspas)
+- [SQLAlchemy+asyncpg: `isinstance(e.orig, UniqueViolationError)` NUNCA bate — checar `sqlstate`](#sqlalchemy-asyncpg-orig-nunca-e-a-excecao-nua)
+- [ORM manda `NULL` explícito por cima do `DEFAULT now()` do Postgres quando o atributo Python nunca é tocado](#orm-null-explicito-sobrepoe-server-default)
+- [Convite via magic-link falha com "same device" mesmo no primeiro clique — device-binding gera falso-negativo no fluxo de convite](#magic-link-device-binding-falha-no-convite)
 - [404 "por design" transforma erro de tenancy em bug invisível: 3 orgs homônimas e um link que nunca abre](#404-por-design-esconde-tenancy)
 - [Módulo fail-open: "quebrado" e "corretamente desligado" ficam idênticos de fora, e o teste passa nos dois](#fail-open-esconde-teste-vacuo)
 - [`ORDER BY created_at` não ordena um lote: `now()` é hora da TRANSAÇÃO](#created-at-nao-ordena-lote)
@@ -325,6 +328,11 @@
 - [Regex de escrita `\.campo\s*=` casa o primeiro `=` de uma COMPARAÇÃO `==`](#regex-de-escrita-casa-comparacao)
 - [Review cross-provider lê o `git diff` — arquivo NOVO é untracked e vira "finding fantasma"](#review-le-o-diff-arquivo-novo-parece-ausente)
 - [Trava mecânica validada por SUBSTRING passa com o símbolo citado em comentário](#trava-por-substring-aceita-mencao)
+- [Imagem de `git archive` feito no WINDOWS morre sem log: `entrypoint.sh` em CRLF](#git-archive-windows-crlf-mata-entrypoint)
+- [Corpus adversarial que VOCÊ escreve não substitui replay sobre tráfego real](#corpus-escrito-nao-substitui-replay-real)
+- [Mensagem de erro de serviço alheio virou "causa raiz" e documentou escassez que não existia](#mensagem-de-erro-alheia-promovida-a-diagnostico)
+- [Parser de dinheiro assume um idioma e lê mil vezes menos — `1.500` vira R$ 1,50](#parser-de-dinheiro-assume-locale)
+- [Código no agendador de terceiro DISPARA, mas como `PageView`, sem cookie e sem click id](#tracking-em-agendador-de-terceiro-dispara-mas-nao-conta)
 
 ---
 
@@ -8650,7 +8658,7 @@ só o túnel alcança. É o caminho para suíte de integração (RLS, CheckConst
 não há Docker local.
 
 **Ref:** Empresa Milionária, Fase 0, 2026-08-11 (diagnóstico); Fase A, 2026-08-12 (spike do
-container efêmero validado de ponta a ponta — `D:\Claud Automations\Finance\docs\superpowers\plans\2026-08-12-fase-a-dominio-pj.md`, emenda da Task 12). O comando documentado no handoff anterior estava
+container efêmero validado de ponta a ponta — `D:\Claud Automations\Empresa-Milionaria\docs\superpowers\plans\2026-08-12-fase-a-dominio-pj.md`, emenda da Task 12). O comando documentado no handoff anterior estava
 errado desde sempre e nunca havia sido exercido — o banco só tinha sido testado por `docker exec`.
 
 ---
@@ -11233,3 +11241,378 @@ empresa vizinha no corpo e exige 4xx. Nenhum teste escrito à mão cobria a comb
 testes, e dentro do tabuleiro de quem varre por construção.
 
 **Ref:** Empresa Milionária, Fase B Task 8 (fila de aprovação), 2026-08-14.
+
+---
+
+## SQLAlchemy+asyncpg: `isinstance(e.orig, UniqueViolationError)` NUNCA bate — checar `sqlstate` {#sqlalchemy-asyncpg-orig-nunca-e-a-excecao-nua}
+
+tags: sqlalchemy, asyncpg, postgres, integrityerror, unique violation, foreign key violation, dbapi, dialect, exception wrapping, 500 em vez de 409, sqlstate
+
+**Sintoma:** um `try/except IntegrityError` que deveria distinguir violação de `UNIQUE` (esperado,
+vira 409) de qualquer outra `IntegrityError` (inesperado, deveria propagar) nunca entra no ramo
+esperado — o código sempre cai no `raise` genérico e o cliente recebe **500** onde deveria
+receber **409**. Isso apesar de o código checar exatamente `isinstance(e.orig, UniqueViolationError)`,
+que "parece" certo e passa despercebido em teste unitário que constrói `IntegrityError(msg, None,
+UniqueViolationError())` diretamente — o mock não replica o wrapping real do dialect, então o
+teste valida a checagem contra um cenário que nunca acontece em produção.
+
+**Causa raiz:** o dialect `asyncpg` do SQLAlchemy (`sqlalchemy/dialects/postgresql/asyncpg.py`,
+`_asyncpg_error_translate`) mapeia **toda a hierarquia** `IntegrityConstraintViolationError`
+(que inclui `UniqueViolationError`, `ForeignKeyViolationError`, `CheckViolationError`, `NotNullViolationError`)
+pra **UMA SÓ classe genérica** (`AsyncAdapt_asyncpg_dbapi.IntegrityError`) — não há mapeamento
+específico por subtipo. O construtor é:
+
+```python
+translated_error = exception_mapping[super_]("%s: %s" % (type(error), error))
+translated_error.pgcode = translated_error.sqlstate = getattr(error, "sqlstate", None)
+raise translated_error from error
+```
+
+Ou seja: `e.orig` (o que o SQLAlchemy expõe pro caller) **nunca** é a exceção nua do asyncpg — nem
+por `isinstance`, nem por `type(e.orig).__name__` (que é sempre literalmente `"IntegrityError"`,
+não importa se a violação de verdade era unique/FK/check). O mesmo problema existe pro padrão
+"belt-and-suspenders" `isinstance(cause, X) or "X" in type(cause).__name__` — o segundo ramo
+também nunca bate, pela mesma razão.
+
+**Solução:** o dialect **preserva** o `sqlstate` original antes de embrulhar (linha citada acima).
+Códigos SQLSTATE são padrão SQL, não mudam por versão do driver:
+
+```python
+except IntegrityError as e:
+    if getattr(e.orig, "sqlstate", None) == "23505":   # unique_violation
+        raise AlreadyExistsError(...) from e
+    if getattr(e.orig, "sqlstate", None) == "23503":   # foreign_key_violation
+        raise CascadeBlockedError(...) from e
+    raise
+```
+
+Mais simples e mais robusto que perseguir `e.orig.__cause__` (que também funciona — o dialect faz
+`raise translated_error from error`, então a exceção real do asyncpg sobrevive em `__cause__` —
+mas exige checar `isinstance` num nível a mais) ou casar texto na mensagem. Tabela de códigos:
+`23505` unique · `23503` foreign_key · `23502` not_null · `23514` check.
+
+**Teste que pega de verdade:** o mock do `.orig` tem que replicar o wrapping — uma classe genérica
+com `.sqlstate` setado, não a exceção do asyncpg direta:
+
+```python
+def _wrapped_dbapi_error(real_exc):
+    wrapped = Exception(f"{type(real_exc)}: {real_exc}")
+    wrapped.sqlstate = real_exc.sqlstate   # asyncpg seta isso na classe, mesmo sem ir a rede
+    return wrapped
+
+session.flush.side_effect = IntegrityError("dup", None, _wrapped_dbapi_error(UniqueViolationError("msg")))
+```
+
+**Como foi encontrado:** `[5-T]` em produção (não teste mockado) — 2º voto na mesma votação devolveu
+500 em vez do 409 esperado pela constraint `UNIQUE(poll_id, investor_id)`. O teste unitário
+existente passava porque construía o mock errado.
+
+**Ref:** Micro Investors, Fase 2 (votação interna), migration `00046_voting.sql`, 2026-08-14.
+
+---
+
+## ORM manda `NULL` explícito por cima do `DEFAULT now()` do Postgres quando o atributo Python nunca é tocado {#orm-null-explicito-sobrepoe-server-default}
+
+tags: sqlalchemy, orm, not null violation, server_default, default now, timestamp, created_at, insert explicit null
+
+**Sintoma:** uma coluna `TIMESTAMPTZ NOT NULL DEFAULT now()` no schema, nunca setada
+explicitamente no código Python que constrói o objeto ORM, estoura `NotNullViolationError` no
+INSERT — mesmo o schema tendo um default perfeitamente válido. Confunde porque a expectativa
+comum é "se eu não setar, o banco preenche" (comportamento real de **algumas** combinações de
+SQLAlchemy/dialect/versão, não de todas — não assuma).
+
+**Causa raiz:** o `DEFAULT now()` do Postgres só entra em jogo quando a coluna **não aparece** na
+lista de colunas do `INSERT`. Se o SQLAlchemy decide incluir a coluna no INSERT com valor `NULL`
+(o comportamento observado aqui, em vez de omitir a coluna e deixar o server default assumir), a
+constraint `NOT NULL` estoura antes do default ter qualquer chance de agir — não é um conflito
+entre "dois defaults", é a ausência total de um valor client-side vencendo por ordem de operação.
+
+**Solução — dupla camada, não confie só numa:**
+
+1. **Call-site:** setar o valor explicitamente no momento da construção do objeto:
+   ```python
+   poll = VotePoll(..., created_at=datetime.now(timezone.utc))
+   ```
+2. **Estrutural (não deixe pra disciplina de quem escreve o próximo call site):** `default=` no
+   próprio `mapped_column` — o SQLAlchemy aplica isso automaticamente pra QUALQUER instância que
+   não setar o campo, do mesmo jeito que já faz para PKs `default=uuid4`:
+   ```python
+   def _utcnow() -> datetime:
+       return datetime.now(timezone.utc)
+
+   created_at: Mapped[datetime | None] = mapped_column(
+       TIMESTAMP(timezone=True), nullable=True, default=_utcnow
+   )
+   ```
+   Sem a camada 2, o bug volta na próxima vez que alguém criar o objeto sem lembrar da camada 1.
+
+**Como foi encontrado:** `[5-T]` em produção — `POST /voting/` (criar poll) devolveu 500 real,
+`created_at` chegando `NULL` no INSERT apesar de `NOT NULL DEFAULT now()` no schema. Teste
+unitário mockado não pegaria (mock de `session.add`/`session.commit` não executa SQL de verdade).
+
+**Ref:** Micro Investors, Fase 2 (votação interna), 2026-08-14.
+
+---
+
+## Convite via magic-link falha com "same device" mesmo no primeiro clique — device-binding gera falso-negativo no fluxo de convite {#magic-link-device-binding-falha-no-convite}
+
+tags: magic link, auth-service, device binding, invite flow, 401, context mismatch, onboarding
+
+**Sintoma:** um fluxo de "convidar usuário" (admin dispara convite → auth-service manda
+magic-link por email/WhatsApp → convidado clica → `POST /auth/magic/consume`) falha com `401`
+mesmo no **primeiro clique de um código nunca usado antes** — reproduzido com código fresco em
+browser isolado (sem cookies/localStorage residuais), então não é reuso nem race.
+
+**Causa raiz (auth-service Percus):** o magic-link tem **device-binding** — o consume só sucede
+se o dispositivo que clica bate com um contexto de dispositivo capturado antes (provavelmente no
+momento do `issue`, via `forwarded_for`/`user_agent` do request que disparou o convite). Isso é
+uma proteção sensata contra phishing/link-forwarding **quando quem clica é o mesmo que pediu o
+link** (ex.: "esqueci minha senha"), mas quebra por design no caso de **convite**, onde o
+CONSUMIDOR é necessariamente um dispositivo diferente do ADMIN que convida — o binding captura o
+contexto do admin, não do convidado, e a mismatch é estrutural, não um edge case raro.
+
+**Sintoma no frontend:** a resposta real do auth-service é
+`{"error_code":"magic_context_mismatch","detail":"Magic link must be opened on same device"}`,
+mas o handler do frontend mapeia genericamente pra "link expirado" (colapsa 401/422 na mesma
+mensagem por anti-oracle) — quem vê o erro não tem como saber que é device-binding, não expiração.
+
+**Contorno usado (não é fix, é workaround pontual):** pular o magic-link inteiramente — linkar o
+registro de domínio (aqui, `investors.user_id`) direto ao usuário admin JÁ autenticado, via
+endpoint interno de link (`/users/{id}/link-investor`), sem passar pelo fluxo de convite.
+Funciona pra teste/setup, não serve pra onboarding real de terceiros.
+
+**Ação real:** é bug/comportamento do **auth-service**, não do produto consumidor — reportar ao
+time do auth-service com a reprodução (código fresco, browser isolado, primeiro clique, resposta
+`magic_context_mismatch`). Provável que nenhum teste do auth-service cubra o caso "quem clica ≠
+quem pediu" porque a maioria dos consumidores testa magic-link só no caso self-service.
+
+**Como foi encontrado:** `[5-T]` em produção, tentando convidar um investidor de teste
+descartável — 3 tentativas (script direto, UI real do admin, código fresco em browser isolado via
+Playwright MCP) todas falharam da mesma forma, eliminando hipóteses de contaminação de sessão.
+
+**Ref:** Micro Investors, Fase 2 (votação interna), tentativa de onboard de investidor de teste,
+2026-08-14.
+
+## Imagem buildada de `git archive` feito no WINDOWS morre sem log: `entrypoint.sh` em CRLF {#git-archive-windows-crlf-mata-entrypoint}
+
+tags: docker, swarm, entrypoint, crlf, autocrlf, git archive, windows, exit 255, no such file or directory, rollback_completed, gitattributes
+
+**Sintoma.** Task do Swarm falha com `task: non-zero exit (255)`, container fica em `Created` e
+produz **zero linha de log**. `docker service update` termina com "converged" — mas
+`UpdateStatus` diz `rollback_completed`. `docker run` na imagem revela:
+`exec /usr/local/bin/entrypoint.sh: no such file or directory`, com o arquivo presente.
+
+**Causa.** `git archive` rodado no Windows com `core.autocrlf=true` e sem `.gitattributes` grava o
+shell script em CRLF. O shebang vira `#!/bin/sh\r` e o kernel procura o interpretador `/bin/sh\r`,
+que não existe. A mensagem "no such file or directory" fala do INTERPRETADOR, não do script.
+
+**Diagnóstico em 1 comando:**
+```
+docker run --rm --entrypoint /bin/sh <img> -c 'head -1 /usr/local/bin/entrypoint.sh | od -c | head -1'
+# bom:      # ! / b i n / s h \n
+# quebrado: # ! / b i n / s h \r \n
+```
+
+**Correção.** Não transferir contexto de build via tarball feito no Windows. Bundle → checkout no
+Linux → build de lá:
+```
+git bundle create x.bundle <sha-da-vps>..<branch>     # use o NOME da branch; SHA solto = "empty bundle"
+# upload em chunks de 256KB (write unico de >2MB quebra em silencio)
+git -C /opt/<repo> fetch /tmp/x.bundle 'refs/heads/<branch>:refs/heads/tmp'
+git -C /opt/<repo> worktree add --detach /tmp/wt-<sha> <sha>   # worktree: nao suja o clone
+docker build -t <img> /tmp/wt-<sha>/<contexto>
+```
+
+**Dois ruídos que fazem perder tempo neste diagnóstico:**
+1. `pulling image failed ... pull access denied` aparece para TODA imagem local sem registry,
+   **inclusive nas que sobem normalmente**. É ruído, não a causa.
+2. **Serviço irmão saudável não é evidência sobre a imagem.** Um worker cujo spec define
+   `entrypoint: ["arq", ...]` **substitui** o entrypoint da imagem e nunca executa o `.sh` quebrado —
+   ele roda liso enquanto a API recusa a mesma imagem. Compare o caminho de boot, não o resultado.
+
+**Não "conserte" trocando `update_failure_action` de `rollback` para `pause`:** o rollback estava
+certo, barrou uma imagem que de fato não sobe. Se trocar para diagnosticar, **devolva** no fim.
+
+## Corpus adversarial que VOCÊ escreve não substitui replay sobre tráfego real {#corpus-escrito-nao-substitui-replay-real}
+
+tags: teste, corpus adversarial, replay, trafego real, mutation test, falso negativo, ponto cego do autor, denominador honesto, guarda de escrita
+
+**Sintoma.** A suíte cobre todos os casos que a spec listou, o mutation-test derruba os testes ao
+desligar a regra, e mesmo assim o sistema autoriza em produção exatamente a operação que ele foi
+construído para impedir.
+
+**Como aparece (Família Milionária, 2026-08-15).** Um portão de escrita financeira tinha 15 casos
+adversariais cobertos pelo pipeline real, todos verdes. O replay sobre `whatsapp_logs` — as
+mensagens que usuários REAIS mandaram — mostrou o portão devolvendo `APLICAR` para
+*"mas eu ja paguei a parcela do fone desse mês, a próxima agora é só em setembro"*, escrevendo na
+parcela **futura** que a própria frase diz que ainda não foi paga. Era a segunda escrita do
+incidente que originou o portão.
+
+**Causa.** A frase tem DUAS orações: uma afirma um pagamento, a outra fala do que ainda vai vencer.
+O extrator de mês varria a frase inteira e capturava o mês da oração que **nega** o pagamento. Como
+a regra "mês nomeado escolhe a ocorrência" tinha precedência sobre "só sobrou futuro: nunca aplica",
+o mês citado furava justamente a regra que existia para barrar aquilo.
+
+**Conserto.** O período que ESCOLHE o alvo tem de ser dito na mesma oração do verbo de pagamento
+(dividir por pontuação, ficar com as orações que têm o verbo). Sem verbo na frase, vale o texto
+inteiro — respostas de menu ("1", "todas") não têm verbo, e exigir um quebraria esse caminho.
+
+**A lição, que é maior que o bug.** Corpus adversarial escrito pelo próprio autor da regra herda os
+pontos cegos do autor: eu jamais teria inventado uma frase com duas orações em que a segunda contém
+um mês que não é o do pagamento. Linguagem real produz construções que a imaginação de quem escreve
+o teste não gera. **Replay sobre tráfego gravado não é cerimônia de aceite — é a única fonte de
+casos que você não pensou.** Rode antes do deploy, chamando a FUNÇÃO DE PRODUÇÃO (nunca uma cópia da
+regra: replay que reimplementa a política mede um mundo que não existe), e realimente o corpus com
+todo achado antes de subir.
+
+**Ressalva obrigatória no relatório.** Reporte o denominador honesto. "Zero falso positivo" sobre
+13 mensagens das quais só 3 exercitam a regra é teto sobre aquele tráfego, não aprovação — e essa
+frase precisa estar escrita, senão o número vira selo.
+
+---
+
+## Mensagem de erro de serviço alheio virou "causa raiz" e documentou uma escassez que não existia {#mensagem-de-erro-alheia-promovida-a-diagnostico}
+
+tags: diagnostico, servico de terceiro, http 400, mensagem de erro, causa nao medida, documentacao, pendencia destrutiva, port allocate
+
+**Sintoma.** Um serviço central recusa uma operação com `HTTP 400` e uma mensagem que **explica a
+si mesma** ("range exausto: ~349 projetos ocupam as 350 vagas"). A explicação entra na
+documentação do consumidor como fato apurado, vira pendência de operador, e o projeto passa a
+carregar um `unverified: true` e um plano de saneamento para um problema que nunca existiu.
+
+**Como aparece (Empresa Milionária, 2026-08-11 → 15).** O `/admin/projects/port-allocate` do
+Painel de Gestão recusou alocar porta. O `docs/PORTS.md` do projeto registrou o range global
+3000–9999 como esgotado, com 349 projetos, e abriu "pendência do operador: realocar slugs
+deprecated" — operação que afeta terceiros. Quatro dias depois a devolutiva do Painel **mediu**:
+**12 projetos**, ocupando `3000`–`3160`. O range estava praticamente vazio.
+
+**Causa (do lado de lá).** O alocador escolhia `próxima = MAX(port_base) + 20`. Uma linha de
+teste esquecida (`test-port-exhaust-sentinel`) estava em `9980`, então `9980 + 20 = 10000 > 9999`
+reprovava **qualquer** projeto novo. A linha vazou porque o teste que a criava só limpava depois
+do `assert` — qualquer falha deixava o sentinela no banco. A mensagem de erro afirmava uma causa
+(escassez) que o código nunca mediu.
+
+**A lição, que não é sobre portas.** Mensagem de erro de serviço alheio é **sintoma**, não
+diagnóstico. Ela é escrita por quem supôs por que a operação falharia, e envelhece sem ninguém
+notar, porque o autor não vê o consumidor copiando aquilo para dentro da documentação dele. Ao
+documentar a falha de um serviço de terceiro:
+
+1. Registre a **mensagem literal** e o que você **observou** — não a causa que ela alega.
+2. Se a causa alegada for verificável (contagem, ocupação, quota), **meça** antes de escrever.
+   Não dá para medir de fora? Escreva "o serviço alega X; não verificado".
+3. **Nunca abra pendência destrutiva** (realocar, apagar, migrar recurso de terceiro) a partir de
+   causa não medida. Foi o que quase aconteceu aqui.
+4. Avise o dono do serviço. Foi a devolutiva que fechou o caso — e o bug de lá só apareceu porque
+   alguém do lado de cá relatou o `400`.
+
+**Contraprova barata.** O fallback determinístico do consumidor (`sha256(slug)` → bloco) escolheu
+`5580`, e o registro central **confirmou exatamente essa porta** depois do conserto. Ou seja: a
+"escassez" nunca chegou a afetar a decisão — só a documentação.
+
+---
+
+## Parser de dinheiro assume um idioma e lê mil vezes menos — `1.500` vira R$ 1,50 {#parser-de-dinheiro-assume-locale}
+
+tags: dinheiro, locale, separador decimal, separador de milhar, intl, numberformat, pt-BR, en-US, parser, centavos, ordem de grandeza
+
+**Sintoma.** Campo de valor aceita o que o usuário digita e grava outro número. Não é
+arredondamento: é ordem de grandeza. `1.500` entra como `1,50`, `12.480` como `12,48`. O
+formulário não acusa nada, o backend recebe um `Decimal` válido, e o erro só aparece quando
+alguém confere o total contra o boleto.
+
+**Causa.** `.` e `,` **trocam de papel entre idiomas**. Em `pt-BR` e `es-ES` o ponto é
+separador de milhar e a vírgula é decimal; em `en-US` é o inverso. Um parser escrito para um
+dos dois lê o outro errado por um fator de 1000. E há um segundo nível: mesmo dentro de um
+idioma, quando **só um** separador aparece a string é ambígua — `12.480` é doze mil e
+quatrocentos e oitenta, mas `12.48` é doze e quarenta e oito, e os dois têm o mesmo formato.
+
+**Como aparece (Empresa Milionária, 2026-08-15).** A tela de cadastro de título nasceu com
+`emCentavos` assumindo `pt-BR`: sem vírgula, tratava o ponto como decimal. O placeholder do
+campo era justamente `12.480,00`, então digitar `12.480` — o mesmo número sem os centavos —
+gravava R$ 12,48. Achado por review cross-provider, não por teste: o frontend não tinha
+runner unitário.
+
+**Conserto, em duas partes.**
+
+1. **Pergunte os separadores ao `Intl`, não os escreva à mão.**
+   ```js
+   const p = new Intl.NumberFormat(locale).formatToParts(12345.6)
+   const decimal = p.find(x => x.type === 'decimal').value
+   const milhar  = p.find(x => x.type === 'group').value
+   ```
+   Tabela escrita à mão cobre os idiomas que você lembrou e erra no primeiro que não. `fr-FR`
+   usa espaço estreito (U+202F) no milhar, e nenhuma lista de três idiomas prevê isso.
+
+2. **Desfaça a ambiguidade por AGRUPAMENTO, não por idioma.** Quando só o separador que não
+   é o decimal do locale aparece: se todos os grupos depois do primeiro têm **exatamente três
+   dígitos**, é milhar; senão, é alguém digitando o decimal com a tecla do teclado numérico.
+
+**Devolva a leitura em voz alta.** Sob o campo, mostre o valor interpretado
+("entendido como R$ 12.480,00"). É a defesa que funciona mesmo quando o parser erra, e custa
+uma linha — num campo de dinheiro, ver o que o sistema entendeu antes de salvar vale mais que
+qualquer heurística.
+
+**A decisão de arquitetura que veio junto: moeda e locale são EIXOS INDEPENDENTES.** A
+tentação é derivar um do outro (`pt-BR` → BRL) e ela está errada: exportadora brasileira que
+fatura em dólar existe, e é o caso comum de quem pede o recurso. Guarde os dois campos,
+separados, na entidade que os possui — no caso, a empresa, porque moeda é propriedade da
+entidade legal e não preferência de quem está logado. Teste que prova a independência tem que
+usar um par **cruzado** (`moeda=USD`, `locale=pt-BR`): com o par default nos dois lados, uma
+implementação que inferisse passaria em tudo.
+
+**Formate com `style: 'currency'`, nunca concatenando o símbolo.** A posição é do locale: em
+`pt-BR` sai `R$ 12.480,00`, em `es-ES` sai `12.480,00 €` — símbolo depois. `"R$ " + numero`
+funciona até o dia em que a moeda muda, e aí imprime duas moedas na mesma linha.
+
+## Colei o código no agendador de terceiro e "não funcionou" — ele DISPARA, só que como `PageView`, sem cookie e sem click id {#tracking-em-agendador-de-terceiro-dispara-mas-nao-conta}
+
+tags: tracking, pixel, agendador de terceiro, iframe, pageview, click id, fbclid, gclid, cookie de origem, atribuicao, conversao
+
+**Sintoma.** O cliente instala o snippet de tracking no agendador externo (Acuity, Calendly,
+similar), a campanha segue gastando e o painel de anúncios continua marcando **0 conversões**. A
+leitura fácil — "não instalou" ou "a campanha não converte" — está errada nas duas pontas.
+
+**Como confirmar em 1 query, sem acesso ao painel do cliente.** Procure evento **seu** cujo
+`event_source_url` seja de um **domínio que não é do cliente**:
+
+```sql
+SELECT created_at, event_name, session_id, google_ads_dispatches, left(event_source_url,120)
+FROM tracking.event_log
+WHERE tenant_id = :t AND event_source_url ILIKE '%<dominio-do-agendador>%'
+ORDER BY created_at DESC;
+```
+
+Se voltar linha, **está instalado**. E dá pra auditar *o que exatamente* foi colado sem entrar no
+painel dele: o Acuity carrega o código num frame cuja URL leva o próprio snippet em base64 no
+parâmetro `c=` — decodificar devolve a tag literal que o cliente colou.
+
+**Causa — três camadas independentes, e passar na primeira não diz nada sobre as outras.**
+
+1. **O loader genérico só sabe emitir `PageView`**, e `PageView` normalmente tem guarda de servidor
+   pra nunca despachar (reemitir PageView move régua que não é sua). O próprio registro de despacho
+   confessa: `"skipped: pageview nunca despacha"`.
+2. **Não há cookie nem sessão.** O cookie de visitante é first-party do domínio do cliente; no
+   domínio do agendador é **cross-site** e não viaja. Sem sessão, **sem click id** — e isso é
+   permanente, não um bug a consertar.
+3. **A página de conversão não recebe a query string da reserva.** Mesmo que o `gclid` tenha chegado
+   à página de agendamento, o frame de conversão é outra URL e não o carrega.
+
+**Conserto — pare de perseguir o click id e vá por IDENTIDADE.** Esses agendadores expõem variáveis
+que eles mesmos preenchem (no Acuity: `%email%`, `%price%`, `%id%`, `%appointmentType%`, …) e
+**nenhuma delas é `gclid`/`utm`/moeda**. O e-mail é a matéria-prima de *enhanced conversions for
+leads* (o Google casa o hash de volta no clique) e de *advanced matching* da CAPI. Três cuidados que
+só aparecem depois:
+
+- **Moeda não vem.** Só o número. Tirar a moeda de um default embutido manda valor errado por um
+  fator de câmbio — pior que mandar sem valor. A fonte certa é a moeda registrada **na conta de
+  anúncios**.
+- **A variável pode chegar literal.** Se o agendador não substituir, você recebe a string
+  `%email%` — hashear isso cria um identificador estável e falso, que casa com nada e polui todo
+  tenant. Valide forma de e-mail **antes** de hashear.
+- **O frame recarrega.** Sem chave de idempotência (o `%id%` da reserva) a mesma reserva conta duas
+  vezes.
+
+**A lição de leitura, que custou 2 dias.** O primeiro disparo apareceu no `event_log` e foi
+arquivado como *"curiosidade: nosso loader rodando em domínio de terceiro"*, enquanto o HANDOFF
+seguia dizendo "falta instalar no agendador". **Evento seu num domínio que não é do cliente é sinal
+de instalação, não esquisitice** — trate como achado, não como ruído.
