@@ -5,6 +5,7 @@ Describe "cross-claude.ps1 -Mode load logic" {
     BeforeAll {
         $script:wrapperPath = Join-Path $PSScriptRoot ".." "providers" "cross-claude.ps1"
         $script:orchPath = Join-Path $PSScriptRoot ".." "scripts" "council-orchestrator.ps1"
+        $script:orchShPath = Join-Path $PSScriptRoot ".." "scripts" "council-orchestrator.sh"
         $script:consultPromptPath = Join-Path $PSScriptRoot ".." "providers" "system-prompt-consult.md"
         $script:reviewPromptPath  = Join-Path $PSScriptRoot ".." "providers" "system-prompt-review.md"
         $env:ANTHROPIC_API_KEY = "test-key-not-used"
@@ -59,6 +60,44 @@ Describe "cross-claude.ps1 -Mode load logic" {
         $produzidos.Count | Should -BeGreaterThan 0 -Because "o switch tem que produzir modelos"
         foreach ($modelo in $produzidos) {
             $permitidos | Should -Contain $modelo -Because "$modelo e atribuido pelo router"
+        }
+    }
+
+    It "o router por modo do .ps1 e do .sh escolhem os MESMOS modelos" {
+        # O conselho tem dois orquestradores (PowerShell e bash) com a mesma tabela escrita duas
+        # vezes. Em 2026-08-15 o .ps1 subiu pra geracao 5 e o .sh ficou na 4 -- e foi empurrado
+        # assim na 6.36.2, porque nada comparava os dois. Quem roda por bash usava outro conselho.
+        $psSrc = Get-Content $orchPath -Raw
+        $shSrc = Get-Content $orchShPath -Raw
+
+        $psBloco = [regex]::Match($psSrc,
+            '\$CrossClaudeModel = switch \(\$Mode\) \{(?<b>.+?)\n    \}', 'Singleline')
+        $psBloco.Success | Should -BeTrue -Because "o switch do .ps1 precisa ser localizavel"
+        # captura "modo { modelo }" ignorando linhas de comentario
+        $psMapa = @{}
+        foreach ($m in [regex]::Matches($psBloco.Groups['b'].Value,
+                '(?m)^\s*"?(?<modo>[a-z\-]+|default)"?\s*\{\s*"(?<modelo>[^"]+)"\s*\}')) {
+            $psMapa[$m.Groups['modo'].Value] = $m.Groups['modelo'].Value
+        }
+
+        # NAO ancorar no bloco `case "$MODE" in`: existem DOIS no arquivo (o primeiro e o parser
+        # de argumentos) e um Match pega o primeiro -- foi assim que este teste nasceu verde-
+        # vazio. Ancora na propria atribuicao, e exige valor "claude-*" pra nao capturar a linha
+        # `--cross-claude-model) CROSS_CLAUDE_MODEL="$2"` do parser.
+        $shMapa = @{}
+        foreach ($m in [regex]::Matches($shSrc,
+                '(?m)^\s*(?<modo>[a-z\-]+|\*)\)\s*CROSS_CLAUDE_MODEL="(?<modelo>claude-[^"]+)"')) {
+            $modo = if ($m.Groups['modo'].Value -eq '*') { 'default' } else { $m.Groups['modo'].Value }
+            $shMapa[$modo] = $m.Groups['modelo'].Value
+        }
+
+        # Anti-vacuidade dos dois lados: regex que parasse de casar deixaria o teste verde.
+        $psMapa.Count | Should -BeGreaterThan 2 -Because "o .ps1 tem 4+ modos mapeados"
+        $shMapa.Count | Should -BeGreaterThan 2 -Because "o .sh tem 4+ modos mapeados"
+        ($psMapa.Keys | Sort-Object) -join ',' | Should -Be (($shMapa.Keys | Sort-Object) -join ',') `
+            -Because "os dois orquestradores tem que cobrir os mesmos modos"
+        foreach ($modo in $psMapa.Keys) {
+            $shMapa[$modo] | Should -Be $psMapa[$modo] -Because "modo '$modo' divergiu entre .ps1 e .sh"
         }
     }
 }

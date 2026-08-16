@@ -46,6 +46,21 @@ curta **não dispara bloco de thinking** — o smoke via verde enquanto todo rev
 Perna de conselho tem de ser validada com prompt que force raciocínio; confirmar que a API responde
 não é confirmar que o provider entrega.
 
+**A 6.36.2 também subiu o modelo só do lado PowerShell.** O `council-orchestrator.sh` continuou
+roteando para `claude-sonnet-4-6` / `claude-opus-4-7`, e foi empurrado assim: quem roda o conselho
+por bash consultava outro conselho. Junto vinham `fact-check.sh` (que ainda mandava
+`temperature: 0.2` — sampling param que a família Sonnet 5 / Opus 4.7+ **rejeita com 400**, então
+trocar só o modelo ali teria quebrado o fact-check em toda chamada) e `smoke-cache-f1.ps1`.
+Corrigidos os três, mais dois comentários do `cross-claude.ps1` que ainda citavam a geração 4.
+
+**Teste de paridade `.ps1` ↔ `.sh`** em `cross-claude-mode-load.tests.ps1`: extrai o router por modo
+dos dois orquestradores e exige tabelas idênticas, com anti-vacuidade dos dois lados. Mutação
+confirmada (trocar um modelo no `.sh` derruba o teste). Ele nasceu **verde e vazio** na primeira
+tentativa: existem *dois* blocos `case "$MODE" in` no `.sh` e o regex casou o primeiro, que é o
+parser de argumentos — por isso a âncora agora é a própria atribuição de `CROSS_CLAUDE_MODEL`,
+exigindo valor `claude-*`. Guarda contra a classe inteira: duas cópias da mesma tabela, escritas em
+linguagens diferentes, sem nada comparando as duas.
+
 ⚠️ **Limites do provider que ficam conhecidos** (não corrigidos aqui): `-TimeoutSec 60` é hardcoded,
 sem parâmetro — diff grande + thinking estoura. E **não reduza `MaxTokens`** para compensar: em
 Sonnet 5 o teto cobre pensamento + resposta juntos, então 4000 fez o modelo gastar tudo pensando e

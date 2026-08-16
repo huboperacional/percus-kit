@@ -221,11 +221,14 @@ fi
 # F.2 Automatic router: choose Cross-Claude model by mode (unless overridden)
 if [[ -z "$CROSS_CLAUDE_MODEL" ]]; then
     case "$MODE" in
+        # Haiku 4.5 fica: nao existe Haiku 5. Mantenha em sincronia com o switch do .ps1 --
+        # ha teste de paridade (cross-claude-mode-load.tests.ps1) porque em 2026-08-15 o .ps1
+        # subiu pra geracao 5 e este arquivo ficou pra tras, empurrado assim na 6.36.2.
         consult)    CROSS_CLAUDE_MODEL="claude-haiku-4-5";;
-        review)     CROSS_CLAUDE_MODEL="claude-sonnet-4-6";;
-        pre-mortem) CROSS_CLAUDE_MODEL="claude-opus-4-7";;
-        analyze)    CROSS_CLAUDE_MODEL="claude-sonnet-4-6";;
-        *)          CROSS_CLAUDE_MODEL="claude-sonnet-4-6";;
+        review)     CROSS_CLAUDE_MODEL="claude-sonnet-5";;
+        pre-mortem) CROSS_CLAUDE_MODEL="claude-opus-5";;
+        analyze)    CROSS_CLAUDE_MODEL="claude-sonnet-5";;
+        *)          CROSS_CLAUDE_MODEL="claude-sonnet-5";;
     esac
 fi
 

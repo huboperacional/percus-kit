@@ -44,7 +44,7 @@ function Invoke-Call($label, $userPrompt) {
     Write-Host "Call $label ($userPrompt)..." -NoNewline
     $tmpIn = New-TemporaryFile
     Set-Content -Path $tmpIn -Value $userPrompt -Encoding utf8
-    $rawOut = & pwsh -NoProfile -File $Wrapper -PromptFile $tmpIn.FullName -Mode consult -Model "claude-sonnet-4-6" 2>&1
+    $rawOut = & pwsh -NoProfile -File $Wrapper -PromptFile $tmpIn.FullName -Mode consult -Model "claude-sonnet-5" 2>&1
     Remove-Item $tmpIn -Force
     $json = $rawOut | ConvertFrom-Json
     Write-Host " latency=$($json.latency_ms)ms"

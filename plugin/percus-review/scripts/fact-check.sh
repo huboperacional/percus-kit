@@ -152,9 +152,14 @@ def call_anthropic(user_prompt):
     if not api_key:
         return None, "ANTHROPIC_API_KEY ausente"
     body = json.dumps({
-        "model": "claude-sonnet-4-6",
-        "max_tokens": 256,
-        "temperature": 0.2,
+        # Sem "temperature": a familia Sonnet 5 / Opus 4.7+ removeu os sampling params e devolve
+        # 400 se recebidos. Trocar o modelo aqui SEM tirar o temperature junto quebraria o
+        # fact-check em toda chamada -- foi exatamente assim que o cross-claude.ps1 quebrou antes.
+        "model": "claude-sonnet-5",
+        # 4096 e nao 256: com thinking ligado por padrao o teto cobre pensamento + resposta, e
+        # 256 seria consumido pelo raciocinio antes de sobrar veredito -- o mesmo defeito que
+        # calou a perna Cross-Claude na 6.36.2. Teto nao e consumo: veredito curto continua curto.
+        "max_tokens": 4096,
         "system": [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
         "messages": [{"role": "user", "content": user_prompt}]
     }).encode("utf-8")

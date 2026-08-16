@@ -22,7 +22,7 @@
   Default: 1024.
 
 .PARAMETER Model
-  Default: claude-sonnet-4-6 (orchestrator vai passar conforme router F.2).
+  Default: claude-sonnet-5 (orchestrator vai passar conforme router F.2).
 
 .PARAMETER Endpoint
   Default: https://api.anthropic.com/v1/messages
@@ -112,7 +112,7 @@ if (-not $userPrompt -or $userPrompt.Trim().Length -eq 0) {
 # IMPORTANTE: system deve ser array de blocks com cache_control — NAO string simples.
 # Anthropic API rejeita cache_control se system for string.
 # NAO enviar temperature/top_p/top_k: a familia Opus 4.7+ / Sonnet 5 / Fable 5 removeu os
-# sampling params e retorna 400 se recebidos. O pre-mortem usa claude-opus-4-7, entao enviar
+# sampling params e retorna 400 se recebidos. O pre-mortem usa claude-opus-5, entao enviar
 # temperature quebrava o cross-claude do conselho toda vez. Steering vai por prompt, nao por sampling.
 $body = @{
     model      = $Model
