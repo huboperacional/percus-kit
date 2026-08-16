@@ -17,6 +17,12 @@
 
 ## Índice
 
+- [Script que escreve sob RLS sem declarar contexto: um caso ESTOURA, o outro duplica calado](#script-sob-rls-sem-contexto-duplica-calado)
+- [Tag `latest` no stack do Swarm anula o `failure_action: rollback` escrito ao lado](#latest-anula-rollback-do-swarm)
+- [Guarda no ponto da ESCRITA não protege fluxo de DOIS turnos (o menu resolve o alvo antes)](#guarda-de-escrita-nao-cobre-dois-turnos)
+- [Card promete forma de resposta que ninguém lê — audite pelo ESTADO de sessão, não pelo nome do handler](#card-promete-resposta-que-ninguem-le)
+- [Trava que nasceria VERMELHA é trava desligada — inventário fechado que só encolhe](#trava-vermelha-no-dia-1)
+- [Smoke que depende de serviço externo precisa distinguir DEGRADADO de ERRADO](#smoke-degradado-vs-errado)
 - [Medi a silhueta por subtracao de fundo e ela mentiu (objeto e fundo com a mesma luminosidade)](#mascara-fundo-objeto-mesma-luminancia)
 - [Diretorio de saida de lote idempotente preserva o REPROVADO e o entrega como aprovado](#lote-idempotente-preserva-reprovado)
 - [Varredura de identidade que cobre só o backend deixa o FRONTEND com a identidade do produto de origem](#varredura-de-identidade-nao-alcanca-o-frontend)
@@ -11666,3 +11672,183 @@ só aparecem depois:
 arquivado como *"curiosidade: nosso loader rodando em domínio de terceiro"*, enquanto o HANDOFF
 seguia dizendo "falta instalar no agendador". **Evento seu num domínio que não é do cliente é sinal
 de instalação, não esquisitice** — trate como achado, não como ruído.
+
+## Script que escreve sob RLS sem declarar contexto: um caso ESTOURA, o outro duplica calado {#script-sob-rls-sem-contexto-duplica-calado}
+
+tags: rls, row level security, postgres, seed, script operacional, idempotencia, sqlite, set_config, multi-tenant, falso verde, InsufficientPrivilegeError
+
+**Sintoma.** Um script operacional (seed, backfill, importador) passa em toda a suíte — que roda em
+SQLite — e morre na primeira execução contra o banco de verdade:
+
+```
+InsufficientPrivilegeError: new row violates row-level security policy for table "papeis_empresa"
+```
+
+E há um segundo modo, **pior porque não estoura**: o script se diz idempotente, roda duas vezes e
+**duplica tudo**. Sem erro nenhum.
+
+**Causa.** As duas são a mesma: o script nunca declarou o contexto que a política lê
+(`SET LOCAL app.empresa_id` / `app.usuario_id`, via `set_config(..., true)`).
+
+- No `INSERT`, o `WITH CHECK` recusa a linha → o erro acima. Barulhento, achado em minutos.
+- No `SELECT`, o `USING` devolve **conjunto vazio**. O get-or-create pergunta "já existe?", ouve
+  "não" e cria de novo. Nenhuma exceção, nenhum log, nenhuma constraint violada — porque as linhas
+  da rodada anterior existem e estão apenas **invisíveis** para esta transação.
+
+SQLite não tem RLS. Lá não há política para violar nem para filtrar, e os dois defeitos passam
+verdes por **ausência de mecanismo**, não por correção.
+
+**Ordem, quando a tabela de papéis é isolada por usuário.** Declare o **usuário antes do papel**: a
+tabela que responde "de quais empresas este usuário participa" não pode ser filtrada por empresa
+(seria circular no login), então ela é isolada por `usuario_id`. Consultá-la antes de declarar quem
+é o usuário faz a política negar justamente a linha que decide o acesso.
+
+```python
+await aplicarContextoDoUsuario(session, usuario.id)   # 1º — libera papeis_*
+await aplicarContextoDaEmpresa(session, empresa.id)   # 2º — libera as tabelas com empresa_id
+```
+
+**Diagnóstico em 1 comando** — rode o script duas vezes e conte, não confie na ausência de erro:
+```
+python -m scripts.seed --url "$URL_DE_TESTE" ... | tail -3   # 1a: criados=N reaproveitados=0
+python -m scripts.seed --url "$URL_DE_TESTE" ... | tail -3   # 2a: criados=0 reaproveitados=N
+```
+Se a 2ª rodada disser `criados=N` de novo, o SELECT está cego — mesmo que nada tenha falhado.
+
+**Correção estrutural.** Faça o script devolver **criados** e **reaproveitados** separados, e trave
+os dois casos num teste com marcador `postgres`. Teste de idempotência em SQLite prova uma
+propriedade diferente da que você precisa: lá o SELECT enxerga tudo.
+
+## Tag `latest` no stack do Swarm anula o `failure_action: rollback` que está escrito ao lado {#latest-anula-rollback-do-swarm}
+
+tags: docker, swarm, stack, rollback, latest, tag imutavel, deploy, update_config, failure_action, healthcheck
+
+**Sintoma.** O `docker-stack.yml` declara `update_config: {failure_action: rollback}`, o deploy novo
+sobe quebrado, o Swarm executa o rollback — e o serviço **continua quebrado**. O log diz
+`rollback_completed` e não voltou nada.
+
+**Causa.** O rollback do Swarm restaura a **spec anterior**, não a imagem anterior. Se a spec antiga
+também diz `imagem:latest`, ela é reavaliada agora — e `latest` aponta para a imagem recém-buildada,
+que é exatamente a que falhou. O rollback roda, obedece, e reinstala o defeito.
+
+**Correção.** Tag imutável por deploy, injetada por variável:
+```yaml
+image: meu-servico:${MEU_TAG:?defina MEU_TAG com a tag construida}
+```
+```bash
+TAG=$(date +%Y%m%d-%H%M%S)
+docker build -t "meu-servico:$TAG" .
+export MEU_TAG="$TAG"; docker stack deploy -c docker-stack.yml minha-stack
+```
+O `:?` faz o deploy **falhar** em vez de silenciosamente cair num default — sem ele, `${MEU_TAG}`
+vazio vira `meu-servico:` e o Swarm resolve para `latest` de novo.
+
+**O irmão deste defeito, e ele anda junto:** serviço **sem `healthcheck`** faz o `failure_action`
+nunca disparar. O Swarm só sabe "o processo morreu"; um servidor de pé respondendo 500 em toda rota
+conta como saudável, e o deploy quebrado é declarado bem-sucedido. Se você escreveu
+`failure_action: rollback`, precisa de uma condição de saúde que signifique alguma coisa —
+`HEALTHCHECK` no Dockerfile ou `healthcheck:` no stack, ao lado da política que o usa.
+
+**Verificação de que o script de deploy não mente:** `curl -s` sai com código **0** num 500. Use
+`curl -fsS`, e cheque a convergência explicitamente (`[ "$replicas" = "1/1" ] || exit 1`) — sem isso
+o script imprime "publicado" com o serviço parado em 0/1.
+
+
+## Guarda no ponto da ESCRITA não protege fluxo de DOIS turnos {#guarda-de-escrita-nao-cobre-dois-turnos}
+
+`tags: guarda de escrita, dois turnos, menu de desambiguacao, alvo resolvido antes, pergunta vira escrita, FR-1.1, veto que so nega, clarificacao, bot conversacional, estado pendente, teste passa vazio`
+
+**Sintoma.** Existe uma regra que barra escrita a partir de pergunta/incerteza, ela tem teste, está
+em produção — e mesmo assim uma pergunta produz escrita. O log da regra mostra que ela **nem rodou**
+para a frase problemática.
+
+**Causa.** Entre a frase do usuário e a escrita existe um **menu de desambiguação** que resolve o
+alvo ANTES da guarda. O turno 1 (a pergunta) só produz o menu; o turno 2 é `"1"` — assertivo, com
+alvo já resolvido — e é só nele que a guarda roda. A pergunta vira escrita em dois turnos, e o
+turno que carregava a INTENÇÃO não é o turno que ESCREVE.
+
+Medido em 2026-08-15 num bot financeiro: *"será que eu já paguei o spotify?"* com duas recorrências
+homônimas virava *"Qual você pagou? Encontrei 2"*, e o `"1"` seguinte dava a baixa.
+
+**Como procurar.** Para cada caminho de escrita, pergunte: *existe menu/clarificação que resolve o
+alvo antes da guarda?* Se existe, a guarda tem de ser consultada **na entrada do menu** também.
+
+**Correção sem afrouxar.** Um veto isolado que **só nega, nunca autoriza**, chamado antes de emitir o
+menu, e que registra a recusa na MESMA observabilidade das outras — senão o alarme nasce cego
+justamente para esse caminho. Devolva o mesmo desfecho que a frase teria no caminho não-ambíguo, em
+vez de inventar copy nova.
+
+**Armadilha do teste.** O teste do 2º turno passa VAZIO se o estado pendente não foi gravado (ex.:
+o gravador desiste em silêncio quando não há linha de sessão). Garanta o pré-requisito e confirme
+que o 1º turno realmente abriu o estado.
+
+Ver também: [teste que passa em cima do defeito](#teste-passa-em-cima-do-defeito).
+
+## Card promete forma de resposta que ninguém lê — audite pelo ESTADO de sessão {#card-promete-resposta-que-ninguem-le}
+
+`tags: copy promete capacidade, card sem estado, menu beco sem saida, responda com o numero, matcher, FR-8.1, auditar por estado de sessao, teste bicondicional, substring sem acento, reusar estado existente`
+
+**Sintoma.** O card diz *"responda com o número ou com o nome"*. O usuário responde `2` e cai no
+fluxo genérico, como se não tivesse respondido nada. Ninguém percebeu por meses.
+
+**Causa.** O emissor devolve o TEXTO e não abre estado de sessão nenhum. Não existe quem leia a
+resposta. Quando há N emissores do mesmo card, cada um com copy e resolvedor próprios, não existe
+um lugar onde a divergência apareça.
+
+**O método que funciona — siga o ESTADO, não o nome do handler.** Para cada card: (a) quem GRAVA o
+estado que ele abre, e (b) quem LÊ esse estado. Se ninguém grava, o card é beco sem saída. Auditar
+pelo nome do handler engana: em 2026-08-15 o handler que parecia responder ao card era outro — o
+estado dele só nascia num emissor diferente, com copy diferente.
+
+**Correção, nos DOIS sentidos.**
+- Capacidade não existe → **tire a oferta da copy** e ensine a sintaxe que realmente re-entra.
+- Capacidade existe → ofereça, mas **condicionalmente**: a linha só entra quando o estado foi
+  gravado de fato. Erro cometido no mesmo dia: passar a oferecer *"ou o nome"* de forma
+  INCONDICIONAL, quando o matcher recusa nomes curtos.
+- **Antes de criar resolvedor/estado novo, procure o que já existe.** No mesmo caso a capacidade já
+  morava em DOIS estados distintos; reusar custou 40 linhas, criar teria custado um dia e um
+  caminho a mais para divergir.
+
+**Trava:** teste **bicondicional** — `promete ⇔ resolve`. Ele pega os dois defeitos: prometer sem
+capacidade e capacidade escondida. Valide a substring **sem acento** nos dois lados, senão a mutação
+sem acento passa verde.
+
+## Trava que nasceria VERMELHA é trava desligada {#trava-vermelha-no-dia-1}
+
+`tags: gate vermelho no dia 1, trava desligada, inventario fechado, lista que so encolhe, varredura AST, migracao incremental, pre-mortem, CI quebrado, shrink-only, contradicao na spec`
+
+**Sintoma (previsto em pre-mortem, antes de custar caro).** Uma spec propõe varredura que falha para
+qualquer ocorrência do padrão antigo. Como o padrão antigo existe em N lugares, a varredura nasce
+vermelha, o CI vive quebrado, e em pouco tempo alguém a desliga — ou passa a evitar o caminho novo
+para não lidar com ela. A dívida volta pela porta do próprio gate.
+
+**Correção — e NÃO é "warning por duas semanas"** (prazo apodrece e ninguém volta):
+
+1. a varredura nasce com **inventário fechado** das ocorrências atuais (lista explícita);
+2. falha só para ocorrência **nova e não registrada**;
+3. um teste irmão exige que a lista **só ENCOLHA** — cada migração apaga uma linha, e registrar
+   exceção nova é proibido: a única saída verde para um caso novo é migrar.
+
+Assim a trava fica verde o tempo todo sem nunca deixar de travar o que importa. Cuidado com a
+redação: dizer "quebra até ser registrado" num parágrafo e "a lista só encolhe" no seguinte é
+contradição — um implementador futuro adiciona a exceção e mata o invariante sem perceber.
+
+## Smoke que depende de serviço externo precisa distinguir DEGRADADO de ERRADO {#smoke-degradado-vs-errado}
+
+`tags: smoke producao, servico externo fora, cota estourada, sem credito, INCONCLUSIVO vs FALHOU, falso alarme, diagnostico, caminho deterministico, fallback de erro, LLM indisponivel`
+
+**Sintoma.** O smoke de produção passa a reportar o alarme mais grave que ele sabe emitir (ex.:
+*"FALSO NEGATIVO — ação legítima engolida"*), e o produto está correto. A causa é externa: cota de
+API estourada, provedor fora, credencial vencida.
+
+**Causa.** O smoke afirma sobre COMPORTAMENTO usando um caminho que depende de terceiro. Sem o
+terceiro, a mensagem não alcança handler nenhum — e "não aconteceu nada" é indistinguível de
+"aconteceu errado" para uma asserção negativa.
+
+**Correção.**
+- Detecte a resposta de fallback do próprio produto e reporte **INCONCLUSIVO** (não mediu), nunca
+  FALHOU (produto errado). Bloquear os dois é correto; o que muda é o **diagnóstico**, e é ele que
+  decide se a próxima sessão vai caçar um defeito inexistente.
+- Melhor ainda: tenha **pelo menos um caso que não dependa do terceiro**. Caminhos determinísticos
+  (regex/roteamento que roda antes da chamada externa) provam a mudança mesmo com o serviço fora —
+  foi o único caso que deu PASS ao vivo numa noite com a API de LLM sem crédito.
