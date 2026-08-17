@@ -41,7 +41,7 @@ try {
         @{ Re = '\bMOCK_(?!OK\b)\w+';                    Why = 'identificador MOCK_*' },
         # TODO **nao e mais verificado aqui** -- ver o bloco logo abaixo para o
         # porque. FIXME/XXX/HACK continuam, com `[: ]`.
-        # 🔴 TODO SAIU DO GATE em 2026-08-17, e o motivo nao e ergonomia: a R3
+        # **TODO SAIU DO GATE** em 2026-08-17, e o motivo nao e ergonomia: a R3
         # escrita nao pede marcador nenhum. Ela trata de "dado falso mentindo pro
         # usuario" -- banner MODO DEMO, toast "salvo localmente", nunca so
         # "salvo". Marcador de codigo nunca esteve la. Esta checagem era o hook
