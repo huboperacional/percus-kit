@@ -65,15 +65,42 @@ export function MethodToggle() {
         }
     }
 
-    Context "Markers reais continuam sendo bloqueados" {
-        It "4. comentario '// TODO: ...' real bloqueia" {
+    Context "TODO saiu do gate (decisao de 2026-08-17)" {
+        # Assercao INVERTIDA de proposito, em vez de teste apagado: assim a
+        # decisao vira executavel e uma reversao silenciosa quebra o CI em vez de
+        # passar despercebida.
+        It "4. comentario '// TODO: ...' NAO bloqueia mais" {
             $repo = New-StagedRepo -FileName "x.ts" -Content 'const a = 1; // TODO: corrigir isso'
             try {
-                Invoke-MockScan -Repo $repo | Should -Be 2 -Because "TODO maiusculo seguido de ':' e marker real (R3)"
+                Invoke-MockScan -Repo $repo | Should -Be 0 -Because "a R3 escrita trata de dado falso mentindo pro usuario (banner MODO DEMO, toast 'salvo localmente'); ela nao pede marcador nenhum. A checagem era o hook mais estrito que a propria regra, e colidiu 3x com portugues. TODO esquecido fica coberto pelo R11, que le o diff inteiro."
             } finally {
                 Remove-Item -Recurse -Force $repo -ErrorAction SilentlyContinue
             }
         }
+
+        It "4b. portugues com TODO em caixa alta nao bloqueia (incidente 2026-08-17)" {
+            $repo = New-StagedRepo -FileName "x.ts" -Content @'
+// Ligar isso faria cada imagem e TODO chunk de JS queimar uma invocacao.
+export const x = 1;
+'@
+            try {
+                Invoke-MockScan -Repo $repo | Should -Be 0 -Because "'TODO' aqui e a palavra portuguesa 'todo', nao um marcador; barrou commit legitimo 2x numa sessao"
+            } finally {
+                Remove-Item -Recurse -Force $repo -ErrorAction SilentlyContinue
+            }
+        }
+
+        It "4c. 'hardcoded' dentro de palavra maior nao bloqueia (fronteira, indicacao do conselho)" {
+            $repo = New-StagedRepo -FileName "x.ts" -Content 'const nonHardcodedValue = 1;'
+            try {
+                Invoke-MockScan -Repo $repo | Should -Be 0 -Because "sem \b, 'hardcoded' casava dentro de qualquer identificador ou palavra"
+            } finally {
+                Remove-Item -Recurse -Force $repo -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    Context "Markers reais continuam sendo bloqueados" {
 
         It "5. comentario 'FIXME ' real bloqueia" {
             $repo = New-StagedRepo -FileName "x.py" -Content '# FIXME esta logica esta errada'

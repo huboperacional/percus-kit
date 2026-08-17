@@ -93,14 +93,28 @@ fi
 # corrompe o texto. --data-binary @arquivo le bytes direto do disco, sem cruzar argv.
 BODY_FILE=$(mktemp)
 trap 'rm -f "$BODY_FILE"' EXIT
+# 🔴 EFFORT E O QUE IMPEDE A RESPOSTA DE SAIR VAZIA. Medido em 2026-08-17, mesmo
+# prompt, tres vezes:
+#   sem controle -> output_tokens=16000, stop_reason=max_tokens, 0 char de texto, 153s
+#   effort=low   -> output_tokens=3719,  stop_reason=end_turn,   1378 chars,       47s
+# Com thinking adaptativo ligado por padrao nos modelos 5, o raciocinio enche o
+# max_tokens (que cobre pensamento + resposta) e nao sobra orcamento pra escrever.
+# Subir o teto so aumenta o pensamento -- a 6.36.4 tentou (8192->16000) e o sintoma
+# voltou identico.
+# ⚠️ NAO usar `thinking.budget_tokens`: nos modelos 5 o campo foi removido e a API
+# responde 400 ("thinking.type.enabled is not supported for this model").
+EFFORT="${PERCUS_CROSS_CLAUDE_EFFORT:-low}"
+
 jq -n \
     --arg model "$MODEL" \
     --argjson max "$MAX_TOKENS" \
     --arg sys "$SYSTEM_PROMPT" \
     --arg usr "$USER_PROMPT" \
+    --arg effort "$EFFORT" \
     '{
         model: $model,
         max_tokens: $max,
+        output_config: { effort: $effort },
         system: [
             {
                 type: "text",

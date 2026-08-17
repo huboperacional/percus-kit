@@ -39,7 +39,23 @@ try {
     # Forbidden patterns. Each one captures intent of "fake/placeholder/TODO leftover".
     $patterns = @(
         @{ Re = '\bMOCK_(?!OK\b)\w+';                    Why = 'identificador MOCK_*' },
-        @{ Re = '\b(?-i:TODO|FIXME|XXX|HACK)\b[: ]';      Why = 'TODO/FIXME/XXX/HACK pendente' },
+        # TODO **nao e mais verificado aqui** -- ver o bloco logo abaixo para o
+        # porque. FIXME/XXX/HACK continuam, com `[: ]`.
+        # 🔴 TODO SAIU DO GATE em 2026-08-17, e o motivo nao e ergonomia: a R3
+        # escrita nao pede marcador nenhum. Ela trata de "dado falso mentindo pro
+        # usuario" -- banner MODO DEMO, toast "salvo localmente", nunca so
+        # "salvo". Marcador de codigo nunca esteve la. Esta checagem era o hook
+        # sendo mais estrito que a regra que diz implementar, e essa estritude
+        # nao pedida colidiu 3x com portugues ("Metodo", "metodoTodoListado",
+        # "TODO chunk"), apertando a regex a cada vez. Conselho consultado
+        # (DeepSeek + Cross-Claude, unanime): heuristica contra o idioma e
+        # corrida armamentista.
+        # FIXME/XXX/HACK ficam -- sao jargao de dev, nao palavras em portugues, e
+        # nunca causaram incidente. Um "TODO:" esquecido segue coberto pelo R11,
+        # que le o diff inteiro antes de todo commit.
+        @{ Re = '\b(?-i:FIXME)\b[: ]';                    Why = 'marcador FIXME pendente' },
+        @{ Re = '\b(?-i:XXX)\b[: ]';                      Why = 'marcador XXX pendente' },
+        @{ Re = '\b(?-i:HACK)\b[: ]';                     Why = 'marcador HACK pendente' },
         @{ Re = '(?i)\blorem\s+ipsum\b';                  Why = 'lorem ipsum' },
         @{ Re = '(?i)\bdummy_';                           Why = 'dummy_' },
         @{ Re = '(?i)\bplaceholder_value\b';              Why = 'placeholder_value' },

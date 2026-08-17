@@ -48,6 +48,20 @@ param(
     # 16000 cabe). Teto NAO e consumo: subir o limite nao encarece resposta curta, so evita que
     # ela seja cortada -- por isso um numero unico em vez de um teto por modo.
     [int]$MaxTokens = 16000,
+    # 🔴 SEM ISTO A PERNA VOLTA VAZIA. Medido em 2026-08-17 com o mesmo prompt,
+    # tres vezes:
+    #   sem controle        -> output_tokens=16000, stop_reason=max_tokens, 0 char de texto, 153s
+    #   effort=low          -> output_tokens=3719,  stop_reason=end_turn,   1378 chars,       47s
+    # Com thinking adaptativo ligado por padrao nos modelos 5, o raciocinio se
+    # expande ate encher o `max_tokens` -- que cobre pensamento + resposta -- e
+    # nao sobra orcamento pra escrever. Subir o teto so aumenta o tamanho do
+    # pensamento: foi o que a 6.36.4 fez (8192->16000) e o sintoma voltou igual.
+    #
+    # ⚠️ E o controle NAO e `thinking.budget_tokens`: nos modelos 5 esse campo foi
+    # REMOVIDO e a API responde 400 ("thinking.type.enabled is not supported for
+    # this model"). Medido na mesma bateria. O controle vivo e `output_config.effort`.
+    [ValidateSet("low","medium","high","xhigh","max")]
+    [string]$Effort = "low",
     [string]$Model = "claude-sonnet-5",
     [string]$Endpoint = "https://api.anthropic.com/v1/messages",
     [ValidateSet("consult","review","pre-mortem","analyze")]
@@ -117,6 +131,10 @@ if (-not $userPrompt -or $userPrompt.Trim().Length -eq 0) {
 $body = @{
     model      = $Model
     max_tokens = $MaxTokens
+    # Ver o comentario do parametro -Effort: e isto que impede a resposta de sair
+    # vazia. `thinking` fica FORA do corpo de proposito -- adaptativo e o default
+    # nos modelos 5, e qualquer configuracao explicita de budget e 400.
+    output_config = @{ effort = $Effort }
     system     = @(
         @{
             type          = "text"
