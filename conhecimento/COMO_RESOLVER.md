@@ -17,6 +17,14 @@
 
 ## Índice
 
+- [Guarda MEDIDA funcionando fica INERTE quando o DADO muda de forma (ninguem tocou no codigo)](#guarda-inerte-por-mudanca-de-dado)
+- [A ordem do `git log` NAO diz o que esta na imagem: quem diz e a HORA do `git archive`](#git-log-nao-diz-o-que-esta-na-imagem)
+- [Texto em ARRAY DE PROPS escapa de grep, de curl e ate de screenshot (componente que alterna palavras)](#texto-em-array-de-props-escapa-de-tudo)
+- [Seed que morre no meio deixa N de M passos e RETORNA SUCESSO, e a contagem de linhas denuncia onde parou](#seed-parcial-parece-sucesso-conte-as-linhas)
+- [Filtro de tenant falta no branch EXPLICITO enquanto o implicito, no mesmo metodo, ja o tinha](#filtro-de-tenant-falta-no-branch-explicito)
+- [NULL explícito do ORM sobrepõe o `DEFAULT` da coluna: a data nasce vazia com o banco certo](#null-explicito-do-orm-vence-default)
+- [`with TestClient(app)` dispara o lifespan em CADA teste: 4s de setup viram 13 minutos de suíte](#testclient-dispara-lifespan-por-teste)
+- [API e SPA no MESMO host: com a API morta o proxy cai no catch-all e devolve HTML com 200](#spa-catchall-mascara-api-morta)
 - [Script que escreve sob RLS sem declarar contexto: um caso ESTOURA, o outro duplica calado](#script-sob-rls-sem-contexto-duplica-calado)
 - [Tag `latest` no stack do Swarm anula o `failure_action: rollback` escrito ao lado](#latest-anula-rollback-do-swarm)
 - [Guarda no ponto da ESCRITA não protege fluxo de DOIS turnos (o menu resolve o alvo antes)](#guarda-de-escrita-nao-cobre-dois-turnos)
@@ -198,6 +206,8 @@
 - [`DROP COLUMN` no rollback falha: uma view `SELECT *` depende da coluna nova](#down-migration-view-select-star)
 - [Mesma regra escrita em dois interpretadores (.ps1 + .sh) diverge calada](#regra-duplicada-ps1-sh)
 - [Saída de `jq`/`python` no Windows vem com CRLF e o `\r` mata a regex em silêncio](#crlf-mata-regex-git-bash)
+- [MSYS re-expande glob nos argumentos de binário Windows — mesmo entre aspas e com `set -f`](#msys-reexpande-glob-em-binario-windows)
+- [Guarda que usa uma ferramenta para EMITIR o próprio bloqueio fica muda quando ela falta](#guarda-muda-sem-a-ferramenta-que-usa-pra-falar)
 - [Hook em PowerShell bloqueia commit legítimo vindo do git-bash (path `/d/...` e `-c` ≠ `-C`)](#hook-ps-path-msys-e-match-case)
 - ["Camada velha" que a camada nova referencia N vezes não está velha — está pendente de migração](#camada-velha-ainda-apontada)
 - [Depois de um `DROP TABLE`, "voltar a tag" não é rollback](#drop-table-rollback-pareado)
@@ -357,6 +367,7 @@
 - [Regex `(?m)...$` não casa em arquivo CRLF: o `\r` fica sobrando e a linha inteira é dada como inválida](#regex-multiline-crlf-dollar-nao-casa)
 - [Teste chama o script no mesmo processo e "prova" silêncio: `Write-Host` e `[Console]::Error` não passam pelo `2>&1`](#teste-in-process-nao-captura-console-error)
 - [`grep -iF` aborta com SIGABRT no Git Bash: a combinação quebra, cada flag sozinha funciona](#grep-if-aborta-git-bash)
+- [Fixture mais benigno que a realidade: o teste passa e você precisa PIORAR o fixture para ver o bug](#fixture-mais-benigno-que-a-realidade)
 
 ---
 
@@ -1269,6 +1280,8 @@ Ver também [Devolutiva cross-time escrita da MEMÓRIA acusa o bug errado](#devo
    🔴 **Correção 2026-08-16 — este item já recomendou "desconhecido → `Pacific/Honolulu`, o mais restritivo". Isso está ERRADO e foi provado errado no review do próprio fix.** **Nenhum fuso fixo é conservador nas duas bordas:** Honolulu é o mais cedo de manhã e, por isso mesmo, o mais *tarde* à noite — às 23:00 ET ele lê 17:00 e **libera** um envio ilegal. Um comentário afirmando "só erra pro lado conservador" não é prova; testar só a borda da manhã deixa a da noite passar. **O certo é o alvo desconhecido resolver para TODOS os fusos possíveis e exigir que todos permitam** (interseção das janelas). Pela mesma razão, estado que **atravessa** fuso (FL tem panhandle Central, TX tem El Paso Mountain, AZ tem a Nação Navajo com DST) resolve para a **tupla** dos fusos que ele toca, nunca um só.
 4. **Se a pré-condição venceu quando o R20 chegou, NÃO execute** — volte ao operador. "Ele já aprovou" não é autorização pra executar em condição diferente da que ele aprovou.
 5. **"Por-item" não basta se o relógio for lido no topo do laço** (medido 2026-08-16, mesmo projeto, defeito ainda vivo um mês depois do fix acima). O `dispatch_worker` chamava o guard **por item** — e mesmo assim com um `now` capturado uma vez, no início do tick, reusado para até 100 itens, cada um com sleep de jitter e ida-e-volta de rede. **O humano no meio é só a forma mais visível da espera; um laço longo é a mesma espera, sem ninguém pra culpar.** E a staleness sempre erra pro lado do ALLOW na borda da noite, porque relógio velho lê mais cedo do que a realidade. Regra afiada: **re-leia o relógio depois de qualquer coisa que consuma tempo — sleep, I/O de rede, commit — e antes da chamada que produz o efeito externo**, não antes da que decide tentar. Vale também pro carimbo: `sent_at` com hora do topo do tick faz a trilha de auditoria mentir na direção otimista.
+
+6. **Documento não é guard — guard é código.** Medido em 2026-08-16, no mesmo projeto: um runner legado de disparo de SMS estava marcado como *"não reusar"* numa ADR **e** no HANDOFF havia um mês, e seguia com `--apply` capaz de disparar a qualquer hora, sem nenhuma checagem de janela. A nota no documento não impede ninguém (nem você daqui a três semanas) de rodar o comando. Se a coisa não pode acontecer, **quem tem de recusar é o código**; se pode acontecer sob condição, quem afere a condição é o código. Corolário: ao encontrar um caminho perigoso "protegido" só por prosa, ou porte o guard ou torne o caminho inexecutável — deixar a prosa é escolher que a próxima pessoa apressada dispare.
 
 **Sinal de alerta:** se entre a sua verificação e a sua ação existe uma mensagem ao operador, **assuma que passaram horas**. Antes de executar um `--apply` aprovado, releia o relógio/estado. Se a resposta demorou e você não re-checou, você está executando às cegas com a confiança de quem checou. **A versão em código do mesmo sinal:** se entre o `if` do guard e a chamada que envia existe um `await`, o guard está velho.
 
@@ -2976,6 +2989,25 @@ do **dado** é pior que não ter teste: quando a lista sai do fonte, ele passa a
 o teste negativo ("não é sensível") passa por vacuidade.
 
 **Ref:** `CANON_VERSION.md` v6.31.0 (router de pasta sensível); report "Melhoria na VPS" 2026-07-27.
+
+⚠️ **A classe é MAIOR que `.ps1` vs `.sh`, e reincidiu três versões seguidas.** Vale para **quaisquer
+duas implementações da mesma regra**, mesmo em linguagens e papéis diferentes — em 2026-08-16 foram
+um **gate em bash** e um **mesclador em PowerShell** que precisavam concordar sobre "o que é um
+verbete válido". Oito rodadas de review acharam 25 defeitos, e **17 deles eram os dois discordando**,
+em oito dimensões que ninguém lista de antemão: bloco de código, blockquote, CRLF, BOM, caixa
+alta/baixa, profundidade de pasta, qual `{#...}` da linha conta como âncora, e título vazio.
+
+**O que torna a classe traiçoeira:** cada lado tem teste, cada teste passa, e **nenhum dos dois pode
+detectar a divergência** — ela não é observável de dentro de um lado só. Só aparece quando alguém
+compara as duas cópias, ou quando produção pega um caso que atravessa as duas.
+
+**A regra prática, que vale mais que o conselho de "fonte única":** fonte única nem sempre é possível
+(um gate `sh` não importa função PowerShell). Quando não for, **o teste tem de comparar as duas
+cópias**, não testar cada uma. Dois testes independentes, um por lado, ficam verdes lado a lado
+enquanto as implementações divergem — foi exatamente o que aconteceu com a tabela de modelos
+duplicada (6.36.3) e com o `temperature` em três arquivos (6.36.4). Exemplos de guarda que funciona:
+`cross-claude-mode-load.tests.ps1` (extrai a tabela dos dois orquestradores e exige igualdade) e
+`provider-limites.tests.ps1` (paridade de teto e timeout entre `.ps1` e `.sh`).
 
 ---
 
@@ -5814,8 +5846,30 @@ inteiro no contexto do provider — a alternativa (1 chamada só, confiando no t
 nesta sessão um review que teria dado "aprovado" pulando o arquivo com a lógica de merge mais crítica
 do diff inteiro (`destinations.py`, onde 2 bugs reais foram achados quando revisado em separado).
 
+**🔴 SEGUNDA CAUSA, medida em 2026-08-16 (Scraper-prospeccao) — o "Sem findings" pode vir vazio pelo
+OUTRO lado do teto, e sem nenhum aviso de `truncated`.** Aqui o prompt cabia; o que não cabia era a
+RESPOSTA. Nos modelos com raciocínio ligado por padrão, o `max_tokens` cobre **pensamento + resposta
+juntos**, e o system prompt do modo *review* **dobra** o raciocínio. Medidos **6784, 7649 e 8192+**
+tokens de raciocínio em três chamadas do **mesmo prompt**: com teto em 8192, a resposta voltava `ok`,
+`truncada` ou **vazia na sorte** — e o gate do R11 **aceitava a review vazia como aprovação**,
+liberando o commit. Três reviews seguidos deram "Sem findings críticos"; re-rodando o **mesmo diff**
+com o teto corrigido, apareceu um bug real que os três tinham deixado passar.
+
+- ⚠️ **Não reduza `max_tokens` pra caber num timeout** — é o reflexo errado e piora tudo: o modelo
+  gasta o teto pensando e devolve `finish_reason=length` com conteúdo vazio. **Encolha o prompt.**
+  (Medido na mesma sessão: o diff inteiro estourou 180 s; só o diff de produção voltou em 93 s.)
+- 🔑 **Regra que serve para os dois casos:** *"Sem findings" não é sinal, é ausência de sinal.* Um
+  review que aprova **sem citar um único arquivo ou linha** do diff é indistinguível de um review que
+  não rodou. Exija que o revisor **descreva o que leu** antes de tratar o aval como aval.
+- ⚠️ **Smoke de perna de conselho não pode usar prompt trivial:** "responda PONG" não dispara bloco de
+  raciocínio, então o teste fica verde enquanto todo review real volta vazio. Valide com prompt que
+  **force raciocínio**.
+- ⚠️ **Teste de paridade compara o que você mandou comparar:** o que existia comparava **modelos**
+  entre as duas implementações e ficava verde enquanto os **parâmetros** divergiam — e era o parâmetro
+  que quebrava a chamada.
+
 **Ref:** Paid Media Automation, cont.151, sessão 2026-08-05 (R11 da Fatia 2 do Google Ads
-multi-conta).
+multi-conta). Segunda causa: Scraper-prospeccao, 2026-08-16 (canon 6.36.4).
 
 ---
 
@@ -12403,3 +12457,306 @@ Portável, sem depender do build de `grep`, e o resultado é o mesmo.
 **Como reconhecer na hora:** `rc=134` ou a palavra `Aborted` na saída, ou variável de `$( )` inexplicavelmente vazia seguida de `integer expression expected`. Teste o comando isolado antes de suspeitar da lógica em volta.
 
 **Ref:** percus-kit 6.36.6, 2026-08-16 — bloco 3c do `percus-gate.sh`, checagem de slug duplicado.
+
+---
+
+## Fixture mais benigno que a realidade: o teste passa e você precisa PIORAR o fixture para ver o bug {#fixture-mais-benigno-que-a-realidade}
+
+`tags: fixture, teste passa sem aferir, falso verde, quebra de linha final, trailing newline, estado impossivel, repo sem arquivo, reproducao, TDD, RED que nao e RED, caso degenerado`
+
+**Sintoma:** você escreve o teste do bug que o revisor apontou. Ele **passa de primeira**. A tentação é concluir "o revisor errou" ou "já estava consertado". Nos dois casos medidos abaixo, o bug era real e o teste é que não o alcançava.
+
+**Causa raiz:** o fixture modelava um estado **mais bem-comportado do que a realidade** — às vezes um estado que nem existe em produção. Dois casos reais, na mesma sessão:
+
+| Fixture | Por que escondia | Realidade |
+|---|---|---|
+| Arquivo terminando **com** quebra de linha final | o `split` gera um elemento vazio no fim, e o índice nunca era a última posição do array | o caso degenerado só ocorre **sem** quebra final |
+| Repo de teste **sem** o arquivo monolito | a checagem "existe entrada e o destino sumiu" nunca disparava | repo real **sempre** tem o monolito |
+
+O segundo é o mais insidioso: o fixture representava um estado **impossível**, e quatro testes rodavam contra ele havia horas, verdes, aferindo um mundo que não existe.
+
+**Solução — a pergunta que resolve os dois:** *"que propriedade do fixture está impedindo o bug de aparecer?"* Depois **remova essa propriedade**, mesmo que o fixture fique mais feio. Um fixture bonito e benigno mede menos que um feio e realista.
+
+**O sinal de alarme é o RED que não vem.** Em TDD, teste novo que passa de primeira **não é boa notícia** — é a informação de que ele não alcança o alvo. Antes de aceitar, force o defeito de propósito (mutação) e exija ver vermelho. Se não ficar vermelho, o defeito está fora do alcance do fixture, não ausente do código.
+
+**Como escolher o fixture:** copie a forma do artefato **real** — mesma quebra de linha, mesmos arquivos presentes, mesma codificação, mesmo estado de git. Divergência de forma entre fixture e produção é onde o bug se esconde, porque é exatamente a região que nenhum teste cobre.
+
+**Vizinhos, e a diferença entre eles:**
+[#fixture-uniforme-esconde-irregular](#fixture-uniforme-esconde-irregular) — lá o fixture é regular demais e esconde a **irregularidade do domínio**; aqui ele é benigno demais e esconde o **caso degenerado da estrutura**.
+[#teste-nasce-verde-vazio-regex-primeiro-match](#teste-nasce-verde-vazio-regex-primeiro-match) — lá quem não alcança é o **regex de extração**; aqui é o **dado de entrada**.
+
+**Ref:** percus-kit 6.36.6, 2026-08-16 — mesclador da caixa de conhecimento; os dois casos foram apontados pelo review R11 e só reproduziram depois de o fixture ser piorado de propósito.
+
+---
+
+## Texto em ARRAY DE PROPS escapa de grep, de curl e ate de screenshot {#texto-em-array-de-props-escapa-de-tudo}
+
+tags: marca, rebrand, fork, vazamento de identidade, grep nao acha, curl nao acha, screenshot, animacao, wordswap, carousel, props, copy
+
+**Sintoma:** um produto derivado por fork sobe em producao e continua exibindo o nome/copy do produto de ORIGEM numa tela critica — mas toda verificacao passou: `grep` limpo, `curl | grep` no HTML limpo, teste de identidade verde, build verde.
+
+**Contexto medido (2026-08-16):** a tela de **login** e a de **cadastro** de um produto PJ exibiam "Financas da Familia" — o nome do produto de pessoa fisica de onde ele foi forkado. Sobreviveu a uma varredura de identidade que corrigiu 95 pontos em 83 arquivos, a 8 asseroes automatizadas, e a uma correcao de vazamento feita no MESMO DIA em outra pagina.
+
+**Causa raiz:** o texto vivia num **array de props** de um componente de animacao:
+
+```jsx
+<WordSwap words={['suas Financas', 'Financas da Familia']} />
+```
+
+Isso o torna invisivel para as tres verificacoes usuais, e cada uma falha por um motivo diferente:
+
+| Verificacao | Por que nao pega |
+|---|---|
+| `grep` por texto visivel | o texto nao esta entre tags, esta num literal de array |
+| `curl` + `grep` no HTML | a string e montada em **runtime**, nao vem no HTML servido |
+| **screenshot** | o componente ALTERNA: metade do ciclo mostra a palavra certa e passa limpo |
+
+O terceiro e o mais perigoso, porque screenshot costuma ser a verificacao "definitiva" — e aqui ela da **falso negativo dependendo do instante em que o print foi tirado**.
+
+**Solucao:** ao cacar vazamento de marca, varra tambem os arrays de props, nao so o texto entre tags:
+
+```sh
+grep -rn "WordSwap\|Typewriter\|Carousel\|words={" src/ | head -40
+# e depois LEIA cada array encontrado
+```
+
+E trave por teste que varra o array, nao a renderizacao.
+
+**A regra que sai daqui, e ela vale alem de marca:** *screenshot prova o que a tela mostra NAQUELE QUADRO.* Para conteudo animado, rotativo ou condicional a tempo, ou voce espera o ciclo inteiro, ou le a fonte do array. Vale igual para banner rotativo, tooltip com delay, toast, e estado que so aparece em hover.
+
+**Ref:** Empresa Milionaria (fork da Familia Milionaria), 2026-08-16 — `src/app/login/page.tsx:76,649` e `src/app/cadastro/page.tsx:69`.
+
+---
+
+## Seed que morre no meio deixa N de M passos e RETORNA SUCESSO, e a contagem de linhas denuncia onde parou {#seed-parcial-parece-sucesso-conte-as-linhas}
+
+tags: seed, bootstrap, provisionamento, RLS, estado parcial, falha silenciosa, multi-tenant, 404, papel, permissao, producao, idempotencia
+
+**Sintoma:** produto no ar, banco "semeado", e **toda** rota do dominio responde 404 para o usuario — sem erro em log nenhum, sem excecao, com a tela abrindo normalmente e dizendo "nao encontrado" em tudo.
+
+**Contexto medido (2026-08-16):** um script de seed com 10 passos (grupo, empresa, familia, usuario, contexto de RLS do usuario, contexto da empresa, papel, papel de grupo, lookups) tinha sido dado como executado, com relato de "21 registros criados". O banco de producao tinha **4 linhas**.
+
+**Como o diagnostico fechou, e e o metodo que vale:** conte as linhas por tabela e **case a contagem contra a ORDEM dos passos do script**.
+
+```sql
+select 'grupos' t, count(*) from grupos
+union all select 'empresas', count(*) from empresas
+union all select 'usuarios', count(*) from usuarios
+union all select 'papeis_empresa', count(*) from papeis_empresa
+union all select 'categorias', count(*) from categorias;
+```
+
+Resultado: 1, 1, 1, **0**, **0**. Os passos 1 a 4 existiam e o 6 a 10 nao. Isso aponta o ponto de parada **exato** — o passo 5 — sem precisar de log nenhum. O passo 5 era `aplicarContextoDoUsuario`, e a tabela de papeis tem RLS isolada por usuario: sem contexto, a politica nega a escrita.
+
+**Por que passou despercebido:** a suite roda em SQLite, que **nao tem RLS**, entao o caminho certo e o errado ficam os dois verdes. E o relato de "21 criados" era de outro banco (o de teste).
+
+**Solucao, em duas frentes:**
+
+1. **Diagnostico:** ao investigar "404 em tudo" ou "produto semeado que nao funciona", conte as linhas por tabela e compare com a ordem do script. A primeira tabela zerada e o passo que falhou.
+2. **Prevencao:** provisionamento e **transacao unica** — tudo ou nada. Se o script nao pode ser atomico, ele tem que **falhar em voz alta** e relatar contagem por tabela **e o banco em que escreveu**, porque "rodou no banco de teste" e indistinguivel de "rodou em producao" quando so se olha o exit code.
+
+⚠️ **O caso irmao e pior porque nao estoura:** sem contexto de RLS, o `SELECT` de idempotencia nao **enxerga** o que a rodada anterior criou — entao a segunda execucao recria tudo em silencio, e voce tem duplicata em vez de erro.
+
+**Ref:** Empresa Milionaria, 2026-08-16 — `scripts/seed_piloto.py`, banco `empresa_milionaria_v1`.
+
+---
+
+## Filtro de tenant falta no branch EXPLICITO enquanto o implicito, no mesmo metodo, ja o tinha {#filtro-de-tenant-falta-no-branch-explicito}
+
+tags: multi-tenant, vazamento, isolamento, cross-tenant, filtro de tenant, branch, id no corpo, IDOR, autorizacao, review, 404 vs 403
+
+**Sintoma:** um metodo resolve "qual tenant usar" por dois caminhos — um recebendo o id **explicito** e outro **descobrindo** pelo usuario. O caminho descoberto filtra por papel; o explicito busca so por id. Resultado: IDOR classico, com escalada.
+
+**Contexto medido (2026-08-16):**
+
+```python
+if grupoId is not None:                       # veio do CORPO da requisicao
+    return select(Grupo).where(Grupo.id == grupoId)          # SEM filtro de papel
+
+existente = (select(Grupo)                    # caminho descoberto
+    .join(PapelGrupo, PapelGrupo.grupoId == Grupo.id)
+    .where(PapelGrupo.usuarioId == usuarioId))               # COM filtro de papel
+```
+
+O atacante que descobrisse o UUID de um grupo alheio criava recurso dentro dele, ganhava papel de administrador no recurso novo **e papel no grupo da vitima**, ainda consumindo a cota do plano dela.
+
+**Causa raiz, e e o que torna o caso instrutivo:** o padrao de checagem **existia tres linhas abaixo, no mesmo metodo**. Nao foi desconhecimento da regra — foi o branch de cima nao ter recebido o tratamento que o de baixo ja tinha. E a mesma familia de "o filtro falta na consulta SECUNDARIA, nao na principal", com uma variante nova: **falta no ramo alternativo da MESMA funcao**.
+
+**Solucao:** ponha o filtro de autorizacao **dentro da mesma consulta**, nunca como checagem posterior — separar as duas deixa a porta aberta para alguem reordenar depois e nao perceber:
+
+```python
+doUsuario = (select(Grupo)
+    .join(PapelGrupo, PapelGrupo.grupoId == Grupo.id)
+    .where(Grupo.id == grupoId, PapelGrupo.usuarioId == usuarioId)).first()
+if doUsuario is None:
+    raise GrupoNaoEncontrado("grupo nao encontrado")   # 404, nao 403
+```
+
+**404 e nao 403**, com mensagem identica a de "nao existe": resposta diferente para "nao e seu" transforma a recusa em **oraculo de quais ids existem** no banco.
+
+**Como cacar isto no seu codigo:** procure `if <id> is not None:` (ou `??`, `||`) em funcoes que resolvem tenant/dono, e confira se **os dois ramos** aplicam o mesmo filtro. Um teste de ataque por ramo — usuario B passando o id de A — e barato e e o que faltava aqui.
+
+**Ref:** Empresa Milionaria, 2026-08-16 — `app/casos_uso/registrar_empresa.py`, achado pelo review cross-provider (Cross-Claude) e falsificado antes do fix.
+
+
+## NULL explícito do ORM sobrepõe o `DEFAULT` da coluna: a data nasce vazia com o banco certo {#null-explicito-do-orm-vence-default}
+
+tags: ORM, SQLAlchemy, default, server_default, created_at, updated_at, timestamp nulo, NULL, INSERT, coluna com DEFAULT, mapeamento
+
+Todo registro criado pela API nascia com `created_at`/`updated_at` **nulos**, apesar de as colunas terem `DEFAULT now()` no Postgres — conferido: as 29 colunas do escopo tinham o default. O banco estava certo; quem mentia era o mapeamento.
+
+Quando a coluna é mapeada no SQLAlchemy **sem `default=` e sem `server_default=`**, o ORM trata `None` como valor legítimo e emite `INSERT ... created_at = NULL`. E **NULL explícito vence o DEFAULT da coluna** — o banco só preenche quando a coluna é **omitida** do INSERT, que é justamente o que `server_default=` sinaliza ao ORM.
+
+**Solução:** `default=<callable>` (ou `server_default=`) em toda coluna de data mapeada. Para `updated_at` **não basta**: `DEFAULT now()` só vale no INSERT, então sem `onupdate=` o campo nasce preenchido e **congela** — "atualizado em" igual a "criado em" não chama atenção de ninguém. Confira se existe trigger de `updated_at` no schema antes de assumir que o banco cobre (num caso real: zero triggers).
+
+**O erro de método que custou mais que o bug:** a mesma classe já tinha sido achada dois dias antes num `[5-T]`, e o fix foi aplicado **só nos models onde o sintoma apareceu**. A classe seguiu viva em 21 arquivos. Achou bug estrutural num model? **Varra a classe, não conserte o model.**
+
+**Gate que cobre o futuro:** em vez de um teste por model, parametrize sobre `Base.registry.mappers` — cobre os de hoje e os que nascerem amanhã. Dois detalhes fazem ele valer: importe todos os módulos de models (`pkgutil.iter_modules`), porque o registry só conhece o que foi importado; e **guarde contra vacuidade** (`assert len(mappers) >= N`), senão um import quebrado faz o gate passar sem asserção nenhuma. Foi o gate — não o autor — que achou as 4 colunas sem `onupdate`.
+
+**Medir antes de correr:** `count(*) FILTER (WHERE created_at IS NULL)` por tabela separa "bomba com pino puxado" de "explosão em curso". No caso real deu **0** — o dado existente viera de um ETL que trazia as datas, e o bug só valeria dali pra frente.
+
+**Vizinhos, e a diferença entre eles:**
+[#fixture-mais-benigno-que-a-realidade](#fixture-mais-benigno-que-a-realidade) — lá o teste não alcança o defeito; aqui nenhum teste mockado alcançaria, porque `default=` só é aplicado no **flush** e a suíte usa sessão mockada que nunca dá flush. Só `[5-T]` em prod pega.
+
+**Ref:** Micro Investors, 2026-08-16 — 42 colunas em 21 models; provado em prod com CREATE → ler do banco → PATCH (`created_at` preservado, `updated_at` avançado) → DELETE.
+
+## `with TestClient(app)` dispara o lifespan em CADA teste: 4s de setup viram 13 minutos de suíte {#testclient-dispara-lifespan-por-teste}
+
+tags: pytest, TestClient, FastAPI, lifespan, startup, suite lenta, performance de teste, durations, setup, fixture de escopo
+
+Suíte de 408 testes levava **13m21**. A leitura fácil — "são muitos testes" — estava errada: `pytest --durations` mostrou **4,05s de `setup` e 0,03s de `call`**. O trabalho não estava nos testes, estava **antes** deles.
+
+Causa: cada arquivo abre o app com `with TestClient(app) as c`, e é o **`with`** que dispara o lifespan do FastAPI. O lifespan checava conexão com um banco que não existe no ambiente de teste.
+
+**Solução:** fixture `autouse` no `conftest.py` neutralizando a checagem — **um arquivo**, zero mudança nos arquivos de teste. Resultado medido: **801s → 6,6s**. Escopo de sessão para o `TestClient` parece mais elegante, mas obriga a rearrumar `dependency_overrides` em todos os arquivos para o mesmo ganho.
+
+**Conexão recusada não é instantânea, e `localhost` custa o dobro:** medido, `127.0.0.1:<porta morta>` = **2,04s** e `localhost:<porta morta>` = **4,05s** — no Windows `localhost` resolve para `::1` **e** `127.0.0.1`, e cada família paga o atraso. Trocar o host no `.env` local "resolve" metade e é armadilha: mora em arquivo não versionado e some na próxima máquina.
+
+**Por que isso é mais grave do que parece:** suíte de 13 minutos **ninguém roda**. Ela vira decoração, e a regressão passa por ausência de execução, não por falta de cobertura. No mesmo repo, um arquivo inteiro não coletava por dependência não declarada e o erro saía como `1 error` no fim — lido como ruído por semanas.
+
+**Neutralizar em teste é uma mentira contada de propósito:** escreva no docstring *o que* a mentira esconde e *qual grep* provou que ninguém dependia da verdade. Sem isso, no dia em que alguém escrever um teste de health, ele vai medir a fixture em vez do código.
+
+**Vizinhos, e a diferença entre eles:**
+[#gate-marcador-antes-de-validar](#gate-marcador-antes-de-validar) — lá o gate libera sem olhar; aqui o gate existe, é honesto, e **ninguém o executa** porque custa 13 minutos.
+
+**Ref:** Micro Investors, 2026-08-16 — 801s → 6,6s; a mesma rodada destravou 9 testes que não coletavam (`respx` importado e nunca declarado).
+
+## API e SPA no MESMO host: com a API morta o proxy cai no catch-all e devolve HTML com 200 {#spa-catchall-mascara-api-morta}
+
+tags: Traefik, proxy reverso, SPA, catch-all, priority, roteamento, healthcheck, 200 com HTML, API morta, falso positivo, smoke test
+
+Host único servindo API e SPA: no Traefik, router da API com `priority=100` casando `PathPrefix(/api) || Path(/health) || ...`, e router do frontend com `priority=1` casando só `Host(x)` — catch-all, como toda SPA precisa.
+
+Medido: **quando a task da API está fora do ar, o proxy derruba o router dela** (sem endpoint saudável não há rota) **e a requisição cai no catch-all**. O `/health` passou a devolver **o HTML da SPA com HTTP 200**. Qualquer healthcheck que olhe só o status code **aprova uma API morta**.
+
+**Solução:** exclua os paths da API da regra do catch-all — não confie só na prioridade, que resolve o caso normal e não o caso de falha:
+`Host(``x``) && !PathPrefix(``/api``) && !Path(``/health``) && !Path(``/openapi.json``) && !PathPrefix(``/docs``)`
+API fora do ar passa a dar **404 honesto**. Aplique no label vivo **e** no arquivo versionado — só no vivo, o próximo deploy desfaz.
+
+**Prove derrubando de verdade:** escale a API a zero e exija `/health` = **404** com `grep -c 'id="root"'` no corpo = **0** (o HTML não pode vazar), enquanto `/` segue servindo a SPA; depois restaure. Verde sozinho não prova nada aqui, porque **o verde é exatamente o que o bug produzia**.
+
+**Complemento, não substituto:** healthcheck de deploy deve assertar o **JSON** (`"status":"ok"` + versão esperada), nunca só `HTTP 200`. E note que 502 seria melhor notícia que isto: 502 grita; HTML-com-200 **mente em voz baixa**.
+
+**Vizinhos, e a diferença entre eles:**
+[#gate-marcador-antes-de-validar](#gate-marcador-antes-de-validar) — lá o gate se autoaprova; aqui é a **topologia de roteamento** que fabrica um 200 falso, sem ninguém ter errado no código.
+
+**Ref:** Micro Investors / tenant tiatendo, 2026-08-16 — provado nos dois sentidos com a API escalada a 0 e restaurada.
+
+## MSYS re-expande glob nos argumentos de binário Windows — mesmo entre aspas e com `set -f` {#msys-reexpande-glob-em-binario-windows}
+
+`tags: git bash, msys, glob, asterisco, jq.exe, argumento, aspas nao protegem, set -f, noglob, binario nativo windows, null silencioso`
+
+Passar `*` como **valor de argumento** para um binário Windows a partir do Git Bash não entrega `*`:
+
+```bash
+jq -n --arg t "*"  '$t'    # -> null      (o * virou a lista de arquivos do diretorio)
+jq -n --arg t "a*" '$t'    # -> jq: error: AGENTS/0 is not defined   (expandiu pra AGENTS.md)
+jq -n --arg t "TODOS" '$t' # -> "TODOS"   (ok)
+```
+
+As aspas **não** protegem, e `set -f` (noglob do bash) **também não** — quem expande é o CRT do lado Windows, depois que o bash já entregou os argumentos. Vale para qualquer `.exe` nativo chamado do Git Bash, não só o `jq`.
+
+**Por que dói mais do que parece:** o `jq` devolveu `null` em vez de erro. Num hook que decide por `grep '"deny"'` na saída, `null` **libera** — fail-open por acidente de quoting, exatamente no caminho mais perigoso.
+
+**Solução:** nunca use `*` como valor sentinela/coringa em argumento entregue a binário Windows — use uma palavra (`TODOS`, `ALL`). Se precisar do literal, **valide a saída do binário** em vez de confiar nela (checar que o JSON tem a chave esperada, não só que a string aparece).
+
+**Vizinhos:** [#crlf-mata-regex-git-bash](#crlf-mata-regex-git-bash) — mesma família: a camada de tradução Windows↔POSIX altera o dado em trânsito sem avisar.
+
+**Ref:** Paid Media Automation, 2026-08-15 — escrevendo o `deploy-guard.sh`; o coringa `*` fazia o guard virar no-op silencioso em `docker stack deploy`, que é o comando que toca todos os serviços.
+
+## Guarda que usa uma ferramenta para EMITIR o próprio bloqueio fica muda quando ela falta {#guarda-muda-sem-a-ferramenta-que-usa-pra-falar}
+
+`tags: hook, PreToolUse, jq ausente, fail-open, fail-closed, guarda muda, deny, exit 2, command -v, testar a chamada`
+
+Um hook que monta o JSON de `deny` **com `jq`** tem uma dependência circular escondida: sem `jq`, ele não consegue **nem dizer que quer bloquear**. E guarda muda, para o harness, é indistinguível de guarda que aprovou.
+
+Dois furos aparecem juntos, e o segundo é o que engana:
+
+1. **Na entrada** — `CMD=$(... jq ... || echo "")` zera a variável quando o `jq` falha; o padrão não casa e o hook sai 0. Conserto: sem parse confiável, case o padrão contra o **payload cru** (o texto do comando está lá dentro), errando para o lado de bloquear.
+2. **Na saída** — o `deny` não sai. Conserto: o contrato de `PreToolUse` aceita **duas vias** — JSON com `permissionDecision`, ou **`exit 2` com o motivo em stderr**. Falhando a primeira, use a segunda.
+
+⚠️ **Não teste com `command -v jq`.** Isso verifica se o arquivo **existe**; um `jq` presente porém quebrado (versão incompatível, binário corrompido, PATH envenenado) passa nesse teste e falha ao rodar — voltando à guarda muda. Teste pelo **resultado**: `SAIDA=$(jq -n ... 2>/dev/null)` e decida por `[ -n "$SAIDA" ]`.
+
+⚠️ **E o teste dessa borda precisa exigir a ASSINATURA da mensagem, não só `exit 2`** — um erro de sintaxe no próprio guard também sai 2, e o caso passaria verde com o fallback quebrado.
+
+**Vizinhos:** [#gate-marcador-antes-de-validar](#gate-marcador-antes-de-validar) — lá o gate se autoaprova; aqui ele perde a voz.
+
+**Ref:** Paid Media Automation, 2026-08-15 — achado pela perna Cross-Claude do conselho, num guard que a perna única tinha aprovado. `jq` já faltou nesta máquina antes (é o workaround #1 do kit para Windows), então não era hipótese.
+
+---
+
+## Guarda MEDIDA funcionando fica INERTE quando o DADO muda de forma (ninguém tocou no código) {#guarda-inerte-por-mudanca-de-dado}
+
+`tags: guarda inerte, guard silencioso, drift de dado, cardapio renomeado, variant_label, matcher por nome, protecao morta, medicao envelhece, camada mascarada, contra-prova na mesma rodada`
+
+**Sintoma:** uma guarda de segurança aprovada por medição (com teste verde e docstring citando o
+caso exato que ela protege) **não protege mais esse caso** — e a suíte inteira segue verde.
+
+**Causa raiz:** o insumo da guarda é **DADO DE CADASTRO** (cardápio, zonas, aliases, catálogo), não
+código. No caso real: a guarda perguntava *"este texto nomeia um item?"* via um matcher que casa
+pelo campo `name`; o item foi **renomeado** de `Coca-Cola` para `Refrigerante - 600ml` com a marca
+migrando pro campo `variant_label`. Nenhum commit tocou a guarda — ela simplesmente parou de casar.
+As fixtures dos testes nomeiam o item do jeito que a guarda espera, então **nenhum teste observa a
+dependência**.
+
+**Agravante:** guarda em CAMADAS esconde a morte da camada 1. Ali a camada 2 era um contador com
+teto 3 — o defeito só apareceria na 3ª tentativa do cliente, quando o dano (pausar o atendimento)
+já é o pior possível.
+
+**Solução:**
+1. Guarda cujo insumo vem de cadastro **re-mede contra o dado REAL de produção**, não contra a
+   medição que a aprovou. Rodar as funções de produção dentro do container, com o catálogo vivo.
+2. **Contra-caso na MESMA rodada, sempre.** Foi `'refrigerante'` acertando (e `'coca'` falhando) que
+   provou que o defeito era de IDENTIDADE (nome × variante), e não "a função quebrou".
+3. Quando a mesma causa raiz reaparece pela **5ª vez** em pontos que não se conhecem, o defeito é do
+   **modelo de dados**, não dos call sites — pare de remendar consumidor.
+4. Ao consertar: **formatador não é matcher.** Reusar a função que monta o nome de EXIBIÇÃO como
+   fonte de "o texto nomeia este item?" é erro de categoria e deixa o defeito vivo.
+
+**Ref:** tiatendo, achado G6 (2026-08-16), `docs/PENDENCIAS.md` §2e. Instrumento:
+`scripts/measureBairroStep.py`.
+
+---
+
+## A ordem do `git log` NÃO diz o que está na imagem: quem diz é a HORA do `git archive` {#git-log-nao-diz-o-que-esta-na-imagem}
+
+`tags: deploy delta, git archive, commit fora do ar, ordem do log enganosa, sessao paralela, branch compartilhada, imagem defasada, verificar dentro do artefato`
+
+**Sintoma:** um commit aparece no `git log` **antes** do commit de deploy e mesmo assim **não está
+em produção**. A leitura natural do log ("está abaixo, logo entrou") é falsa.
+
+**Causa raiz:** num deploy delta o conteúdo vem de `git archive HEAD` executado num **instante**. Se
+outra sessão commitar entre esse instante e o seu commit de deploy, o commit dela fica **cronologia
+acima** no log e **fora** do tar. O log ordena por parentesco/tempo do commit, não pelo que foi
+empacotado.
+
+**Solução:**
+1. **Gere o archive imediatamente antes do build**, e não no começo do procedimento.
+2. **Verifique DENTRO do artefato**, nunca no log: `docker exec <cid> test -f /app/<arquivo-novo>` e
+   `grep -c <simbolo-novo> /app/<arquivo>`. Arquivo novo é o detector mais barato.
+3. A trava de árvore (manifesto de hashes HEAD × imagem, entre `build` e `service update`) pega isto
+   **se** o manifesto for gerado no mesmo instante do archive — gerado antes, ela aprova o atraso.
+4. Em branch compartilhada, registre no handoff **o commit-base do archive**, não "os N últimos".
+
+**Ref:** tiatendo, deploy `0.308.0` (2026-08-16): `ea645b2` ficou de fora e só apareceu ao testar
+`comanda.py` dentro do container. Ver também `#deploy-delta-base-defasada`.
