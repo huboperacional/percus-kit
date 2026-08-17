@@ -39,11 +39,12 @@ $comandoLog = [regex]::Replace($comandoLog, '(?<=://)[^/@\s]+(?=@)', '***')
 # 2. chave sensivel com separador : ou = -- inclui prefixo/sufixo colado (GH_TOKEN) e chave
 #    entre aspas do JSON.
 $comandoLog = [regex]::Replace($comandoLog, '(?i)([A-Za-z_-]*(?:token|password|passwd|senha|secret|api[_-]?key|apikey|pat)[A-Za-z_-]*)["'']?\s*[:=]\s*["'']?[^\s"'',}&]+', '$1=***')
-# 3. flag separada por ESPACO (--token VALOR) ou COLADA (-uusuario:senha do curl).
-$comandoLog = [regex]::Replace($comandoLog, '(?i)(--?(?:token|password|passwd|senha|secret|api[_-]?key|apikey|pat|user|u))\s+[^\s"'']+', '$1 ***')
-$comandoLog = [regex]::Replace($comandoLog, '(?i)(\s-[up])(?=[^\s"''-])[^\s"'']+', '$1***')
+# 3. flag separada por ESPACO (--token VALOR) ou COLADA (-uusuario:senha). ASPA OPCIONAL antes do
+#    valor: sem ela, `--token "x"` nao casava em regra nenhuma e ia pro disco em claro.
+$comandoLog = [regex]::Replace($comandoLog, '(?i)(--?(?:token|password|passwd|senha|secret|api[_-]?key|apikey|pat|user|u))(\s+["'']?)[^\s"'']+', '$1$2***')
+$comandoLog = [regex]::Replace($comandoLog, '(?i)(\s-[up])(?=["'']?[^\s"''-])["'']?[^\s"'']+', '$1***')
 # 4. header de credencial -- esquema ENUMERADO; valor sem \S+ para nao comer aspa de fechamento.
-$comandoLog = [regex]::Replace($comandoLog, '(?i)((?:authorization|x-api-key|x-auth-token|private-token)\s*:\s*)((?:bearer|basic|token|digest)\s+)?[^\s"'']+', '${1}${2}***')
+$comandoLog = [regex]::Replace($comandoLog, '(?i)((?:authorization|x-api-key|x-auth-token|private-token)\s*:\s*["'']?)((?:bearer|basic|token|digest)\s+)?[^\s"'']+', '${1}${2}***')
 
 $linha = [pscustomobject]@{
     id      = $auth.id

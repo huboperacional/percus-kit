@@ -368,8 +368,12 @@ Describe "external-action-guard.ps1 hook" {
         $segA = "ghp_ParidadeUrl111"
         $segB = "ghp_ParidadeHeader222"
         $segC = "xoxb-ParidadeFlag333"
-        $segredoParidade = @($segA, $segB, $segC)
-        $comando = "git push https://percus:$segA@github.com/hub/x.git --header `"Authorization: Bearer $segB`" --token $segC"
+        $segD = "ghp_ParidadeChaveValor444"
+        $segredoParidade = @($segA, $segB, $segC, $segD)
+        # As QUATRO regras num comando so. A versao anterior deixava a regra 2 (chave=valor) sem
+        # paridade aferida -- divergencia nela passaria com a suite toda verde, que e a doenca que
+        # este teste existe pra impedir. Achado do R11/DeepSeek.
+        $comando = "GH_TOKEN=$segD git push https://percus:$segA@github.com/hub/x.git --header `"Authorization: Bearer $segB`" --token $segC"
 
         $dirHook   = Join-Path ([IO.Path]::GetTempPath()) ("par-h-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
         $dirScript = Join-Path ([IO.Path]::GetTempPath()) ("par-s-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
@@ -427,7 +431,7 @@ Describe "external-action-guard.ps1 hook" {
             $textoScript | Should -Not -Match ([regex]::Escape($s)) -Because "script escreve no MESMO arquivo -- mascarar so de um lado nao protege nada ($s)"
         }
         $linhaHook.comando | Should -Be $linhaScript.comando -Because "mascara divergente entre os dois escritores e a mesma doenca do BOM, em outro campo"
-        $linhaHook.comando | Should -Be 'git push https://***@github.com/hub/x.git --header "Authorization: Bearer ***" --token ***' -Because "ancora absoluta: os dois regredindo juntos passariam numa comparacao so relativa"
+        $linhaHook.comando | Should -Be 'GH_TOKEN=*** git push https://***@github.com/hub/x.git --header "Authorization: Bearer ***" --token ***' -Because "ancora absoluta: os dois regredindo juntos passariam numa comparacao so relativa"
 
         Remove-Item -Recurse -Force $dirHook,$dirScript -ErrorAction SilentlyContinue
     }
@@ -494,6 +498,12 @@ Describe "external-action-guard.ps1 hook" {
         @{ Forma = "Authorization token";   Comando = 'gh pr comment 1 --body ok --header "Authorization: token SEGREDO"' }
         @{ Forma = "flag --token";          Comando = 'slack-cli send --token SEGREDO --channel geral oi' }
         @{ Forma = "env GH_TOKEN=";         Comando = 'GH_TOKEN=SEGREDO gh issue close 42' }
+        # Valor ENTRE ASPAS: [^\s"'] recusa a aspa de abertura, entao estas nao casavam em regra
+        # NENHUMA e iam pro disco em claro. Medido: 4 de 9 formas vazavam por isto -- e escrever
+        # valor entre aspas e a forma normal, nao a exotica.
+        @{ Forma = "flag com aspas duplas"; Comando = 'slack-cli send --token "SEGREDO" --channel geral oi' }
+        @{ Forma = "flag com aspas simples";Comando = "slack-cli send --token 'SEGREDO' --channel geral oi" }
+        @{ Forma = "curl -u com aspas";     Comando = 'gh issue close 42 --user "percus:SEGREDO"' }
     ) {
         # A gravacao automatica introduziu um vazamento que nao existia: ate 6.36.6 o agente
         # escolhia o que passar pro registrar-uso; agora TODO comando autorizado e persistido em

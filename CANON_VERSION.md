@@ -219,6 +219,15 @@ hook e stdout de script vão parar em log de sessão e de CI — mascarar um can
 caminhos de bloqueio (mutação que volta a imprimir o cru derruba as duas). De carona, entrou a flag
 curta colada (`curl -uusuario:senha`).
 
+**Quinta rodada, no commit seguinte — e ela mostra por que "declarei as lacunas" não substitui
+medir.** A regra 3 exigia `--flag<espaço>valor` com `[^\s"']`, que **recusa a aspa de abertura**:
+`--token "x"`, `--password 'y'`, `--user "u:senha"` não casavam em regra **nenhuma** e iam para o
+disco em claro. Medido: **4 de 9 formas vazavam**, todas com valor entre aspas — e escrever valor
+entre aspas é a forma **normal**, não a exótica. Não estava entre as duas lacunas declaradas abaixo;
+era bug. Corrigido com aspa opcional nas regras 3 e 4, **0 de 9** depois, sem regressão nas que já
+funcionavam. E o teste de paridade passou a levar as **quatro** regras num comando só — a regra 2
+(`chave=valor`) estava sem paridade aferida.
+
 **Ficou de fora, declarado — duas lacunas medidas, não presumidas:**
 
 - A máscara **over-mascara prosa** que contenha `authorization:` (`--body "isto requer
@@ -231,12 +240,12 @@ curta colada (`curl -uusuario:senha`).
 Blocklist não fecha. O que fecharia é não gravar o comando — e aí a auditoria perde exatamente o que
 a torna útil.
 
-Suíte: **378 Pester + 10 pytest, tudo verde** (16 casos novos, 35 no `external-action-guard`).
+Suíte: **381 Pester + 10 pytest, tudo verde** (19 casos novos, 38 no `external-action-guard`).
 **Oito mutações confirmadas**, incluindo a que remove a máscara de um só lado e a que volta a
 imprimir o comando cru na mensagem de bloqueio.
 
-**Quatro rodadas de R11 nesta versão, 18 achados tratados** — e o padrão que emerge é desconfortável:
-**oito dos que viraram código vinham de findings que o fact-check tinha carimbado como `INFUNDADO`**.
+**Cinco rodadas de R11 nesta versão, 20 achados tratados** — e o padrão que emerge é desconfortável:
+**dez dos que viraram código vinham de findings que o fact-check tinha carimbado como `INFUNDADO`**.
 A guarda que existe para filtrar alucinação estava filtrando o trabalho bom, e só não custou caro
 porque o `.jsonl` bruto foi lido à mão. Se houver uma prioridade para a próxima versão, é essa.
 

@@ -58,12 +58,16 @@ try {
     #    versao falhava porque `_` e caractere de palavra) e chave entre aspas do JSON.
     $comandoLog = [regex]::Replace($comandoLog, '(?i)([A-Za-z_-]*(?:token|password|passwd|senha|secret|api[_-]?key|apikey|pat)[A-Za-z_-]*)["'']?\s*[:=]\s*["'']?[^\s"'',}&]+', '$1=***')
     # 3. flag separada por ESPACO (--token VALOR) ou COLADA (-uusuario:senha do curl).
-    $comandoLog = [regex]::Replace($comandoLog, '(?i)(--?(?:token|password|passwd|senha|secret|api[_-]?key|apikey|pat|user|u))\s+[^\s"'']+', '$1 ***')
-    $comandoLog = [regex]::Replace($comandoLog, '(?i)(\s-[up])(?=[^\s"''-])[^\s"'']+', '$1***')
+    #    ASPA OPCIONAL antes do valor: `[^\s"'] recusa a aspa de abertura, entao `--token "x"`
+    #    nao casava em NENHUMA das quatro regras e ia pro disco em claro. Medido: 4 de 9 formas
+    #    vazavam, todas com valor entre aspas -- e aspa em valor de flag e a forma normal de
+    #    escrever, nao a exotica. Achado do R11/DeepSeek na rodada que fechou o commit anterior.
+    $comandoLog = [regex]::Replace($comandoLog, '(?i)(--?(?:token|password|passwd|senha|secret|api[_-]?key|apikey|pat|user|u))(\s+["'']?)[^\s"'']+', '$1$2***')
+    $comandoLog = [regex]::Replace($comandoLog, '(?i)(\s-[up])(?=["'']?[^\s"''-])["'']?[^\s"'']+', '$1***')
     # 4. header de credencial -- esquema ENUMERADO, nao opcional-livre: com `(bearer\s+)?` solto,
     #    `Authorization: token <PAT>` mascarava a palavra "token" e deixava o PAT depois dela. O
     #    valor usa [^\s"'] em vez de \S+ para nao comer a aspa de fechamento.
-    $comandoLog = [regex]::Replace($comandoLog, '(?i)((?:authorization|x-api-key|x-auth-token|private-token)\s*:\s*)((?:bearer|basic|token|digest)\s+)?[^\s"'']+', '${1}${2}***')
+    $comandoLog = [regex]::Replace($comandoLog, '(?i)((?:authorization|x-api-key|x-auth-token|private-token)\s*:\s*["'']?)((?:bearer|basic|token|digest)\s+)?[^\s"'']+', '${1}${2}***')
 
     # Escape hatch: operador autorizou explicitamente
     if ($env:PERCUS_EXTERNAL_OVERRIDE -eq "1") {
