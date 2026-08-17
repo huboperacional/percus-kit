@@ -640,6 +640,36 @@ Use o **default Vite** a não ser que o produto tenha tráfego público SEO-depe
 - `localStorage` pra armazenar JWT.
 - Redux (use Zustand).
 - CSS-in-JS runtime (use Tailwind).
+- **`style={{}}` inline para estilo de componente** (use Tailwind). Veja abaixo — é veto separado
+  do de CSS-in-JS de propósito.
+
+#### Por que `style={{}}` inline é vetado, e não é preferência
+
+O veto de CSS-in-JS acima **não alcança** estilo inline: `style={{ height: 34, background: 'var(--accent)' }}`
+não é biblioteca nenhuma, é objeto nativo do React — então passava pela regra. Bibliotecas de
+componente headless (Base UI e afins) empurram esse estilo por default, e é assim que um projeto
+adota inline sem ninguém decidir isso.
+
+**O argumento que fecha a questão não é gosto — é limitação da plataforma: `:hover` não existe em
+estilo inline.** Nem `:focus-visible`, nem media query, nem `prefers-color-scheme`. Cada um desses
+vira estado em JavaScript mais handler de mouse/teclado — ou seja, comportamento reimplementado à mão
+onde o CSS já resolve, com o acessível (foco por teclado) sendo a primeira coisa que alguém esquece.
+
+Os outros custos, em ordem de peso:
+
+| | inline `style={{}}` | Tailwind |
+|---|---|---|
+| Sobrescrever num caso específico | quase impossível — inline vence quase tudo; a saída é `style` por cima ou forkar o componente | adiciona uma classe |
+| Hover, foco, responsivo, tema escuro | não expressa — precisa de JS e estado | `hover:`, `md:`, `dark:` embutidos |
+| Peso | objeto recriado e serializado em **cada** elemento — tabela de 500 linhas, 500 cópias | uma regra na folha; o que repete é o nome curto |
+| Build | viaja dentro do JS | o não-usado sai no build |
+
+**Exceção legítima:** valor **calculado em runtime** que não dá pra expressar em classe — largura de
+barra de progresso, `transform` vindo de medição, posição de tooltip. Aí inline é a ferramenta certa,
+e ela é a exceção, não o default.
+
+**Ao adotar biblioteca headless**, verifique antes como ela aplica estilo: se o default for objeto
+inline, ou existe variante com `className`, ou ela não entra.
 
 ### 5.4. Ferramentas de design aprovadas
 

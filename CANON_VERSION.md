@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.36.7`
+**Versão canônica em `huboperacional/percus-kit`:** `6.36.8`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,38 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.36.8 — 2026-08-17
+
+**`style={{}}` inline passa a ser vetado no frontend — o veto de CSS-in-JS não alcançava o caso que
+acontece de verdade.**
+
+O canon já mandava Tailwind desde sempre (§5.2) e já vetava *"CSS-in-JS runtime"* (§5.3). Mas
+`style={{ height: 34, background: 'var(--accent)' }}` **não é CSS-in-JS** — é objeto nativo do React,
+sem biblioteca nenhuma, então passava pela regra inteira. E é exatamente o que bibliotecas headless
+(Base UI e afins) empurram por default: o projeto adota inline sem ninguém ter decidido isso.
+
+🔑 **O argumento que decide não é preferência, é limitação da plataforma: `:hover` não existe em
+estilo inline.** Nem `:focus-visible`, nem media query, nem `prefers-color-scheme`. Cada um vira
+estado em JavaScript com handler de mouse/teclado — comportamento reimplementado à mão onde o CSS já
+resolve, e o foco por teclado é a primeira coisa que some nessa reimplementação.
+
+Os custos secundários, na tabela nova de §5.3: sobrescrever num caso específico exige `style` por
+cima ou forkar o componente (inline vence quase tudo na cascata); o objeto é recriado e serializado
+em **cada** elemento (tabela de 500 linhas = 500 cópias); e o estilo viaja dentro do JS em vez de
+sair no build do que não é usado.
+
+**Exceção declarada:** valor **calculado em runtime** que não cabe em classe — largura de barra de
+progresso, `transform` vindo de medição, posição de tooltip. Aí inline é a ferramenta certa. A
+diferença é ser exceção em vez de default.
+
+**Regra operacional junto:** ao adotar biblioteca headless, verificar **antes** como ela aplica
+estilo — se o default for objeto inline, ou existe variante com `className`, ou ela não entra.
+
+**Gatilho:** decisão em aberto no `Scraper-prospeccao`, que ainda **não tem frontend** (`services/api`
+apenas) — a regra entra antes de existir o débito, não depois.
+
+Sem mudança de tooling: é texto de canon, nenhum hook ou script alterado.
 
 ## Changelog v6.36.7 — 2026-08-17
 
