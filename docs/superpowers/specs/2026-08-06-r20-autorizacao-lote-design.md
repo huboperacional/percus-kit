@@ -257,6 +257,32 @@ usado em `renomear-kit-local.tests.ps1` e `registrar-hooks-settings.tests.ps1`.
   apagar tudo que não é rastreado, inclusive lixo de build". Não é um risco real do design;
   registrado aqui só para não ser redescoberto como dúvida depois.
 
+## Adendo 2026-08-17 (v6.36.7) — o item 4 virou código
+
+O **item 4 de "Comportamento do agente"** (registro de auditoria em
+`.percus/autorizacoes-usadas.jsonl`) era a única parte deste design que dependia de o agente
+lembrar. Ele não lembrou: em 2026-08-17 o push saiu às 07:37:49 usando a autorização `ef675b38` e o
+log continuou parado em 2026-08-16. A responsabilidade passou para o **hook**, que já roda em toda
+ação externa e já lê este arquivo — o log ficou completo por construção.
+
+Três consequências que mudam o texto acima:
+
+- O hook é `PreToolUse`, então a linha registra **autorização concedida**, não execução concluída.
+  Campo `origem`: `"hook"` quando vem do hook, `"script"` quando vem do
+  `registrar-uso-autorizacao.ps1` (que continua servindo o que não passa pelo hook: push manual do
+  operador e a perna Unix).
+- **Falha ao gravar bloqueia a ação**, após 3 tentativas. A auditoria passou a ser parte do gate.
+- O item 3 (o agente anuncia antes de usar) **continua sendo comportamental** — o hook fecha a
+  lacuna do registro, não a do anúncio.
+
+O **risco estrutural** declarado no topo deste documento (o agente cria o arquivo que o hook confia)
+segue idêntico: esta mudança torna confiável o **registro**, não a **concessão**.
+
+Também revisada aqui a linha de "Testes" que dizia que os testes nunca tocam o `.percus/` real:
+era verdade para os testes listados neste design, e **falsa** para
+`hardening-2026-05-18.tests.ps1:100`, que rodava o hook a partir da raiz do repo. Corrigido na
+mesma versão — ver changelog 6.36.7.
+
 ## Não-objetivos (fora de escopo deste design)
 
 - Não mexe na lógica de `premise_validity`/council check já existente no hook — continua valendo

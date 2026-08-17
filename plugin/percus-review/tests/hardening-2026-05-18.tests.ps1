@@ -98,11 +98,27 @@ Describe "Hardening 2026-05-18 — incident regression prevention" {
     # -------------------------------------------------------------------------
     Context "Cenario 5+: defenses runtime" {
         It "5. external-action-guard hook bloqueia gh pr comment sem override (R20)" {
+            # cwd CONTROLADO, nunca a raiz do repo. O hook monta o caminho da autorizacao em
+            # lote a partir de (Get-Location).Path -- rodando daqui, ele lia o
+            # .percus/acao-externa-autorizada.json REAL do checkout. Com uma autorizacao viva
+            # (janela de 60min) o hook liberava e este teste ficava vermelho: medido em
+            # 2026-08-17, suite 361/1 com autorizacao viva e 362/0 depois de expirar. Era o
+            # unico dos testes do hook sem isolamento -- os de external-action-guard.tests.ps1
+            # ja faziam isto. Resultado de teste que muda conforme o estado da maquina nao
+            # afere o hook, afere a hora do dia.
             Test-Path $hookPath | Should -Be $true
+            $dir = Join-Path ([IO.Path]::GetTempPath()) ("hard5-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
             Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
             $stdin = '{"tool_input":{"command":"gh pr comment 1 --body teste"}}'
-            $stdin | & pwsh -NoProfile -File $hookPath 2>&1 | Out-Null
+            Push-Location $dir
+            try {
+                $stdin | & pwsh -NoProfile -File $hookPath 2>&1 | Out-Null
+            } finally {
+                Pop-Location
+            }
             $LASTEXITCODE | Should -Be 2 -Because "gh pr comment sem PERCUS_EXTERNAL_OVERRIDE deve ser bloqueado (R20)"
+            Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
         }
 
         It "6. dedup-findings.ps1 usa hash MD5 e campo occurrences" {

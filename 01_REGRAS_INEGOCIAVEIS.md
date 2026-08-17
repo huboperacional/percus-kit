@@ -716,8 +716,14 @@ OU findings sem `fact_check: CONFIRMADO`.
     — nunca antes). Risco estrutural aceito conscientemente: o agente cria o arquivo que o hook
     confia, sem verificação externa de que a confirmação aconteceu de verdade. Ver
     `docs/superpowers/specs/2026-08-06-r20-autorizacao-lote-design.md` pro raciocínio completo.
-    Todo uso registrado em `.percus/autorizacoes-usadas.jsonl` via
-    `scripts/registrar-uso-autorizacao.ps1`.
+    Todo uso registrado em `.percus/autorizacoes-usadas.jsonl` — **pelo próprio hook** (v6.36.7+),
+    não pelo agente: até a 6.36.6 a linha dependia de alguém lembrar de chamar o script, e em
+    2026-08-17 ninguém lembrou (push às 07:37:49, log parado no dia anterior). O hook grava
+    `origem: "hook"` e registra **autorização concedida**, não execução concluída — ele é
+    `PreToolUse`, roda antes do comando. `scripts/registrar-uso-autorizacao.ps1` continua
+    disponível (`origem: "script"`) para o que não passa pelo hook: push manual do operador e a
+    perna Unix. **Se o registro falhar, a ação é bloqueada** após 3 tentativas — a auditoria é
+    parte do gate, não contabilidade à parte.
 - **Logs de council consult NÃO contam como autorização** (são opinião, não gate)
 - Hook `plugin/percus-review/hooks/external-action-guard.ps1` (v6.7.0+, arquivo v6.35.0+) faz
   enforcement runtime via PreToolUse bloqueando `gh pr comment`, `gh issue close`,

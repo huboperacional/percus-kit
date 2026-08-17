@@ -24,14 +24,45 @@ if (-not (Test-Path $authFile)) {
 }
 $auth = Get-Content $authFile -Raw -Encoding UTF8 | ConvertFrom-Json
 
+# MASCARA credencial antes de gravar -- IGUAL ao bloco do hook external-action-guard.ps1, que
+# escreve neste mesmo arquivo. Nao da pra compartilhar funcao: o hook roda a partir do plugin
+# INSTALADO (plugins/cache/...) e este script a partir do kit, raizes diferentes. Por isso existe
+# teste de paridade passando o MESMO comando pelos dois e exigindo mascara identica -- a receita do
+# #regra-duplicada-ps1-sh para quando fonte unica nao e possivel.
+# VIES DECLARADO: na duvida, mascara DEMAIS. Log de seguranca -- destruir uma palavra de prosa
+# custa quase nada, vazar um PAT custa a conta inteira. Blocklist e best-effort por natureza:
+# cobre 12 formas reais medidas, nao promete cobrir todas.
+$comandoLog = $Comando
+# 1. credencial em URL -- QUALQUER coisa entre :// e @, com ou sem dois-pontos (cobre
+#    https://TOKEN@host, a forma mais comum de push com PAT).
+$comandoLog = [regex]::Replace($comandoLog, '(?<=://)[^/@\s]+(?=@)', '***')
+# 2. chave sensivel com separador : ou = -- inclui prefixo/sufixo colado (GH_TOKEN) e chave
+#    entre aspas do JSON.
+$comandoLog = [regex]::Replace($comandoLog, '(?i)([A-Za-z_-]*(?:token|password|passwd|senha|secret|api[_-]?key|apikey|pat)[A-Za-z_-]*)["'']?\s*[:=]\s*["'']?[^\s"'',}&]+', '$1=***')
+# 3. flag separada por ESPACO (--token VALOR) ou COLADA (-uusuario:senha do curl).
+$comandoLog = [regex]::Replace($comandoLog, '(?i)(--?(?:token|password|passwd|senha|secret|api[_-]?key|apikey|pat|user|u))\s+[^\s"'']+', '$1 ***')
+$comandoLog = [regex]::Replace($comandoLog, '(?i)(\s-[up])(?=[^\s"''-])[^\s"'']+', '$1***')
+# 4. header de credencial -- esquema ENUMERADO; valor sem \S+ para nao comer aspa de fechamento.
+$comandoLog = [regex]::Replace($comandoLog, '(?i)((?:authorization|x-api-key|x-auth-token|private-token)\s*:\s*)((?:bearer|basic|token|digest)\s+)?[^\s"'']+', '${1}${2}***')
+
 $linha = [pscustomobject]@{
     id      = $auth.id
     motivo  = $auth.motivo
-    comando = $Comando
+    comando = $comandoLog
     quando  = (Get-Date).ToString("o")
+    origem  = "script"
 } | ConvertTo-Json -Compress
 
 $logPath = Join-Path $ProjetoRoot ".percus/autorizacoes-usadas.jsonl"
-Add-Content -LiteralPath $logPath -Value $linha -Encoding UTF8
+# AppendAllText + UTF8Encoding($false), NAO Add-Content -Encoding UTF8: no 5.1 o -Encoding UTF8
+# grava COM BOM e no pwsh 7 grava SEM. Este script e o HOOK external-action-guard.ps1 escrevem
+# no MESMO arquivo, entao duas convencoes produziriam BOM no meio de um .jsonl append-only --
+# onde ele nao e marcador de arquivo, e byte de dado no meio de uma linha. Medido em 2026-08-17
+# pelo teste de paridade: o hook gravava sem BOM e este script gravava com. Ver
+# #regra-duplicada-ps1-sh -- a guarda que pega isto e a que compara as DUAS copias.
+[IO.File]::AppendAllText($logPath, ($linha + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
 
-Write-Host "[registrar-uso-autorizacao] registrado: id=$($auth.id) comando='$Comando'"
+# Ecoa o comando MASCARADO, nao o original: mascarar o arquivo e imprimir o segredo no stdout nao
+# protege nada -- stdout de script vai parar em log de CI, em `tee`, no scrollback do terminal.
+# Achado do R11/DeepSeek na terceira rodada da 6.36.7.
+Write-Host "[registrar-uso-autorizacao] registrado: id=$($auth.id) comando='$comandoLog'"

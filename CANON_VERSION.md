@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.36.6`
+**Versão canônica em `huboperacional/percus-kit`:** `6.36.7`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,239 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.36.7 — 2026-08-17
+
+**O hook passou a gravar a própria auditoria do R20 — e o achado da 6.36.6 que motivou isto estava
+metade certo.**
+
+**O que quebrou, medido:** o push desta manhã saiu **07:37:49** (reflog de `origin/main`) usando a
+autorização em lote `ef675b38`, e o `.percus/autorizacoes-usadas.jsonl` continuou terminando em
+**2026-08-16 15:57**. O `registrar-uso-autorizacao.ps1` nunca foi chamado. O spec de 2026-08-06
+manda registrar todo uso (item 4 do "Comportamento do agente"), mas isso era **promessa em prosa,
+sem guarda** — e quebrou do jeito que promessa sem guarda quebra: calada, e descoberta por acaso
+duas horas depois.
+
+🔑 **A correção inverte de quem é a responsabilidade.** O hook já roda em toda ação externa, já lê o
+arquivo de autorização e já conhece o comando. Gravar a linha **ali**, no ramo que aceita a
+autorização, torna o log completo **por construção** em vez de por memória do agente. O
+`registrar-uso-autorizacao.ps1` continua existindo — é o único caminho para registrar um uso que não
+passou pelo hook (push manual do operador, perna Unix) — mas deixou de ser a única fonte.
+
+⚠️ **`PreToolUse` roda ANTES do comando**, então a linha registra **autorização concedida**, não
+execução concluída. Por isso ela carrega `origem: "hook"`, distinguindo das linhas que o script
+escreve depois do fato (`origem: "script"`). Chamar as duas coisas de "uso" no mesmo campo faria o
+log afirmar mais do que sabe.
+
+**O que NÃO mudou, e é decisão explícita:** o lote continua lote. A 6.36.6 propôs "consumir no
+`registrar-uso` ou encurtar a janela" — mas consumir desfaria a decisão de 2026-08-06, onde
+"autorização **em lote**" era o objetivo declarado ("o mesmo arquivo libera qualquer uma delas até
+expirar"), nascida do operador estar batendo em rate limit do GitHub. Confirmado com o operador em
+2026-08-17: o lote fica. Tem teste de regressão para isso — duas ações na mesma janela geram duas
+linhas e as duas passam.
+
+🔎 **A evidência citada na 6.36.6 estava mal atribuída, e achar o culpado deu o defeito de verdade.**
+A 6.36.6 disse que "o teste do `external-action-guard` ficou vermelho com a autorização viva".
+Medido: com a autorização viva, os 19 casos de `external-action-guard.tests.ps1` passam — eles
+fazem `Push-Location` para pasta temporária. Quem ficava vermelho era
+**`hardening-2026-05-18.tests.ps1:100`**, o único teste do hook **sem** isolamento: ele rodava o
+hook com `cwd` = raiz do repo, então lia o `.percus/acao-externa-autorizada.json` **real** do
+checkout. Números da manhã: **361/1 com autorização viva, 362/0 depois de expirar**, e reprodução
+controlada numa cópia do repo (autorização plantada → o mesmo teste volta a cair).
+
+**Por que isso deixou de ser curiosidade e virou pré-requisito:** com o hook gravando, rodar a suíte
+com uma autorização viva passaria a **escrever linhas de teste no log de auditoria real do repo**.
+Teste que não isola não estava só medindo a hora do dia — ia passar a poluir a trilha que esta
+versão existe para tornar confiável.
+
+⚠️ **A reprodução foi feita numa CÓPIA, nunca no checkout.** Plantar uma autorização viva no repo
+real abriria o portão R20 de verdade, e o checkout é compartilhado entre sessões (ver
+`checkout-compartilhado-entre-sessoes`): a autorização plantada "para testar" valeria para a sessão
+do lado.
+
+**Falha ao gravar BLOQUEIA, depois de 3 tentativas.** Decisão do operador: a auditoria é parte do
+gate, não contabilidade à parte. Um push bloqueado se resolve com um comando; uma linha que nunca
+existiu é invisível para sempre. As 3 tentativas com backoff curto existem porque o checkout é
+compartilhado e append concorrente pode esbarrar em lock de milissegundo — sem elas, colisão viraria
+bloqueio de ação legítima.
+
+⚠️ **A mensagem é PRÓPRIA, não o `BLOCK` genérico do fim do script.** Antes desta versão a exceção
+do append caía no `catch` local e o hook terminava dizendo *"acao externa publica requer aprovacao
+explicita do operador"* — **mentira**: a autorização era válida e o operador tinha autorizado. A
+mensagem mandava reautorizar um problema que não era de autorização.
+
+🔑 **E o teste de paridade achou uma divergência que já estava lá:** `Add-Content -Encoding UTF8`
+grava **com BOM no 5.1** (runtime real do hook) e **sem BOM no pwsh 7**. Hook e script escrevem no
+**mesmo** `.jsonl`, então o arquivo acumularia linhas de encodings diferentes — e BOM no meio de um
+append-only não é marcador de arquivo, é **byte de dado no meio de uma linha**. Os dois passaram a
+usar `[IO.File]::AppendAllText` + `UTF8Encoding($false)`.
+
+É `#regra-duplicada-ps1-sh` pela quarta versão seguida, e desta vez a guarda seguiu a regra prática
+do próprio verbete: **o teste compara as duas cópias** (roda os dois escritores sob `powershell.exe`
+5.1 real e confere BOM, quebra de linha, conjunto de campos e `motivo` acentuado). Dois testes
+independentes, um por escritor, teriam ficado verdes lado a lado com a divergência intacta — sob
+`pwsh` os dois escrevem sem BOM, então a suíte é cega para a classe por construção.
+
+**Mutação confirmada em cinco eixos:** remover o append (derruba 2), registrar sem olhar a idade
+(derruba a guarda de expirada), registrar no caminho do `PERCUS_EXTERNAL_OVERRIDE` (derruba a guarda
+do override — o log audita o lote, não o override, que é outro mecanismo), registrar antes de checar
+se há autorização (derruba a guarda de "sem autorização"), e trocar CRLF por LF no script (derruba a
+paridade).
+
+**Ficou de fora, declarado:** o `external-action-guard.sh` é stub fail-closed que só conhece
+`PERCUS_EXTERNAL_OVERRIDE` — ele **nunca** toma o ramo da autorização em lote, então não tem uso a
+registrar. Não é gap de paridade novo; é a mesma exceção de segurança já declarada na R20.
+
+**Continua em aberto:** o risco estrutural de 2026-08-06 (o agente cria o arquivo que o hook confia)
+é o mesmo de antes — esta versão torna o **registro** confiável, não a **concessão**.
+
+🔎 **Achado NÃO corrigido aqui, e é a MESMA classe pelo outro lado:** o caso
+`percus-gate.sh — roda limpo no canon de verdade` lê o **índice real** do repositório. Na hora deste
+commit ele estava vermelho porque **outra sessão** tinha hooks de kit staged sem bump de versão — o
+gate estava certo, e estava falando do trabalho dela. Onde
+`hardening-2026-05-18.tests.ps1` dependia do `cwd` real, este depende do **índice** real; em ambos o
+veredito do teste é função do estado da máquina, não do código. Num checkout compartilhado (cenário
+documentado neste projeto) isso é vermelho intermitente que não aponta para quem o causou. Merece
+decisão própria — não corrigido aqui porque mexer no gate no mesmo commit que mexe no R20 misturaria
+duas frentes.
+
+⚠️ **E ele se provou sozinho durante esta própria versão:** estava vermelho enquanto o bump não
+estava no índice, e ficou **verde** assim que o `git add` do bump entrou — **sem uma linha de código
+mudar entre as duas rodadas**. Um teste cujo veredito vira ao sabor do `git add` de outra pessoa não
+afere o gate; afere o índice. Suíte final: **370/0**.
+
+🔎 **Achado sobre o próprio R11, e ele é o mais grave desta versão:** o fact-check (F3) filtrou
+**os três** findings desta review como `INFUNDADO`, com a razão *"sem path verificável ou arquivo
+ausente"*. Um deles estava **certo**: o backoff de 50/100ms do retry acima, corrigido para 100/200/400
+por causa dele. O texto bruto do finding trazia o caminho **completo e correto**
+(`plugin/percus-review/hooks/external-action-guard.ps1`); foi o pipeline que o truncou para
+`external-action-guard.ps` — sem o `1` — e então não achou o arquivo e concluiu "não verificável".
+
+**A consequência é a pior possível para uma guarda:** o F3 existe para filtrar alucinação, e aqui ele
+descartou um achado real **silenciosamente**, apresentando-o como infundado. Filtro que erra para o
+lado de descartar transforma review em teatro — e neste caso só não custou nada porque o finding foi
+lido no `.jsonl` bruto em vez do relatório. Não corrigido aqui (é no pipeline de fact-check, outra
+frente); registrado em `#fact-check-trunca-path-e-descarta-finding-valido`.
+
+⚠️ **O R11 desta versão rodou com DUAS pernas, não três — e isso é achado, não nota de rodapé.** A
+perna Groq voltou `"status": "error"` / `404 (Not Found)` para `llama-3.3-70b-versatile`: o modelo foi
+**decomissionado** e o id morto está hardcoded no kit. Pior que a queda: o wrapper imprimiu
+`orchestrator Llama executado` do mesmo jeito — a linha de status reporta que **rodou**, não que
+**funcionou**, então quem lê o stdout conclui 3/3. Só o `.jsonl` do `council-log` conta a verdade.
+Conserto é troca de família de modelo em 9 arquivos, frente própria, fora desta versão.
+
+**A perna Cross-Claude achou quatro coisas, e três mudaram o código:**
+
+- **O backoff que eu tinha acabado de "corrigir" mentia.** O comentário dizia 700ms; o loop só dorme
+  quando `$tentativa -lt 3`, então o `400` nunca era dormido e o total real era **300ms**. O revisor
+  mediu rodando o laço. Agora é `200 * $tentativa` — 200 e 400, **600ms reais** — e o comentário diz
+  o número que o código entrega. Duas rodadas de review para calibrar um `Start-Sleep`, porque a
+  justificativa da decisão dependia da janela ser o que estava escrito.
+- **O retry não tinha teste do que ele existe para fazer.** O caso de falha cobria "falha sempre"
+  (bloqueia); faltava "falha, tenta de novo, funciona" — quebrar o laço deixaria a suíte verde.
+  Caso novo destrava o arquivo no meio do voo; mutação (`-le 3` → `-le 1`) derruba só ele.
+- **O teste de paridade só comparava um lado com o outro**, sem valor absoluto. Os dois regredindo
+  **juntos** passariam — plausível justamente porque um foi copiado do outro, que foi como o BOM
+  entrou nos dois. Agora ancora em `13,10` e no conjunto exato de campos **antes** de comparar os
+  lados. Era a própria doença do `#regra-duplicada-ps1-sh` sobrevivendo dentro da guarda contra ela.
+- E contei "6 casos novos" onde o diff tem 8.
+
+**Segunda rodada de R11 sobre os próprios consertos, mais quatro — e o primeiro é um vazamento que
+EU introduzi:**
+
+🔑 **A gravação automática transformou o log de auditoria em depósito de segredo.** Até a 6.36.6 o
+agente escolhia o que passar para o `registrar-uso`; agora **todo** comando autorizado vai para o
+disco sem ninguém decidir, e o arquivo sobrevive à sessão. `git push https://user:token@host` é a
+forma mais comum, e o token ficava em texto claro. Este é o custo escondido de mover uma promessa
+para dentro de uma automação: o que era ocasional e deliberado virou sistemático. Os dois escritores
+passam a mascarar credencial em URL, par `chave=valor` sensível e header `Authorization`.
+
+⚠️ **E a máscara nasceu duplicada, porque não dá para compartilhar função entre o hook e o script:**
+o hook roda a partir do plugin **instalado** (`plugins/cache/...`) e o script a partir do **kit** —
+raízes diferentes, `dot-source` seria dependência quebrada. Então o teste de paridade passa o
+**mesmo comando com credencial** pelos dois e exige máscara idêntica. Mutação removendo a máscara só
+de um lado derruba exatamente esse teste.
+
+- **As guardas de "não registra" não conferiam o exit code.** "Não gravou log" também é verdade
+  quando o hook quebrou por outro motivo — e no caso do `PERCUS_EXTERNAL_OVERRIDE` o teste passaria
+  com o override **regredido e bloqueando**. Três testes ganharam asserção de código de saída.
+- **O teste de falha transitória podia dar falso-VERMELHO**, ao contrário do que o comentário dele
+  afirmava. Com startup rápido do `pwsh` a 3ª tentativa caía antes da remoção do bloqueio. Refeita a
+  conta: com remoção em 250ms e última tentativa em `startup+600`, ela é sempre posterior — para
+  qualquer startup. O comentário agora mostra a aritmética em vez de alegar a conclusão.
+- O quarto era `mock-scan-pre-commit.sh` (fail-open em `rc` inesperado do `grep`), arquivo de outra
+  frente — repassado, não corrigido aqui.
+
+🔎 **E o defeito do fact-check reproduziu, determinístico:** na segunda review, **4 de 4** findings
+filtrados como `INFUNDADO`, todos com o caminho truncado no mesmo lugar (`.ps` por `.ps1`,
+`.tests.ps` por `.tests.ps1`). Duas medições independentes, mesmo mecanismo — não é aleatório, é o
+extrator. Todos os quatro eram legítimos e três viraram código.
+
+**Terceira rodada — e a máscara que eu tinha "consertado" protegia a forma errada.** O Cross-Claude
+rodou 12 formas reais de credencial contra ela, medindo em vez de opinar. Resultado: mascarava
+`https://usuario:token@host` (a variante rara) e deixava passar **inteiro**
+`https://TOKEN@host` — token como usuário, que é a forma **mais comum** de `git push` com PAT do
+GitHub. Também escapavam `--token VALOR` (sem `=`), `GH_TOKEN=...` (o `\b` falha porque `_` é
+caractere de palavra), `curl -u user:senha`, `X-Api-Key:`, `PRIVATE-TOKEN:` e `{"password":"x"}` do
+JSON. E `Authorization: token <PAT>` mascarava a palavra *"token"* deixando o PAT logo depois —
+mira errada, não ausência de mira.
+
+⚠️ **Máscara parcial é pior que máscara nenhuma**, porque produz confiança: quem lê "os comandos são
+mascarados" para de olhar. As quatro regras foram recalibradas contra as 12 formas medidas —
+**0 vazamentos de 12** — com **viés declarado: na dúvida, mascara demais.** Log de segurança troca
+fidelidade por contenção de bom grado; destruir uma palavra de prosa custa quase nada, vazar um PAT
+custa a conta. Continua sendo blocklist, portanto best-effort por natureza: cobre o que foi medido,
+não promete o resto.
+
+O `\S+` do valor virou `[^\s"']` de carona — ele comia a aspa de fechamento e gravava um comando
+sintaticamente diferente do que rodou. E o teste de paridade, que exercitava **só** a regra de URL,
+passou a levar três famílias de credencial num comando só: as outras regras estavam sem paridade
+aferida, que é o buraco exato que ele existe para fechar.
+
+**Quarta rodada — a máscara cobria o ARQUIVO e deixava o outro canal aberto.** Ela era aplicada
+dentro do ramo autorizado, então o `.jsonl` saía limpo enquanto as mensagens de `BLOCK` continuavam
+imprimindo o comando **cru** no stderr, e o `registrar-uso` ecoava o original no stdout. Stderr de
+hook e stdout de script vão parar em log de sessão e de CI — mascarar um canal e deixar o outro não
+é máscara, é sensação. A máscara subiu para **antes de qualquer saída**, e há guarda para os dois
+caminhos de bloqueio (mutação que volta a imprimir o cru derruba as duas). De carona, entrou a flag
+curta colada (`curl -uusuario:senha`).
+
+**Ficou de fora, declarado — duas lacunas medidas, não presumidas:**
+
+- A máscara **over-mascara prosa** que contenha `authorization:` (`--body "isto requer
+  authorization: veja o doc"` perde a palavra *"veja"*). Custo aceito do viés, e preferível ao
+  inverso.
+- A regra 2 corta o valor em `&` e `,`, então um segredo que **contenha** esses caracteres vaza da
+  parte cortada em diante. Manter `&` como delimitador preserva a legibilidade de query string
+  (`?api_key=***&q=1`); alargar protegeria mais e destruiria o resto da URL. Trade-off explícito.
+
+Blocklist não fecha. O que fecharia é não gravar o comando — e aí a auditoria perde exatamente o que
+a torna útil.
+
+Suíte: **378 Pester + 10 pytest, tudo verde** (16 casos novos, 35 no `external-action-guard`).
+**Oito mutações confirmadas**, incluindo a que remove a máscara de um só lado e a que volta a
+imprimir o comando cru na mensagem de bloqueio.
+
+**Quatro rodadas de R11 nesta versão, 18 achados tratados** — e o padrão que emerge é desconfortável:
+**oito dos que viraram código vinham de findings que o fact-check tinha carimbado como `INFUNDADO`**.
+A guarda que existe para filtrar alucinação estava filtrando o trabalho bom, e só não custou caro
+porque o `.jsonl` bruto foi lido à mão. Se houver uma prioridade para a próxima versão, é essa.
+
+🔎 **Achado estrutural do próprio R11, encontrado tentando commitar isto:** o `pre-commit-check`
+exige review com **no máximo 5 minutos**, e a review deste diff levou **mais de 10** (o wrapper
+estourou um timeout de 10 min na primeira tentativa). Para qualquer mudança grande, portanto, é
+**impossível** ler os achados e commitar dentro da janela — o único caminho que passa é encadear
+`review && commit` mecanicamente, que é exatamente o oposto do que o R11 quer. O TTL foi calibrado
+para diff pequeno e vira, no diff grande, um incentivo a não ler. Merece decisão própria: TTL
+proporcional ao tamanho do diff, ou janela maior com invalidação por mudança de conteúdo em vez de
+por relógio.
+
+**Onde eu parei, e por quê:** as rodadas 1–2 acharam defeito de mecanismo (perda de auditoria,
+divergência de encoding, retry sem cobertura). A 3ª e a 4ª acharam vazamento de credencial — mais
+graves, e vieram porque a mudança **criou** superfície nova. Paro aqui: a máscara está calibrada
+contra 12 formas medidas com 0 vazamentos, os dois canais de saída estão cobertos, e as duas lacunas
+restantes estão declaradas com o trade-off explícito. Continuar refinando blocklist tem retorno
+decrescente — R11 exige **tratar** os achados, não zerá-los.
 
 ## Changelog v6.36.6 — 2026-08-16
 
