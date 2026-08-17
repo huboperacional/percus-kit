@@ -228,6 +228,18 @@ era bug. Corrigido com aspa opcional nas regras 3 e 4, **0 de 9** depois, sem re
 funcionavam. E o teste de paridade passou a levar as **quatro** regras num comando só — a regra 2
 (`chave=valor`) estava sem paridade aferida.
 
+**Sexta rodada — e aqui o remendo virou desenho.** Mais dois vazamentos, ambos por aspa:
+`Authorization: Bearer "SEGREDO"` (aspa **entre** esquema e valor) e `--token "segredo com espaço"`
+(mascarava só até o primeiro espaço). Somados aos da 5ª rodada, eram **três sintomas do mesmo
+buraco**: não existia uma noção de *valor*, existiam três aproximações espalhadas pelas regras. Duas
+rodadas de review gastas remendando aspa caso a caso.
+
+🔑 **A correção foi trocar as aproximações por uma definição única**, usada pelas quatro regras:
+`(?:"[^"]*"|'[^']*'|[^\s"']+)` — citado, com espaço dentro se houver, ou nu. Medido em 16 formas
+reais: **0 vazamentos**, comandos limpos intactos. A lição não é sobre regex: **quando o mesmo
+conceito aparece três vezes escrito de três jeitos, o defeito não é nenhuma das três — é a ausência
+da definição.**
+
 **Ficou de fora, declarado — duas lacunas medidas, não presumidas:**
 
 - A máscara **over-mascara prosa** que contenha `authorization:` (`--body "isto requer
@@ -240,12 +252,12 @@ funcionavam. E o teste de paridade passou a levar as **quatro** regras num coman
 Blocklist não fecha. O que fecharia é não gravar o comando — e aí a auditoria perde exatamente o que
 a torna útil.
 
-Suíte: **381 Pester + 10 pytest, tudo verde** (19 casos novos, 38 no `external-action-guard`).
+Suíte: **383 Pester + 10 pytest, tudo verde** (21 casos novos, 40 no `external-action-guard`).
 **Oito mutações confirmadas**, incluindo a que remove a máscara de um só lado e a que volta a
 imprimir o comando cru na mensagem de bloqueio.
 
-**Cinco rodadas de R11 nesta versão, 20 achados tratados** — e o padrão que emerge é desconfortável:
-**dez dos que viraram código vinham de findings que o fact-check tinha carimbado como `INFUNDADO`**.
+**Seis rodadas de R11 nesta versão, 22 achados tratados** — e o padrão que emerge é desconfortável:
+**doze dos que viraram código vinham de findings que o fact-check tinha carimbado como `INFUNDADO`**.
 A guarda que existe para filtrar alucinação estava filtrando o trabalho bom, e só não custou caro
 porque o `.jsonl` bruto foi lido à mão. Se houver uma prioridade para a próxima versão, é essa.
 

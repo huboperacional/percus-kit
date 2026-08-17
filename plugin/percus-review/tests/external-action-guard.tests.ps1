@@ -504,6 +504,10 @@ Describe "external-action-guard.ps1 hook" {
         @{ Forma = "flag com aspas duplas"; Comando = 'slack-cli send --token "SEGREDO" --channel geral oi' }
         @{ Forma = "flag com aspas simples";Comando = "slack-cli send --token 'SEGREDO' --channel geral oi" }
         @{ Forma = "curl -u com aspas";     Comando = 'gh issue close 42 --user "percus:SEGREDO"' }
+        # Aspa ENTRE esquema e valor, e valor citado COM ESPACO: os dois vazavam pelo mesmo
+        # buraco -- nao existia uma nocao de "valor", existiam tres aproximacoes.
+        @{ Forma = "Bearer com valor citado"; Comando = "gh pr comment 1 --body ok --header 'Authorization: Bearer `"SEGREDO`"'" }
+        @{ Forma = "valor citado com espaco"; Comando = 'slack-cli send --token "SEGREDO com espaco" --channel geral oi' }
     ) {
         # A gravacao automatica introduziu um vazamento que nao existia: ate 6.36.6 o agente
         # escolhia o que passar pro registrar-uso; agora TODO comando autorizado e persistido em

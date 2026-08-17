@@ -49,6 +49,13 @@ try {
     # (plugins/cache/...) e o script a partir do kit -- raizes diferentes, dot-source seria
     # dependencia quebrada. Por isso ha teste de paridade que passa o MESMO comando pelos dois e
     # exige mascara identica (#regra-duplicada-ps1-sh).
+    # UMA nocao de "valor", usada pelas quatro regras: citado (aspas duplas ou simples, podendo
+    # conter espaco) OU nu. Duas rodadas de R11 foram gastas remendando aspa caso a caso -- primeiro
+    # `--token "x"` nao casava em regra nenhuma, depois `Authorization: Bearer "x"` vazava pela aspa
+    # ENTRE esquema e valor, depois `--token "x com espaco"` mascarava so ate o primeiro espaco.
+    # Eram tres sintomas do mesmo buraco: nao havia definicao de valor, havia tres aproximacoes.
+    $VALOR = '(?:"[^"]*"|''[^'']*''|[^\s"'']+)'
+
     $comandoLog = $command
     # 1. credencial em URL -- QUALQUER coisa entre :// e @, com ou sem dois-pontos. A 1a versao
     #    exigia `usuario:segredo@` e deixava passar `https://TOKEN@host` (token como usuario), que
@@ -56,18 +63,13 @@ try {
     $comandoLog = [regex]::Replace($comandoLog, '(?<=://)[^/@\s]+(?=@)', '***')
     # 2. chave sensivel com separador : ou = -- inclui prefixo/sufixo colado (GH_TOKEN: o \b da 1a
     #    versao falhava porque `_` e caractere de palavra) e chave entre aspas do JSON.
-    $comandoLog = [regex]::Replace($comandoLog, '(?i)([A-Za-z_-]*(?:token|password|passwd|senha|secret|api[_-]?key|apikey|pat)[A-Za-z_-]*)["'']?\s*[:=]\s*["'']?[^\s"'',}&]+', '$1=***')
+    $comandoLog = [regex]::Replace($comandoLog, '(?i)([A-Za-z_-]*(?:token|password|passwd|senha|secret|api[_-]?key|apikey|pat)[A-Za-z_-]*)["'']?\s*[:=]\s*' + $VALOR, '$1=***')
     # 3. flag separada por ESPACO (--token VALOR) ou COLADA (-uusuario:senha do curl).
-    #    ASPA OPCIONAL antes do valor: `[^\s"'] recusa a aspa de abertura, entao `--token "x"`
-    #    nao casava em NENHUMA das quatro regras e ia pro disco em claro. Medido: 4 de 9 formas
-    #    vazavam, todas com valor entre aspas -- e aspa em valor de flag e a forma normal de
-    #    escrever, nao a exotica. Achado do R11/DeepSeek na rodada que fechou o commit anterior.
-    $comandoLog = [regex]::Replace($comandoLog, '(?i)(--?(?:token|password|passwd|senha|secret|api[_-]?key|apikey|pat|user|u))(\s+["'']?)[^\s"'']+', '$1$2***')
-    $comandoLog = [regex]::Replace($comandoLog, '(?i)(\s-[up])(?=["'']?[^\s"''-])["'']?[^\s"'']+', '$1***')
+    $comandoLog = [regex]::Replace($comandoLog, '(?i)(--?(?:token|password|passwd|senha|secret|api[_-]?key|apikey|pat|user|u))\s+' + $VALOR, '$1 ***')
+    $comandoLog = [regex]::Replace($comandoLog, '(?i)(\s-[up])(?=["'']?[^\s"''-])' + $VALOR, '$1***')
     # 4. header de credencial -- esquema ENUMERADO, nao opcional-livre: com `(bearer\s+)?` solto,
-    #    `Authorization: token <PAT>` mascarava a palavra "token" e deixava o PAT depois dela. O
-    #    valor usa [^\s"'] em vez de \S+ para nao comer a aspa de fechamento.
-    $comandoLog = [regex]::Replace($comandoLog, '(?i)((?:authorization|x-api-key|x-auth-token|private-token)\s*:\s*["'']?)((?:bearer|basic|token|digest)\s+)?[^\s"'']+', '${1}${2}***')
+    #    `Authorization: token <PAT>` mascarava a palavra "token" e deixava o PAT depois dela.
+    $comandoLog = [regex]::Replace($comandoLog, '(?i)((?:authorization|x-api-key|x-auth-token|private-token)\s*:\s*)((?:bearer|basic|token|digest)\s+)?' + $VALOR, '${1}${2}***')
 
     # Escape hatch: operador autorizou explicitamente
     if ($env:PERCUS_EXTERNAL_OVERRIDE -eq "1") {
