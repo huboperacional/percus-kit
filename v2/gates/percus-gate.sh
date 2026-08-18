@@ -95,6 +95,34 @@ for f in conhecimento/*.md referencia/conhecimento/*.md; do
   done
 done
 
+# ---------- 2b. Titulo '## ' SEM ancora {#slug} ----------
+# Os blocos 2 e 3 chaveiam em '^## .*\{#'. Uma linha '## Titulo' sem ancora nao casa
+# NENHUM dos dois: ela nao e "orfa do indice", ela nao existe pro gate -- e escapa da
+# checagem de indice E da de tags: de uma vez. Medido em 2026-08-18: 14 verbetes assim
+# no COMO_RESOLVER.md, todos tambem sem tags:, 11 commitados havia semanas.
+# O mesclador JA recusava isso na caixa (entrada com '##' sem ancora e barrada); faltava
+# no MONOLITO. Gate e mesclador discordando sobre o que e valido e a assimetria que
+# tornava o caminho proibido pelo R23 o de menor resistencia.
+# Ancora tem de FECHAR a linha, igual ao mesclador. '\r$' e removido antes: o arquivo e
+# CRLF e '$' em regex nao casa com o \r sobrando (ver #regex-multiline-crlf-dollar-nao-casa).
+for f in conhecimento/*.md referencia/conhecimento/*.md; do
+  [ -f "$f" ] || continue
+  sem_ancora=$(awk '
+    /^```/ { fence = !fence; next }
+    fence  { next }
+    /^## / {
+      t = $0
+      sub(/\r$/, "", t)
+      if (t == "## Indice" || t == "## \303\215ndice") next
+      if (t ~ /\{#[^}]+\}[ \t]*$/) next
+      print NR
+    }
+  ' "$f" 2>/dev/null)
+  for n in $sem_ancora; do
+    violacao "$f linha $n -- titulo '## ' sem ancora {#slug} (nasce sem link, fora do indice e fora da checagem de tags)"
+  done
+done
+
 # ---------- 3. Verbete sem linha tags: (invisivel a busca) ----------
 for f in conhecimento/*.md referencia/conhecimento/*.md; do
   [ -f "$f" ] || continue

@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.36.8`
+**Versão canônica em `huboperacional/percus-kit`:** `6.37.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,61 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.37.0 — 2026-08-18
+
+**R23 estava escrito em três lugares e enforçado em nenhum: entra o `knowledge-write-guard`, a
+primeira guarda de CAMINHO do kit.**
+
+R23 diz *"não edite o monólito direto"* — e repete em `01_REGRAS_INEGOCIAVEIS.md`, na skill
+`consult-knowledge` e no `conhecimento/entrada/LEIA-ME.md`. Mas os 12 hooks registrados casavam
+`Bash|PowerShell` ou `ExitPlanMode`, e **nenhum** casava `Edit`/`Write`. Uma sessão que abrisse
+`COMO_RESOLVER.md` com a tool Edit passava por zero guardas.
+
+🔑 **É a mesma classe do incidente de 2026-07-31** (matcher só `Bash`, a tool PowerShell passava
+livre). Naquela vez o conserto estendeu Bash → `Bash|PowerShell`; `Edit`/`Write` nunca entraram. O
+ponto cego mudou de andar, não sumiu. **Enforcement enumera tools — toda tool nova nasce fora da
+guarda até alguém somar.**
+
+**O custo medido, em 2026-08-18:** 14 verbetes entraram por esse caminho — sem âncora `{#slug}`, sem
+linha `tags:` e fora do Índice. Onze estavam **commitados havia semanas**. Invisíveis três vezes: sem
+âncora não há link, sem índice não há navegação, sem `tags:` a busca por classe de sintoma não acha.
+
+⚠️ **A assimetria é o que dirigia a sessão pro caminho errado.** O bloco 3c cobrava 8 invariantes de
+quem escreve na **caixa** (um verbete por arquivo, slug == nome, `tags:`, fence fechado…) e o
+monólito não cobrava nada. Quem obedecia o R23 podia ser rejeitado; quem desobedecia, nunca. **O
+caminho proibido era o de menor resistência** — e gate que só cobra de quem já está certo não é
+enforcement, é imposto sobre a disciplina.
+
+**O que entra:**
+
+1. **`knowledge-write-guard`** (`PreToolUse`, matcher `Edit|Write`, escape
+   `PERCUS_SKIP_KNOWLEDGE_GUARD`) — recusa escrita em `conhecimento/COMO_{RESOLVER,FAZER}.md` e a
+   mensagem **ensina o caminho certo** em vez de só recusar: aponta `entrada/<área>/<slug>.md`,
+   lembra que o nome do arquivo é o slug, e diz por que (git resolve conflito em arquivo). Casa
+   caminho relativo **e** absoluto com barra invertida — casar só a forma relativa seria guarda que
+   nunca dispara no uso real. Não ramifica por `tool_name`: `Edit` e `Write` trazem o alvo no mesmo
+   campo.
+2. **Bloco 2b do `percus-gate.sh`** — barra `## Título` sem `{#âncora}` no monólito. Os blocos 2 e 3
+   chaveiam em `^## .*\{#`: sem âncora, o verbete não é *órfão do índice*, ele **não existe pro
+   gate**, e escapava das duas checagens de uma vez. O mesclador já recusava isso na caixa; faltava
+   no monólito.
+3. **Campo `alvo` no `hooks-manifest.json`** (`comando` | `caminho` | `plano`). O teste "guardas de
+   comando cobrem os dois shells" derivava o conjunto por exclusão (*"PreToolUse que não é
+   ExitPlanMode"*) e exigia `Bash|PowerShell` de todos — o que **proibiria por construção** uma
+   guarda que lê `tool_input.file_path`. Lista de exceção que cresce é sinal de critério faltando; o
+   critério é o alvo.
+4. **Os 14 verbetes resgatados** — âncora, `tags:` e linha de índice na ordem do corpo; e as 91
+   linhas que tinham entrado com LF num arquivo CRLF puro voltaram a CRLF.
+
+**Guarda contra o excesso:** há teste explícito de que `## Índice` e subtítulos `###` **não** podem
+barrar, e de que a caixa (`conhecimento/entrada/…`) continua livre. Guarda que ninguém consegue
+satisfazer é desligada no primeiro aperto — e aí não guarda mais nada.
+
+**Publicação é obrigatória nesta versão.** Matcher novo é mudança de **registro**, não de código: o
+trampolim da v6.33.0 faz o hook rodar do kit por `git pull`, mas um matcher que não existe no
+registro instalado nunca entrega a chamada. Sem republicar, este guard não vale em nenhuma máquina.
+
 
 ## Changelog v6.36.8 — 2026-08-17
 

@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # O script mexe no settings.json do usuario. O teste NUNCA toca o real: monta um par
 # (kit falso com manifesto+wrappers + settings falso) e afere o resultado, mesmo padrao
 # de plugin/percus-review/tests/renomear-kit-local.tests.ps1.
@@ -203,19 +203,19 @@ Describe "registrar-hooks-settings.ps1" {
         @(Get-ChildItem $dir -Filter "settings.json.bak-*").Count | Should -Be 0 -Because "primeiro uso: nao existe settings.json anterior pra fazer backup"
     }
 
-    It "contra o manifesto REAL do kit: Guardas=8, Observadores=4, Todos=12 -- todos com wrapper em disco" {
+    It "contra o manifesto REAL do kit: Guardas=9, Observadores=4, Todos=13 -- todos com wrapper em disco" {
         # Regressao de verdade: usa o hooks-manifest.json e os .cmd reais do proprio repo,
         # nao o kit falso. Prova que o script bate com o que hooks-manifest.tests.ps1 ja
-        # afirma sobre o mundo real (8 guarda / 4 observador / 12 total).
+        # afirma sobre o mundo real (9 guarda / 4 observador / 13 total).
         $settings = New-SettingsFalso -Conteudo @{}
 
         $saidaGuardas = & $script:script -Escopo Guardas -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
-        $saidaGuardas | Should -Match "\b8 hook\(s\)"
+        $saidaGuardas | Should -Match "\b9 hook\(s\)"
 
         $saidaObs = & $script:script -Escopo Observadores -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
         $saidaObs | Should -Match "\b4 hook\(s\)"
 
         $saidaTodos = & $script:script -Escopo Todos -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
-        $saidaTodos | Should -Match "\b12 hook\(s\)"
+        $saidaTodos | Should -Match "\b13 hook\(s\)"
     }
 }

@@ -150,6 +150,35 @@ Describe "percus-gate.sh — higiene de conhecimento" {
         $r.Exit | Should -Be 1 -Because "ancora fora do padrao ficava invisivel aos dois checks. Saida do gate: $($r.Saida)"
     }
 
+    It "BARRA verbete '## Titulo' SEM ancora -- escapava dos blocos 2 e 3 de uma vez" {
+        # Os blocos 2 (orfao do indice) e 3 (sem tags:) ambos chaveiam em '^## .*\{#'.
+        # Sem ancora, a linha nao casa NENHUM dos dois: o verbete nao e "orfao", ele
+        # simplesmente nao existe pro gate. Medido no canon 2026-08-18: 14 verbetes
+        # nesse estado, todos tambem sem tags:, 11 deles ja commitados havia semanas.
+        # O mesclador ja recusava isso na CAIXA; o gate nao cobria o MONOLITO -- e era
+        # exatamente a assimetria que fazia do caminho proibido o de menor resistencia.
+        $repo = New-KnowledgeRepo @(
+            '# T', '', '## Indice', '', '- [Boa](#boa)', '', '---', '',
+            '## Boa {#boa}', '', '`tags: a`', '', '**Sintoma:** ok.', '',
+            '## Verbete sem ancora nenhuma', '', '`tags: b`', '', '**Sintoma:** invisivel ao indice e ao link.'
+        )
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "'## ' sem ancora nasce inalcancavel por link e ausente do indice. Saida do gate: $($r.Saida)"
+        $r.Saida | Should -Match 'sem ancora'
+    }
+
+    It "NAO acusa '## Indice' nem subtitulo '###' (senao todo verbete legitimo barra)" {
+        # O cabecalho do indice e os subtitulos de secao sao '##'/'###' legitimos sem
+        # ancora. Guarda que barra os dois e guarda que ninguem consegue satisfazer.
+        $repo = New-KnowledgeRepo @(
+            '# T', '', '## Indice', '', '- [Boa](#boa)', '', '---', '',
+            '## Boa {#boa}', '', '`tags: a`', '', '**Sintoma:** ok.', '',
+            '### Subsecao do verbete', '', 'texto.'
+        )
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 0 -Because "Saida do gate: $($r.Saida)"
+    }
+
     It "roda limpo no canon de verdade (exit 0) — e enxergando os 105 verbetes" {
         $reais = @(Select-String -Path (Join-Path $script:kitRoot "conhecimento\COMO_RESOLVER.md") -Pattern '^## .*\{#').Count
         $reais | Should -BeGreaterThan 100 -Because "sanity: o arquivo tem ~105 verbetes"

@@ -8,7 +8,8 @@
     "forma": "guarda = wrapper traduz nao-zero em exit 2 (fail-closed). observador = wrapper repassa o codigo cru",
     "assinatura": "string que o hook imprime quando age -- em stderr pras guardas (PreToolUse), em stdout pro enforcement-health (excecao medida: stderr num SessionStart que sai 0 e invisivel, mesmo silencio do item 10 so que noutro evento). E o que permite ao canario CONTAR execucoes em vez de so observar bloqueio -- comando bloqueado e comando bloqueado, nao se ve 'duas vezes'. Nao ha convencao unica: registrado como e, nao como deveria ser",
     "escape": "env var que desliga so este hook; null quando so o escape geral PERCUS_HOOKS_DISABLED vale",
-    "registrado": "false = existe em disco e nao esta em nenhum registro vivo. Nao e erro: e visibilidade"
+    "registrado": "false = existe em disco e nao esta em nenhum registro vivo. Nao e erro: e visibilidade",
+    "alvo": "o que a guarda inspeciona: comando = le tool_input.command (shells); caminho = le tool_input.file_path (Edit/Write); plano = ExitPlanMode. Existe porque 'guarda de PreToolUse' deixou de ser sinonimo de 'guarda de comando' quando entrou a primeira guarda de CAMINHO -- e o teste que exigia matcher Bash|PowerShell de toda guarda de PreToolUse teria proibido a guarda nova por construcao."
   },
   "escape_geral": "PERCUS_HOOKS_DISABLED",
   "hooks": [
@@ -19,7 +20,8 @@
       "forma": "guarda",
       "assinatura": "[percus:hook pre-plan-exit]",
       "escape": "PERCUS_PREMORTEM_OVERRIDE",
-      "registrado": true
+      "registrado": true,
+      "alvo": "plano"
     },
     {
       "nome": "pre-commit-check",
@@ -28,7 +30,8 @@
       "forma": "guarda",
       "assinatura": "[percus:hook pre-commit]",
       "escape": null,
-      "registrado": true
+      "registrado": true,
+      "alvo": "comando"
     },
     {
       "nome": "mock-scan-pre-commit",
@@ -37,7 +40,8 @@
       "forma": "guarda",
       "assinatura": "[percus:hook mock-scan]",
       "escape": "PERCUS_SKIP_MOCK_SCAN",
-      "registrado": true
+      "registrado": true,
+      "alvo": "comando"
     },
     {
       "nome": "auth-import-pre-commit",
@@ -46,7 +50,8 @@
       "forma": "guarda",
       "assinatura": "[percus:hook auth-import]",
       "escape": "PERCUS_SKIP_AUTH_IMPORT",
-      "registrado": true
+      "registrado": true,
+      "alvo": "comando"
     },
     {
       "nome": "migration-check-pre-commit",
@@ -55,7 +60,8 @@
       "forma": "guarda",
       "assinatura": "[percus:hook migration-check]",
       "escape": "PERCUS_SKIP_MIGRATION_CHECK",
-      "registrado": true
+      "registrado": true,
+      "alvo": "comando"
     },
     {
       "nome": "types-check-pre-commit",
@@ -64,7 +70,8 @@
       "forma": "guarda",
       "assinatura": "[percus:hook types-check]",
       "escape": "PERCUS_SKIP_TYPES_CHECK",
-      "registrado": true
+      "registrado": true,
+      "alvo": "comando"
     },
     {
       "nome": "external-action-guard",
@@ -73,7 +80,8 @@
       "forma": "guarda",
       "assinatura": "[percus:hook external-action-guard]",
       "escape": "PERCUS_EXTERNAL_OVERRIDE",
-      "registrado": true
+      "registrado": true,
+      "alvo": "comando"
     },
     {
       "nome": "crud-evidence-warn",
@@ -84,7 +92,8 @@
       "escape": "PERCUS_SKIP_CRUD_WARN",
       "registrado": true,
       "warn_only": true,
-      "_nota": "forma=guarda descreve o WRAPPER (fail-closed, derivado do evento PreToolUse), nao a politica do hook. Por logica propria ele NUNCA bloqueia: R2 diz warn-only e o .ps1 termina em catch { exit 0 }. So um PowerShell que falhasse ao nem iniciar acionaria o fail-closed do wrapper. Quem construir o canario (Task 5) e o health check (Task 7) sobre o campo forma nao pode inferir daqui que este hook esta autorizado a bloquear por regra de negocio."
+      "_nota": "forma=guarda descreve o WRAPPER (fail-closed, derivado do evento PreToolUse), nao a politica do hook. Por logica propria ele NUNCA bloqueia: R2 diz warn-only e o .ps1 termina em catch { exit 0 }. So um PowerShell que falhasse ao nem iniciar acionaria o fail-closed do wrapper. Quem construir o canario (Task 5) e o health check (Task 7) sobre o campo forma nao pode inferir daqui que este hook esta autorizado a bloquear por regra de negocio.",
+      "alvo": "comando"
     },
     {
       "nome": "on-stop-check",
@@ -132,6 +141,16 @@
       "escape": null,
       "registrado": false,
       "_nota": "ORFAO. Tem .ps1 e teste proprio, nao tem .cmd e nunca esteve em registro nenhum -- avisa sobre versao de canon divergente e nunca avisou ninguem. Listado aqui para deixar de ser invisivel; o evento declarado e a intencao, nao um registro vivo. A Task 7 decide se ele e absorvido pelo health check ou registrado. CUIDADO se for registrado como esta: ele fala por [Console]::Error (stderr), o mesmo bug que o enforcement-health tinha e foi consertado em 2026-07-31 (ver #sessionstart-stderr-nunca-aparece) -- teria que trocar pra stdout antes de virar registro vivo."
+    },
+    {
+      "nome": "knowledge-write-guard",
+      "evento": "PreToolUse",
+      "matcher": "Edit|Write",
+      "alvo": "caminho",
+      "forma": "guarda",
+      "assinatura": "[percus:hook knowledge-write]",
+      "escape": "PERCUS_SKIP_KNOWLEDGE_GUARD",
+      "registrado": true
     }
   ]
 }

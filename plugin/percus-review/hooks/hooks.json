@@ -50,6 +50,15 @@
             "async": false
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/knowledge-write-guard.cmd\""
+          }
+        ]
       }
     ],
     "Stop": [

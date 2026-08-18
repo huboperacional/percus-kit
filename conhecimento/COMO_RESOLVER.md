@@ -54,6 +54,9 @@
 - [Pre-mortem de plano: mande o revisor LER o código, não só o plano](#pre-mortem-revisor-le-o-codigo)
 - [Org de teste limpa não expõe topologia — só comportamento](#org-limpa-nao-expoe-topologia)
 - [Poster de vídeo proxiado pra rota que só aceita `kind:'photo'` — 400 invisível no desktop, único conteúdo no mobile](#video-poster-proxied-to-photo-only-route)
+- [Soft-delete + UNIQUE sem filtro = recurso trancado pra sempre](#soft-delete-unique-sem-filtro-tranca-recurso)
+- [Validador que confirma a STRING não confirma o SISTEMA](#validador-confirma-string-nao-o-sistema)
+- [Guard que varre o repo acusa o seu próprio git worktree como violação](#guard-acusa-o-proprio-worktree)
 - [Árvore obsoleta no dir de deploy do VPS reprova `next build` — `docker builder prune` NÃO é o fix](#docker-context-stale-tree-recorrencia)
 - [`rm -rf` de "limpeza" no dir de deploy do VPS apaga segredos reais nunca commitados](#rm-rf-deploy-dir-apaga-env)
 - [Watchdog de confirmação de entrega dispara falso-positivo contra device de teste automatizado (não gera ack)](#watchdog-ack-device-teste-automatizado)
@@ -219,6 +222,7 @@
 - [`alembic upgrade head` não vê a migration nova: ela mora DENTRO da imagem](#alembic-head-mora-na-imagem)
 - [CHECK bicondicional ACEITA a linha proibida quando o discriminante é NULL (UNKNOWN passa)](#check-bicondicional-unknown)
 - [Preflight CORS recusado: o serviço fica verde e só o browser do usuário quebra](#preflight-cors-falha-silenciosa)
+- [Auditoria de conta de anuncios: validar a PROPRIA proposta nao acha erro de ausencia](#auditoria-validar-propria-proposta-nao-acha-ausencia)
 - [A mutação sobreviveu: o código está certo e a prova de que precisa estar não existe](#mutacao-sobrevive-predicado-quase-certo)
 - [Sessão de 30 dias que "não persiste": como provar de que lado está o defeito](#sessao-30-dias-nao-persiste)
 - [Auditar código de OUTRO repo: leia a ref publicada, nunca o working tree](#auditar-outro-repo-ref-publicada)
@@ -269,6 +273,11 @@
 - [Browser MCP (Playwright/Chrome-DevTools) pode estar conectado a um perfil Chrome REAL com sessão AO VIVO do operador, não um perfil isolado](#browser-mcp-sessao-ao-vivo-operador)
 - [Smoke test conversacional (webhook + estado de sessão de bot): mandar a próxima mensagem sem confirmar o estado via poll() cascateia falso-negativo](#smoke-conversacional-sessao-presa-cascateia)
 - [Hook PowerShell roda sob `powershell.exe` 5.1, não `pwsh` — arquivo produzido sem BOM (ou teste com acento literal no source) corrompe/quebra silenciosamente](#hook-powershell-51-sem-bom-corrompe)
+- [Distinguir bug antigo (já corrigido) de regressão nova ao receber print de conversa real](#distinguir-bug-antigo-de-regressao-em-print)
+- [Pagar.me recusa cobrança com erro rotativo (telefone → documento → billing_address) sem dizer os 3 de uma vez](#pagarme-erro-rotativo-antifraude)
+- [QA visual de tela autenticada sem OTP real (dashboard com login por telefone/magic-link)](#qa-visual-de-tela-autenticada-sem-otp)
+- [Resgatar commit que caiu no branch errado por colisão de sessão paralela (sem perder o trabalho de nenhum dos dois lados)](#resgatar-commit-no-branch-errado-sessao-paralela)
+- [Mockup aprovado nunca gerado pelo algoritmo real de layout diverge da produção](#mockup-aprovado-sem-algoritmo-real-diverge)
 - [Fluxo de confirmação com allowlist fixo cancela silenciosamente em vez de reprompt](#confirmacao-allowlist-cancela-em-vez-de-reprompt)
 - [Deploy de sessão paralela sobrescreve o seu sem aviso](#deploy-paralelo-sobrescreve-sem-aviso)
 - [Junction de node_modules compartilhada entre worktrees corrompe e trava Turbopack](#junction-node-modules-worktree-risco)
@@ -309,6 +318,8 @@
 - [Popover/menu/diálogo saem TRANSPARENTES: o `Portal` do Radix monta no `<body>`, fora do escopo onde os tokens da paleta existem](#portal-radix-sai-do-escopo-dos-tokens)
 - [Teardown de teste não consegue dropar tabela com FK auto-referencial: desligue a checagem, em AUTOCOMMIT](#drop-table-fk-auto-referencial-no-teardown)
 - [Recurso finito consumido por N filhos: travar só a linha PAI errada deixa a soma estourar](#lock-no-pai-errado-soma-estoura)
+- [`null` que significa duas coisas opostas: separe o "não há com o que comparar" do "o outro lado está vazio"](#null-com-dois-significados-opostos)
+- [O enriquecedor que "ignora" a entrada vazia APAGA a intenção de remover](#enriquecedor-ignora-vazio-e-apaga-intencao-de-remover)
 - [Estorno por soft-delete faz o relatório do mês passado mudar depois de entregue — use contra-lançamento](#estorno-soft-delete-muda-relatorio-ja-entregue)
 - [RLS ligada, política escrita, e o app continua vendo tudo: faltou `FORCE`, ou o role é superusuário](#rls-sem-force-dono-ignora-politica)
 - [A leitura de versão do `enforcement-health` VENCE no meio da sessão — `autoUpdate` fecha a divergência sozinho enquanto você "conserta"](#health-check-versao-vence-autoupdate)
@@ -390,6 +401,9 @@
 - [Perna bash do `mock-scan` estava morta duas vezes: `grep -P` sem locale e regex cortada no `|` errado](#mock-scan-perna-bash-morta-por-locale-e-split)
 - [Secret datado monta sob o nome errado: consumer toma 401 com serviço `healthy`](#secret-montado-no-nome-errado-401-silencioso)
 - [Teste que executa um hook sem isolar o `cwd` afere o estado da máquina, não o hook](#teste-de-hook-roda-na-raiz-le-estado-real)
+- [Teste que forja o NOME da classe de exceção passa com o código quebrado](#teste-forja-nome-da-classe-de-excecao)
+- [Redeclarar custom property CSS no mesmo `:root` sobrescreve — e nenhuma ferramenta pega](#redeclarar-custom-property-no-mesmo-root)
+- [Sessão que "morre toda hora" pode ser troca de perfil do browser, não bug de auth](#sessao-morre-toda-hora-e-perfil-do-browser)
 
 ---
 
@@ -3739,7 +3753,9 @@ refresh token em 401".
 ---
 
 
-## Auditoria de conta de anuncios: validar a PROPRIA proposta nao acha erro de ausencia
+## Auditoria de conta de anuncios: validar a PROPRIA proposta nao acha erro de ausencia {#auditoria-validar-propria-proposta-nao-acha-ausencia}
+
+`tags: auditoria, conta de anuncios, google ads, erro de ausencia, reestruturacao, checagem para dentro, palavra orfa, negativa presa, baseline externo, o que ficou de fora`
 
 **Sintoma:** a reestruturacao passa em todas as checagens (limite de caractere, URL viva, status
 relido da API) e mesmo assim a melhor palavra da conta fica sem dono. Medido em 2026-08-11 na
@@ -6957,7 +6973,9 @@ quebraria se algo fizesse comparação byte-a-byte estrita do conteúdo, o que n
 (sessão 2026-08-07, achado em code review + confirmado empiricamente contra `powershell.exe` 5.1
 real).
 
-## Mockup aprovado nunca gerado pelo algoritmo real de layout diverge da produção
+## Mockup aprovado nunca gerado pelo algoritmo real de layout diverge da produção {#mockup-aprovado-sem-algoritmo-real-diverge}
+
+`tags: mockup, artifact, previa aprovada, algoritmo de layout, BFS, baricentro, coordenada fixa, dado denso, divergencia em producao, aprovar a ideia nao o layout`
 
 **Sintoma:** operador aprova uma prévia (Claude Artifact) com nós/raias organizados de um jeito
 limpo; a implementação real usa um algoritmo de layout determinístico já existente (BFS+baricentro,
@@ -6981,7 +6999,9 @@ algoritmo X, ainda não testado contra este mockup".
 conversão. Ver `docs/adrs/0008-fluxo-de-paginas-permanece-literal-em-raias.md` e
 `docs/STATUS.md` ADENDO 31/32.
 
-## Resgatar commit que caiu no branch errado por colisão de sessão paralela (sem perder o trabalho de nenhum dos dois lados)
+## Resgatar commit que caiu no branch errado por colisão de sessão paralela (sem perder o trabalho de nenhum dos dois lados) {#resgatar-commit-no-branch-errado-sessao-paralela}
+
+`tags: git, branch errado, sessao paralela, working tree compartilhado, git branch, reset misto, nao-destrutivo, resgate de commit, colisao de sessoes`
 
 **Sintoma:** um commit termina normalmente, mas o branch atual não era o esperado (outra sessão
 tinha trocado de branch nesse working tree compartilhado, com mudanças já staged dela) — o commit
@@ -7003,7 +7023,9 @@ worktree isolado desde o início. Criar o worktree ANTES da primeira task evita 
 
 **Ref:** Paid Media Automation, cont.157 (2026-08-07).
 
-## QA visual de tela autenticada sem OTP real (dashboard com login por telefone/magic-link)
+## QA visual de tela autenticada sem OTP real (dashboard com login por telefone/magic-link) {#qa-visual-de-tela-autenticada-sem-otp}
+
+`tags: QA visual, screenshot, tela autenticada, OTP, magic-link, JWT, dependency_overrides, FastAPI, ASGITransport, container de producao`
 
 **Sintoma:** precisa validar visualmente (screenshot real, não leitura de CSS) uma tela do painel
 que exige login (OTP WhatsApp / JWT de auth-service externo), e não há como receber o OTP
@@ -7032,7 +7054,9 @@ estático, não pra testar interação viva. Pra isso, ainda é preciso login re
 
 **Ref:** tiatendo, sessão 2026-08-07 (validação da rota `/conversations` durante reskin visual).
 
-## Pagar.me recusa cobrança com erro rotativo (telefone → documento → billing_address) sem dizer os 3 de uma vez
+## Pagar.me recusa cobrança com erro rotativo (telefone → documento → billing_address) sem dizer os 3 de uma vez {#pagarme-erro-rotativo-antifraude}
+
+`tags: pagar.me, cobranca recusada, erro rotativo, antifraude, customer phone, document, billing_address, subscription failed, gateway_response, um motivo por vez`
 
 **Sintoma:** criar um customer + card + subscription real (mesmo em `PAGARME_ENV=test`) falha com
 `subscription.status = "failed"` (não um erro HTTP — a chamada "funciona", só o resultado final é
@@ -7061,7 +7085,9 @@ repetindo o mesmo roteiro — `createCard()` retornou `status=active` de primeir
 erros rotativos. Receita de smoke sem precisar de browser/OTP: ver
 `{#smoke-pagarme-card-sem-browser}` em `COMO_FAZER.md`.
 
-## Distinguir bug antigo (já corrigido) de regressão nova ao receber print de conversa real
+## Distinguir bug antigo (já corrigido) de regressão nova ao receber print de conversa real {#distinguir-bug-antigo-de-regressao-em-print}
+
+`tags: print de conversa, whatsapp, hora local do aparelho, regressao ou bug antigo, timestamp relativo, Today, triagem de relato, evidencia do operador`
 
 **Sintoma:** operador manda screenshot de uma conversa real do WhatsApp mostrando um bug que "parece"
 já ter sido corrigido numa sessão anterior — risco de (a) assumir que é regressão e sair caçando o
@@ -8320,7 +8346,9 @@ não existe produtor real, registre como defesa em profundidade não-pinada e si
 
 ---
 
-## Guard que varre o repo acusa o seu próprio git worktree como violação
+## Guard que varre o repo acusa o seu próprio git worktree como violação {#guard-acusa-o-proprio-worktree}
+
+`tags: teste-guarda, scanner de repo, rglob, git worktree, falso positivo, suite lenta, lista de exclusao, varredura de codigo-fonte`
 
 **Sintoma.** Um teste-guarda que varre o código-fonte do repo (procurando chave legada, mock,
 import proibido, o que for) começa a falhar acusando dezenas de arquivos que você não tocou. O
@@ -8361,7 +8389,9 @@ Prova barata: rode o mesmo teste DENTRO do worktree — ele passa lá, porque de
 
 ---
 
-## Validador que confirma a STRING não confirma o SISTEMA
+## Validador que confirma a STRING não confirma o SISTEMA {#validador-confirma-string-nao-o-sistema}
+
+`tags: validador, monitor verde, tracking, snippet, loader.js, dominio de terceiro, 404, check decorativo, prova de sistema, string presente nao e sistema vivo`
 
 **Sintoma:** um monitor diz `ok` sobre algo que está quebrado há semanas, e ninguém desconfia
 porque "o check existe e está verde".
@@ -8397,7 +8427,9 @@ Relacionado: "Ausência do sinal ≠ ausência do sistema" (o inverso desta). R2
 
 ---
 
-## Soft-delete + UNIQUE sem filtro = recurso trancado pra sempre
+## Soft-delete + UNIQUE sem filtro = recurso trancado pra sempre {#soft-delete-unique-sem-filtro-tranca-recurso}
+
+`tags: soft-delete, is_active, UNIQUE, constraint sem filtro, indice parcial, 409 ja existe, beco sem saida, listagem filtrada`
 
 **Sintoma:** o usuário tenta cadastrar algo, leva `409 já existe`, e **não vê nada na tela** que
 possa apagar ou editar. Beco sem saída pela UI.
@@ -10273,7 +10305,9 @@ lock".
 
 ---
 
-## O enriquecedor que "ignora" a entrada vazia APAGA a intenção de remover
+## O enriquecedor que "ignora" a entrada vazia APAGA a intenção de remover {#enriquecedor-ignora-vazio-e-apaga-intencao-de-remover}
+
+`tags: PATCH parcial, contrato de API, enriquecedor, valor vazio, limpar campo, camada intermediaria, teste de unidade cego, intencao de remover`
 
 **Classe:** contrato de PATCH parcial atravessando uma camada que valida/enriquece.
 
@@ -10323,7 +10357,9 @@ mecanismo errado (previa um 400), mas apontava o lugar certo.
 
 ---
 
-## `null` que significa duas coisas opostas: separe o "não há com o que comparar" do "o outro lado está vazio"
+## `null` que significa duas coisas opostas: separe o "não há com o que comparar" do "o outro lado está vazio" {#null-com-dois-significados-opostos}
+
+`tags: null ambiguo, comparacao entre fontes, alerta em massa, sentinela, ausencia estrutural, dois significados opostos, falso alerta`
 
 **Classe:** comparação entre duas fontes quando uma delas pode não existir por construção.
 
@@ -13857,3 +13893,100 @@ lado. Copiar o repo sem o `.git` custa segundos e remove o risco inteiro.
 `external-action-guard` sem `Push-Location`, entre 20 que já isolavam. Relacionado:
 [[review-auto-grava-relativo-ao-cwd]] (mesma família de `cwd`, do lado da escrita) e
 [[causa-declarada-em-achado-e-hipotese]].
+
+---
+
+## Sessão que "morre toda hora" pode ser troca de perfil do browser, não bug de auth {#sessao-morre-toda-hora-e-perfil-do-browser}
+
+`tags: sessao, localStorage, perfil do browser, chrome, OTP diario, refresh token, familia nunca rotacionada, falso bug de auth, origin`
+
+**Classe de sintoma:** usuário relata que precisa relogar constantemente (OTP diário, sessão que não
+persiste), enquanto o código de refresh está correto e o servidor mostra a sessão viva.
+
+**A armadilha:** `localStorage` é por **origin E por perfil do browser**. Quem alterna entre perfis
+do Chrome — comum em quem opera vários clientes — tem uma sessão viva num perfil e nenhuma no outro.
+Do lado do servidor isso aparece como "família criada e nunca rotacionada", indistinguível de bug de
+refresh. Duas equipes podem investigar código por semanas em cima de um número que não é de código.
+
+**Como medir, sem depender do relato do usuário** (Windows/Chromium):
+1. Mapear perfil → conta: `<User Data>/Local State`, campo `profile.info_cache`, que traz `name` e
+   `user_name` (e-mail) de cada pasta `Profile N`.
+2. Procurar a chave no disco: o `localStorage` fica em `<Profile N>/Local Storage/leveldb/*.{log,ldb}`.
+   O registro tem o formato `_<origin>\x00\x01<nome-da-chave>` — regex sobre os bytes acha o par
+   origin→chave sem abrir o browser.
+3. Distinguir **sessão viva** de **resíduo**: se a chave aparece nos bytes mas o par
+   `_origin\x00\x01chave` não é legível, são registros já compactados — ou seja, houve sessão ali e
+   ela foi apagada. Presença de bytes não é presença de sessão.
+
+**Ordem de eliminação que funcionou:** (a) configuração "limpar dados ao sair" (`Preferences`,
+`profile.default_content_setting_values.cookies == 4`); (b) janela anônima — não persiste por
+desenho, então **pergunte**, não deduza; (c) só então o código.
+
+**Erro que cometi e custou uma rodada:** afirmei "não há sessão em perfil nenhum" com um scan que só
+procurava a chave nos arquivos onde já tinha achado o origin. Um segundo scan, mais amplo, achou a
+sessão viva noutro perfil. **Um scan que não encontra não prova ausência — prova que o scan não olhou
+lá.** Antes de concluir "não existe", teste o scan contra um caso que você SABE que existe.
+
+**Ref:** Micro Investors, 2026-08-17. Investigação que consumiu duas equipes desde julho fechou em
+uma varredura de disco: o perfil do operador (`trafego@`) não tinha sessão; a viva estava em outro
+perfil, de outra conta Google. Relacionado: [[metrica-de-audience-mistura-clientes]] (mesma família —
+o número agregado escondia a heterogeneidade da população medida).
+
+---
+
+## Redeclarar custom property CSS no mesmo `:root` sobrescreve — e nenhuma ferramenta pega {#redeclarar-custom-property-no-mesmo-root}
+
+`tags: CSS, custom property, :root, design system, shadcn, hsl(var()), token duplicado, computed value, cor transparente, build verde`
+
+**Classe de sintoma:** ao adicionar tokens de um design system novo a um projeto que já tem outro
+(shadcn, por exemplo), uma cor some ou vira transparente em telas que não foram tocadas. `tsc`,
+suíte de testes e `build` passam todos.
+
+**O mecanismo:** duas declarações da mesma custom property no mesmo seletor — a segunda vence. Se o
+vocabulário antigo consome via função (`hsl(var(--accent))`) e o valor novo é hex, o resultado é
+`hsl(#013A6F)`, **inválido**. Custom property inválida em computed-value-time faz a propriedade cair
+no valor inicial: `background-color` vira `transparent`. A tela quebra em runtime de browser, que é
+o único lugar onde a suíte não olha.
+
+**Como evitar, antes de escrever:** grep pelo nome do token no arquivo de destino. Se já existir,
+escolha outro nome — não "melhore" o valor existente.
+
+**Como travar a regressão:** um guard que só confere **presença textual** do token antigo NÃO pega
+isso (o nome continua lá, sobrescrito). O guard precisa afirmar o **formato do valor**, por exemplo
+`/--accent:\s*\d+\s+\d+%\s+\d+%/` para garantir que continua HSL e não virou hex.
+
+**Sinal de alerta correlato:** se o Tailwind já reserva o nome (`accent` → `accent-color`), o token
+novo precisa de outro nome no config também.
+
+**Ref:** Micro Investors, 2026-08-18, execução subagent-driven do Base UI. O defeito estava no
+**plano**, não na implementação — o revisor pegou lendo o arquivo, não rodando nada. 3 telas de
+Settings usavam `bg-accent`. Relacionado: [[comentario-justificativa-verificavel]].
+
+---
+
+## Teste que forja o NOME da classe de exceção passa com o código quebrado {#teste-forja-nome-da-classe-de-excecao}
+
+`tags: excecao, asyncpg, SQLAlchemy, dialect, IntegrityError, sqlstate, 23505, 23503, isinstance, nome de classe, teste verde inutil`
+
+**Classe de sintoma:** um `except`/`catch` que discrimina tipo de erro nunca dispara em produção,
+mas o teste dele está verde há meses.
+
+**O mecanismo (asyncpg + SQLAlchemy, mas a classe é geral):** o dialect embrulha toda violação de
+integridade numa única classe DBAPI genérica. Logo `isinstance(cause, ForeignKeyViolationError)` e
+`"ForeignKeyViolation" in type(cause).__name__` **nunca** batem. O que o dialect preserva é o
+`sqlstate` (`23505` unique, `23503` FK).
+
+**Por que o teste não pegou:** ele fabricava uma classe com `__name__ = "ForeignKeyViolationError"`,
+imitando o nome que a produção nunca emite. O teste validava um caminho de código que a realidade
+não exercita — e por isso ficava verde por cima do bug.
+
+**O sinal para procurar:** quando você conserta um `except` e o teste dele **começa a falhar**, o
+teste estava errado, não o conserto. Investigue o fake antes de "consertar" o teste.
+
+**Regra geral:** um mock deve imitar o que a **camada real entrega**, não o que a documentação da
+biblioteca de baixo nível descreve. Entre as duas há um tradutor (dialect, driver, SDK) que muda a
+forma do objeto.
+
+**Ref:** Micro Investors, 2026-08-18, `deletion_requests/service.py`. Mesmo bug já corrigido no
+módulo de votação em 2026-08-14 pelo `sqlstate`, e o comentário de lá registrava este como pendente.
+Relacionado: [[mock-responde-a-pergunta-errada]].

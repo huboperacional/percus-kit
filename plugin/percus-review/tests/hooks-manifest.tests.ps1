@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Prova que hooks-manifest.json descreve o mundo que existe, e nao um mundo desejado.
 #
 # O manifesto virou fonte unica da verdade: dele saem o registro (hooks.json hoje,
@@ -26,11 +26,11 @@ Describe "hooks-manifest.json" {
         $script:todos.Count | Should -BeGreaterThan 0
     }
 
-    It "declara 12 hooks registrados (8 guarda / 4 observador) + o orfao" {
+    It "declara 13 hooks registrados (9 guarda / 4 observador) + o orfao" {
         # Piso de contagem, mesma razao do hook-wrapper-fail-loud: manifesto esvaziado faria
         # todos os It abaixo iterarem sobre lista vazia e passarem sem verificar nada.
-        $script:vivos.Count | Should -Be 12 -Because "piso: manifesto vazio nao guarda nada"
-        @($script:vivos | Where-Object { $_.forma -ceq 'guarda' }).Count     | Should -Be 8
+        $script:vivos.Count | Should -Be 13 -Because "piso: manifesto vazio nao guarda nada"
+        @($script:vivos | Where-Object { $_.forma -ceq 'guarda' }).Count     | Should -Be 9
         @($script:vivos | Where-Object { $_.forma -ceq 'observador' }).Count | Should -Be 4
         @($script:todos | Where-Object { -not $_.registrado }).Count | Should -Be 1 -Because "canon-version-check e orfao conhecido; orfao novo aparecendo sem ninguem decidir e drift"
     }
@@ -215,8 +215,15 @@ Describe "hooks-manifest.json" {
         # Medido junto (item 4): o matcher e regex e aceita alternancia, e e CASE-SENSITIVE --
         # escrever "bash" produziria uma guarda que nunca dispara, que e a ausencia silenciosa que
         # este plano existe pra matar. Por isso a assercao e exata, e nao "contem bash".
-        $deComando = @($script:vivos | Where-Object { $_.evento -ceq 'PreToolUse' -and $_.matcher -and $_.matcher -cne 'ExitPlanMode' })
-        $deComando.Count | Should -Be 7 -Because "piso: sao 7 guardas de comando (a oitava, pre-plan-exit, casa ExitPlanMode)"
+        # A fronteira agora e DECLARADA no campo 'alvo', nao derivada por exclusao. Derivar
+        # ("PreToolUse que nao seja ExitPlanMode") funcionou enquanto guarda de PreToolUse era
+        # sinonimo de guarda de comando; quando entrou a primeira guarda de CAMINHO
+        # (knowledge-write-guard, matcher Edit|Write), a derivacao passou a exigir
+        # 'Bash|PowerShell' de um hook que le tool_input.file_path -- teria proibido por
+        # construcao a guarda nova, que e correta. Lista de excecao que cresce e cheiro de
+        # criterio faltando: o criterio e o alvo.
+        $deComando = @($script:vivos | Where-Object { $_.evento -ceq 'PreToolUse' -and $_.alvo -ceq 'comando' })
+        $deComando.Count | Should -Be 7 -Because "piso: sao 7 guardas de COMANDO (pre-plan-exit olha plano, knowledge-write-guard olha caminho)"
         foreach ($h in $deComando) {
             $h.matcher | Should -BeExactly 'Bash|PowerShell' -Because "$($h.nome) precisa cobrir as duas tools de shell, com a caixa exata"
         }
