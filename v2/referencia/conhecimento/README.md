@@ -2,8 +2,8 @@
 
 A base de "já vimos esse problema" **continua no V1** — é o que melhor funciona lá.
 
-**Leia antes de debugar:** `${env:PERCUS_CANON_DIR}/conhecimento/COMO_RESOLVER.md`
-**Como fazer coisas recorrentes:** `${env:PERCUS_CANON_DIR}/conhecimento/COMO_FAZER.md`
+**Leia antes de debugar:** `${env:PERCUS_CANON_DIR}/conhecimento/resolver/`
+**Como fazer coisas recorrentes:** `${env:PERCUS_CANON_DIR}/conhecimento/fazer/`
 
 ## Contrato de um verbete (vale já, e o gate cobra)
 

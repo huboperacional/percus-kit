@@ -176,7 +176,7 @@ Status deste doc: **design canônico, a pilotar.** Sugestão de 1º piloto:
 - Um projeto com fundação já pronta e **exatamente 2 frentes** claramente disjuntas (ex.: backend-API
   vs UI consumindo mock do contrato).
 - Rode 1 ciclo completo (decomposition gate → 2 worktrees → diretora → merge ordenado).
-- Registre o que funcionou/atritou em `conhecimento/COMO_RESOLVER.md` (ou `COMO_FAZER.md`) e só então
+- Registre o que funcionou/atritou em `conhecimento/resolver/` (ou `conhecimento/fazer/`) e só então
   escale pra 3-4 frentes.
 
 ## Referências

@@ -57,7 +57,7 @@ deliberada — ver o caso real em `COMO_RESOLVER.md#tenant-novo-cadeia-migration
 | Tem endpoint público (webhook, API externa, rota sem auth)? | {S/N} | {motivo} |
 
 Gatilho que já causou retrabalho comprovado em algum projeto Percus (registrado em
-`conhecimento/COMO_RESOLVER.md`) pode ser promovido pra esta tabela — não adicionar linha
+`conhecimento/resolver/`) pode ser promovido pra esta tabela — não adicionar linha
 especulativa "porque pode ser útil".
 
 ## Stack

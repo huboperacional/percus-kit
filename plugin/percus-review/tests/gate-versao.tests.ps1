@@ -180,7 +180,12 @@ Describe "percus-gate.sh — bump de versao do kit" {
 
     It "NAO dispara para conhecimento/ (cresce toda hora, nao e versao do kit)" {
         $repo = New-CanonRepo -Versao "6.35.0"
-        Add-Staged -Repo $repo -Caminho "conhecimento/nota.md" -Conteudo "# so uma nota"
+        # Verbete VALIDO no layout da 6.38.0 (<area>/<slug>.md, com ancora e tags:). A fixture
+        # antiga usava 'conhecimento/nota.md', solto na raiz -- que o bloco 2e passou a acusar,
+        # e com razao. O teste afere o gate de VERSAO, entao a fixture nao pode violar OUTRA
+        # regra: senao ele passaria (ou falharia) pelo motivo errado.
+        Add-Staged -Repo $repo -Caminho "conhecimento/resolver/nota.md" `
+                   -Conteudo "## So uma nota {#nota}`n`n``tags: nota``n`ncorpo."
 
         (Invoke-Gate -Repo $repo).Exit | Should -Be 0
     }

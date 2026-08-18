@@ -38,13 +38,18 @@ Describe "nenhum arquivo VIVO referencia o path legado do kit" {
             '\\CANON_VERSION\.md$',              # changelog = registro
             # Isenta o ARQUIVO, nao a pasta: uma referencia acidental futura em qualquer outro
             # arquivo de conhecimento/ tem que continuar pintando vermelho (R11, 2026-08-16).
-            '\\conhecimento\\COMO_RESOLVER\.md$', # verbete = registro de incidente, mesma razao
-                                                 # do changelog. E em #claudemd-caminho-canon-stale
-                                                 # o nome antigo e o ASSUNTO do verbete: ele existe
-                                                 # pra explicar que aquele path morreu. Reescrever
-                                                 # apaga a pista que faz o verbete achavel por quem
-                                                 # bate no erro. (2026-08-16: esta ausencia deixava
-                                                 # a suite vermelha por 6 ocorrencias legitimas.)
+            # Verbete = registro de incidente, mesma razao do changelog. Neste verbete o nome
+            # antigo e o ASSUNTO: ele existe pra explicar que aquele path morreu. Reescrever
+            # apaga a pista que faz o verbete achavel por quem bate no erro. (2026-08-16: esta
+            # ausencia deixava a suite vermelha por 6 ocorrencias legitimas.)
+            #
+            # Desde a 6.38.0 a base e um-arquivo-por-verbete, entao a isencao ficou MAIS estreita
+            # do que era: antes cobria o monolito inteiro (398 verbetes), agora cobre exatamente
+            # o unico verbete que precisa. Continua isentando o ARQUIVO, nunca a pasta.
+            '\\conhecimento\\resolver\\claudemd-caminho-canon-stale\.md$',
+            # INDICE.md e GERADO a partir dos titulos: ele herda o nome antigo por derivacao, nao
+            # por alguem te-lo escrito ali. A checagem de verdade acontece no verbete de origem.
+            '\\conhecimento\\resolver\\INDICE\.md$',
             '\\renomear-kit-local\.ps1$',        # aqui o nome antigo e o ASSUNTO: renomeia DE la
             '\\renomear-kit-local\.tests\.ps1$',
             '\\no-legacy-kit-path\.tests\.ps1$'

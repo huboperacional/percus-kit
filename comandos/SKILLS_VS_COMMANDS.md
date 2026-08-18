@@ -131,4 +131,4 @@ Se qualquer resposta for "sim, eu posso fazer", **faça**. Não jogue pro user.
 - Marketplace canônico: `.claude-plugin/marketplace.json` (declara os commands; skills são auto-discovered de `skills/`).
 - Wrapper auto-trigger de review: `scripts/percus-review-auto.ps1` (roda no cwd do projeto-alvo).
 - Conselho 3-membros: `scripts/council-orchestrator.ps1` (`-Mode consult|pre-mortem|review`).
-- Troubleshoot desta classe: `conhecimento/COMO_RESOLVER.md#skill-nao-e-slash`.
+- Troubleshoot desta classe: `conhecimento/resolver/skill-nao-e-slash.md`.

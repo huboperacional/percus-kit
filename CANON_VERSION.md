@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.37.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.38.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,161 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.38.0 — 2026-08-18
+
+**A base de conhecimento deixa de ser dois arquivos gigantes e vira um arquivo por verbete. O
+monólito morreu, e a caixa de entrada morreu junto — ela só existia porque o destino era um
+arquivo único.**
+
+`COMO_RESOLVER.md` tinha chegado a **1040 KB / 398 verbetes / ~266k tokens**, crescendo ~975
+linhas/dia. Não cabia em contexto: nenhuma sessão o lia, todas grepavam. E consultar custava
+**~13,2k tokens de piso** — ler o Índice antes de achar qualquer coisa — que é o oposto do
+"ganhar tempo" que motivou a base.
+
+🔑 **O formato era a causa direta dos incidentes, não um detalhe estético.** O git resolve conflito
+em **arquivo**: sessões de projetos diferentes, escrevendo lições sem nenhuma relação entre si,
+colidiam assim mesmo. Daí vieram o commit que publica rascunho alheio, o gate barrando commit
+legítimo, e o trabalho órfão que travou o pipeline por 13 horas.
+
+**O que se ganha, medido:**
+
+| | antes | depois |
+|---|---|---|
+| Piso por consulta | 13,2k tokens (Índice) | `grep -l "tags:.*<termo>"` → devolve **nomes** |
+| Colisão de escrita | inevitável | impossível (arquivos distintos) |
+| Link morto | 16 no monólito, calados | barrado no commit |
+
+**Como se consulta agora** — grep pelas tags, não leitura de índice:
+
+```sh
+grep -l "tags:.*rls" conhecimento/resolver/*.md
+```
+
+O `INDICE.md` continua existindo para visão ampla, mas **é gerado**
+(`scripts/gerar-indice-conhecimento.ps1`) e nunca editado à mão.
+
+**Migração provada sem perda.** A fatiagem foi VERBATIM e conferida contra o commit, verbete a
+verbete: 398 + 17 arquivos, **zero divergente, 13.551 linhas conferidas**. A contabilidade fecha
+por completo — das 14.417 linhas do monólito, 12.951 estavam dentro de verbetes, 422 eram
+cabeçalho/índice e 1.044 eram separador; **zero linha de separador tinha conteúdo**.
+
+⚠️ **A normalização dos cross-refs ficou de fora desta versão, de propósito.** O plano original
+prometia, no mesmo passo, "conteúdo byte-idêntico ao monólito" **e** "normalizar as 4 notações de
+cross-ref" — e o pre-mortem do conselho pegou que as duas não podem ser verdade juntas. A rede de
+proteção só existe se a fatiagem for literal, então a normalização é um passo próprio.
+
+**Enforcement — três blocos novos no `percus-gate.sh`:**
+
+1. **Higiene de verbete** (bloco 2): um por arquivo, slug == nome do arquivo, `tags:` presente,
+   fence fechado, `##` com âncora fechando a linha. São as mesmas regras que o antigo bloco 3c
+   aplicava à caixa; a caixa morreu, as regras sobreviveram e mudaram de alvo.
+2. **Integridade de link** (bloco 2b): todo `](outro-slug.md)` resolve num arquivo existente.
+   Risco apontado por **2/2 no pre-mortem**, e não era hipótese: o monólito já tinha **16
+   cross-refs mortos** e nada nunca reclamou.
+3. **Referência órfã** (bloco 2c): barra quem ainda aponta para o caminho do monólito aposentado.
+
+⚠️ **O gate exige o CAMINHO, não o nome solto — e a diferença decide se a guarda é usável.**
+Referência com caminho (`conhecimento/COMO_*.md`) é instrução viva e precisa morrer; o nome solto
+em prosa quase sempre é relato histórico, e a base conta a própria história o tempo todo. Medido:
+das 28 ocorrências, **13 eram caminho e 15 eram narrativa dentro de verbete**. Barrar as 15
+tornaria impossível escrever a lição sobre esta própria migração.
+
+🔴 **Uma passada de awk, não uma por arquivo.** A primeira versão do bloco 2 rodava `sed|tr|awk`
+por arquivo: com ~415 verbetes eram ~2000 processos e **o gate passou de 120s**. Gate lento no
+caminho do commit é gate que será desligado — o próprio canon diz que *gate que atrapalha ensina a
+ser escapado*. Reescrito em passada única: **1,9s**. Duas causas, e a segunda foi a maior:
+`sed|tr|awk` por arquivo, e `basename` por arquivo. Trocar `basename` por expansão de parâmetro
+do shell levou o gate de 22,7s para 1,9s sozinho — **mais rápido do que era antes da migração**,
+com quatro blocos a mais. A armadilha que a passada única introduz está documentada
+no código: passada única move o estado por-arquivo para dentro do awk, e quem faz isso **tem de
+fechar o arquivo anterior na mão** no `FNR==1` — sem isso a checagem de `tags:` valia só para o
+último arquivo da lista e passava verde em todos os outros.
+
+**O `knowledge-write-guard` muda de alvo:** o monólito que ele protegia não existe mais, então ele
+passa a recusar **recriá-lo** (senão alguém o ressuscita por hábito) e a proteger o `INDICE.md`,
+que agora é artefato gerado.
+
+**Aposentados:** `scripts/mesclar-conhecimento.ps1`, seus testes, e `conhecimento/entrada/`.
+
+**A review R11 achou quatro defeitos reais, e o fact-check filtrou três deles como INFUNDADO** —
+de novo pela truncagem de path já catalogada. Ler os originais à mão valeu:
+
+1. 🔴 **O gate não validava o `INDICE.md`.** O gerador ganhou `-Verificar` e o gate nunca o
+   chamava: verbete novo commitado sem regerar passava calado, reintroduzindo exatamente o
+   defeito que esta versão existe pra matar. Entrou o **bloco 2d**, que compara os dois conjuntos
+   (verbete fora do índice, índice apontando pra arquivo inexistente) com um `sort | uniq -u` —
+   comparar item a item custaria ~400 greps.
+2. 🔴 **Um verbete ainda mandava escrever no monólito** (`checkpoint-no-canon-tooling`). Escapava
+   do bloco 2c por não ter caminho — e quem o seguisse seria bloqueado pelo próprio guard.
+3. **8 cross-refs `COMO_RESOLVER.md#slug` dentro de verbetes** quebraram com a migração e
+   escapavam dos dois blocos novos. Convertidos em link de arquivo, com destino verificado.
+4. 🔴 **O bloco de integridade de link nasceu cego, e ficou cego três rodadas seguidas.** Ele
+   validava `](arquivo.md)` — e o monólito usava **quatro** notações. A rodada 2 achou
+   `](#slug)` (**50 links mortos**, a forma dominante: no monólito origem e destino moravam no
+   mesmo arquivo, então a âncora resolvia); a rodada 3 achou `[[slug]]` (23 mortos) e
+   `](arquivo.md#secao)`. Não foi azar: a guarda foi escrita a partir da forma recém-usada, e
+   não do levantamento de notações **que já estava medido no plano** (4 notações, 114 menções).
+   ⚠️ **Guarda que cobre a forma minoritária e passa a majoritária é pior que guarda nenhuma,
+   porque dá sensação de cobertura.** Hoje as quatro são validadas, com auto-referência e fence
+   preservados.
+5. **Resíduo da fatiagem:** 10 âncoras HTML órfãs (`<a id="verbete-seguinte">`, que no monólito
+   precediam o título seguinte e ficaram na cauda do anterior) e 2 rodapés "bloco-modelo" — um
+   deles com fence aberto.
+6. **Índice com Markdown malformado:** título começando com `[5-T]` gerava
+   `- [[5-T] …](arquivo.md)`, e o `]` fechava o rótulo cedo demais. Colchetes agora escapados.
+7. **Escape hexadecimal em regex de awk não é POSIX** (gawk e mawk aceitam; BSD/macOS não). O BOM
+   passou a ser removido por `substr` com escapes octais. ⚠️ **E a segunda rodada mostrou que
+   isso também não é POSIX** — octal em string de awk tem a mesma limitação. O comentário
+   prometia portabilidade que o código não entrega; agora o gate **declara o requisito**
+   (gawk ou mawk) no cabeçalho. Comentário que promete portabilidade inexistente é pior que a
+   limitação: impede que alguém a descubra antes de ela morder.
+8. 🔴 **Arquivo VAZIO escapava de todas as guardas.** O awk nunca vê um arquivo de zero bytes:
+   sem registros, `FNR==1` não dispara, ele nunca vira `atual` e nunca é finalizado — e se o
+   índice ainda o listar, o bloco 2d também não reclama. Confirmado plantando um `vazio.md`
+   num repo de teste: o gate saiu **0**. É a classe "escrito e invisível" reaparecendo dentro
+   do próprio conserto.
+9. ⚠️ **E o oposto também apareceu: o gate barrava demais.** `](#secao)` é a forma canônica de
+   Markdown para âncora **interna** do documento; barrar toda âncora tornaria escrita legítima
+   impossível — exatamente o risco que 2/2 do conselho apontaram. A regra ficou com o sentido
+   invertido de propósito: **só viola quando `<slug>.md` existe**, porque aí não há ambiguidade
+   (é cross-ref na forma que a fatiagem matou). Sem o arquivo, assume-se seção e passa.
+10. **Trava sem saída entre gate e gerador:** o gate declarava 4 áreas de conhecimento e o
+    gerador cobria 2. Um verbete em `referencia/conhecimento/resolver/` faria o bloco 2d exigir
+    um `INDICE.md` que nenhum script gera — e editá-lo à mão é barrado pelo guard. As duas
+    fontes agora declaram as mesmas áreas.
+11. **O bloco 2c só varria `.md/.ps1/.sh/.json`** — referência órfã em `.py`/`.yml`/`.ts` passava.
+12. **O script de migração foi apagado.** One-shot já executado e conferido, não pode rodar de
+    novo (o monólito não existe), citava o caminho aposentado e contradizia o "não há passo de
+    merge". O método está aqui, com os números da verificação.
+13. **O script de migração aceitava produzir estado que o próprio gate rejeita** — validava
+   kebab e duplicata, mas não `tags:` nem fence. Agora reproduz o critério de aceite do gate.
+
+🔑 **A lição de método, e ela vale além desta migração: eu escrevi cada guarda a partir da forma
+que tinha acabado de usar, não a partir do levantamento de notações que já estava medido no
+próprio plano** (4 notações, 114 menções). Por isso a integridade de link nasceu cega e precisou
+de três rodadas de review para enxergar. **Guarda que cobre a forma minoritária e passa a
+majoritária é pior que guarda nenhuma, porque dá sensação de cobertura.**
+
+⚠️ **E o comentário que documentava a guarda foi o que a derrubou:** os programas `awk` do gate
+vivem entre aspas simples no shell, e uma aspa simples num comentário ali dentro fecha a string.
+Deu 53 testes vermelhos de uma vez. O caso pior é o que **não** quebra: duas aspas se equilibram
+por acaso, o script roda, e o `awk` recebe texto diferente do escrito — sem barulho. `bash -n`
+pega o primeiro; entrou uma guarda estática para o segundo.
+
+**Oito rodadas de review R11.** As primeiras acharam buracos estruturais; as últimas, refinamentos e
+limitações declaráveis. Entraram ainda: `README.md` isento na raiz da área (o bloco 2e o acusava, e o
+bug era **invisível da raiz do repo** porque `referencia/conhecimento/` só existe quando o gate roda
+de dentro do `v2/` — guarda que só quebra num caminho de execução passa em todos os testes que rodam
+pelo outro); exceção de **code span** na integridade de link (a base documenta a si mesma, e o gate
+chegou a barrar o verbete que explica o próprio gate); e um **teste de paridade** entre as três
+implementações que definem "área de conhecimento" — shell do gate, PowerShell do gerador, regex do
+guard — que divergiram duas vezes só nesta migração.
+
+**Suíte: 400 → 414** (a suíte do mesclador saiu, a do gerador de índice e os blocos novos entraram). Três armadilhas de fim de linha apareceram nesta migração, todas silenciosas:
+ler sem `newline=''` traduz CRLF→LF; `git show` devolve o conteúdo como o git **armazena** (LF), não
+como está na árvore (CRLF); e um `\r` num caminho de teste virou carriage return de verdade.
+
 
 ## Changelog v6.37.0 — 2026-08-18
 

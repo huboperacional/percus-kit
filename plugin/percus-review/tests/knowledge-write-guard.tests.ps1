@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Prova COMPORTAMENTAL do guard de escrita em conhecimento: roda o hook de verdade com
 # payload de PreToolUse e afere o que ele barra.
 #
@@ -64,26 +64,47 @@ Describe "knowledge-write-guard.ps1 hook" {
         $r.Exit | Should -Be 2 -Because "caminho absoluto e a forma COMUM, nao a excecao. Saida: $($r.Saida)"
     }
 
-    It "PERMITE escrita na CAIXA -- e ela e o caminho abencoado, nao pode barrar" {
-        $r = Invoke-Guard -Tool "Write" -Caminho "conhecimento/entrada/resolver/meu-verbete.md"
-        $r.Exit | Should -Be 0 -Because "a caixa e exatamente pra onde o guard manda ir. Saida: $($r.Saida)"
+    It "PERMITE escrita no VERBETE -- e ele e o caminho abencoado, nao pode barrar" {
+        $r = Invoke-Guard -Tool "Write" -Caminho "conhecimento/resolver/meu-verbete.md"
+        $r.Exit | Should -Be 0 -Because "escrever conhecimento/<area>/<slug>.md e exatamente o que o guard manda fazer. Saida: $($r.Saida)"
     }
 
-    It "PERMITE escrita em outro .md de conhecimento/ que nao seja monolito" {
-        $r = Invoke-Guard -Tool "Write" -Caminho "conhecimento/entrada/LEIA-ME.md"
-        $r.Exit | Should -Be 0 -Because "so os dois monolitos sao o problema. Saida: $($r.Saida)"
+    It "PERMITE escrita no LEIA-ME da area (documentacao, nao gerado)" {
+        $r = Invoke-Guard -Tool "Write" -Caminho "conhecimento/resolver/LEIA-ME.md"
+        $r.Exit | Should -Be 0 -Because "LEIA-ME e documentacao escrita a mao, nao artefato gerado. Saida: $($r.Saida)"
     }
 
     It "a mensagem de BLOCK ENSINA o caminho certo, nao so recusa" {
         # Guard que so diz nao ensina a contornar. O texto tem de dizer para onde ir.
         $r = Invoke-Guard -Tool "Write" -Caminho "conhecimento/COMO_RESOLVER.md"
-        $r.Saida | Should -Match 'entrada/resolver'
+        $r.Saida | Should -Match 'conhecimento/resolver/<slug>\.md'
         $r.Saida | Should -Match 'R23'
     }
 
     It "emite a assinatura do manifesto no STDERR (o canario conta por ela)" {
         $r = Invoke-Guard -Tool "Write" -Caminho "conhecimento/COMO_RESOLVER.md"
         $r.Saida | Should -Match '\[percus:hook knowledge-write\]'
+    }
+
+    It "BLOQUEIA edicao a mao do INDICE.md (ele e GERADO)" {
+        # Indice divergente do conteudo foi o defeito que deixou 14 verbetes invisiveis por
+        # semanas. Depois da migracao o indice e artefato, e artefato editado a mao mente.
+        $r = Invoke-Guard -Tool "Edit" -Caminho "conhecimento/resolver/INDICE.md"
+        $r.Exit | Should -Be 2 -Because "Saida: $($r.Saida)"
+        $r.Saida | Should -Match 'gerar-indice-conhecimento'
+    }
+
+    It "BLOQUEIA tambem em referencia/conhecimento/ -- as MESMAS 4 areas do gate" {
+        # O comentario deste hook prometia "as mesmas areas" e cobria so 2 das 4. Editar a mao
+        # referencia/conhecimento/resolver/INDICE.md passava livre, reintroduzindo a divergencia
+        # indice-conteudo que a 6.38.0 existe pra matar (R11 round 6, 2026-08-18).
+        $r = Invoke-Guard -Tool "Edit" -Caminho "referencia/conhecimento/resolver/INDICE.md"
+        $r.Exit | Should -Be 2 -Because "Saida: $($r.Saida)"
+    }
+
+    It "BLOQUEIA recriar o monolito em referencia/conhecimento/ tambem" {
+        $r = Invoke-Guard -Tool "Write" -Caminho "referencia/conhecimento/COMO_RESOLVER.md"
+        $r.Exit | Should -Be 2 -Because "Saida: $($r.Saida)"
     }
 
     It "o escape PERCUS_SKIP_KNOWLEDGE_GUARD=1 libera" {

@@ -42,10 +42,16 @@ Para cada tela tocada:
 ## Passo 3.5 — Capturar conhecimento novo (R23)
 
 Resolveu algum problema **não-trivial** nesta sessão (custou tempo, root cause não-óbvio)?
-- ✅ Adicione uma entrada em `${env:PERCUS_CANON_DIR}/conhecimento/COMO_RESOLVER.md` (sintoma · contexto ·
-  causa raiz · solução · ref + linha `tags:`). Próximo projeto não redescobre.
-- ✅ Estabeleceu/ajustou um procedimento-base recorrente (deploy, git, migration)? Atualize
-  `conhecimento/COMO_FAZER.md`.
+- ✅ Crie **um arquivo por verbete** em `${env:PERCUS_CANON_DIR}/conhecimento/resolver/<slug>.md`
+  (sintoma · contexto · causa raiz · solução · ref + linha `tags:`). **O nome do arquivo é o slug
+  da âncora** — `## Título {#slug}`. Próximo projeto não redescobre.
+- ✅ Estabeleceu/ajustou um procedimento-base recorrente (deploy, git, migration)? Mesmo formato,
+  em `conhecimento/fazer/<slug>.md`.
+- ✅ **Regere o índice** — o gate barra o commit se o verbete novo não estiver nele:
+  ```powershell
+  pwsh -File "${env:PERCUS_CANON_DIR}\scripts\gerar-indice-conhecimento.ps1"
+  ```
+  Nunca edite `INDICE.md` à mão: ele é gerado, e o `knowledge-write-guard` recusa a edição.
 - Nada não-trivial resolvido? Pule (declare "sem conhecimento novo a registrar").
 
 ## Passo 4 — Mensagem de gate para si mesmo

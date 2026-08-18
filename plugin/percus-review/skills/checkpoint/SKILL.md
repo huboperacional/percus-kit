@@ -29,22 +29,24 @@ estourar. O hook `PreCompact` existe só como rede de segurança se você esquec
 > encerramento se divergirem.
 
 ### 2. Capturar conhecimento novo (R23)
-Resolveu algo não-trivial nesta sessão? Escreva **um arquivo por verbete na caixa de entrada**:
-`${env:PERCUS_CANON_DIR}/conhecimento/entrada/resolver/<slug>.md` (ou `entrada/fazer/<slug>.md` se for
-procedimento). O nome do arquivo tem de ser exatamente o slug da âncora. **Não edite o monólito direto.**
-Aqui a captura fica amarrada a um gate que **sempre roda** — não depende de lembrar no fim.
+Resolveu algo não-trivial nesta sessão? Escreva **um arquivo por verbete**, direto na base:
+`${env:PERCUS_CANON_DIR}/conhecimento/resolver/<slug>.md` (ou `conhecimento/fazer/<slug>.md` se for
+procedimento). **O nome do arquivo é o slug da âncora** — `## Título {#slug}`.
 
-### 2b. Mesclar a caixa no monólito
+Não há passo de merge, não há caixa de entrada, não há espera. Isso deixou de ser necessário quando
+o monólito morreu: arquivos diferentes não colidem no git, então duas sessões escrevendo ao mesmo
+tempo simplesmente não se veem.
+
+O gate barra no commit: `##` sem âncora fechando a linha, slug ≠ nome do arquivo, `tags:` ausente,
+fence aberto, ou link para verbete inexistente.
+
+### 2b. Regerar o índice
 ```powershell
-pwsh -File "${env:PERCUS_CANON_DIR}\scripts\mesclar-conhecimento.ps1"
+pwsh -File "${env:PERCUS_CANON_DIR}\scripts\gerar-indice-conhecimento.ps1"
 ```
-Anexa cada verbete no `COMO_RESOLVER.md`/`COMO_FAZER.md` e insere a linha de índice sozinho.
-
-Se ele disser **ADIA**, está certo: o monólito está modificado na árvore porque **outra sessão está
-mexendo nele**, e as entradas ficam na caixa pro próximo checkpoint. Não force, não edite o monólito à
-mão para "resolver" — adiar é de graça justamente porque a caixa é durável, e foi para acabar com essa
-colisão que ela existe. Se sair com código diferente de zero, há entrada **inválida**: ela ficou na
-caixa e a mensagem diz o quê corrigir (slug ≠ nome do arquivo, `tags:` ausente, fence aberto).
+Reescreve `INDICE.md` de cada área a partir dos arquivos. **Nunca edite o `INDICE.md` à mão** — a
+próxima geração sobrescreve, e índice divergente do conteúdo foi o que produziu 14 verbetes
+invisíveis (2026-08-18).
 
 ### 3. Commit (com review R11)
 Se há mudança de código: rode `pwsh -File "${env:PERCUS_CANON_DIR}\scripts\percus-review-auto.ps1"`
@@ -60,7 +62,7 @@ reler (HANDOFF, PLANO, e o arquivo do próximo passo).
 ```
 [checkpoint] {projeto} — {milestone}
 Arquivos sincronizados: PLANO ✓ HANDOFF ✓ mock-audit {✓/N/A}
-Conhecimento novo: {entrada em COMO_RESOLVER, ou "nenhum"}
+Conhecimento novo: {slug do verbete escrito em conhecimento/resolver/, ou "nenhum"}
 Commit: {hash + msg curta, ou "sem mudança de código"}
 
 ═══ PROMPT DE RETOMADA (cole após /clear) ═══

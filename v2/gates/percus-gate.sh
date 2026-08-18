@@ -9,6 +9,7 @@
 # Escape declarado e LOGADO:
 #        PERCUS_GATE_OVERSIZE="motivo" git commit ...
 #
+# REQUISITO: gawk ou mawk (nao awk do BSD/macOS) -- ver o bloco de remocao de BOM no bloco 2.
 # Checagem que nao se aplica ao repo (arquivo ausente) e simplesmente pulada,
 # entao o mesmo script serve para o canon e para um projeto.
 
@@ -76,228 +77,338 @@ if [ -n "$NUCLEO" ]; then
   fi
 fi
 
-# ---------- 2. Verbete de conhecimento orfao do indice ----------
-# NOTA de manutencao: o criterio de fence estrito (^``` na coluna 0) se repete nos
-# blocos 2, 3 e 3b. Extrair em funcao POSIX sh custa mais legibilidade do que paga
-# aqui -- mas se o criterio mudar de novo, mude nos TRES blocos.
-for f in conhecimento/*.md referencia/conhecimento/*.md; do
-  [ -f "$f" ] || continue
-  # Verbete real = linha de TITULO (^## ) fora de bloco de codigo.
-  # Fence ESTRITO (^``` na coluna 0): o padrao antigo casava tambem fence indentado e
-  # dentro de blockquote, o toggle dessincronizava e o gate ficava CEGO do ponto em
-  # diante — medido 2026-07-29: via 33 de 105 verbetes e saia exit 0 por nao olhar.
-  # ^## ja exclui blockquote por construcao (linha comeca com '>').
-  orfaos=$(awk '/^```/{fence=!fence; next} fence{next} /^## .*\{#/{print}' "$f" 2>/dev/null \
-           | grep -oE '\{#[^}]+\}' | tr -d '{}#' | sort -u \
-           | while read -r a; do grep -qF "(#$a)" "$f" || echo "$a"; done)
-  for a in $orfaos; do
-    violacao "$f -- verbete #$a existe mas nao esta no indice (escrito e invisivel)"
+# ---------- 2. Higiene de verbete (um arquivo por verbete) ----------
+# Desde a 6.38.0 a base e conhecimento/<area>/<slug>.md -- um verbete por arquivo, e o NOME
+# DO ARQUIVO e o slug da ancora. O monolito COMO_* foi aposentado: era ele que fazia sessoes
+# de projetos diferentes colidirem (git resolve conflito em ARQUIVO) e que custava ~13k tokens
+# de indice em toda consulta.
+#
+# As checagens sao as mesmas que o antigo bloco 3c aplicava a caixa de entrada -- a caixa foi
+# aposentada porque existia PORQUE o destino era um arquivo unico. As regras sobreviveram; so
+# mudaram de alvo.
+#
+# UMA passada de awk sobre TODOS os arquivos, de proposito. A primeira versao rodava
+# sed|tr|awk por arquivo: com ~415 verbetes isso eram ~2000 processos e o gate passou de 120s.
+# Gate lento no caminho do commit e gate que sera desligado -- o proprio canon diz que gate
+# que atrapalha ensina a ser escapado.
+_AREAS_CONHECIMENTO="conhecimento/resolver conhecimento/fazer referencia/conhecimento/resolver referencia/conhecimento/fazer"
+
+_lista=""
+for _d in $_AREAS_CONHECIMENTO; do
+  [ -d "$_d" ] || continue
+  for _f in "$_d"/*.md; do
+    [ -f "$_f" ] || continue
+    # Expansao de parametro, nao basename: sao ~415 arquivos, e um processo por arquivo aqui
+    # foi metade do que fez o gate passar de 120s na primeira versao deste bloco.
+    _b=${_f##*/}; _b=${_b%.md}
+    case "$_b" in LEIA-ME|INDICE) continue ;; esac
+    # Arquivo VAZIO nao entra na lista -- ele e acusado aqui mesmo. O awk nunca enxerga um
+    # arquivo de zero bytes: sem registros, FNR==1 nao dispara, ele nunca vira 'atual' e nunca
+    # e finalizado. Somado a um INDICE que ainda o liste, escapava de TODAS as guardas -- a
+    # classe "escrito e invisivel" que este bloco existe pra matar (R11, 2026-08-18).
+    if [ ! -s "$_f" ]; then
+      violacao "$_f -- arquivo vazio; verbete precisa de titulo com ancora e linha tags:"
+      continue
+    fi
+    _lista="$_lista$_f
+"
   done
 done
 
-# ---------- 2b. Titulo '## ' SEM ancora {#slug} ----------
-# Os blocos 2 e 3 chaveiam em '^## .*\{#'. Uma linha '## Titulo' sem ancora nao casa
-# NENHUM dos dois: ela nao e "orfa do indice", ela nao existe pro gate -- e escapa da
-# checagem de indice E da de tags: de uma vez. Medido em 2026-08-18: 14 verbetes assim
-# no COMO_RESOLVER.md, todos tambem sem tags:, 11 commitados havia semanas.
-# O mesclador JA recusava isso na caixa (entrada com '##' sem ancora e barrada); faltava
-# no MONOLITO. Gate e mesclador discordando sobre o que e valido e a assimetria que
-# tornava o caminho proibido pelo R23 o de menor resistencia.
-# Ancora tem de FECHAR a linha, igual ao mesclador. '\r$' e removido antes: o arquivo e
-# CRLF e '$' em regex nao casa com o \r sobrando (ver #regex-multiline-crlf-dollar-nao-casa).
-for f in conhecimento/*.md referencia/conhecimento/*.md; do
-  [ -f "$f" ] || continue
-  sem_ancora=$(awk '
-    /^```/ { fence = !fence; next }
-    fence  { next }
-    /^## / {
-      t = $0
-      sub(/\r$/, "", t)
-      if (t == "## Indice" || t == "## \303\215ndice") next
-      if (t ~ /\{#[^}]+\}[ \t]*$/) next
-      print NR
+if [ -n "$_lista" ]; then
+  # Saida do awk: "<arquivo><TAB><mensagem>". O shell so traduz em violacao.
+  _achados=$(printf '%s' "$_lista" | tr '\n' '\0' | xargs -0 awk '
+    function finaliza(f,   b) {
+      if (f == "") return
+      if (aberto[f] > 0) { print f "\t" "bloco de codigo aberto na linha " aberto[f] " e nunca fechado (o gate fica cego dali pra frente)"; return }
+      if (malha[f] > 0)  { print f "\t" "titulo na linha " malha[f] ": precisa da ancora {#slug} FECHANDO a linha (sem ela o verbete nasce sem link e fora do indice)"; return }
+      if (nanc[f] != 1)  { print f "\t" "e UM verbete por arquivo (achei " nanc[f] " titulos de verbete)"; return }
+      b = f; sub(/.*\//, "", b); sub(/\.md$/, "", b)
+      if (anc[f] != b) { print f "\t" "slug do titulo diverge do nome do arquivo (o nome do arquivo E o slug)" }
+      if (faltatags[f]) { print f "\t" "verbete sem linha tags: (a busca por classe de sintoma nao acha)" }
     }
-  ' "$f" 2>/dev/null)
-  for n in $sem_ancora; do
-    violacao "$f linha $n -- titulo '## ' sem ancora {#slug} (nasce sem link, fora do indice e fora da checagem de tags)"
-  done
-done
-
-# ---------- 3. Verbete sem linha tags: (invisivel a busca) ----------
-for f in conhecimento/*.md referencia/conhecimento/*.md; do
-  [ -f "$f" ] || continue
-  # Skip de blockquote (^[[:space:]]*>) fica SO neste bloco: sem ele, linhas de
-  # citacao antes do tags: real consomem a janela de 4 linhas e o gate acusa "sem
-  # tags:" um verbete que TEM tags -- bloqueio de commit legitimo (achado do review,
-  # 2026-07-29). O que cegava o gate era o FENCE, nao o blockquote; o fence estrito
-  # ja resolve isso sozinho.
-  sem_tags=$(awk '
-    /^```/ { fence = !fence; next }
+    FNR == 1 {
+      # Fechar a janela do tags: do arquivo ANTERIOR antes de trocar de arquivo. Sem esta
+      # linha, "viu titulo e nunca achou tags:" so era convertido em falta no END, ou seja,
+      # a checagem valia apenas para o ULTIMO arquivo da lista -- e passava verde em todos os
+      # outros. Passada unica troca ~2000 processos por 1, mas move o estado por arquivo para
+      # dentro do awk; quem faz isso tem de fechar o arquivo anterior na mao.
+      if (atual != "" && viu && !achou) faltatags[atual] = 1
+      finaliza(atual)
+      atual = FILENAME; fence = 0; aberto[atual] = 0; nanc[atual] = 0
+      anc[atual] = ""; malha[atual] = 0; faltatags[atual] = 0
+      viu = 0; achou = 0; c = 0
+      # BOM: substr com escapes octais em vez de regex com escape hex.
+      # HONESTIDADE SOBRE O LIMITE, porque a primeira versao deste comentario prometia
+      # portabilidade que o codigo NAO tem (apontado pelo R11, 2026-08-18): octal em string de
+      # awk tambem nao e POSIX. gawk e mawk interpretam como bytes; o awk do BSD/macOS pode
+      # tratar como literal, e ai o BOM sobrevive, o "^##" nao casa e todo verbete com BOM
+      # barra o commit.
+      # O gate REQUER gawk ou mawk -- e essa e a realidade de todo o kit, nao uma escolha deste
+      # bloco (Git Bash no Windows, e gawk/mawk em Linux/CI). Registrado aqui em vez de
+      # disfarcado: um comentario que promete portabilidade inexistente e pior que a limitacao,
+      # porque impede que alguem a descubra antes de ela morder.
+      if (substr($0, 1, 3) == "\357\273\277") $0 = substr($0, 4)
+    }
+    { linha = $0; sub(/\r$/, "", linha) }
+    linha ~ /^```/ { fence = !fence; if (fence) aberto[atual] = FNR; else aberto[atual] = 0; next }
     fence { next }
-    /^[[:space:]]*>/ { next }
-    /^## .*\{#/ { if (p != "") print p; p=$0; c=0; next }
-    # Crase em tags: e OPCIONAL de proposito ("`?"): 18 dos ~105 verbetes reais
-    # escrevem "tags:" sem crase e sao encontraveis. Nao tire o "?" achando sobra.
-    p != "" { c++; if ($0 ~ /^`?tags:/) p=""; else if (c >= 4) { print p; p="" } }
-    END { if (p != "") print p }
-  ' "$f" | grep -oE '\{#[^}]+\}' | tr -d '{}#')
-  for a in $sem_tags; do
-    violacao "$f -- verbete #$a sem linha tags: (a busca de conhecimento nao acha)"
+    linha ~ /^##[ \t]+..*\{#[^}]+\}[ \t]*$/ {
+      if (viu && !achou) faltatags[atual] = 1
+      nanc[atual]++
+      a = linha; sub(/.*\{#/, "", a); sub(/\}[ \t]*$/, "", a); anc[atual] = a
+      viu = 1; achou = 0; c = 0
+      next
+    }
+    (linha ~ /^##[ \t]/ || linha ~ /^##$/) { if (malha[atual] == 0) malha[atual] = FNR; next }
+    linha ~ /^[[:space:]]*>/ { next }
+    viu && !achou {
+      c++
+      if (linha ~ /^`?tags:/) achou = 1
+      else if (c >= 4) { faltatags[atual] = 1; achou = 1 }
+    }
+    END { if (atual != "" && viu && !achou) faltatags[atual] = 1; finaliza(atual) }
+  ' 2>/dev/null)
+
+  _old_ifs=$IFS
+  IFS='
+'
+  for _linha in $_achados; do
+    IFS=$_old_ifs
+    [ -n "$_linha" ] || { IFS='
+'; continue; }
+    _arq=${_linha%%	*}
+    _msg=${_linha#*	}
+    violacao "$_arq -- $_msg"
+    IFS='
+'
   done
-done
+  IFS=$_old_ifs
+fi
 
-# ---------- 3b. Bloco de codigo aberto e nunca fechado ----------
-# Fence sem par cega os blocos 2 e 3 dali pra frente. Acusar e obrigatorio: gate que
-# para de olhar no meio do arquivo e pior que gate com falso positivo (2026-07-29).
-for f in conhecimento/*.md referencia/conhecimento/*.md; do
-  [ -f "$f" ] || continue
-  aberto=$(awk '/^```/{fence=!fence; if (fence) linha=NR} END{print (fence ? linha : 0)}' "$f")
-  if [ "$aberto" -gt 0 ]; then
-    violacao "$f -- bloco de codigo aberto na linha $aberto e nunca fechado (o gate fica cego dali pra frente)"
-  fi
-done
+# ---------- 2b. Integridade de link entre verbetes ----------
+# Risco apontado por 2/2 no pre-mortem do conselho (2026-08-18): com um arquivo por verbete,
+# link quebra em SILENCIO. Nao e hipotese -- no mesmo dia, 16 cross-refs do monolito ja
+# apontavam pra slug inexistente, e nada nunca reclamou.
+#
+# O MESMO pre-mortem avisou que este bloco vira falso positivo e acaba desligado. Por isso as
+# exclusoes nascem junto: fence (a base cita exemplo de link o tempo todo), citacao, e link
+# externo. INDICE.md e link entre areas (../fazer/x.md) resolvem sozinhos pela checagem de
+# caminho -- nao precisam de caso especial, e caso especial e o que apodrece.
+if [ -n "$_lista" ]; then
+  _links=$(printf '%s' "$_lista" | tr '\n' '\0' | xargs -0 awk '
+    FNR == 1 { fence = 0; if (substr($0, 1, 3) == "\357\273\277") $0 = substr($0, 4) }
+    { linha = $0; sub(/\r$/, "", linha) }
+    linha ~ /^```/ { fence = !fence; next }
+    fence { next }
+    linha ~ /^[[:space:]]*>/ { next }
+    {
+      # Remove CODE SPAN (`...`) antes de procurar link. Crase inline e a forma do markdown de
+      # dizer "isto e literal, nao link" -- nenhum renderizador linkifica dentro dela. Sem isso,
+      # um verbete que DOCUMENTA notacao de link (e esta base documenta a si mesma o tempo todo)
+      # e barrado pelos proprios exemplos: aconteceu com o verbete que explica este bloco,
+      # numa tabela de "formas que escapavam". Fence e citacao ja eram pulados; faltava a crase.
+      while (match(linha, /`[^`]*`/)) {
+        linha = substr(linha, 1, RSTART - 1) substr(linha, RSTART + RLENGTH)
+      }
+      resto = linha
+      while (match(resto, /\]\([^)]+\.md(#[^)]*)?\)/)) {
+        alvo = substr(resto, RSTART + 2, RLENGTH - 3)
+        resto = substr(resto, RSTART + RLENGTH)
+        if (alvo ~ /^https?:\/\// || alvo ~ /^mailto:/) continue
+        # ](arquivo.md#secao): valida a parte ANTES do sustenido. Sem isso o link com secao passava
+        # calado, e ele e forma legitima de escrita (R11 round 3, 2026-08-18).
+        sub(/#.*$/, "", alvo)
+        if (alvo == "") continue
+        d = FILENAME; sub(/\/[^\/]*$/, "", d)
+        print FILENAME "\t" d "/" alvo "\t" alvo
+      }
+      # Link de ANCORA ](#slug): era a forma dominante de cross-ref no monolito, onde origem e
+      # destino moravam no mesmo arquivo. Com um arquivo por verbete a ancora deixou de existir
+      # no arquivo de origem -- 50 links morreram na fatiagem, e a primeira versao deste bloco
+      # era CEGA a eles: so olhava ](x.md).
+      #
+      # CUIDADO COM O SENTIDO DA CHECAGEM: ele e o oposto do intuitivo. Ancora do tipo
+      # ](#secao) e a forma CANONICA de markdown pra secao INTERNA do mesmo documento --
+      # escrever um link de volta pra "causa raiz" e legitimo. Barrar toda ancora tornaria o
+      # gate um estorvo, e estorvo se desliga (foi o risco que 2/2 do conselho apontaram no
+      # pre-mortem). Entao a violacao sai so quando <alvo>.md EXISTE: ai nao ha ambiguidade, e
+      # referencia a outro verbete na forma que morreu com a fatiagem. Sem o arquivo, assume-se
+      # ancora de secao e passa. (R11 round 4, 2026-08-18.)
+      resto = linha
+      while (match(resto, /\]\(#[a-z0-9-]+\)/)) {
+        alvo = substr(resto, RSTART + 3, RLENGTH - 4)
+        resto = substr(resto, RSTART + RLENGTH)
+        proprio = FILENAME; sub(/.*\//, "", proprio); sub(/\.md$/, "", proprio)
+        if (alvo == proprio) continue
+        d = FILENAME; sub(/\/[^\/]*$/, "", d)
+        print FILENAME "\tANCORA\t" d "/" alvo ".md" "\t" alvo
+      }
+      # Link WIKI [[slug]]: a terceira notacao do monolito. Cada rodada de review descobriu que
+      # este bloco era cego a mais uma forma -- primeiro ](#slug), depois [[slug]]. A licao e que
+      # "valida link" so vale se enumerar TODAS as notacoes em uso: uma guarda que cobre a forma
+      # minoritaria e passa a majoritaria e pior que nenhuma, porque da a sensacao de cobertura.
+      resto = linha
+      while (match(resto, /\[\[[a-z0-9-]+\]\]/)) {
+        alvo = substr(resto, RSTART + 2, RLENGTH - 4)
+        resto = substr(resto, RSTART + RLENGTH)
+        proprio = FILENAME; sub(/.*\//, "", proprio); sub(/\.md$/, "", proprio)
+        if (alvo == proprio) continue
+        d = FILENAME; sub(/\/[^\/]*$/, "", d)
+        print FILENAME "\t" d "/" alvo ".md" "\t[[" alvo "]]"
+      }
+    }
+  ' 2>/dev/null)
 
-# ---------- 3c. Caixa de entrada de conhecimento (um verbete por arquivo) ----------
-# Antes de aferir CONTEUDO, aferir POSICAO: o glob abaixo so enxerga entrada/<area>/<slug>.md.
-# Um .md em subpasta de area valida, ou solto na raiz da caixa, escapa do gate E do mesclador
-# -- escrito e invisivel PARA SEMPRE, que e exatamente o que este bloco existe pra impedir.
-# LEIA-ME.md fica de fora por ser a documentacao da caixa, nao verbete.
-# NAO usar -mindepth/-maxdepth aqui: sao opcoes GLOBAIS do find, nao predicados, e dentro de
-# \( \) elas nao filtram nada -- a primeira versao disto acusava ate o proprio LEIA-ME.md.
-# O for (e nao 'find | while') tambem e de proposito: pipeline roda em subshell e o FAIL=1
-# de dentro do violacao se perderia, deixando o gate acusar e ainda assim sair 0.
-if [ -d conhecimento/entrada ]; then
-  # IFS so em quebra de linha: sem isso o word splitting do $(find) parte caminho com espaco
-  # em varios argumentos e a checagem de posicao afere pedaco de nome (R11, 2026-08-16).
+  _old_ifs=$IFS
+  IFS='
+'
+  for _l in $_links; do
+    IFS=$_old_ifs
+    [ -n "$_l" ] || { IFS='
+'; continue; }
+    _arq=${_l%%	*}; _rest=${_l#*	}
+    _tipo=${_rest%%	*}
+    if [ "$_tipo" = "ANCORA" ]; then
+      # Sentido INVERTIDO de proposito: barra quando o arquivo EXISTE. Ver o comentario no awk --
+      # ](#secao) e ancora interna legitima, e so vira erro quando o alvo e um verbete de
+      # verdade, ou seja, cross-ref na forma que a fatiagem matou.
+      _rest=${_rest#*	}
+      _cam=${_rest%%	*}; _alvo=${_rest#*	}
+      if [ -f "$_cam" ]; then
+        violacao "$_arq -- ](#$_alvo) aponta pra um verbete que existe; com um arquivo por verbete a ancora nao resolve. Use ](${_alvo}.md). Se for MESMO ancora de secao interna, renomeie a secao: o gate nao consegue distinguir quando existe um verbete com o mesmo slug"
+      fi
+    else
+      _cam=${_rest%%	*}; _alvo=${_rest#*	}
+      if [ ! -f "$_cam" ]; then
+        violacao "$_arq -- link para '$_alvo' nao resolve num arquivo existente (link morto nasce calado)"
+      fi
+    fi
+    IFS='
+'
+  done
+  IFS=$_old_ifs
+fi
+
+
+# ---------- 2e. POSICAO do arquivo de conhecimento ----------
+# Antes de aferir CONTEUDO, aferir POSICAO -- era o que o antigo bloco 3c fazia com a caixa de
+# entrada, e a migracao tinha perdido essa metade. O glob dos blocos acima nao e recursivo, o
+# gerador so indexa <area>/*.md, e o guard so barra monolito e indice. Resultado: um verbete
+# criado por engano em conhecimento/foo.md, ou em conhecimento/resolver/sub/foo.md, nasce
+# INVISIVEL -- ninguem afere, ninguem indexa, ninguem reclama. E a classe "escrito e invisivel"
+# que esta versao existe pra matar, entrando pela porta da posicao (R11, 2026-08-18).
+for _raiz in conhecimento referencia/conhecimento; do
+  [ -d "$_raiz" ] || continue
+  # IFS so em quebra de linha: sem isso caminho com espaco vira varios argumentos e a checagem
+  # afere pedaco de nome. O 'for' (e nao 'find | while') e de proposito: pipeline roda em
+  # subshell e o FAIL=1 de dentro do violacao se perderia, deixando o gate acusar e sair 0.
   _ifs_old=$IFS
   IFS='
 '
-  for x in $(find conhecimento/entrada -type f -name '*.md' 2>/dev/null); do
+  for _x in $(find "$_raiz" -type f -name '*.md' 2>/dev/null); do
     IFS=$_ifs_old
-    rel=${x#conhecimento/entrada/}
-    case "$rel" in
-      LEIA-ME.md) ;;
-      */*/*) violacao "$x -- profundidade errada na caixa; verbete tem de ser entrada/<area>/<slug>.md (em subpasta ele nunca seria mesclado)" ;;
-      */*)   ;;
-      *)     violacao "$x -- solto na raiz da caixa; verbete tem de ser entrada/<area>/<slug>.md (aqui ele nunca seria mesclado)" ;;
+    _rel=${_x#"$_raiz"/}
+    case "$_rel" in
+      # README e LEIA-ME na raiz da area sao DOCUMENTACAO, nao verbete. Isentar so o LEIA-ME
+      # barrava 'referencia/conhecimento/README.md' -- e o bug era invisivel da raiz do repo,
+      # porque 'referencia/conhecimento' so existe quando o gate roda de dentro do v2/. Achado
+      # pelo R11 (2026-08-18): guarda que so quebra num dos caminhos de execucao passa em todos
+      # os testes que rodam pelo outro.
+      README.md|LEIA-ME.md) ;;
+      resolver/*/*|fazer/*/*)
+        violacao "$_x -- profundidade errada; verbete e <area>/<slug>.md (em subpasta ele nao e aferido nem indexado)" ;;
+      resolver/*|fazer/*) ;;
+      */*)
+        violacao "$_x -- area desconhecida; so 'resolver' e 'fazer' sao aferidas e indexadas" ;;
+      *)
+        violacao "$_x -- solto na raiz de $_raiz; verbete e <area>/<slug>.md (aqui ele nasce invisivel)" ;;
     esac
     IFS='
 '
   done
   IFS=$_ifs_old
+done
 
-  # Caixa com entrada e monolito de destino ausente: o mesclador falha nesse caso, entao o
-  # gate nao pode aprovar. Mesma classe gate<->mesclador, agora com o destino inexistente.
-  for d in resolver:COMO_RESOLVER.md fazer:COMO_FAZER.md; do
-    _area=${d%%:*}; _dest=${d#*:}
-    for y in conhecimento/entrada/$_area/*.md; do
-      [ -f "$y" ] || continue
-      if [ ! -f "conhecimento/$_dest" ]; then
-        violacao "conhecimento/$_dest ausente, mas a caixa tem entrada em entrada/$_area (o mesclador falharia)"
-      fi
-      break
-    done
+# ---------- 2d. INDICE.md em sincronia com os verbetes ----------
+# Achado do review R11 (2026-08-18): o gerador de indice ganhou -Verificar e o gate NAO o
+# chamava. Um verbete novo, commitado sem regerar, passava calado -- reintroduzindo exatamente
+# o defeito que a migracao existe pra matar: indice divergente do conteudo, que foi o que
+# deixou 14 verbetes invisiveis por semanas.
+#
+# O gate nao chama o gerador (dependeria de pwsh no caminho do commit, e o gate roda em sh).
+# Faz a comparacao de CONJUNTOS aqui mesmo, e nos DOIS sentidos: verbete que falta no indice, e
+# indice que lista arquivo que nao existe.
+#
+# Um 'sort | uniq -u' resolve os dois de uma vez -- linha que aparece uma vez so esta em apenas
+# um dos lados. Comparar item a item custaria ~400 greps, e gate lento e gate desligado.
+for _d in $_AREAS_CONHECIMENTO; do
+  [ -d "$_d" ] || continue
+  _idx="$_d/INDICE.md"
+  [ -f "$_idx" ] || continue
+
+  _disco=$(for _f in "$_d"/*.md; do
+             [ -f "$_f" ] || continue
+             _b=${_f##*/}; _b=${_b%.md}
+             case "$_b" in INDICE|LEIA-ME) continue ;; esac
+             printf '%s\n' "$_b"
+           done)
+
+  # Link com barra e referencia a OUTRA area (../fazer/x.md): nao pertence a este indice.
+  _listados=$(awk '
+    /^```/ { fence = !fence; next }
+    fence { next }
+    {
+      resto = $0
+      while (match(resto, /\]\([^)]+\.md\)/)) {
+        a = substr(resto, RSTART + 2, RLENGTH - 3)
+        resto = substr(resto, RSTART + RLENGTH)
+        if (a ~ /\//) continue
+        sub(/\.md$/, "", a)
+        print a
+      }
+    }
+  ' "$_idx" 2>/dev/null | sort -u)
+
+  _dif=$(printf '%s\n%s\n' "$_disco" "$_listados" | sed '/^[[:space:]]*$/d' | sort | uniq -u)
+  for _s in $_dif; do
+    if [ -f "$_d/$_s.md" ]; then
+      violacao "$_d/$_s.md -- verbete FORA do INDICE.md (rode scripts/gerar-indice-conhecimento.ps1)"
+    else
+      violacao "$_idx -- lista '$_s.md', que nao existe (rode scripts/gerar-indice-conhecimento.ps1)"
+    fi
+  done
+done
+
+# ---------- 2c. Referencia orfa ao monolito aposentado ----------
+# Terceiro risco de consenso do pre-mortem: referencia esquecida ao arquivo que nao existe
+# mais falha DIAS depois, na primeira sessao que tentar le-lo.
+#
+# O padrao usa alternancia com parenteses de proposito: assim o texto do padrao nao casa a si
+# mesmo, e este bloco nao se acusa. A mensagem tambem evita escrever o nome literal.
+#
+# O padrao exige o CAMINHO ('conhecimento/COMO_...'), nao o nome solto. A diferenca decide se
+# a guarda e util ou insuportavel: referencia com caminho e INSTRUCAO DE USO e precisa morrer;
+# o nome solto em prosa costuma ser relato historico -- e a base de conhecimento conta a
+# propria historia o tempo todo ("medido no monolito de 912 KB"). Medido em 2026-08-18: das 28
+# ocorrencias, 13 eram caminho (instrucao viva) e 15 eram narrativa dentro de verbete. Barrar
+# as 15 tornaria impossivel escrever a licao sobre a propria migracao.
+#
+# tests/ fica de fora porque os testes deste bloco PRECISAM citar o caminho aposentado; docs de
+# plano/spec e .archive sao registro historico do que foi feito, nao instrucao viva.
+if [ -d conhecimento/resolver ]; then
+  orfas=$(grep -rlE 'conhecimento/COMO_(RESOLVER|FAZER)\.md' \
+            --include='*.md' --include='*.ps1' --include='*.sh' --include='*.json' \
+            --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ts' \
+            --exclude-dir='.git' --exclude-dir='node_modules' \
+            --exclude-dir='.worktrees' --exclude-dir='.claude' -I . 2>/dev/null \
+          | sed 's|^\./||' \
+          | grep -vE '^(docs/superpowers/(plans|specs)/|\.archive/|plugin/percus-review/tests/|CANON_VERSION\.md$)' || true)
+  for x in $orfas; do
+    violacao "$x -- cita o monolito de conhecimento aposentado; a base agora e conhecimento/<area>/<slug>.md"
   done
 fi
 
-# A caixa (conhecimento/entrada/<area>/<slug>.md) existe pra sessoes concorrentes pararem de
-# colidir no monolito: arquivos diferentes nao dao conflito de git. Mas entrada fora de gate e
-# entrada que nasce invisivel -- exatamente o que a caixa deveria evitar.
-#
-# Por que bloco PROPRIO e nao mais um glob nos blocos 2/3: a checagem 2 exige que a ancora
-# apareca como (#ancora) no MESMO arquivo. Num arquivo de UM verbete isso nunca e verdade, e
-# estender o glob reprovaria toda entrada valida. Aqui a regra e outra: o NOME DO ARQUIVO e o
-# indice. E e ele que torna o merge deterministico e o split futuro mecanico.
-for f in conhecimento/entrada/*/*.md; do
-  [ -f "$f" ] || continue
-  base=$(basename "$f" .md)
-
-  # Fence primeiro: fence impar cega as checagens abaixo, entao acusar e parar por aqui.
-  aberto=$(awk '/^```/{fence=!fence; if (fence) linha=NR} END{print (fence ? linha : 0)}' "$f")
-  if [ "$aberto" -gt 0 ]; then
-    violacao "$f -- bloco de codigo aberto na linha $aberto e nunca fechado (o gate fica cego dali pra frente)"
-    continue
-  fi
-
-  # Padrao ESTRITO e igual ao do mesclador: '##' + espaco OU TAB, e a ancora fechando a linha.
-  # O padrao frouxo ('/^## .*\{#/') aceitava '## Titulo {#slug} sobra' e recusava '##<TAB>Titulo'
-  # -- nos dois casos gate e mesclador discordavam sobre o que e valido, e gate que aprova o
-  # que o passo seguinte recusa faz o checkpoint quebrar depois do commit (R11, 2026-08-16).
-  # tr -d '\r' antes do awk: arquivo CRLF no working tree (core.autocrlf desligado, ou
-  # Windows) faz o '$' do awk nao casar, e TODA entrada valida seria denunciada como
-  # malformada. No Git Bash passa; em bash nativo/CI, nao. O mesclador ja usa '\r?$' --
-  # esta era a mesma divergencia gate/mesclador de novo, agora por quebra de linha.
-  # Titulo VAZIO ('## {#slug}') tambem e malformado: o mesclador precisa do titulo pra montar
-  # a linha de indice, entao sem ele o gate aprovaria algo que o merge recusa (R11, 2026-08-16).
-  malformado=$(sed '1s/^\xEF\xBB\xBF//' "$f" | tr -d '\r' | awk '/^```/{fence=!fence; next} fence{next} (/^##[ \t]/ || /^##$/) && !/^##[ \t]+..*\{#[^}]+\}[ \t]*$/{print NR}' 2>/dev/null | head -1)
-  if [ -n "$malformado" ]; then
-    violacao "$f -- titulo na linha $malformado: a ancora {#slug} tem de FECHAR a linha (sem texto depois)"
-    continue
-  fi
-
-  # sed pega SO a ancora do fim da linha, como o regex do mesclador (que ancora em $). O
-  # 'grep -oE' anterior extraia TODAS as ocorrencias, entao '## Usar {#fake} e {#slug}' virava
-  # 2 ancoras no gate e 1 no mesclador -- divergencia de novo, agora em titulo exotico.
-  ancoras=$(sed '1s/^\xEF\xBB\xBF//' "$f" | tr -d '\r' | awk '/^```/{fence=!fence; next} fence{next} /^##[ \t]+..*\{#[^}]+\}[ \t]*$/{print}' 2>/dev/null \
-            | sed -E 's/.*\{#([^}]+)\}[ \t]*$/\1/')
-  n=$(printf '%s\n' "$ancoras" | grep -c '[^[:space:]]' || true)
-  if [ "$n" -ne 1 ]; then
-    violacao "$f -- a caixa e UM verbete por arquivo (achei $n titulos '## ... {#slug}')"
-    continue
-  fi
-  if [ "$ancoras" != "$base" ]; then
-    violacao "$f -- slug '#$ancoras' diverge do nome do arquivo '$base' (o nome do arquivo E o slug)"
-  fi
-
-  # Mesma janela de 4 linhas do bloco 3, e a crase continua opcional pelo mesmo motivo.
-  semtags=$(sed '1s/^\xEF\xBB\xBF//' "$f" | tr -d '\r' | awk '
-    /^```/ { fence = !fence; next }
-    fence { next }
-    /^[[:space:]]*>/ { next }
-    /^##[ \t]+.*\{#/ { if (p != "") print p; p=$0; c=0; next }
-    p != "" { c++; if ($0 ~ /^`?tags:/) p=""; else if (c >= 4) { print p; p="" } }
-    END { if (p != "") print p }
-  ')
-  if [ -n "$semtags" ]; then
-    violacao "$f -- verbete sem linha tags: (a busca de conhecimento nao acha)"
-  fi
-
-  # Duplicata: acusar AQUI e nao so no mesclador. Gate que aprova o que o passo seguinte
-  # recusa faz o checkpoint quebrar depois do commit ter passado -- e ensina a ignorar gate.
-  area=$(basename "$(dirname "$f")")
-  case "$area" in
-    resolver) destino="conhecimento/COMO_RESOLVER.md" ;;
-    fazer)    destino="conhecimento/COMO_FAZER.md" ;;
-    *)
-      # Area que o mesclador nao processa = verbete que fica na caixa PARA SEMPRE. Gate que
-      # aprova o que o passo seguinte ignora e o cenario exato que o bloco 3c existe pra
-      # impedir: conhecimento escrito e invisivel.
-      violacao "$f -- area '$area' desconhecida; o mesclador so processa 'resolver' e 'fazer' (o verbete ficaria na caixa pra sempre)"
-      continue
-      ;;
-  esac
-  if [ -f "$destino" ]; then
-    # Fora de fence, como TODAS as outras checagens deste bloco: um verbete que apenas CITA
-    # '{#slug}' como exemplo dentro de ``` nao pode bloquear uma entrada nova legitima.
-    # Comparacao sem distincao de caixa (ancora que difere so em maiuscula colide na
-    # renderizacao), mas feita baixando a caixa dos DOIS lados em vez de usar 'grep -i':
-    # neste Git Bash, `grep -iF` ABORTA com SIGABRT (rc=134) -- medido 2026-08-16. `-cF`
-    # sozinho funciona; e a combinacao -i + -F que quebra.
-    # grep -c em vez de -q: o -q sai no primeiro casamento, o tr/awk a montante levam SIGPIPE
-    # e o bash imprime "Done ..." no meio da saida do gate, sujando o diagnostico.
-    # Ancora e SO o que esta na linha de titulo. Varrer o texto todo fazia uma mencao inline
-    # em prosa ("a ancora e escrita como {#slug}") bloquear entrada nova legitima -- e a base
-    # de conhecimento fala de si mesma o tempo todo (R11 round 5, 2026-08-16).
-    base_lc=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
-    dup=$(sed '1s/^\xEF\xBB\xBF//' "$destino" | tr -d '\r' \
-          | awk '/^```/{fence=!fence; next} fence{next} /^##[ \t]+..*\{#[^}]+\}[ \t]*$/{print}' \
-          | sed -E 's/.*\{#([^}]+)\}[ \t]*$/\1/' \
-          | tr '[:upper:]' '[:lower:]' | grep -cxF "$base_lc")
-    if [ "$dup" -gt 0 ]; then
-      violacao "$f -- o slug '#$base' JA existe em $destino (duplicata quebraria os links das duas)"
-    fi
-  fi
-done
 
 # ---------- 4. Conteudo de kit staged sem bump de versao ----------
 # Os 6 testes de version-alignment provam que os 4 arquivos de versao CONCORDAM.

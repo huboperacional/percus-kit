@@ -45,7 +45,7 @@ A infra é Docker **Swarm + Traefik** no VPS `161.97.129.138`, gerida via **Port
      `stack deploy` limpo reverte o serviço.
    - **2026-07-28:** GH Actions da org está desativado por decisão de custo, então onde havia registry
      o caminho corrente é **build no nó**; o GHCR restante é rollback profundo, não estado atual.
-     Regra de decisão completa em `conhecimento/COMO_FAZER.md#deploy-vps`.
+     Regra de decisão completa em `conhecimento/fazer/deploy-vps.md`.
 2. **Atualizar a stack** existente via Portainer API (`PUT /api/stacks/{STACK_ID}?endpointId=1` com
    `stackFileContent`, `prune:true`, `pullImage:true` se imagem nova) — ver `02_INFRA` §10 "Atualizar stack existente".
 3. Ou **forçar restart** do serviço (`ForceUpdate++`) se só mudou config/secret — ver `02_INFRA` §10.
@@ -81,13 +81,13 @@ Alternativas:
 - Se a mudança foi migration de banco: ter o `alembic downgrade -1` testado **antes** (rollback de schema
   é o mais arriscado — valide o downgrade em dev primeiro).
 
-Após rollback: registrar no HANDOFF o que falhou + abrir entrada no `conhecimento/COMO_RESOLVER.md` (R23).
+Após rollback: registrar no HANDOFF o que falhou + abrir entrada no `conhecimento/resolver/` (R23).
 
 ## 5. Pós-deploy
 
 - [ ] Smoke test passou (passo 3).
 - [ ] `HANDOFF.md` atualizado: "deployado em produção em {data} — {o que foi}".
-- [ ] Problema novo descoberto no deploy? → `conhecimento/COMO_RESOLVER.md` (R23).
+- [ ] Problema novo descoberto no deploy? → `conhecimento/resolver/` (R23).
 
 ---
 
@@ -100,10 +100,10 @@ Após rollback: registrar no HANDOFF o que falhou + abrir entrada no `conhecimen
 - ❌ Acumular dias sem deployar e sem registrar o pendente no HANDOFF.
 - ❌ **`next/font/google` no build Docker de app Next** — baixa a fonte via rede AO BUILDAR, quebra o cache
   do BuildKit (e o DNS da bridge). Use `next/font/local` com woff2 self-hosted + cache BuildKit no Dockerfile.
-  Recipe opt-in (build frio ~7-8min → ~1-3min): `conhecimento/COMO_FAZER.md#deploy-build-cache`.
+  Recipe opt-in (build frio ~7-8min → ~1-3min): `conhecimento/fazer/deploy-build-cache.md`.
 
 ## Referências
 
 - Regra: `01_REGRAS_INEGOCIAVEIS.md` R24 (cadência), R5 (confirmação), R11 (milestone-review).
 - Infra/como: `02_INFRA_E_STACK_PERCUS.md` §6-10.
-- Procedimento curto: `conhecimento/COMO_FAZER.md#deploy-vps`.
+- Procedimento curto: `conhecimento/fazer/deploy-vps.md`.

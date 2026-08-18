@@ -9,7 +9,7 @@ Raiz do V1: `${env:PERCUS_CANON_DIR}` → `percus-kit/`
 | Auth (padrão, JWKS, refresh, cookie) | `02_INFRA_E_STACK_PERCUS.md` §2 | nunca — é referência de stack, não loop |
 | Infra, VPS, Swarm, portas, Traefik | `02_INFRA_E_STACK_PERCUS.md` | idem |
 | Tracking / attribution | `03_TRACKING_ATTRIBUITION.md` | idem |
-| Conhecimento (problema → solução) | `conhecimento/COMO_RESOLVER.md`, `COMO_FAZER.md` | quando o piloto provar o V2; é a base que mais funciona hoje |
+| Conhecimento (problema → solução) | `conhecimento/resolver/`, `conhecimento/fazer/` | quando o piloto provar o V2; é a base que mais funciona hoje |
 | Template de ADR | `templates/adr-0000-template.md` | nunca — é contrato do crawler do Painel |
 | Template de PLANO / HANDOFF | `templates/` | já substituídos por `artefatos/` do V2 |
 | Auditorias (security, tracking, cookie, pages, auth-consumer) | skills do plugin | nunca — ferramenta pontual, não é loop de sessão |

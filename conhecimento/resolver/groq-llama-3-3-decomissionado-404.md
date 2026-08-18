@@ -1,0 +1,59 @@
+## Perna Groq do conselho responde 404: `llama-3.3-70b-versatile` foi decomissionado {#groq-llama-3-3-decomissionado-404}
+
+`tags: conselho, groq, llama-3.3-70b-versatile, 404, modelo decomissionado, council-orchestrator, pre-mortem, perna muda, consenso de 2 de 3, R11`
+
+**Sintoma:** o `council-orchestrator` roda, devolve JSON com `"status": "ok"` para DeepSeek e
+Cross-Claude, e para a perna Groq devolve `"error": "Response status code does not indicate success:
+404 (Not Found)"` com `latency_ms` de ~300 ms. O run **inteiro** continua parecendo utilizável — o
+`summary` só lista `"groq-llama: error"` no meio de outras linhas, e quem lê a síntese vê dois
+pareceres substanciosos e segue em frente.
+
+**Causa raiz:** o Groq **aposentou** o modelo `llama-3.3-70b-versatile`. Não é rede, não é chave, não
+é rate limit — é 404 de rota: o id do modelo não existe mais no catálogo deles. Latência de 300 ms
+(contra 40 s e 107 s das outras pernas) é a assinatura: a requisição nem chegou a um modelo.
+
+**Quando quebrou, medido nos próprios logs:** funcionava em **2026-08-03** e **2026-08-06**
+(`groq-llama -> ok llama-3.3-70b-versatile` nos dois `*-pre-mortem.jsonl`), e estava 404 em
+**2026-08-17**. Ou seja, quebrou em algum ponto dessa janela e **ninguém percebeu**, porque o
+orchestrator não falha quando uma perna morre.
+
+**Por que isto importa mais do que parece:** o critério de "risco crítico" do pré-mortem é
+**≥2 providers apontando o mesmo risco**. Com uma perna morta, "2 de 3" vira "2 de 2" — ou seja,
+**consenso unânime disfarçado de maioria**, e qualquer risco que só o Llama veria simplesmente não
+aparece. É a mesma classe de
+[[reference_review_limpo_pode_ser_vacuidade]]: a ferramenta responde, o resultado parece legítimo, e
+o que falta é invisível.
+
+🔴 **NÃO existe "trocar por outro Llama" — confirmado em 2026-08-17 por sessão independente
+(tiatendo), listando `GET /models` com a chave real.** Os ÚNICOS modelos `llama` que a chave enxerga
+hoje são `meta-llama/llama-prompt-guard-2-22m` e `-86m`, que são **classificadores de prompt, não
+modelos de chat**. O catálogo de chat que sobrou é de outra família (`openai/gpt-oss-120b`,
+`openai/gpt-oss-20b`, `qwen/qwen3.6-27b`, `groq/compound`). Ou seja o conserto **troca a família do
+modelo**, não a versão — e com isso a perna deixa de ser "a perspectiva Llama" e passa a ser outra
+coisa, o que precisa ser dito ao operador em vez de silenciosamente renomeado.
+
+🔴 **O id morto está em 9 arquivos do plugin `6.36.5`, e dois deles NÃO são o conselho:**
+`providers/_registry.json:23` · `providers/groq-llama.ps1:16` · `providers/groq-llama.sh:8` ·
+`scripts/council-orchestrator.ps1:58` · `scripts/council-orchestrator.sh:17` ·
+**`scripts/fact-check-triage.ps1:33,39`** · **`scripts/fact-check-triage.sh:11`** ·
+`tests/council-tie-breaker.tests.ps1:21`. O `fact-check-triage` é o **pré-requisito que a própria
+skill `council-consult` exige** antes de escalar finding crítico — então a trava anti-"conselho
+ratifica premissa não verificada" (incidente Plexco Tasks 2026-05-18) está apoiada no mesmo modelo
+morto. Consertar só o wrapper do conselho deixa essa metade quebrada.
+
+**Solução:**
+1. Trocar o id do modelo no wrapper do Groq por um vivo no catálogo atual deles (checar
+   `GET https://api.groq.com/openai/v1/models` com a chave antes de escolher — não adivinhar pelo
+   nome). **Varra os 9 sítios acima, não só `providers/`.**
+2. **Antes de confiar num pré-mortem, conferir quantas pernas realmente responderam.** No JSON:
+   `responses[].status`. Se veio `error`, o consenso mudou de denominador e precisa ser dito em voz
+   alta no relatório ao operador.
+3. Considerar fazer o orchestrator **falhar alto** (ou pelo menos gritar) quando uma perna volta
+   erro, em vez de listar num `summary` que ninguém lê.
+
+⚠️ **A checagem barata que separa "perna morta" de "perna lenta" é a latência.** Perna que pensa
+demora dezenas de segundos; perna que 404 volta em centenas de milissegundos. Um `latency_ms` de três
+dígitos ao lado de dois de cinco dígitos é o sinal.
+
+**Ref:** observado em 2026-08-17 rodando `council-pre-mortem` no projeto Scraper-prospeccao,
+canon 6.36.6. Log: `.deepseek/council-log/20260817-080310-pre-mortem.jsonl`.

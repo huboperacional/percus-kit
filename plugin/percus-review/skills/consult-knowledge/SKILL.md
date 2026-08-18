@@ -1,13 +1,16 @@
 ---
 name: consult-knowledge
-description: Use ANTES de gastar tempo debugando um problema que parece conhecido, OU ao precisar do procedimento-base canônico de uma tarefa recorrente (deploy, git, migration). Lê a base de conhecimento Percus (conhecimento/COMO_RESOLVER.md + COMO_FAZER.md) e casa por CLASSE de sintoma, não string literal. Também usada ao FIM de um problema resolvido, para registrar a solução (R23).
+description: Use ANTES de gastar tempo debugando um problema que parece conhecido, OU ao precisar do procedimento-base canônico de uma tarefa recorrente (deploy, git, migration). Lê a base de conhecimento Percus (conhecimento/resolver/ + conhecimento/fazer/) e casa por CLASSE de sintoma, não string literal. Também usada ao FIM de um problema resolvido, para registrar a solução (R23).
 ---
 
 # Percus — Consultar Base de Conhecimento (R23)
 
-Base cross-projeto versionada no canon. Dois arquivos, dois propósitos:
-- `${env:PERCUS_CANON_DIR}/conhecimento/COMO_RESOLVER.md` — **problema → solução** (troubleshooting).
-- `${env:PERCUS_CANON_DIR}/conhecimento/COMO_FAZER.md` — **procedimento-base** (como fazer X canônico).
+Base cross-projeto versionada no canon. **Um arquivo por verbete**, duas áreas:
+
+- `${env:PERCUS_CANON_DIR}/conhecimento/resolver/<slug>.md` — **problema → solução** (troubleshooting)
+- `${env:PERCUS_CANON_DIR}/conhecimento/fazer/<slug>.md` — **procedimento-base** (como fazer X canônico)
+
+O **nome do arquivo é o slug da âncora**. São ~400 verbetes em `resolver/`.
 
 ## Quando usar
 
@@ -15,62 +18,73 @@ Base cross-projeto versionada no canon. Dois arquivos, dois propósitos:
 - **Vai fazer uma tarefa recorrente** (commit/review, rodar conselho, migration, deploy) → confira o padrão.
 - **Acabou de resolver um problema não-trivial** → REGISTRE a solução (gate R23 / `CHECKLIST_ENCERRAR_SESSAO`).
 
-## Como consultar — lookup SEMÂNTICO, não grep
+## Como consultar — grep pelas tags, primeiro
 
-> ⚠️ **Não dependa de `grep` por string literal.** Sintomas reais variam em wording, stack e locale —
-> a mesma falha aparece com mensagens diferentes. Grep dá falso-negativo na maioria das consultas.
+A linha `tags:` de cada verbete lista a **classe** de erro, o componente e termos independentes de
+locale. Como cada verbete é um arquivo, o grep devolve **nomes de arquivo** — e custa o tamanho da
+resposta, não o da base:
 
-1. **Comece pelo Índice** (o bloco `- [...](#ancora)` no topo), não pelo arquivo.
-   ⚠️ **Não leia o arquivo inteiro.** A instrução anterior aqui dizia que ele "é pequeno e cabe no
-   contexto" — era verdade quando foi escrita e hoje é falso: `COMO_RESOLVER.md` passou de
-   **900 KB / ~230k tokens** (medido 2026-08-16).
-   **Tamanhos reais, para você escolher com informação:** o Índice sozinho tem **339 linhas / ~45 KB
-   (~13k tokens)** — cabe, mas não é de graça; um verbete típico tem **3–6 KB**. Precisa de visão
-   ampla? Leia o Índice. Já tem hipótese de classe? Busque no Índice pelos termos da classe e leia
-   só o verbete escolhido.
-2. **Olhe também a caixa de entrada** — `conhecimento/entrada/resolver/` e `conhecimento/entrada/fazer/`.
-   São verbetes já escritos que ainda não foram mesclados no monólito (o merge acontece no
-   `checkpoint`). Cada arquivo é um verbete, e o **nome do arquivo é o slug** — dá pra varrer os nomes
-   e ler só o que interessa. Pular a caixa é reintroduzir o problema de conhecimento escrito e
-   invisível, que já custou 5 entradas perdidas de vista.
-3. **Case por CLASSE de sintoma**, não por texto exato: a linha `tags:` de cada entrada lista a classe
-   de erro, componente e termos locale-independentes. Raciocine sobre relevância ("meu erro é um parser
-   error num `.ps1` rodado via `.cmd`" → casa com `ps51-ascii-hooks` mesmo que a mensagem seja outra).
-4. Se houver entrada que case a classe, **tente a solução de lá primeiro** antes de investigar do zero.
-5. Se **nada** casar, debugue normalmente — e ao resolver, volte pra registrar (passo abaixo).
+```sh
+grep -l "tags:.*rls" conhecimento/resolver/*.md
+grep -l "tags:.*hook" conhecimento/resolver/*.md
+grep -l "tags:.*deploy" conhecimento/fazer/*.md
+```
+
+Depois **leia só o(s) verbete(s) que casaram**. Um verbete típico tem 3–6 KB.
+
+> ⚠️ **Case por CLASSE, não por string do sintoma.** Sintomas reais variam em wording, stack e
+> locale. Busque o termo da *classe* (`rls`, `crlf`, `matcher`, `cache de borda`), não a frase de
+> erro que você recebeu. Se o primeiro termo não achar nada, tente o sinônimo da classe antes de
+> concluir que não existe.
+
+**Precisa de visão ampla** ("o que existe sobre isto?") em vez de uma classe específica? Leia
+`conhecimento/resolver/INDICE.md` — títulos e links, gerado a partir dos arquivos.
+
+⚠️ **Não leia a pasta inteira.** São ~400 verbetes; junto dá ~250k tokens. O ponto de a base ser um
+arquivo por verbete é justamente você nunca precisar disso.
+
+Se nada casar, debugue normalmente — e ao resolver, volte pra registrar.
 
 ## Como registrar (após resolver algo novo)
 
-**Escreva na CAIXA DE ENTRADA, não no monólito** — um verbete por arquivo:
+Escreva o arquivo **direto**:
 
 ```
-conhecimento/entrada/resolver/<slug>.md    # troubleshooting
-conhecimento/entrada/fazer/<slug>.md       # procedimento
+conhecimento/resolver/<slug>.md    # troubleshooting
+conhecimento/fazer/<slug>.md       # procedimento
 ```
+
+Não há passo de merge, não há caixa de entrada, não há espera — arquivos diferentes não colidem no
+git, então duas sessões escrevendo ao mesmo tempo não se veem.
 
 O **nome do arquivo tem de ser exatamente o slug** da âncora (`{#slug}`) — o gate barra se divergir.
-Formato do conteúdo é o mesmo de sempre, e a `tags:` continua sendo o que faz o próximo lookup achar:
 
-- Troubleshooting: `## <sintoma> {#ancora}` · `tags:` · Contexto · Causa raiz · Solução · Ref.
-- Procedimento: `## <objetivo> {#ancora}` · `tags:` · Quando · Passos · Comando · Armadilhas.
+- Troubleshooting: `## <sintoma> {#ancora}` · `tags:` · Contexto · Causa raiz · Solução · **Ref:**
+- Procedimento: `## <objetivo> {#ancora}` · `tags:` · Quando · Passos · Comando · Armadilhas · **Ref:**
 
-**Não atualize o Índice à mão, e não edite `COMO_RESOLVER.md` direto.** O `checkpoint` roda
-`scripts/mesclar-conhecimento.ps1`, que anexa o verbete e insere a linha de índice sozinho.
+**Relacionar verbetes** usa link de arquivo relativo, e ele é **verificado pelo gate**:
 
-**Por quê:** o monólito tem centenas de verbetes num arquivo só, e o git resolve conflito em
-**arquivo**. Duas sessões escrevendo lições sobre assuntos diferentes colidiam assim mesmo — medido
-2026-08-16, um commit levaria junto o rascunho inacabado de outra sessão. Arquivos separados = colisão
-zero. Use **caminho absoluto** nas refs.
+```md
+**Relacionado:** [título do outro](outro-slug.md)
+```
+
+Depois de escrever, regenere o índice:
+
+```powershell
+pwsh -File "${env:PERCUS_CANON_DIR}\scripts\gerar-indice-conhecimento.ps1"
+```
 
 ## Anti-padrões
 
-- ❌ `grep` literal no sintoma e concluir "não tem nada" — sintomas variam; leia e case por classe.
+- ❌ `grep` pela **frase de erro** e concluir "não tem nada" — busque o termo da classe nas `tags:`.
+- ❌ Ler a pasta inteira ou o `INDICE.md` quando você já tem hipótese de classe — o grep é mais barato e mais preciso.
 - ❌ Debugar 30 min um problema que já estava catalogado (não consultou) — R23.
 - ❌ Resolver incidente não-trivial e encerrar sem registrar — conhecimento se perde (R23).
-- ❌ Inventar procedimento de deploy/infra divergente do `COMO_FAZER.md` sem atualizar o doc.
+- ❌ Editar `INDICE.md` à mão — é gerado; índice divergente do conteúdo já escondeu 14 verbetes por semanas.
+- ❌ Recriar `conhecimento/COMO_*.md` — foram aposentados; o hook `knowledge-write-guard` recusa.
 
 ## Referências
 
 - Regra: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` R23.
-- Gates de captura: `checklists/CHECKLIST_ENCERRAR_SESSAO.md` (passo 3.5), skill `percus-review:checkpoint`.
-- Base: `conhecimento/COMO_RESOLVER.md`, `conhecimento/COMO_FAZER.md`.
+- Formato de cada área: `conhecimento/resolver/LEIA-ME.md`, `conhecimento/fazer/LEIA-ME.md`.
+- Gates de captura: `checklists/CHECKLIST_ENCERRAR_SESSAO.md`, skill `percus-review:checkpoint`.

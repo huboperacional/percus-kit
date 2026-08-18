@@ -56,7 +56,7 @@ PASSO 2 — Adotar as diretivas vigentes (ler a fonte no canon e aplicar o que f
 - R10/R11/R13 (baseline Fase 4): design v0/shadcn; review cross-provider antes de commit E no marco;
   routing Claude/DeepSeek/revisores. Ver 01_REGRAS + 04_MODEL_ROUTING.
 - Gate [S]: feature não-trivial → spec.md (template) + /clarify (≤5) + /percus-review:spec-analyze ANTES de [0]. (06_CONSELHO Modo 5)
-- R23: consultar ${env:PERCUS_CANON_DIR}/conhecimento/COMO_RESOLVER.md antes de debugar; registrar após (skill consult-knowledge).
+- R23: consultar ${env:PERCUS_CANON_DIR}/conhecimento/resolver/ antes de debugar; registrar após (skill consult-knowledge).
 - R24: deploy ao milestone/fim-do-dia/sob-demanda, NÃO per-feature (comandos/DEPLOY.md, smoke+rollback).
 - Checkpoint: rodar a skill `checkpoint` (linguagem natural, não slash) ao fim de milestone (PreCompact é backstop).
 - Auth (se consome auth-service): auditar via percus-review:auth-consumer (bridge lê #rt=, não só #at=).
@@ -107,7 +107,7 @@ PASSO A — Delta de versão (mostre antes de mudar nada):
 
 PASSO B — Diretiva project-facing nova: deploy opt-in (build Docker frio/lento em Next.js):
 - Aplica SE este projeto é Next.js deployado como imagem Docker cujo `next build` refaz do zero a cada deploy.
-- Se aplica: leia ${env:PERCUS_CANON_DIR}/conhecimento/COMO_FAZER.md#deploy-build-cache e avalie adotar —
+- Se aplica: leia ${env:PERCUS_CANON_DIR}/conhecimento/fazer/deploy-build-cache.md e avalie adotar —
   fontes self-hosted (`next/font/google` → `next/font/local`, mesmos `variable`/`display`) + cache
   incremental BuildKit no Dockerfile. É ADITIVO, não muda a base/convenção. **Pilote antes de canonizar:**
   rode o passo 4 de validação (typecheck + build local passam, fontes renderizam iguais) NESTE projeto

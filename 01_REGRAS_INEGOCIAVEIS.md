@@ -842,45 +842,58 @@ Convenção é **sugestão**, não trava: projetos full-stack (FastAPI + Next) p
 ## R23. Base de conhecimento — consultar antes de resolver, registrar depois (v6.19.0)
 
 **Regra:** antes de gastar tempo debugando um problema que **parece conhecido**, consulte
-`conhecimento/COMO_RESOLVER.md` (via skill `percus-review:consult-knowledge`). Se houver entrada que
-case com a **classe** do sintoma, tente a solução de lá **primeiro**. Depois de resolver um problema
-**novo** (não trivial, que custou tempo), **registre** uma entrada nova — escrevendo **um arquivo por
-verbete na caixa de entrada**, `conhecimento/entrada/resolver/<slug>.md` (procedimento recorrente vai
-pra `conhecimento/entrada/fazer/<slug>.md`). O nome do arquivo **é** o slug da âncora.
+`conhecimento/resolver/` (via skill `percus-review:consult-knowledge`). Se houver verbete que case com
+a **classe** do sintoma, tente a solução de lá **primeiro**. Depois de resolver um problema **novo**
+(não trivial, que custou tempo), **registre** — escrevendo **um arquivo por verbete**, direto em
+`conhecimento/resolver/<slug>.md` (procedimento recorrente vai pra `conhecimento/fazer/<slug>.md`).
+O nome do arquivo **é** o slug da âncora.
 
-**A consulta cobre os dois lugares:** o monólito (`COMO_RESOLVER.md`/`COMO_FAZER.md`) **e** a caixa —
-verbete que ainda não foi mesclado é conhecimento igual, e pular a caixa recria o problema de
-"escrito e invisível".
+**Como consultar — grep primeiro.** A linha `tags:` lista a classe de sintoma em termos independentes
+de locale e de wording, e a busca devolve nomes de arquivo:
 
-**Não edite o monólito direto.** O `checkpoint` roda `scripts/mesclar-conhecimento.ps1`, que anexa o
-verbete e insere a linha de índice. **Por quê:** o monólito tem centenas de verbetes num arquivo só e o
-git resolve conflito em **arquivo** — duas sessões escrevendo lições sobre assuntos diferentes
-colidiam assim mesmo (medido 2026-08-16: um commit levaria junto o rascunho inacabado de outra sessão,
-e o gate barrou o commit legítimo). Arquivo separado por verbete = colisão zero. Se o mesclador disser
-**ADIA**, outra sessão está com o monólito aberto; as entradas esperam o próximo checkpoint, e isso é
-de graça porque a caixa é durável.
+```sh
+grep -l "tags:.*<termo-da-classe>" conhecimento/resolver/*.md
+```
+
+Precisa de visão ampla em vez de uma classe específica? `INDICE.md` lista os títulos. **Não leia a
+pasta inteira**: são ~400 verbetes.
+
+**Escreva o arquivo direto — não há passo de merge, não há caixa de entrada, não há espera.** Isso
+deixou de ser necessário na 6.38.0, quando o monólito morreu: arquivos diferentes não colidem no git,
+então duas sessões escrevendo ao mesmo tempo simplesmente não se veem. **Por quê importava:** enquanto
+os verbetes moravam todos num arquivo de 1 MB, sessões de projetos diferentes colidiam mesmo
+escrevendo sobre assuntos sem relação — o git resolve conflito em **arquivo**. Medido em 2026-08-16:
+um commit levaria junto o rascunho inacabado de outra sessão, e o gate barrou o commit legítimo.
+
+**`INDICE.md` é gerado, nunca editado à mão** (`scripts/gerar-indice-conhecimento.ps1`). Índice
+divergente do conteúdo foi o defeito que deixou 14 verbetes invisíveis por semanas (2026-08-18).
 
 **Forbidden:**
-- Reabrir do zero um problema já catalogado em `COMO_RESOLVER.md` sem ter consultado (retrabalho).
+- Reabrir do zero um problema já catalogado em `conhecimento/resolver/` sem ter consultado (retrabalho).
 - Resolver um incidente não-trivial e **encerrar a sessão sem registrar** a solução (conhecimento se perde, próximo projeto redescobre).
-- Inventar procedimento de infra (deploy, VPS) divergente do `COMO_FAZER.md` sem atualizar o doc.
+- Recriar os monólitos aposentados (`conhecimento/COMO_*.md`) — o hook `knowledge-write-guard` recusa.
+- Editar `INDICE.md` à mão em vez de regerar.
+- Inventar procedimento de infra (deploy, VPS) divergente do `conhecimento/fazer/` sem atualizar o doc.
 
 **Why:** o conhecimento de incidente ficava espalhado em ADRs + memory isolado por projeto — cada
 projeto redescobria os mesmos bugs (prompt stale do council, hooks `.ps1` não-ASCII, etc.). Base única
-versionada no git, consultável por **classe de sintoma** (lookup semântico, não grep literal — sintomas
-variam em wording/stack/locale), sincroniza pra todas as máquinas via `git pull`.
+versionada no git, consultável por **classe de sintoma**, sincroniza pra todas as máquinas via
+`git pull`.
 
 **Gate de verificação:**
-0. `percus-gate.sh` bloco 3c afere a caixa: um verbete por arquivo, slug == nome do arquivo, `tags:`
-   presente, fence fechado. Entrada fora de gate é entrada que nasce invisível.
-1. `conhecimento/COMO_RESOLVER.md` e `conhecimento/COMO_FAZER.md` existem no canon (sincronizados via git).
-2. Ao bater num erro conhecido, há evidência de consulta antes do debug (a skill loga / o agente declara).
-3. `CHECKLIST_ENCERRAR_SESSAO.md` tem o passo "problema novo resolvido foi pra COMO_RESOLVER?"; o
-   a skill `checkpoint` reforça (a captura não depende de memória — fica num gate que já roda).
+0. `percus-gate.sh` bloco 2 afere cada verbete: um por arquivo, slug == nome do arquivo, `tags:`
+   presente, fence fechado, `##` com âncora fechando a linha. Verbete fora de gate nasce invisível.
+1. `percus-gate.sh` bloco 2b afere **integridade de link**: todo `](outro-slug.md)` resolve num
+   arquivo existente. Link morto nasce calado — no monólito havia 16 e nada nunca reclamou.
+2. `percus-gate.sh` bloco 2c barra referência ao caminho do monólito aposentado.
+3. Ao bater num erro conhecido, há evidência de consulta antes do debug (a skill loga / o agente declara).
+4. `CHECKLIST_ENCERRAR_SESSAO.md` tem o passo "problema novo resolvido virou verbete?"; a skill
+   `checkpoint` reforça (a captura não depende de memória — fica num gate que já roda).
 
 **Refs:**
 - Skill: `consult-knowledge` (`plugin/percus-review/skills/consult-knowledge/SKILL.md`) — invoca-se por linguagem natural, não por slash (ver `comandos/SKILLS_VS_COMMANDS.md`)
-- Base: `conhecimento/COMO_RESOLVER.md`, `conhecimento/COMO_FAZER.md`
+- Base: `conhecimento/resolver/`, `conhecimento/fazer/` (cada área tem `LEIA-ME.md` com o formato)
+- Gerador de índice: `scripts/gerar-indice-conhecimento.ps1`
 - Gate: `checklists/CHECKLIST_ENCERRAR_SESSAO.md`, skill `checkpoint`
 
 ---
@@ -917,7 +930,7 @@ hotfix.
 **Refs:**
 - Playbook: `comandos/DEPLOY.md`
 - Infra/como: `02_INFRA_E_STACK_PERCUS.md` §6 (VPS), §7 (acesso), §8 (Traefik), §9-10 (deploy/update via Portainer)
-- Procedimento: `conhecimento/COMO_FAZER.md#deploy-vps`
+- Procedimento: `conhecimento/fazer/deploy-vps.md`
 - Confirmação irreversível: R5 · Marco: R11 (`milestone-review`)
 
 ---

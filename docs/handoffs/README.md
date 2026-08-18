@@ -4,7 +4,7 @@
 
 Handoffs aqui são passos-a-passo que o canon **entrega ao operador** para aplicar manualmente em outro
 repo (Painel, consumidores) numa release específica — o canon nunca escreve cross-repo (protocolo:
-caixa de texto pro operador colar). Ver `conhecimento/COMO_RESOLVER.md#cross-repo-write`.
+caixa de texto pro operador colar). Ver `conhecimento/resolver/cross-repo-write.md`.
 
 | Doc | Release | Estado |
 |---|---|---|
