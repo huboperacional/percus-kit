@@ -376,6 +376,20 @@
 - [Parametro adicionado e NAO propagado: suite verde, defeito vivo](#parametro-adicionado-sem-propagar)
 - [Restaurar mutacao com `git checkout --` apaga o trabalho nao commitado junto](#restaurar-mutacao-com-trabalho-pendente)
 - [Integração externa OPCIONAL desarmada não grita: silêncio é idêntico a "ninguém usou ainda"](#integracao-opcional-desarmada-nao-grita)
+- [`git add` por caminho NÃO basta: o wrapper da review stageia depois de você](#add-por-caminho-nao-basta-o-wrapper-stageia-depois)
+- [A causa escrita num achado de changelog/handoff é hipótese — reproduza antes de consertar](#causa-declarada-em-achado-e-hipotese)
+- [Perna Cross-Claude do review queima o teto INTEIRO pensando e volta vazia — a 6.36.4 moveu o teto, não consertou a causa](#cross-claude-review-queima-16000-e-volta-vazio)
+- [Deploy de Worker na conta de OUTRA pessoa: 3 armadilhas que param o deploy antes de começar](#deploy-worker-cloudflare-conta-de-cliente)
+- [Fact-check trunca o path do finding e descarta como INFUNDADO um achado que estava certo](#fact-check-trunca-path-e-descarta-finding-valido)
+- [O golden de regressão existe, está VERDE, e guarda um caminho MORTO](#golden-de-regressao-que-guarda-caminho-morto)
+- [`grep -i` do Git Bash não casa ACENTO: a varredura de "não sobrou nada" dá verde falso em português](#grep-do-git-bash-nao-casa-acento)
+- [Perna Groq do conselho responde 404: `llama-3.3-70b-versatile` foi decomissionado](#groq-llama-3-3-decomissionado-404)
+- [Guard `PreToolUse` não se autoriza de DENTRO da própria chamada: a variável tem que preexistir no processo](#guard-pretooluse-nao-se-autoriza-de-dentro-da-chamada)
+- [Métrica que dá o MESMO valor extremo pra população inteira é bug da medição, não achado](#medicao-uniforme-na-populacao-inteira-e-bug-da-medicao)
+- [Área de staging compartilhada: mesclar cedo devolve a colisão que a caixa tinha eliminado](#mesclar-so-imediatamente-antes-do-commit)
+- [Perna bash do `mock-scan` estava morta duas vezes: `grep -P` sem locale e regex cortada no `|` errado](#mock-scan-perna-bash-morta-por-locale-e-split)
+- [Secret datado monta sob o nome errado: consumer toma 401 com serviço `healthy`](#secret-montado-no-nome-errado-401-silencioso)
+- [Teste que executa um hook sem isolar o `cwd` afere o estado da máquina, não o hook](#teste-de-hook-roda-na-raiz-le-estado-real)
 
 ---
 
@@ -13113,3 +13127,733 @@ O caso: produto no ar, vendendo, com duas integrações apagadas em produção e
 **Vizinhos:** [#feature-sobre-flag-off-nasce-morta](#feature-sobre-flag-off-nasce-morta) — lá a feature nasce morta atrás de flag; aqui ela nasce viva e o canal é que está mudo. [#guarda-muda-sem-a-ferramenta-que-usa-pra-falar](#guarda-muda-sem-a-ferramenta-que-usa-pra-falar) — a guarda perde a voz; aqui a integração nunca teve.
 
 **Ref:** Empresa Milionária, 2026-08-17. Achado medindo `printenv` dentro do container de produção, não lendo código — nenhum teste, log ou métrica apontava para lá. O precedente que existia (a chave de consumer do auth-service, que já gritava no startup) estava certo e **não tinha teste**, então nada obrigava a integração seguinte a seguir o padrão.
+
+---
+
+## `git add` por caminho NÃO basta: o wrapper da review stageia depois de você {#add-por-caminho-nao-basta-o-wrapper-stageia-depois}
+
+`tags: index compartilhado, git add seletivo, percus-review-auto, R11, sessoes concorrentes, staging, commit engoliu arquivo alheio, reset --soft, commit -C, N files changed`
+
+**Sintoma:** você stageia por caminho (`git add a b c`), roda a review R11, commita — e o output diz **`6 files changed`** quando você stageou **3**. Os extras são docs vivos de outra sessão (`HANDOFF.md`, `docs/PLANO.md`, `docs/PENDENCIAS.md`), ou um `.md`/script untracked que não é seu. Nada avisa: o commit "passa", os hooks aprovam, e o único sintoma é aquele número.
+
+**Causa raiz — e é a correção de uma receita que já está nesta base.** O verbete [[mesclar-so-imediatamente-antes-do-commit]] prescreve *"`git add` por caminho, nunca `-A`, em repo com sessões concorrentes"*. **Isso não é suficiente**, e o caso de 2026-08-16 provou: eu usei add por caminho e ainda assim engoli trabalho alheio.
+
+O motivo é que **`percus-review-auto.ps1` stageia por conta própria** — ele precisa que docs e arquivos novos estejam no índice para conseguir revisá-los. Então a sequência real é:
+
+```
+git add <meus 3>      →  índice = 3
+pwsh percus-review…   →  índice = 3 + o que o wrapper achou   ← aqui
+git commit            →  commita 6
+```
+
+`git add` seletivo protege contra o que **eu** escolho stagear. Não protege contra o que uma **ferramenta** stageia depois de mim. E como o índice é único por checkout, num repo com duas sessões o que a outra estiver escrevendo naquele instante entra junto.
+
+**Solução:**
+1. **Confira o índice DEPOIS da review, não antes:** `git diff --cached --name-only`. É uma linha e pega o caso inteiro. Aconteceu 3× no mesmo dia e a checagem pegou as 3 (`docs/PENDENCIAS.md`, um `scripts/measure*.py` e uma spec de outra frente).
+2. **Trate o `N files changed` do output do commit como asserção.** Divergiu do que você stageou, é isto — investigue antes de seguir.
+3. **Conserto, e é barato e seguro:** `git reset --soft HEAD~1` (não toca na árvore de trabalho, então o trabalho alheio volta a ser modificação não-commitada, intacta) + `git restore --staged <alheios>` + `git commit -C <sha-antigo>` para reaproveitar a mensagem. Faça **numa chamada só**, para encurtar a janela de corrida com a outra sessão.
+
+⚠️ **Não use `git checkout`/`restore` no arquivo alheio para "limpar".** `--soft` e `--staged` mexem só no índice; qualquer coisa que escreva na árvore apaga o trabalho vivo da outra sessão em silêncio.
+
+⚠️ **O mesmo vale para `Write` de arquivo inteiro num arquivo que a outra sessão está editando** — `Edit` cirúrgico, sempre. Um `Write` a partir de buffer velho é a versão do mesmo estrago fora do git.
+
+---
+
+## A causa escrita num achado de changelog/handoff é hipótese — reproduza antes de consertar {#causa-declarada-em-achado-e-hipotese}
+
+`tags: changelog, handoff, achado nao corrigido, causa mal atribuida, reproduzir, hipotese vs medicao, consertar arquivo errado, retomada de sessao, versao anterior, R23`
+
+**Sintoma:** você retoma um achado deixado por escrito ("teste X ficou vermelho por causa de Y,
+merece decisão própria"), vai direto ao arquivo X, e ele está **verde**. Ou pior: você "conserta" X,
+o sintoma continua, e o defeito real segue em outro arquivo.
+
+**Causa raiz:** quem registra um achado normalmente está **fechando outra coisa** — anota o que viu
+de relance, sem reproduzir. O fenômeno costuma estar certo; a **atribuição** é palpite. Um changelog
+diz onde o autor *olhou*, não onde o defeito *mora*.
+
+No caso real (percus-kit): a 6.36.6 registrou *"o teste do `external-action-guard` ficou vermelho com
+a autorização viva"*. Medido na retomada: os 19 casos daquele arquivo passavam — eles isolavam o
+`cwd`. Quem caía era `hardening-2026-05-18.tests.ps1`, outro arquivo, que rodava o mesmo hook sem
+isolar. Seguir a atribuição literal teria levado a mexer num arquivo correto.
+
+**Solução — três passos, nesta ordem:**
+
+1. **Separe o fenômeno da causa.** "Fica vermelho quando existe autorização viva" é observação e
+   costuma se sustentar. "É o teste do arquivo X" é hipótese e precisa de medição.
+2. **Reproduza sob condição controlada antes de editar.** Rode com a condição presente e ausente, e
+   compare o **conjunto** de falhas. A diferença aponta o culpado sem depender do relato.
+3. **Capture a saída inteira, não o rabo.** `| tail -30` num runner de suíte entrega o total e come o
+   nome do teste que falhou — foi assim que a atribuição errada nasceu na primeira vez e quase
+   nasceu de novo na segunda. Peça a lista de falhas explicitamente (`-PassThru` + iterar `.Failed`).
+
+⚠️ **Não trate o achado como ruído por não reproduzir de primeira.** Aqui a suspeita inicial foi
+"a evidência não bate, o achado está errado" — e estava errada: o fenômeno era real, com número
+(361/1 contra 362/0). Achado mal atribuído ainda é achado.
+
+**Ref:** percus-kit 6.36.7, 2026-08-17 — achado da 6.36.6 reaberto na retomada. Relacionado:
+[[reproduzir-antes-de-fixar]] (mesma disciplina aplicada a bug de produção) e
+[[teste-de-hook-roda-na-raiz-le-estado-real]] (o defeito que estava por baixo).
+
+---
+
+## Perna Cross-Claude do review queima o teto INTEIRO pensando e volta vazia — a 6.36.4 moveu o teto, não consertou a causa {#cross-claude-review-queima-16000-e-volta-vazio}
+
+`tags: conselho, cross-claude, review, R11, status empty, max_tokens, thinking budget, sonnet 5, 16000, council-orchestrator, resposta vazia paga, finish_reason length`
+
+**Sintoma:** `council-orchestrator -Mode review -Providers "cross-claude"` devolve
+`"status": "empty"`, `content: null` — e o `usage` mostra **`completion_tokens` exatamente igual ao
+teto**. Medido em 2026-08-17, canon **6.36.6**:
+
+```
+=== cross-claude claude-sonnet-5 status= empty
+usage: {"prompt_tokens": 3857, "completion_tokens": 16000, ...}
+```
+
+Prompt de 3857 tokens, um único arquivo de 208 linhas. O modelo gastou **16000 tokens pensando** e
+não sobrou orçamento para escrever a resposta.
+
+🔴 **Por que isto não é o bug já conhecido:** a 6.36.4 diagnosticou a mesma classe (`"o teto do
+DeepSeek em 8192 caía no meio da faixa de raciocínio do modo review"`) e consertou **subindo o teto
+de 8192 para 16000**. Este registro é a prova de que subir o teto **não fecha o buraco**: com
+thinking ligado por padrão nos modelos 5, o raciocínio se expande até onde houver orçamento. Qualquer
+teto novo vira o novo tamanho do pensamento. **A 6.36.4 comprou tempo, não conserto.**
+
+**Causa raiz:** `max_tokens` cobre **pensamento + resposta** nos modelos 5, o thinking adaptativo vem
+**ligado por padrão**, e o request não limitava a profundidade. O raciocínio se expande até encher o
+teto e não sobra orçamento para escrever.
+
+🔴 **CORREÇÃO IMPORTANTE — a primeira versão deste verbete prescrevia um conserto que devolve 400.**
+Ela mandava usar `thinking: { type: "enabled", budget_tokens: N }`. Nos modelos 5 esse campo foi
+**removido**, não depreciado:
+
+```
+HTTP 400 invalid_request_error
+"thinking.type.enabled" is not supported for this model
+```
+
+Quem me corrigiu foi a skill `claude-api`, antes de eu aplicar. **A lição operacional é essa:
+consultar a referência da API antes de "consertar" chamada de LLM por memória** — o parâmetro que eu
+lembrava existia, foi removido, e o verbete errado teria derrubado a perna de vez em vez de
+consertá-la.
+
+**O controle que existe hoje é `output_config.effort`.** Medido em 2026-08-17, mesmo prompt de review,
+mesmo arquivo, três execuções:
+
+| configuração | `output_tokens` | `stop_reason` | texto | tempo |
+|---|---|---|---|---|
+| sem controle (como estava) | **16000** | `max_tokens` | **0 chars** | 153 s |
+| `thinking.budget_tokens=8000` | — | — | **HTTP 400** | — |
+| `output_config.effort=low` | 3719 | `end_turn` | **1378 chars** | 47 s |
+
+**Solução:**
+1. Mandar `output_config: { effort: "low" }` no corpo do request. Além de devolver resposta, ficou
+   **3× mais rápido e ~4× mais barato** — o teto de 16000 nunca era consumido escrevendo, era
+   consumido pensando.
+2. **Não mandar `thinking` nenhum.** Adaptativo é o default nos modelos 5; qualquer configuração
+   explícita de budget é 400.
+3. ❌ **NÃO subir `max_tokens` de novo.** Já foi feito (8192→16000) e o sintoma voltou idêntico —
+   teto maior é só pensamento maior.
+4. `status == "empty"` **tem de ser tratado como falha da perna**, não como "sem findings". Hoje é
+   reportado num campo que passa batido.
+
+⚠️ **O sinal barato que separa "vazio por truncamento" de "vazio por não ter achado nada":**
+`completion_tokens` colado no teto. Resposta legítima curta gasta centenas de tokens; esta gasta
+exatamente `max_tokens`. Se bateu no teto, **foi truncada e foi paga**.
+
+**E encolher o prompt não resolve:** testado na mesma sessão com 904 linhas e depois com 208 — as
+duas voltaram `empty`. O gargalo é o orçamento de raciocínio, não o tamanho da entrada.
+
+**Consequência operacional imediata, que vale para todo projeto:** a matriz de roteamento do R11 manda
+**pasta sensível → DeepSeek + Cross-Claude duplo**. Com a perna Cross-Claude devolvendo vazio, o
+"duplo" é **simples** — e a segunda opinião que justificava a regra não existe. Some com
+[[groq-llama-3-3-decomissionado-404]] (perna Groq morta desde ~06/08) e o conselho de 3 membros está
+**de fato rodando com 1**. Isso precisa ser dito em voz alta no relatório, nunca assumido.
+
+**Ref:** medido em 2026-08-17 revisando `lib/admin/auth.ts` do repo `website-autoworxnj`, canon
+6.36.6, modelo `claude-sonnet-5`. Ver também [[reference_review_limpo_pode_ser_vacuidade]] — mesma
+família: a ferramenta responde, o resultado parece legítimo, e o que falta é invisível.
+
+---
+
+## Deploy de Worker na conta de OUTRA pessoa: 3 armadilhas que param o deploy antes de começar {#deploy-worker-cloudflare-conta-de-cliente}
+
+`tags: cloudflare workers, wrangler, versions upload, token account-owned, 9106, memberships, node_modules velho, dir de build no VPS, preview sem ativar, npm ci`
+
+**Contexto:** publicar um Worker na conta Cloudflare de um cliente, a partir de um dir de build no VPS, sem tocar no site que já está no ar.
+
+---
+
+**1. `wrangler deploy` PUBLICA; quem sobe sem ativar é `wrangler versions upload`.**
+
+Se o objetivo é preview, `deploy` é a ferramenta errada — ele desvia o tráfego de produção na hora. `versions upload` cria a versão, devolve uma *Version Preview URL* própria e imprime *"To deploy this version to production traffic use the command wrangler versions deploy"*. O apex continua servindo o que servia.
+
+Para **segredos** vale o mesmo par: `wrangler secret put` cria versão **e publica**; `wrangler versions secret bulk <json>` cria versão com os segredos **sem ativar**.
+
+> ⚠️ **`wrangler versions secret` existe — medido, não suposto.** Um revisor afirmou que o namespace `secret` não tem variante `versions`. Tem: em **wrangler 3.114.17**, `wrangler versions secret --help` lista `put`, `bulk`, `delete` e `list`, e o `bulk` respondeu `✨ Success! Created version <id> with 3 secrets.` seguido de *"To deploy this version to production traffic use the command wrangler versions deploy"*. Versão fixada aqui porque disponibilidade de subcomando muda entre majors — confira com `--help` antes de assumir ausência **ou** presença. Num Worker que ganhou `main` recentemente, usar o `secret put` distraidamente ativa o código novo no site vivo.
+
+⚠️ **Como provar que o apex não se mexeu:** `md5sum` do HTML servido **antes** e **depois**, e `cmp`. "Abri e parecia igual" não é medição.
+
+---
+
+**2. Token account-owned quebra em `/memberships` (erro 9106) — e o `whoami` NÃO avisa.**
+
+`wrangler whoami` responde bonito e mostra a conta certa, mas `versions upload` e `deployments list` falham com:
+
+```
+A request to the Cloudflare API (/memberships) failed.
+Authentication failed (status: 400) [code: 9106]
+```
+
+`/memberships` é endpoint de **usuário**; um token *account-owned* não o alcança. O wrangler o consulta só para descobrir a conta.
+
+**Solução:** passar `CLOUDFLARE_ACCOUNT_ID` explícito — com ele o lookup é pulado e o comando roda.
+
+⚠️ E o token pode não estar no ambiente: o wrangler carrega o `.env` **do diretório do projeto** por conta própria. Por isso `whoami` funciona no SSH mas `CLOUDFLARE_API_TOKEN=$CF_API_TOKEN` chega vazio — a variável nunca esteve no shell. Ler do arquivo (`grep ^CF_API_TOKEN= .env | cut -d= -f2-`) e conferir só o **tamanho** (`${#VAR} chars`), nunca o valor.
+
+---
+
+**3. `node_modules` velho no dir de build reprova o build, e a mensagem aponta pro lugar certo pelo motivo errado.**
+
+Sintoma: `next build` falha com `Cannot find module '@cloudflare/workers-types'` — mas a dependência **está** no `package.json`. O `package.json` chegou pelo `git archive`; o `node_modules` é de antes.
+
+**Solução:** `npm ci` no dir de build.
+
+🔑 **A generalização:** o verbete vizinho [[docker-context-stale-tree-fails-build]] trata de **fonte** obsoleta no dir de build. Esta é a mesma classe em **dependência** — e a guarda mental "conferi que não há `build-src/`/`src-extract/` sobrando" não cobre, porque a árvore de fontes estava perfeita. Ao reaproveitar dir de build, a pergunta é "o que aqui NÃO veio do archive?", e `node_modules` é a resposta mais comum.
+
+---
+
+## Fact-check trunca o path do finding e descarta como INFUNDADO um achado que estava certo {#fact-check-trunca-path-e-descarta-finding-valido}
+
+`tags: fact-check, F3, R11, INFUNDADO, finding filtrado, path truncado, sem path verificavel, falso negativo de guarda, review teatro, latest.jsonl, .deepseek/reviews, ler o bruto`
+
+**Sintoma:** a review R11 termina com `total=N confirmado=0 infundado=N` e o relatório principal sai
+**vazio**. A tabela de Audit justifica tudo com *"não foi possível verificar (sem path verificável ou
+arquivo ausente)"*. Parece que o modelo alucinou N vezes seguidas — e a leitura natural é seguir em
+frente.
+
+**Causa raiz:** o finding **tinha** o caminho certo. O pipeline é que o corrompeu ao extrair. Caso
+medido em 2026-08-17: o `.jsonl` bruto trazia
+`plugin/percus-review/hooks/external-action-guard.ps1`, e a tabela de audit mostrava
+`external-action-guard.ps` — **sem o `1` final**. Com o caminho truncado o arquivo não existe, o
+fact-check não consegue confirmar nada, e o veredito vira `INFUNDADO`. O achado era real e foi
+corrigido depois de lido à mão.
+
+🔑 **Por que é pior que um falso positivo:** o F3 existe para filtrar alucinação, então errar para o
+lado de **descartar** é a direção que não tem alarme. Finding inventado que passa incomoda alguém e é
+rejeitado na leitura; finding real que é filtrado sai do relatório e **ninguém sabe que existiu**. A
+review continua "passando" com 0 findings, que é indistinguível de código limpo.
+
+**Diagnóstico:** compare o relatório com o registro bruto, que é onde o texto original sobrevive:
+
+```powershell
+$j = Get-Content '.deepseek/reviews/latest.jsonl' -Raw -Encoding UTF8 | ConvertFrom-Json
+$j.findings   # texto do provider, ANTES do fact-check
+```
+
+Se o caminho no bruto existe no disco e o da tabela de audit não, é este defeito — não alucinação.
+
+**Solução, enquanto o pipeline não for corrigido:**
+1. **`infundado == total` é sinal de alerta, não de aprovação.** Todos os findings serem descartados
+   pelo mesmo motivo genérico é padrão de falha de extração, não de N alucinações independentes.
+2. **Leia o `.jsonl` bruto sempre que o relatório principal vier vazio** com findings no audit. Custa
+   um comando.
+3. **Verifique o caminho à mão** (`Test-Path`) antes de aceitar "arquivo ausente" — o arquivo pode
+   estar lá, com outro nome no relatório.
+
+⚠️ **Não conclua "o provider está ruim" a partir de `confirmado=0`.** Nesta medição o provider acertou
+um achado de concorrência (backoff de retry curto demais para contenção de lock) que o filtro jogou
+fora.
+
+**Ref:** percus-kit 6.36.7, 2026-08-17 — review do próprio commit da 6.36.7. Relacionado:
+[[causa-declarada-em-achado-e-hipotese]] (mesma disciplina: a etiqueta não é a medição).
+
+---
+
+## O golden de regressão existe, está VERDE, e guarda um caminho MORTO {#golden-de-regressao-que-guarda-caminho-morto}
+
+`tags: golden, regressao, teste verde inutil, contrato morto, caminho vivo, guarda inerte, calmGolden, deriva de arquitetura, bug que volta`
+
+**Sintoma:** um defeito que já foi corrigido **volta em produção**, com a frase exata que tem teste
+de regressão — e o teste continua verde. Ninguém desligou nada; ninguém mexeu no teste.
+
+**Causa raiz:** o teste guarda um **contrato que deixou de decidir**. A arquitetura migrou (um
+gerador novo, uma rota nova, um caminho declarativo substituindo um imperativo), o caminho antigo
+virou fallback ou código morto, e o golden ficou apontado para ele. O teste segue exercitando a
+função que ninguém mais chama no turno real.
+
+**O caso (tiatendo, 2026-08-17):** o cliente escreveu *"quero fazer outro pedido"* e recebeu *"Não
+encontrei quero fazer outro pedido no cardápio"*. Existe, em `tests/restaurant/calmGolden.py`, um
+golden chamado `bugA_misroute` com a frase **`"quero fazer um pedido"`** e a nota *"bug A 22/06:
+virava 'não encontrei no cardápio'"*. O bug já tinha acontecido, sido corrigido e ganhado teste.
+
+O golden vive no conjunto `GOLDENS` — o contrato de VERBOS (`generateCommands`). E o **docstring do
+próprio arquivo** avisa, com todas as letras: *"Desde a frente de 29/07 esse contrato não decide
+nenhum turno de produção… verde aqui NÃO diz nada sobre o caminho vivo."* O caminho vivo passou a ser
+o declarativo (`generateDesiredCart`), coberto por outro conjunto — que **não tem** caso para essa
+frase.
+
+🔑 **O aviso estava escrito e não bastou.** Alguém teve o cuidado de documentar que aquele conjunto
+não decide mais nada, e ainda assim o golden seguiu lá parecendo proteção. **Comentário não é gate:**
+enquanto o arquivo continuar sendo coletado pelo pytest, ele produz verde, e verde é lido como
+cobertura.
+
+**Solução:**
+1. Ao migrar de contrato, **não deixe o golden antigo apenas documentado como morto** — ou migre os
+   casos para o conjunto vivo, ou marque o arquivo inteiro de um jeito que o verde **não conte**
+   (skip com motivo, marcador próprio fora da suíte padrão).
+2. Para cada caso do conjunto que morreu, pergunte: *"que teste do caminho VIVO falharia se este
+   defeito voltasse hoje?"* Se a resposta for nenhum, o caso precisa nascer no conjunto novo.
+3. Ao investigar um bug que "já tinha teste", **confira em qual contrato o teste vive** antes de
+   concluir que é regressão nova. A pergunta é *"este teste decide algum turno real?"*, não *"este
+   teste está verde?"*.
+
+⚠️ **A checagem barata:** procure no repo os conjuntos de golden/fixture e leia o cabeçalho de cada
+um. Se algum docstring disser que aquele contrato não roda mais em produção, todo verde daquele
+arquivo é decorativo — e cada caso ali é um defeito que pode voltar sem alarme.
+
+**Ref:** tiatendo, achado do operador em 2026-08-17 (print de conversa real, `PENDENCIAS.md` §00c /
+N20). Medido no container de PROD: `detectIntent` devolve `OFF_TOPIC` corretamente, mas
+`detectOrderItems` fabrica um item fantasma com `namePhrase='fazer outro pedido'` que segue para o
+matcher. Ver também `#guarda-medida-funcionando-fica-inerte-quando-o-dado-muda`.
+
+---
+
+## `grep -i` do Git Bash não casa ACENTO: a varredura de "não sobrou nada" dá verde falso em português {#grep-do-git-bash-nao-casa-acento}
+
+`tags: grep, ripgrep, rg, Git Bash, MSYS2, Windows, acento, UTF-8, case folding, locale, varredura de aceitacao, criterio de ausencia, verde falso, FR de limpeza`
+
+**Sintoma:** o critério de aceitação é *"a busca não acha mais nada"*, o `grep` devolve vazio, e você
+declara limpo — com as ocorrências vivas no arquivo.
+
+**Medido em 2026-08-17:** varrendo `família`/`famílias` num `.tsx`,
+`grep -rniE "fam[ií]li"` achou **1 de 3**; `rg` com o mesmo padrão achou **3 de 3**.
+
+**Causa.** É o locale do bundle MSYS2 que acompanha o Git para Windows: o case-folding do `-i` não
+cobre os bytes acentuados em UTF-8. O padrão está certo; a ferramenta é que não alcança.
+
+⚠️ **O perigo não é errar — é a direção do erro.** Falso-negativo em critério de AUSÊNCIA se parece
+exatamente com sucesso. Um `grep` que erra para mais faz barulho e alguém investiga; um que erra para
+menos entrega uma varredura vazia, que é a própria forma da aprovação.
+
+**Solução.** Em qualquer varredura cujo critério seja "não achou nada", use **`rg`** (ou a ferramenta
+Grep do harness, que é ripgrep). Vale dobrado em texto português — e a suíte de aceitação de um FR de
+limpeza é o caso clássico, porque ela roda uma vez, dá verde e ninguém repete.
+
+**Regra curta:** antes de aceitar "a busca não achou nada", pergunte se a busca **conseguiria** achar.
+
+**Vizinhos:** [#texto-em-array-de-props-escapa-de-tudo](#texto-em-array-de-props-escapa-de-tudo) — lá a
+string existe em formato que a busca não prevê; aqui ela está em formato previsto e a ferramenta é que
+falha. [#psql-sem-contexto-mede-rls-nao-o-dado](#psql-sem-contexto-mede-rls-nao-o-dado) — mesma família:
+o instrumento cega, e a cegueira se parece com aprovação.
+
+**Ref:** Empresa Milionária, 2026-08-17. Achado por um subagente que rodou as duas ferramentas no mesmo
+padrão e reportou a divergência em vez de confiar na primeira.
+
+---
+
+## Perna Groq do conselho responde 404: `llama-3.3-70b-versatile` foi decomissionado {#groq-llama-3-3-decomissionado-404}
+
+`tags: conselho, groq, llama-3.3-70b-versatile, 404, modelo decomissionado, council-orchestrator, pre-mortem, perna muda, consenso de 2 de 3, R11`
+
+**Sintoma:** o `council-orchestrator` roda, devolve JSON com `"status": "ok"` para DeepSeek e
+Cross-Claude, e para a perna Groq devolve `"error": "Response status code does not indicate success:
+404 (Not Found)"` com `latency_ms` de ~300 ms. O run **inteiro** continua parecendo utilizável — o
+`summary` só lista `"groq-llama: error"` no meio de outras linhas, e quem lê a síntese vê dois
+pareceres substanciosos e segue em frente.
+
+**Causa raiz:** o Groq **aposentou** o modelo `llama-3.3-70b-versatile`. Não é rede, não é chave, não
+é rate limit — é 404 de rota: o id do modelo não existe mais no catálogo deles. Latência de 300 ms
+(contra 40 s e 107 s das outras pernas) é a assinatura: a requisição nem chegou a um modelo.
+
+**Quando quebrou, medido nos próprios logs:** funcionava em **2026-08-03** e **2026-08-06**
+(`groq-llama -> ok llama-3.3-70b-versatile` nos dois `*-pre-mortem.jsonl`), e estava 404 em
+**2026-08-17**. Ou seja, quebrou em algum ponto dessa janela e **ninguém percebeu**, porque o
+orchestrator não falha quando uma perna morre.
+
+**Por que isto importa mais do que parece:** o critério de "risco crítico" do pré-mortem é
+**≥2 providers apontando o mesmo risco**. Com uma perna morta, "2 de 3" vira "2 de 2" — ou seja,
+**consenso unânime disfarçado de maioria**, e qualquer risco que só o Llama veria simplesmente não
+aparece. É a mesma classe de
+[[reference_review_limpo_pode_ser_vacuidade]]: a ferramenta responde, o resultado parece legítimo, e
+o que falta é invisível.
+
+🔴 **NÃO existe "trocar por outro Llama" — confirmado em 2026-08-17 por sessão independente
+(tiatendo), listando `GET /models` com a chave real.** Os ÚNICOS modelos `llama` que a chave enxerga
+hoje são `meta-llama/llama-prompt-guard-2-22m` e `-86m`, que são **classificadores de prompt, não
+modelos de chat**. O catálogo de chat que sobrou é de outra família (`openai/gpt-oss-120b`,
+`openai/gpt-oss-20b`, `qwen/qwen3.6-27b`, `groq/compound`). Ou seja o conserto **troca a família do
+modelo**, não a versão — e com isso a perna deixa de ser "a perspectiva Llama" e passa a ser outra
+coisa, o que precisa ser dito ao operador em vez de silenciosamente renomeado.
+
+🔴 **O id morto está em 9 arquivos do plugin `6.36.5`, e dois deles NÃO são o conselho:**
+`providers/_registry.json:23` · `providers/groq-llama.ps1:16` · `providers/groq-llama.sh:8` ·
+`scripts/council-orchestrator.ps1:58` · `scripts/council-orchestrator.sh:17` ·
+**`scripts/fact-check-triage.ps1:33,39`** · **`scripts/fact-check-triage.sh:11`** ·
+`tests/council-tie-breaker.tests.ps1:21`. O `fact-check-triage` é o **pré-requisito que a própria
+skill `council-consult` exige** antes de escalar finding crítico — então a trava anti-"conselho
+ratifica premissa não verificada" (incidente Plexco Tasks 2026-05-18) está apoiada no mesmo modelo
+morto. Consertar só o wrapper do conselho deixa essa metade quebrada.
+
+**Solução:**
+1. Trocar o id do modelo no wrapper do Groq por um vivo no catálogo atual deles (checar
+   `GET https://api.groq.com/openai/v1/models` com a chave antes de escolher — não adivinhar pelo
+   nome). **Varra os 9 sítios acima, não só `providers/`.**
+2. **Antes de confiar num pré-mortem, conferir quantas pernas realmente responderam.** No JSON:
+   `responses[].status`. Se veio `error`, o consenso mudou de denominador e precisa ser dito em voz
+   alta no relatório ao operador.
+3. Considerar fazer o orchestrator **falhar alto** (ou pelo menos gritar) quando uma perna volta
+   erro, em vez de listar num `summary` que ninguém lê.
+
+⚠️ **A checagem barata que separa "perna morta" de "perna lenta" é a latência.** Perna que pensa
+demora dezenas de segundos; perna que 404 volta em centenas de milissegundos. Um `latency_ms` de três
+dígitos ao lado de dois de cinco dígitos é o sinal.
+
+**Ref:** observado em 2026-08-17 rodando `council-pre-mortem` no projeto Scraper-prospeccao,
+canon 6.36.6. Log: `.deepseek/council-log/20260817-080310-pre-mortem.jsonl`.
+
+---
+
+## Guard `PreToolUse` não se autoriza de DENTRO da própria chamada: a variável tem que preexistir no processo {#guard-pretooluse-nao-se-autoriza-de-dentro-da-chamada}
+
+`tags: PreToolUse, hook, guard, R20, acao externa, override, variavel de ambiente, env inline, settings.json, watcher, deploy bloqueado, autorizacao do operador, falso positivo por texto`
+
+**Sintoma:** o guard bloqueia e a própria mensagem ensina como autorizar — *"setar `VAR=1`"*. Você
+seta e continua bloqueado, nas duas formas óbvias:
+
+    VAR=1 <comando>                    # prefixo inline no bash
+    $env:VAR = '1'; <comando>          # atribuição no PowerShell
+
+**Causa.** O hook é **`PreToolUse`**: ele roda *antes* do comando e lê a variável do **ambiente do
+processo** que o harness já criou. Uma atribuição que vive **dentro do comando** só passa a existir
+quando o comando roda — e ele nunca roda. A instrução do guard é dirigida a **uma pessoa**, não ao
+agente que a leu.
+
+⚠️ **E a saída "vou escrever no `settings.json` do projeto" tem dois furos:**
+
+1. O watcher de settings costuma observar apenas diretórios que **já tinham arquivo de settings quando
+   a sessão começou**. Criar um `settings.local.json` do zero no meio da sessão pode não ter efeito
+   nenhum até reiniciar — você acha que destravou e não destravou.
+2. Se o `.gitignore` não cobre esse arquivo, você acaba de **criar dentro do repositório, e
+   versionável, um artefato cuja única função é desligar um guard de ação externa**. É pior que o
+   problema que resolve, e sobrevive à sessão.
+
+**Solução.** Pare e devolva ao operador a linha exata para rodar **no terminal dele**, antes de
+reinvocar a ação. Autorização dada em chat não alcança um hook — e é exatamente esse o desenho: quem
+arma o override é uma pessoa, num processo que o agente não controla.
+
+⚠️ **Não fique tentando variações** (`export`, `set`, wrapper, subshell). Duas tentativas já provam a
+classe; a terceira é o agente procurando contorno para um controle que o operador instalou de propósito.
+
+### O falso-positivo que fecha o círculo, e ele é útil
+
+**Escrever ESTE verbete por heredoc no bash foi bloqueado pelo mesmo guard.** Ele casa o **texto cru do
+comando**, e o corpo do arquivo citava o nome da variável e um comando de publicação. Ou seja: a
+tentativa de *documentar* a ação dispara a guarda da *ação*.
+
+Consequência prática, e vale para qualquer guard que case payload como texto: **conteúdo não é
+intenção.** Escrever um `.md` que fala sobre publicar não publica nada. Quando o bloqueio for
+claramente de conteúdo e não de ato, use uma ferramenta de arquivo em vez do shell — não é contornar o
+guard, é não pedir ao shell uma coisa que ele não precisa fazer. O que **não** se faz é reescrever o
+texto para escapar do padrão: aí você degradou a documentação para agradar um matcher.
+
+**Vizinhos:** [#guarda-muda-sem-a-ferramenta-que-usa-pra-falar](#guarda-muda-sem-a-ferramenta-que-usa-pra-falar)
+— lá a guarda perde a voz; aqui ela fala, e o que ela pede não está ao alcance de quem leu.
+
+**Ref:** Empresa Milionária, 2026-08-17/18, com 8 commits prontos e o deploy autorizado em chat — e
+parado pelo R20, que não lê chat.
+
+---
+
+## Métrica que dá o MESMO valor extremo pra população inteira é bug da medição, não achado {#medicao-uniforme-na-populacao-inteira-e-bug-da-medicao}
+
+`tags: medicao, metrica, falso-verde, falso-zero, redis, scan_iter, agrupamento, chave vs payload, grupo de controle, baseline, auditoria, R23`
+
+**Sintoma:** você roda uma medição sobre produção e o resultado é o **mesmo valor extremo em todos os
+grupos** — todo mundo `0`, todo mundo `0,0h`, todo mundo `100%`. O número é plausível pro grupo que
+você está investigando (é justamente o que você suspeitava!), então você o reporta.
+
+**Causa raiz:** uniformidade perfeita quase nunca é propriedade do mundo — é propriedade de um
+**agrupamento quebrado**. O caso concreto: medir "vida da família de refresh token" agrupando por um
+campo `family_id` **do payload JSON**, quando a família mora na **chave**
+(`auth:refresh:{family_id}:{token_id}`) e esse campo não existe no payload. Com o fallback caindo na
+chave inteira, **cada token virou sua própria família** → `max(created_at) - min(created_at) == 0`
+para todas, em todas as audiences.
+
+**O que salvou:** um **grupo de controle com valor conhecido**. A foto anterior dizia que duas
+audiences tinham famílias de 486h e 502h. Quando essas também apareceram com `0,0h`, ficou óbvio que a
+régua estava quebrada — não que 20 dias de sessão tinham sumido. Sem esse par de referência, o
+`0,0h` teria sido reportado como evidência de que um fix de outro time não pegou.
+
+**Solução / protocolo:**
+1. **Inspecione UM registro cru antes de agregar.** `print` das chaves e tipos do payload de um item.
+   O agrupamento errado é invisível no agregado e óbvio no registro.
+2. **Inclua sempre um grupo que você sabe que deveria ter valor diferente.** Se ele vier igual ao
+   suspeito, a medição é o defeito. Isso vale mais que qualquer revisão de código da query.
+3. **Desconfie de fallback silencioso.** `fam = p.get("family_id") or chave` não falha, só mente.
+   Prefira falhar alto: conte os registros que não deram parse e **imprima o contador** — se for
+   ≠ 0, não reporte nada ainda.
+4. **Separe "não aconteceu" de "não teve chance".** Uma sessão criada há 10 minutos não deveria ter
+   renovado; contá-la como "presa" infla o defeito. Estratifique por **idade** contra o intervalo
+   natural do fenômeno (ex.: access token de 15min → só idade > 1h "teve chance").
+5. **Ausência ainda não é defeito.** Mesmo medindo certo: família sem rotação pode ser usuário que
+   logou uma vez e não voltou. Se a fonte não sabe distinguir isso, diga isso na conclusão em vez de
+   converter ausência em culpa.
+
+**Por que isto vira dano real:** métricas cross-produto disparam trabalho no repo alheio. Um `0,0h`
+falso mandado numa devolutiva reabre investigação encerrada, e o outro time gasta dias procurando um
+defeito que existe só na sua query.
+
+**Ref:** auth-service, medição de rotação de família da audience `micro-investors`, 2026-08-17.
+Primeira rodada deu `0,0h` em 9 audiences, inclusive `paid-media` e `plexco-tasks`, que a baseline de
+2026-07-25 registrava com 616h e 217h. Mesma família de erro do falso-zero por comparar `created_at`
+como ISO-string quando é `int` epoch (2026-07-31) e de medir a população errada no P0 de CORS
+(2026-07-30).
+
+---
+
+## Área de staging compartilhada: mesclar cedo devolve a colisão que a caixa tinha eliminado {#mesclar-so-imediatamente-antes-do-commit}
+
+`tags: caixa de entrada, mesclar-conhecimento, colisao, sessoes concorrentes, staging compartilhado, git add -A, janela de corrida, gate le working tree, checkout compartilhado, COMO_RESOLVER`
+
+**Sintoma:** você escreve o verbete num arquivo próprio (a caixa existe exatamente para não colidir), o mesclador confirma que a árvore está limpa e mescla — e meia hora depois o gate barra seu commit por causa de verbetes **de outra sessão**, incompletos, no mesmo arquivo.
+
+**Causa raiz — duas, e a segunda é a que dói:**
+
+**1. A janela entre mesclar e commitar.** O mesclador checa "o monólito está limpo?" **no instante da mesclagem**. Se você mescla cedo e commita depois, tudo que a outra sessão escrever nesse intervalo cai no mesmo arquivo — e o seu trabalho, que estava num arquivo isolado, agora está no arquivo disputado. A caixa elimina a colisão da **escrita**; ela não elimina a da **janela**, porque mesclar é justamente mover seu texto para o território compartilhado.
+
+**2. `git add -A` num checkout compartilhado stageia o trabalho alheio.** Rodar `git add -A` antes de um review (R11 lê o diff staged) coloca no index **tudo** que estiver na árvore, inclusive o rascunho que a outra sessão está escrevendo naquele momento. A partir daí, qualquer `git commit` — seu ou dela — varre o trabalho incompleto junto.
+
+**Solução:**
+1. **Mescle imediatamente antes de commitar**, não quando terminar de escrever. Enquanto o verbete está na caixa ele é seu, isolado e durável; o momento em que ele vira texto do monólito é o momento em que passa a competir.
+2. **`git add` por caminho, nunca `-A`, em repo com sessões concorrentes.** Custa uma linha e evita stagear o meio-trabalho de outra pessoa.
+3. **Se já colidiu: não conserte o verbete alheio nem descarte o arquivo.** Deixe na árvore e registre no handoff. Quando a outra sessão commitar, o seu vai junto — foi o que aconteceu duas vezes em 2026-08-16.
+
+⚠️ **Não tente "desfazer" a mesclagem removendo seu verbete do monólito.** Verificado no caso real: a outra sessão já tinha criado um link cruzado para o verbete recém-mesclado, e remover teria quebrado o texto dela. Depois de mesclado, o verbete é território compartilhado.
+
+**A causa de fundo, que é decisão de desenho em aberto:** as checagens 2 e 3 do `percus-gate.sh` leem o **working tree**, não o índice — então trabalho de terceiro no mesmo arquivo barra o **seu** commit mesmo que o que você staged esteja íntegro. A checagem 4 já lê do índice, então a assimetria é interna ao próprio gate. Isso já rendeu escapes declarados repetidos, e o próprio gate diz que escape reincidente é sinal de desenho errado — corrigir para ler do índice é decisão do operador, ainda em aberto.
+
+**Desfecho observado, três vezes seguidas:** quem estava com o arquivo commitou primeiro e **levou o trabalho alheio junto**, íntegro. Ou seja, esperar funciona — o que não funciona é tentar separar à força depois de mesclado.
+
+**Ref:** percus-kit 6.36.6, 2026-08-16/17 — colisão observada durante o checkpoint da própria versão que introduziu a caixa.
+
+---
+
+## Perna bash do `mock-scan` estava morta duas vezes: `grep -P` sem locale e regex cortada no `|` errado {#mock-scan-perna-bash-morta-por-locale-e-split}
+
+`tags: mock-scan, hook, R3, grep -P, LC_ALL, locale, guarda morta, 2>/dev/null, exit 2, parameter expansion, %%|*, portugues, TODO, falso positivo, paridade de pernas`
+
+**Sintoma A (o que aparece):** commit legítimo barrado porque a palavra portuguesa **"todo"**,
+escrita em caixa alta por ênfase, casa com o marcador `TODO`. O canon manda comentar em português,
+então isso não é acidente raro — aconteceu **duas vezes na mesma sessão** em 2026-08-17, com
+`"cada imagem e TODO chunk de JS"`.
+
+**Sintoma B (o que NÃO aparece, e é pior):** na perna `.sh`, **nada nunca é detectado**.
+
+**Causa raiz A — o parser corta a regex no primeiro `|`:**
+
+```bash
+patterns=( '\b(?-i:TODO|FIXME|XXX|HACK)\b[: ]|TODO/FIXME/XXX/HACK pendente' )
+re="${p%%|*}"     # -> \b(?-i:TODO      <- grupo DESBALANCEADO
+why="${p##*|}"    # -> TODO/FIXME/XXX/HACK pendente   (este está certo)
+```
+
+`${p%%|*}` remove o maior sufixo a partir do **primeiro** `|`. O formato `'regex|motivo'` só funciona
+enquanto a regex não contiver `|` — e essa entrada continha três. `grep` sai com **2** (erro de
+sintaxe), o `2>/dev/null` engole a mensagem, e `exit != 0` é lido como "não casou".
+
+**Causa raiz B — `grep -P` recusa rodar sem locale UTF-8:**
+
+```
+grep: -P supports only unibyte and UTF-8 locales
+```
+
+Medido numa máquina com `LANG=` vazio (Git Bash no Windows). Isso derruba **todos** os padrões da
+perna bash, não só o do marcador: lorem ipsum, `dummy_`, URL de localhost, tudo. A perna inteira
+respondia verde sem checar nada.
+
+🔑 **As duas causas se escondem pelo mesmo mecanismo:** `2>/dev/null` combinado com tratar
+`exit != 0` como "não casou". **`grep` devolve 1 para "não achei" e 2 para "não consegui procurar"** —
+juntar os dois transforma falha de ferramenta em aprovação silenciosa.
+
+**Solução (cinco partes, e três delas só apareceram depois da primeira tentativa):**
+
+1. **Um padrão por marcador, sem `|` dentro da regex** — respeita o parser em vez de brigar com ele.
+
+2. 🔴 **SONDAR o MOTOR, não escolher um locale.** Três voltas até chegar aqui, e cada uma foi
+   necessária:
+   - v1 usava `LC_ALL=C.UTF-8`. O review apontou que `C.UTF-8` **não existe no macOS nem em vários
+     containers** e sugeriu `C`, já que os padrões são ASCII.
+   - v2 usou `C`. **Medido: `LC_ALL=C` NÃO resolve no Git Bash do Windows** — continua `rc=2`. Cada
+     candidato conserta uma plataforma e mata a outra.
+   - v3 sondava locale. O review apontou o furo maior: **o `grep` do macOS é BSD e não tem `-P` de
+     jeito nenhum**, então sondar só locale faria o hook **bloquear todo commit num Mac** — pior que
+     o defeito original.
+
+   A versão que sobrevive sonda um **motor PCRE**: `grep -P` com o primeiro locale que funcionar, ou
+   `perl` (presente por padrão no macOS e em quase todo Unix). Sem nenhum dos dois, fail-closed.
+
+   ⚠️ **E o fallback de perl tem uma armadilha própria:** interpolar a regex pelo shell dentro de
+   `/.../` quebra em qualquer padrão que contenha `/` — o de URL de localhost tem três, e o perl
+   morre com `syntax error`, que vira "não consegui procurar" e bloqueia tudo. A regex tem de entrar
+   por **variável de ambiente**:
+   ```bash
+   PERCUS_RE="$re" perl -ne 'exit($_ =~ /(?i)$ENV{PERCUS_RE}/ ? 0 : 1)'
+   ```
+   🔑 **Isso só apareceu porque o teste exercita os DOIS motores.** O motor perl nunca roda nesta
+   máquina — sem testá-lo explicitamente, ele iria para o macOS sem jamais ter sido executado uma vez.
+   Fallback não exercitado é fallback não existente.
+
+3. 🔴 **`rc=2` tem de BARRAR, não avisar.** A primeira tentativa trocou o silêncio por um aviso no
+   stderr e seguia com `continue` — o review chamou isso do que era: **o mesmo fail-open de antes,
+   só que barulhento**. Guarda que não consegue procurar não sabe se há mock, e não saber nunca pode
+   virar liberação. Agora bloqueia com mensagem própria, distinta da de "achei mock".
+
+4. 🔴 **`set -e` transforma a correção em no-op se a captura for uma atribuição pura.** Com
+   `set -eo pipefail` no topo, `saida=$(... | grep -q ...)` **encerra o script** quando o grep sai 1 —
+   e sair 1 é o caso comum ("não casou"). Ou seja, o hook morreria na primeira linha que não casasse.
+   Provado com um script de 4 linhas. A forma que sobrevive:
+   ```bash
+   grep_err=$(echo "$line" | LC_ALL="$PERCUS_GREP_LOCALE" grep -qiP "$re" 2>&1) && rc=0 || rc=$?
+   ```
+   O `if ... grep ...; then` original não tinha esse problema porque comando dentro de condição é
+   isento do `set -e` — trocar a estrutura reintroduziu o risco que ela escondia.
+
+5. **`TODO` passa a exigir `:` ou `(`** (`\b(?-i:TODO)\s*[:(]`); `FIXME|XXX|HACK` seguem com
+   `\b...\b[: ]` porque não são palavras em português. Custo aceito e declarado:
+   `// TODO consertar` sem dois-pontos deixa de ser pego — a forma canônica é `TODO:` / `TODO(dono):`.
+
+⚠️ **O teste que eu escrevi para provar o conserto caiu na MESMA armadilha.** Ele extraía os padrões
+do hook com `grep -oP` — sem `LC_ALL` — carregou **zero padrões**, e todos os casos negativos
+"passaram" por vacuidade. Só os positivos denunciaram. **Todo teste de padrão precisa de uma guarda
+de contagem mínima** (`if [[ ${#patterns[@]} -lt 5 ]]; then abortar; fi`), senão ele vira exatamente
+o tipo de verde vazio que estava tentando expor. Mesma família de
+[[reference_review_limpo_pode_ser_vacuidade]].
+
+**Como provar que está vivo (positivo E negativo, ATRAVÉS do hook — nunca o script direto):**
+stage um arquivo com `// TODO: x` → tem que **bloquear**; troque por
+`// cada imagem e TODO chunk` → tem que **passar**. Se outro hook bloquear na segunda, leia o NOME
+do hook na mensagem: bloqueio de outro gate não é bloqueio do `mock-scan`.
+
+✅ **A correção vale na hora, sem republicar o plugin:** o `.cmd` é trampolim para o kit. Medido — a
+mensagem mudou de "TODO/FIXME/XXX/HACK pendente" para "marcador TODO pendente" no disparo seguinte.
+
+**Ref:** medido em 2026-08-17 no repo `website-autoworxnj`, canon 6.36.6. As duas pernas
+(`.ps1` e `.sh`) foram alinhadas em comportamento e mensagem — divergência entre pernas do mesmo
+hook já custou caro antes (ver o conserto da 6.36.3, que consertou três arquivos e esqueceu o quarto).
+
+---
+
+## Secret datado monta sob o nome errado: consumer toma 401 com serviço `healthy` {#secret-montado-no-nome-errado-401-silencioso}
+
+`tags: docker secret, swarm, target, source, compose, reconcile, deploy, 401, invalid internal auth, pydantic, secrets_dir, rotacao de secret, AAAAMMDD, healthy mas quebrado, falso-verde, auth-service`
+
+**Sintoma:** um consumer novo (ou recém-rotacionado) toma `401` do serviço, mesmo com o Docker Secret
+criado, declarado no compose e o deploy tendo passado. `/health` responde `200`, o `docker service ls`
+mostra `2/2`, o smoke do deploy passa, e **não há erro em log nenhum** — nem no serviço, nem no
+Swarm. Quem olha o secret com `docker secret ls` o vê lá, e conclui que o problema é do consumer.
+
+**Causa raiz:** o secret está montado, mas **com o nome de arquivo errado**. Swarm monta em
+`/run/secrets/<target>`; quando o `target` não é passado, ele usa o `source`. O Pydantic
+(`secrets_dir="/run/secrets"`) lê pelo **nome do campo** do `Settings`. Então:
+
+```
+source: internal_key_x_20260817   target: internal_key_x   -> /run/secrets/internal_key_x        OK
+source: internal_key_x_20260817   (sem target)             -> /run/secrets/internal_key_x_20260817  INVISIVEL
+```
+
+O campo fica com o default (`""`), a comparação de secret não casa com nada, e o gate devolve `401`
+— indistinguível de "chave errada". Isso morde exatamente quem segue o padrão de **rotação**
+(`<nome>_<AAAAMMDD>` como source, nome do campo como target), que existe porque secret no Swarm é
+imutável.
+
+**O agravante que fez isso passar meses:** o reconcile de secrets do deploy lia só o `source:` do
+compose e anexava com `target=$source`, **descartando o `target:` declarado**. Todo caso de teste
+usava `source == target`, então a suíte ficava verde. Secrets datados antigos (`auth_database_url_*`,
+`auth_redis_url_*`) só não quebraram porque foram anexados à mão, antes do reconcile existir.
+
+**Diagnóstico em 1 comando** — compare declarado × montado, nunca só "o secret existe":
+
+```bash
+# o que o Swarm REALMENTE montou (source -> nome do arquivo)
+docker service inspect <svc> \
+  --format '{{range .Spec.TaskTemplate.ContainerSpec.Secrets}}{{.SecretName}} -> {{.File.Name}}{{"\n"}}{{end}}'
+# e dentro do container, o que o app consegue ver:
+docker exec <cid> ls /run/secrets/
+```
+
+**Solução:**
+1. Conserto imediato, **pra frente** (não faça `rollback`: ele reverteria a imagem também, desfazendo
+   um deploy legítimo por causa de um mount):
+   ```bash
+   docker service update --secret-rm <source> \
+     --secret-add source=<source>,target=<nome-do-campo> <svc>
+   ```
+2. Conserto durável: o reconcile tem que **propagar o `target:` do compose**. Ao parsear YAML, use
+   **fronteira de item**, não posição: YAML não garante ordem de chave, e `- target:` antes de
+   `source:` faz um parser posicional colar o target na entrada anterior e **desaparecer** com a
+   atual — sem erro e sem nem disparar "secret declarado mas ausente".
+3. Guarda que fecha a classe: **verificação comportamental pós-rollout** que confronta cada `target:`
+   declarado com o que o Swarm montou, e barra o deploy se faltar. Ela mede o resultado, não a
+   intenção, então pega também sintaxe curta (`- nome`) e qualquer buraco futuro do parser. Prove nos
+   **dois sentidos** — que passa no estado bom e que **dispara** quando você simula o mount errado.
+
+**Armadilha ao escrever o lookup do target:** case por igualdade exata no nome, nunca por substring.
+`internal_key_tiatendo` é prefixo de `internal_key_tiatendo_investidores`, e um `grep` frouxo casa o
+errado — reintroduzindo o mesmo bug pela porta dos fundos.
+
+**Ref:** auth-service, registro da audience `tiatendo-investidores`, 2026-08-17. Bug e conserto em
+`dde2ca2` (`deploy/scripts/lib/secret-reconcile.sh` + `auth-service-deploy.sh`), 4 casos de teste
+novos. Mesma assinatura "healthy mas quebrado" do P0 de CORS de 2026-07-30 e do incidente de rotação
+de credenciais de 2026-07-23.
+
+---
+
+## Teste que executa um hook sem isolar o `cwd` afere o estado da máquina, não o hook {#teste-de-hook-roda-na-raiz-le-estado-real}
+
+`tags: teste nao isolado, cwd, Get-Location, Push-Location, hook, pester, suite vermelha sem mudanca de codigo, estado real do repo, .percus, autorizacao viva, falso verde, R20, external-action-guard, pasta temporaria`
+
+**Sintoma:** a suíte fica vermelha de manhã e verde à tarde **sem ninguém tocar em código**. Um teste
+de hook falha com "esperava bloquear, recebeu liberar" — e o mesmo teste, rodado sozinho mais tarde,
+passa.
+
+**Causa raiz:** hooks resolvem os caminhos que leem a partir de `(Get-Location).Path`. Um teste que
+invoca o hook **sem trocar o diretório corrente** o executa com `cwd` = raiz do repo, então o hook lê
+os arquivos de estado **reais** do checkout (autorização, config, log, cache). O resultado do teste
+passa a depender do que existe no disco naquele minuto.
+
+No caso real (percus-kit, 2026-08-17): um arquivo de autorização R20 com janela de 60 minutos estava
+vivo. Suíte **361/1**. Depois de expirar, **362/0**. O teste não estava aferindo o hook — estava
+aferindo a hora do dia.
+
+🔑 **A assimetria é o que torna a classe perigosa.** Um teste que afirma **BLOQUEIA** falha alto
+quando o estado real libera: você descobre. Um teste que afirma **LIBERA** passa por motivo errado —
+o estado real da máquina o aprova em vez do fixture, e ele fica verde para sempre, inclusive depois
+de a lógica que deveria testar ser removida. Ninguém descobre. Procure os dois, não só o que caiu.
+
+**E há um segundo dano, que só aparece quando o hook passa a ESCREVER:** hook que grava
+(log, auditoria, cache) e roda sem isolamento faz a **suíte poluir o arquivo real do repo**. Testes
+deixam de ser leitura e viram escrita em produção.
+
+**Diagnóstico:**
+
+```bash
+# quem invoca hook sem trocar de diretorio antes
+grep -rn "pwsh -NoProfile -File .*hook\|powershell.*-File .*hook" tests/ | grep -v "Push-Location"
+```
+
+Confirmação decisiva: rode a suíte duas vezes com o estado real **presente** e **ausente**. Se o
+conjunto de falhas muda, o isolamento é o defeito — não a lógica.
+
+**Solução:** todo teste que **executa** um hook o faz de dentro de uma pasta temporária
+(`Push-Location`/`Pop-Location` em torno da invocação), com fixture próprio. Teste que só **lê o
+fonte** do hook não precisa disso; teste que o **roda**, sempre.
+
+⚠️ **Ao reproduzir, use uma CÓPIA do repositório — nunca plante o estado real "só para testar".** No
+caso concreto, plantar a autorização R20 no checkout abriria o portão de ação externa de verdade, e o
+checkout é compartilhado entre sessões: a autorização criada para o seu teste valeria para a sessão do
+lado. Copiar o repo sem o `.git` custa segundos e remove o risco inteiro.
+
+**Ref:** percus-kit 6.36.7, 2026-08-17 — `hardening-2026-05-18.tests.ps1:100` era o único teste do
+`external-action-guard` sem `Push-Location`, entre 20 que já isolavam. Relacionado:
+[[review-auto-grava-relativo-ao-cwd]] (mesma família de `cwd`, do lado da escrita) e
+[[causa-declarada-em-achado-e-hipotese]].
