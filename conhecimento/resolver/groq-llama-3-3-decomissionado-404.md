@@ -51,9 +51,42 @@ morto. Consertar só o wrapper do conselho deixa essa metade quebrada.
 3. Considerar fazer o orchestrator **falhar alto** (ou pelo menos gritar) quando uma perna volta
    erro, em vez de listar num `summary` que ninguém lê.
 
-⚠️ **A checagem barata que separa "perna morta" de "perna lenta" é a latência.** Perna que pensa
-demora dezenas de segundos; perna que 404 volta em centenas de milissegundos. Um `latency_ms` de três
-dígitos ao lado de dois de cinco dígitos é o sinal.
+🔴 ~~**A checagem barata que separa "perna morta" de "perna lenta" é a latência.**~~ **REVOGADO em
+2026-08-18.** Valia enquanto a perna era Llama. Com `openai/gpt-oss-120b` a perna **saudável**
+responde em **636–789 ms** — dentro da faixa que este verbete ensinava a ler como "morta". Usar
+latência hoje produz **falso positivo**, que é pior que a falta do sinal. O que vale agora:
+`status == "ok"` **e** `content` não-vazio. Detalhe em
+[[troca-para-modelo-de-raciocinio-esvazia-teto-de-tokens]].
+
+---
+
+### ✅ RESOLVIDO em 2026-08-18 (canon 6.39.0)
+
+Catálogo reconferido com a chave real no dia (`GET /openai/v1/models`): `llama-3.3-70b-versatile`
+segue ausente, e os únicos `llama` visíveis continuam sendo os classificadores
+`meta-llama/llama-prompt-guard-2-22m|-86m`. Confirmado o diagnóstico de 2026-08-17.
+
+**A perna Groq passou a rodar `openai/gpt-oss-120b`** ($0.15/$0.60 por 1M — **mais barata** que o
+Llama que substituiu). Os 9 sítios do plugin foram varridos, mais 4 que este verbete não listava:
+`04_MODEL_ROUTING.md`, `06_CONSELHO_PERCUS.md`, `README.md` e a tabela de preço em
+`scripts/analyze_council_spend.py`.
+
+**O id do provider continua `groq-llama`, de propósito** — é chave histórica em log antigo,
+`default_set` e assert de teste. A mentira está declarada no campo `_nota_id` do
+`providers/_registry.json` e no cabeçalho de `council-tiebreaker.ps1`: quem diz o modelo é o campo
+`model`, nunca o id.
+
+**Consequência de preço que quase passou:** o alias `groq-llama` na tabela de custo se justificava
+por "mapeia 1:1 num único modelo que nunca mudou de preço". A troca matou a premissa, e o alias
+mantido precificaria run **novo** ao preço do modelo **morto** — 3,9× pra cima na entrada, calado.
+Alias removido; o id do modelo antigo **fica** na tabela para o histórico continuar somando ao preço
+da época.
+
+⚠️ **A troca de família reabriu três defeitos no `fact-check-triage`** (teto de tokens, guarda de
+`status`, regex de formato) que não têm nada a ver com Groq e vão repetir na próxima troca de modelo.
+Estão em [[troca-para-modelo-de-raciocinio-esvazia-teto-de-tokens]] — leia **antes** de trocar
+qualquer modelo por um de raciocínio.
 
 **Ref:** observado em 2026-08-17 rodando `council-pre-mortem` no projeto Scraper-prospeccao,
 canon 6.36.6. Log: `.deepseek/council-log/20260817-080310-pre-mortem.jsonl`.
+Resolvido em 2026-08-18 no `percus-kit`, canon 6.39.0.
