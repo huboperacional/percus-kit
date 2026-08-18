@@ -304,6 +304,9 @@
 - [Dois módulos de teste passam sozinhos e quebram juntos: cada preparo limpa só o que ELE conhece](#preparo-de-teste-limpa-so-o-que-conhece)
 - [`refresh()` depois do `commit()` quebra sob RLS — o contexto é `SET LOCAL` e morre no commit](#refresh-apos-commit-perde-contexto-rls)
 - [A tabela que decide o acesso também tem RLS: consultar o papel antes de declarar o usuário nega o próprio login](#contexto-antes-da-tabela-que-decide-acesso)
+- [Contar linha com `psql` num banco com RLS mede a POLÍTICA, não o dado — e "0 linhas" vira diagnóstico falso](#psql-sem-contexto-mede-rls-nao-o-dado)
+- [`pg_dump` falha e `DELETE` é recusado num banco com `FORCE ROW LEVEL SECURITY` — backup e exclusão precisam de superuser](#pg-dump-falha-com-force-rls)
+- [Popover/menu/diálogo saem TRANSPARENTES: o `Portal` do Radix monta no `<body>`, fora do escopo onde os tokens da paleta existem](#portal-radix-sai-do-escopo-dos-tokens)
 - [Teardown de teste não consegue dropar tabela com FK auto-referencial: desligue a checagem, em AUTOCOMMIT](#drop-table-fk-auto-referencial-no-teardown)
 - [Recurso finito consumido por N filhos: travar só a linha PAI errada deixa a soma estourar](#lock-no-pai-errado-soma-estoura)
 - [Estorno por soft-delete faz o relatório do mês passado mudar depois de entregue — use contra-lançamento](#estorno-soft-delete-muda-relatorio-ja-entregue)
@@ -368,6 +371,11 @@
 - [Teste chama o script no mesmo processo e "prova" silêncio: `Write-Host` e `[Console]::Error` não passam pelo `2>&1`](#teste-in-process-nao-captura-console-error)
 - [`grep -iF` aborta com SIGABRT no Git Bash: a combinação quebra, cada flag sozinha funciona](#grep-if-aborta-git-bash)
 - [Fixture mais benigno que a realidade: o teste passa e você precisa PIORAR o fixture para ver o bug](#fixture-mais-benigno-que-a-realidade)
+- [Query que MUTA e sinaliza em memoria: o sinal morre na primeira leitura](#query-muta-e-sinaliza-em-memoria)
+- [Feature sobre modulo atras de feature-flag OFF nasce MORTA e verde nos testes](#feature-sobre-flag-off-nasce-morta)
+- [Parametro adicionado e NAO propagado: suite verde, defeito vivo](#parametro-adicionado-sem-propagar)
+- [Restaurar mutacao com `git checkout --` apaga o trabalho nao commitado junto](#restaurar-mutacao-com-trabalho-pendente)
+- [Integração externa OPCIONAL desarmada não grita: silêncio é idêntico a "ninguém usou ainda"](#integracao-opcional-desarmada-nao-grita)
 
 ---
 
@@ -9942,6 +9950,222 @@ sucesso.
 
 ---
 
+## Contar linha com `psql` num banco com RLS mede a POLÍTICA, não o dado — e "0 linhas" vira diagnóstico falso {#psql-sem-contexto-mede-rls-nao-o-dado}
+
+tags: RLS, row level security, multi-tenant, psql, contagem de linhas, banco vazio, diagnostico falso, auditoria, SET LOCAL, set_config, current_setting, NULLIF, fail-closed, seed, producao, medicao enganosa
+
+**Sintoma:** uma auditoria abre o banco de produção por `psql`, conta as linhas das tabelas
+principais e encontra **0** nas que importam. A conclusão parece inevitável: o seed nunca rodou,
+o ambiente está pela metade, o piloto está quebrado. Escreve-se um plano inteiro em cima disso.
+
+**O que está acontecendo:** a política é fail-closed por desenho —
+
+```sql
+USING (usuario_id = NULLIF(current_setting('app.usuario_id', true), '')::uuid)
+```
+
+Com `FORCE` ligado e **sem** contexto na sessão, `current_setting(..., true)` devolve string
+vazia, o `NULLIF` a transforma em `NULL`, a comparação nunca é verdadeira e **nenhuma linha
+aparece**. O `psql` não está vendo o banco: está vendo o que a política libera para uma sessão
+que não declarou quem é. Zero linhas é a resposta CORRETA da RLS — e é indistinguível de tabela
+vazia.
+
+**O tell que entrega o engano, e ele está na própria medição.** Se você tabelar as contagens,
+repare em quais tabelas vieram com dado e quais vieram zeradas: as que aparecem são exatamente
+as **sem** política por tenant (no caso de origem: `grupos`, `empresas`, `usuarios`,
+`familias`), e as zeradas são exatamente as **com** (`papeis_*`, e tudo que tem `empresa_id`).
+Uma tabela de contagens que separa perfeitamente "tem RLS" de "não tem RLS" não é um retrato do
+banco — é um retrato do isolamento funcionando.
+
+**Como medir de verdade** — qualquer um dos dois, e de preferência os dois:
+
+```sql
+-- 1. psql declarando o mesmo contexto que a aplicação declara
+SET app.usuario_id = '<uuid do usuário>';
+SET app.empresa_id = '<uuid do tenant>';
+SELECT count(*) FROM papeis_empresa;
+```
+
+```bash
+# 2. melhor ainda: pergunte pela PRÓPRIA aplicação, que já sabe aplicar o contexto.
+#    Um seed idempotente é o instrumento ideal — ele responde "criei" ou "reaproveitei",
+#    e "0 criados" é prova de que o dado já estava lá.
+docker exec <container-da-api> python -m scripts.seed_piloto --<args>
+```
+
+O seed idempotente é a contraprova mais forte porque é **independente do seu SQL**: ele passa
+pelo mesmo código de contexto que a aplicação usa. Se ele diz *0 criados, 16 reaproveitados*, o
+dado existe — e ainda dá para conferir se o número fecha com a lista do que o seed cria.
+
+**Regra que sai daqui, e ela generaliza:** cada camada de proteção cega um instrumento de
+medição diferente. *Screenshot prova o que a tela mostra, não o que o banco tem. `psql` sem
+contexto prova o que a RLS deixa ver, não o que está gravado. `curl` + `grep` provam que uma
+string existe no HTML, não que alguém a enxerga.* Antes de escrever um plano em cima de uma
+medição, pergunte **qual camada pode estar respondendo no lugar do dado**.
+
+**Custo real quando passa batido:** no caso de origem, duas sessões inteiras trataram um piloto
+saudável como quebrado. Uma "Entrega 0" foi especificada, revisada pelo conselho 3/3 e declarada
+pré-requisito de todas as outras — para consertar um estado que não existia. O conserto correto
+custou uma linha de `SET`.
+
+⚠️ **Cuidado com a "cura" pior que a doença.** O caminho de auto-serviço que o produto oferecia
+para o estado quebrado (onboarding cadastrando a empresa de novo) teria criado uma **segunda**
+empresa com o mesmo CNPJ num grupo implícito novo — porque o índice único de CNPJ é *por grupo* —
+deixando a original órfã. Quando o diagnóstico é "falta dado", confirme que ele falta **antes**
+de deixar o produto recriá-lo.
+
+**Ref:** Empresa Milionária, 2026-08-17 — refutação do achado D11 da auditoria de rumo de
+2026-08-16 (`docs/2026-08-16-auditoria-de-rumo.md`). Entradas irmãs:
+`#contexto-antes-da-tabela-que-decide-acesso`, `#rls-sem-force-dono-ignora-politica`,
+`#refresh-apos-commit-perde-contexto-rls`.
+
+---
+
+## `pg_dump` falha e `DELETE` é recusado num banco com `FORCE ROW LEVEL SECURITY` {#pg-dump-falha-com-force-rls}
+
+tags: RLS, row level security, FORCE, pg_dump, backup, restore, DELETE, FK, foreign key, FOR KEY SHARE, permission denied, REVOKE, imutabilidade, timeline, LGPD, exclusao de dados, multi-tenant, superuser
+
+Duas consequências operacionais do `FORCE ROW LEVEL SECURITY` que só aparecem meses depois
+de a política ser escrita, e nenhuma delas é bug — são o desenho cobrando.
+
+### 1. `pg_dump` como dono da tabela **falha**
+
+```
+pg_dump: error: query would be affected by row-level security policy for table "baixas"
+HINT: To disable the policy for the table's owner, use ALTER TABLE NO FORCE ROW LEVEL SECURITY.
+```
+
+Sem `FORCE`, o dono ignora a política e o dump passa. **Com** `FORCE` — que é o que torna a
+RLS real, ver `#rls-sem-force-dono-ignora-politica` — o dono obedece, e um dump é uma leitura
+sem contexto de tenant declarado. Logo: nenhuma linha, ou erro.
+
+**Solução:** dumpe como **superuser** (`-U postgres`), a única role que ignora RLS. Não
+desligue o `FORCE` para fazer backup — isso troca uma inconveniência de operação por um furo
+de isolamento permanente.
+
+```bash
+docker exec "$container" sh -c \
+  'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -U postgres -d meu_banco -Fc' > arquivo.dump
+```
+
+⚠️ **O modo de falhar silencioso é o perigoso.** Um script de backup com `set +e`, ou sem
+checar tamanho mínimo do arquivo, grava **dump vazio** todo dia e ninguém percebe até
+precisar restaurar. Sempre: checar o exit code E um piso de bytes, e apagar o arquivo se
+qualquer um reprovar.
+
+### 2. `DELETE` na tabela-pai é recusado se alguma filha teve `UPDATE/DELETE` revogado
+
+```
+ERROR: permission denied for table eventos_titulo
+CONTEXT: SQL statement "SELECT 1 FROM ONLY "public"."eventos_titulo" x
+         WHERE $1 OPERATOR(pg_catalog.=) "empresa_id" FOR KEY SHARE OF x"
+```
+
+Padrão comum em auditoria/timeline: `REVOKE UPDATE, DELETE` numa tabela de eventos para
+torná-la imutável no nível do banco. O efeito colateral: apagar uma linha **referenciada**
+por ela dispara a checagem de integridade, que faz `SELECT ... FOR KEY SHARE` na filha para
+travá-la — e **lock de linha exige privilégio de UPDATE**. Sem ele, a exclusão do pai morre.
+
+Não é a RLS desta vez, é o `REVOKE` — mas anda junto com ela porque as duas nascem da mesma
+decisão de endurecer o banco.
+
+**Solução para uma exclusão pontual** — conceder e devolver **dentro da mesma transação**,
+já que `GRANT`/`REVOKE` são transacionais no PostgreSQL, então a janela não existe fora dela
+e um erro no meio desfaz tudo junto:
+
+```sql
+BEGIN;
+GRANT UPDATE, DELETE ON eventos_titulo TO app_user;
+DELETE FROM ...;            -- filhos, depois pais, na ordem das FKs
+REVOKE UPDATE, DELETE ON eventos_titulo FROM app_user;
+COMMIT;
+```
+
+Confira os privilégios **depois** do commit, em vez de confiar: um `REVOKE` que não rodou
+deixa a imutabilidade desligada em produção sem nenhum sinal.
+
+⚠️ **Se o produto tem requisito de exclusão de dados (LGPD, "apagar minha conta",
+encerramento de contrato), isto é bloqueio de requisito e não curiosidade de operação:** o
+código da aplicação **não consegue** apagar a entidade-raiz. Descubra na especificação, não
+no primeiro cancelamento. Caminhos: role de manutenção separada com o privilégio, um
+`SECURITY DEFINER` que faça a exclusão, ou aceitar anonimização em vez de exclusão física —
+os três são decisão de arquitetura, e a hora de tomá-la é quando o `REVOKE` é escrito.
+
+**Ref:** Empresa Milionária, 2026-08-17 — os dois achados apareceram na mesma tarefa (apagar
+duas empresas duplicadas de produção). O `FORCE` e o `REVOKE` vieram da Task 12/ADR-0003 e
+estão certos; o que faltava era saber o que eles custam depois. Entradas irmãs:
+`#rls-sem-force-dono-ignora-politica`, `#psql-sem-contexto-mede-rls-nao-o-dado`.
+
+---
+
+## Popover/menu/diálogo saem TRANSPARENTES: o `Portal` do Radix monta no `<body>`, fora do escopo onde os tokens da paleta existem {#portal-radix-sai-do-escopo-dos-tokens}
+
+tags: Radix, shadcn, Portal, Popover, DropdownMenu, Dialog, Tooltip, design system, tokens, CSS variables, custom properties, escopo, :root, bg-transparent, fundo transparente, conteudo aparece atras, borda preta, z-index nao resolve, Tailwind, var() indefinido
+
+**Sintoma:** o popover/menu/diálogo abre e **o conteúdo da página aparece através dele**. A
+borda, quando aparece, vem preta e dura em vez do cinza do design. Parece z-index ou
+`overflow`, e mexer nos dois não resolve — porque o painel não está atrás de nada: ele está
+**sem fundo**.
+
+**Causa:** o Radix monta todo `Portal` no `document.body` por padrão. Se os tokens do design
+system são declarados num **escopo** (`.app`, `.painel`, `[data-tema]`…) em vez de `:root`, o
+nó portalado nasce **fora** desse escopo. Aí:
+
+- `bg-surface` → `background-color: var(--surface)` → variável indefinida → **transparente**;
+- `border-borderCard` → `border-color: var(--borderCard)` → indefinida → o CSS cai para o
+  valor inicial, que é `currentColor` — daí a borda preta, que é o texto herdado.
+
+O detalhe cruel é que **nada quebra visivelmente no build, no `tsc` ou no teste de DOM**: a
+classe está aplicada, o elemento está no lugar, a árvore de acessibilidade está correta. Só a
+cor some. E não aparece em `curl`/`grep`, porque a string do `class` está lá.
+
+**Solução — monte o portal DENTRO do escopo**, e não copie os tokens para `:root`:
+
+```tsx
+function useRecipienteFlutuante(): HTMLElement | undefined {
+  const [no, setNo] = React.useState<HTMLElement | null>(null)
+  React.useEffect(() => { setNo(document.querySelector<HTMLElement>('.app')) }, [])
+  return no ?? undefined      // `undefined` = "use o padrão", para o Radix
+}
+
+// e em CADA primitivo portalado:
+<PopoverPrimitive.Portal container={useRecipienteFlutuante_hoistado}>
+```
+
+**Por que não copiar os tokens para `:root`:** (a) se o escopo existe, é porque outra parte do
+produto (landing, blog, área pública) não deve receber aquelas cores — foi para isso que ele
+foi criado; (b) uma cópia no `:root` congela **uma** paleta e **um** tema, então troca de tema
+ou de paleta em runtime deixa de alcançar os painéis flutuantes, e o defeito volta na metade
+dos casos, que é pior que voltar em todos.
+
+⚠️ **Confira DUAS propriedades no elemento-recipiente antes de adotar isto**, porque elas
+mudam o resultado em silêncio:
+
+| Propriedade no recipiente | O que quebra |
+|---|---|
+| `transform`, `filter`, `perspective`, `contain`, `backdrop-filter`, `will-change` | vira **bloco de contenção**: o `position: fixed` do diálogo passa a se ancorar nele, não na viewport — modal sai do centro da tela |
+| `overflow` diferente de `visible` | **corta** o popover no limite do recipiente |
+
+Se o recipiente tiver qualquer uma, use um nó irmão dedicado (um `<div class="app-portais">`
+vazio no mesmo escopo de tokens) em vez do próprio contêiner do app.
+
+**Cubra os QUATRO, não só o que apareceu.** O sintoma normalmente é relatado num só (o filtro,
+o combobox), mas todos os primitivos portalados do shadcn/Radix têm o mesmo defeito:
+`Popover`, `DropdownMenu`, `Dialog` e `Tooltip`. Corrigir só o relatado deixa três esperando.
+
+**Por que `querySelector` em `useEffect` e não contexto com `ref`:** em Next.js App Router o
+layout que carrega a classe de escopo costuma ser **Server Component**, e Server Component não
+segura `ref`. Transformá-lo em cliente só por causa do portal arrasta a árvore inteira para o
+cliente. Há um recipiente por página, e o efeito roda antes de qualquer interação conseguir
+abrir um painel.
+
+**Ref:** Empresa Milionária, 2026-08-17 — achado pelo operador usando o produto em produção,
+não por teste: o filtro "Situação" abria com os cartões de saldo aparecendo através dele. Os
+tokens PJ vivem em `.pj-app[data-paleta]` de propósito, porque `:root` repintaria a landing.
+`empresa-frontend/src/components/pj/primitivos.tsx`.
+
+---
+
 ## Teardown de teste não consegue dropar tabela com FK auto-referencial: desligue a checagem, em AUTOCOMMIT {#drop-table-fk-auto-referencial-no-teardown}
 
 tags: sqlite, PRAGMA foreign_keys, drop_all, teardown, FOREIGN KEY constraint failed, FK composta, auto-referencia, StaticPool, conftest, erro aparece no teste seguinte
@@ -12760,3 +12984,132 @@ empacotado.
 
 **Ref:** tiatendo, deploy `0.308.0` (2026-08-16): `ea645b2` ficou de fora e só apareceu ao testar
 `comanda.py` dentro do container. Ver também `#deploy-delta-base-defasada`.
+
+---
+
+## Query que MUTA e sinaliza em memória: o sinal morre na primeira leitura {#query-muta-e-sinaliza-em-memoria}
+
+tags: `side-effect-in-getter`, `CQS`, `estado-de-sessao`, `flag-volatil`, `sinal-perdido`, `identity-map`, `python`, `sqlalchemy`, `bot`, `TTL`, `expiracao`
+
+**Sintoma.** Uma transição de estado acontece (o banco muda, o log registra) mas **ninguém avisa o usuário**. O log prova que o código detectou a condição; a mensagem nunca sai. Reprocessar não reproduz — na segunda vez o estado já está consumido.
+
+**Causa raiz.** Um *getter* faz três coisas: lê, **decide** a transição e **grava/commita** — e devolve o aviso num **atributo em memória** do objeto (`obj._algoAconteceu = True`). A mutação é **global e persistida**; o sinal é **local e volátil**. Basta o objeto ser descartado (outra sessão de banco, outro escopo, um `async with` que fecha) para o sinal sumir enquanto o efeito permanece.
+
+**O que torna isso quase certo em produção:** o caminho de entrada raramente lê o estado **uma** vez. Meça antes de supor — num caso real eram **3 leituras por mensagem** no caminho imediato e 3 no debounced. A primeira consumia; a que avisaria era a terceira. O contrato era inviável **por construção**, não "quebrado por um call-site".
+
+**Diagnóstico em 2 passos:**
+1. Ache o log da transição e confirme que ele SAI (`docker logs ... | grep <evento>`). Se sai e o usuário não recebe nada, o sinal está se perdendo entre a detecção e o emissor.
+2. Conte os call-sites do getter **por AST**, e mapeie cada um à função que o contém. Se dois rodam na mesma requisição, o bug já existe.
+
+**Solução — separar em três, não em duas:**
+- **leitura pura**: não grava, não commita; devolve `(objeto, status)` com o status **derivado** dos campos. Derivado é o que faz N leituras concordarem.
+- **transição com dono único**: uma função que grava, chamada de um ponto explícito do ciclo, que também emite o aviso. Efeito e sinal viram a **mesma sentença**.
+- **tipo de retorno que obriga a tratar**: tupla (ou objeto) em vez de atributo opcional. Atributo opcional é o que permitiu 12 de 13 call-sites simplesmente não lerem o sinal.
+
+⚠️ **A ordem importa e a inversa cria um bug PIOR.** Se a limpeza que o getter fazia também protegia consumidores downstream (ex.: apagar o contexto impedia um handler de agir sobre pendência velha), tornar a leitura pura **antes** de a transição ter dono troca "aviso perdido" por "agiu no alvo errado". Dê o dono primeiro; e adicione um acessor (`contextoVigente(obj, status)`) que devolve vazio quando o status é inválido, para que um ponto de entrada novo que esqueça o dono degrade para "não avisou" em vez de "escreveu errado".
+
+**Ref:** Família Milionária, 2026-08-17. `getSession` mutava+commitava e marcava `_wasExpired` só na instância; o peek do gate de debounce (sessão de banco própria, descartada) consumia a expiração e o dispatcher via "ativa". Uma resposta "sim" 64h depois virou lançamento novo alucinado e a despesa real ficou fora do ledger. Ver `#trava-vermelha-no-dia-1` e `#parametro-adicionado-sem-propagar`.
+
+---
+
+## Feature construída sobre módulo atrás de feature-flag OFF nasce MORTA e verde nos testes {#feature-sobre-flag-off-nasce-morta}
+
+tags: `feature-flag`, `strangler-fig`, `kill-switch`, `teste-verde-feature-morta`, `dual-write`, `migracao-incremental`, `alcancavel-em-producao`
+
+**Sintoma.** A feature nova passa em todos os testes e **nunca dispara para usuário real**. Ninguém percebe por semanas, porque não há erro — há silêncio.
+
+**Causa raiz.** O módulo reusado é uma **migração incremental** (strangler-fig) protegida por flag: `FOO_ENABLED = False` por padrão, e a estrutura de dados que ele mantém (descritor, tabela espelho, índice novo) **só é escrita quando a flag está ligada**. Em produção a flag está OFF, então o `getX()` daquele módulo devolve sempre `None`. Os testes passam porque **eles mesmos semeiam** a estrutura à mão — o teste cria a precondição que produção nunca cria.
+
+**Diagnóstico em 1 comando** (não confie no default do arquivo de config; confira o processo):
+
+    docker exec <container> printenv FOO_ENABLED FOO_WHITELIST
+    # vazio => usa o default do codigo. Leia o default: se for False, a estrutura nao existe la.
+
+**Solução.** Antes de construir sobre uma abstração, pergunte **quem escreve o dado dela em produção, hoje**. Se a resposta for "um caminho atrás de flag", use a estrutura **legada** que está viva (frequentemente um dict cru no mesmo registro) e trate a migração como trabalho separado — ligar a flag é mudança de raio, com spec própria.
+
+**Como detectar antes de doer:** no teste, semeie a precondição **pelo caminho de produção** (a função que o app chama), nunca pelo helper de baixo nível. Se produção não consegue criar aquele estado, o teste falha na hora de montar o cenário — que é o momento certo de descobrir.
+
+**Ref:** Família Milionária, 2026-08-17. A reoferta de pendência ia nascer sobre `pending.py` (`__pending__` com `kind`/`payload`/`criadoEm` e registry), mas `PENDING_UNIFIED_ENABLED` é `False` no container: o descritor nunca é escrito em prod. Trocado pelo contexto legado `ctx["resultado"]`.
+
+---
+
+## Parâmetro adicionado e NÃO propagado: suíte verde, defeito vivo — e a contagem não é o discriminador {#parametro-adicionado-sem-propagar}
+
+tags: `propagacao-de-parametro`, `relogio-congelado`, `race-condition`, `teste-vacuo`, `discriminador-de-teste`, `spy`, `refactor-incompleto`
+
+**Sintoma.** Você adiciona um parâmetro para corrigir um defeito (relógio congelado, request-id, tenant, `now`), escreve um teste de unidade da função que o recebe, fica verde — e **o defeito continua em produção**, porque o ciclo real chama a função sem o parâmetro e cai no `param or default()`.
+
+**Causa raiz.** O default silencioso (`agora = agora or utcNow()`) faz o call-site esquecido **funcionar**, só que errado. Testar a função isolada mede a assinatura, não a propagação.
+
+**Solução — espione a propagação, não a função:**
+
+    instantes = []
+    real = mod.readX
+    async def espiao(*a, param=None, **kw):
+        instantes.append(param)
+        return await real(*a, param=param, **kw)
+    monkeypatch.setattr(mod, "readX", espiao)
+
+    await fluxoReal(...)                       # a PORTA de entrada, nao a funcao interna
+    assert instantes, "o fluxo nao leu nenhuma vez"
+    assert all(i is not None for i in instantes), "algum call-site nao propagou"
+    assert len(set(instantes)) == 1, "o ciclo usou mais de um valor"
+
+⚠️ **O discriminador é o `None`, NÃO a contagem de leituras.** Exigir `>= 2` leituras parece tornar o teste não-vacuoso, mas a contagem varia com o estado: um fluxo que aborta cedo (o caminho correto!) lê uma vez só e o assert quebra sem defeito nenhum. O `None` é o que denuncia o call-site esquecido, e denuncia com uma leitura só.
+
+⚠️ **Um kill-switch pode esconder o buraco do seu próprio teste.** Se o call-site não propagado está depois de um `if not settings.FLAG: return`, o espião nunca o vê. Cheque a lista de call-sites por AST, não só o que o teste percorre.
+
+**Ref:** Família Milionária, 2026-08-17. `agora` foi adicionado a `readSession` e o ciclo real seguia chamando sem ele; o review pegou, e o segundo caso (`_guardPendingUnificado`) estava atrás de `PENDING_UNIFIED_ENABLED=False`, invisível ao teste.
+
+---
+
+## Restaurar mutação com `git checkout --` apaga o trabalho não commitado junto {#restaurar-mutacao-com-trabalho-pendente}
+
+tags: `mutation-testing`, `git-checkout`, `perda-de-trabalho`, `TDD`, `restore`
+
+**Sintoma.** Você faz mutation-testing durante um ciclo TDD, roda `git checkout -- <arquivo>` para restaurar — e perde a implementação inteira que ainda não tinha commitado.
+
+**Causa raiz.** A regra "restaure mutação com `git checkout --`, nunca com replace cego" pressupõe **arquivo limpo**: a mutação é o único delta contra o índice. Durante TDD o arquivo carrega também a task em andamento, e o checkout leva as duas.
+
+**Solução.** Com trabalho pendente no arquivo, restaure por replace **com asserção de contagem**:
+
+    alvo = "<trecho mutado exato>"
+    assert t.count(alvo) == 1, f"ancora ambigua -- nao mutar as cegas"
+    p.write_text(t.replace(alvo, "<original>"), encoding="utf-8")
+
+e confirme com `git diff` que só a mutação sumiu. Alternativas: `git stash` antes de mutar, ou commitar a task e só então mutar (aí o `checkout --` volta a ser seguro).
+
+**Ref:** Família Milionária, 2026-08-17, ciclo TDD da leitura de sessão pura.
+
+---
+
+## Integração externa OPCIONAL desarmada não grita: silêncio é idêntico a "ninguém usou ainda" {#integracao-opcional-desarmada-nao-grita}
+
+`tags: best-effort, fail-silent, env vazia, bridge, webhook, billing, afiliado, startup check, consequencia observavel, integracao opcional`
+
+Integração que **não pode derrubar o produto** costuma ser escrita como best-effort: se a variável está vazia, retorna cedo e segue a vida. A decisão está certa — canal opcional não pode impedir o boot. O que ela cria é um estado onde **desarmada e "funcionando, sem uso ainda" produzem exatamente os mesmos sinais**: nenhum log de erro, nenhuma métrica, nenhum teste vermelho.
+
+O caso: produto no ar, vendendo, com duas integrações apagadas em produção e **nada dizendo**.
+
+| Integração | Estado | Como falhava |
+|---|---|---|
+| Bridge de comissionamento | `INGEST_URL` e `INGEST_KEY` vazias | `forwardEvent` retorna `False` na 1ª linha. A pessoa indica, o cliente assina, a comissão **nunca existe** |
+| Gateway de pagamento | `ENV=test`, zero `PLAN_ID` | O produto anuncia preço e **não tem como receber** |
+
+**Solução: um registro das integrações opcionais, cada uma declarando a CONSEQUÊNCIA OBSERVÁVEL de estar desarmada, e o startup anunciando o estado de cada uma.** Desarmada continua não derrubando o boot — só para de ser secreta.
+
+⚠️ **`consequencia` descreve o que o USUÁRIO observa, não a causa técnica.** "A variável está vazia" não ajuda ninguém às 3 da manhã; "o afiliado não recebe porque a conversão nunca é registrada" manda a pessoa ao lugar certo.
+
+⚠️ **Meia configuração é o estado mais perigoso, porque PARECE de pé.** URL preenchida e chave vazia se comporta como nada preenchido, e quem inspecionar o ambiente vê a URL e conclui que está armado. A guarda exige **todas** as variáveis que o caminho real exige.
+
+⚠️ **`"   "` é truthy.** Espaço sobrando em arquivo de env passa por `if not valor` e reporta armado estando morto. Teste por `.strip()`.
+
+⚠️ **Segredo tipado (`SecretStr` e similares) não é string.** Inspecionar via `model_dump()` devolve o **objeto**. No pydantic v2 dá certo por acaso — `SecretStr("")` é falsy e `str()` dele é `""`, enquanto o preenchido vira `"**********"` (truthy). **Correção acidental precisa de teste**, senão uma atualização da lib faz a guarda reportar ARMADA uma integração sem chave, que é o silêncio de volta.
+
+⚠️ **Virar para `live` sem a chave de `live` merece caso próprio.** Não é "faltou configurar": alguém decidiu cobrar de verdade. A chave de teste preenchida **não salva**, porque o resolvedor escolhe pelo ambiente e nem consulta a outra.
+
+**A trava não é o `if`; é estrutural.** Integração nova que nasça sem declarar consequência **derruba a suíte** — mesmo padrão de "rota nova sem classificação de tenancy derruba a suíte". Sem isso, o próximo canal repete o defeito e o registro vira decoração.
+
+**Vizinhos:** [#feature-sobre-flag-off-nasce-morta](#feature-sobre-flag-off-nasce-morta) — lá a feature nasce morta atrás de flag; aqui ela nasce viva e o canal é que está mudo. [#guarda-muda-sem-a-ferramenta-que-usa-pra-falar](#guarda-muda-sem-a-ferramenta-que-usa-pra-falar) — a guarda perde a voz; aqui a integração nunca teve.
+
+**Ref:** Empresa Milionária, 2026-08-17. Achado medindo `printenv` dentro do container de produção, não lendo código — nenhum teste, log ou métrica apontava para lá. O precedente que existia (a chave de consumer do auth-service, que já gritava no startup) estava certo e **não tinha teste**, então nada obrigava a integração seguinte a seguir o padrão.
