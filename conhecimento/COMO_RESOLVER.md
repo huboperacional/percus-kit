@@ -404,6 +404,19 @@
 - [Teste que forja o NOME da classe de exceção passa com o código quebrado](#teste-forja-nome-da-classe-de-excecao)
 - [Redeclarar custom property CSS no mesmo `:root` sobrescreve — e nenhuma ferramenta pega](#redeclarar-custom-property-no-mesmo-root)
 - [Sessão que "morre toda hora" pode ser troca de perfil do browser, não bug de auth](#sessao-morre-toda-hora-e-perfil-do-browser)
+- [Arquivo em `public/` sombreia a rota do Next com o mesmo nome — e a rota nunca roda](#arquivo-em-public-sombreia-rota-do-next)
+- [`next build` com o dev server vivo corrompe `.next` — e o sintoma parece bug do seu código](#build-concorrente-com-dev-server-corrompe-o-next)
+- [Comentário afirmando garantia que o código não entrega — a classe de bug mais difícil de ver](#comentario-afirma-garantia-que-o-codigo-nao-entrega)
+- [Contagem zero sob `FORCE ROW LEVEL SECURITY` não é fato — e a mesma query mente em uma tabela e acerta na vizinha](#contagem-zero-sob-rls-force-nao-e-fato)
+- [Contrato forçado sem rota de escape OBRIGA o modelo a alucinar — não é "o LLM errou"](#contrato-forcado-sem-rota-de-escape-obriga-o-modelo-a-alucinar)
+- [`git checkout -- <arquivo>` restaura do ÍNDICE, e apaga a edição mais nova sem avisar](#git-checkout-restaura-do-index-e-apaga-a-edicao-mais-nova)
+- [O próximo número de migration NÃO é `max(main)+1` — são TRÊS fontes, e a terceira é o índice](#proximo-numero-de-migration-nao-e-max-da-main)
+- [Regra escrita em N lugares e enforçada em nenhum: enforcement ENUMERA tools, então toda tool nova nasce fora da guarda](#regra-escrita-em-n-lugares-e-enforcada-em-nenhum)
+- [Smoke verde pode não ter exercitado a guarda — e smoke vermelho pode ser bug do harness](#smoke-verde-pode-nao-ter-exercitado-a-guarda)
+- [Sondagem de escrita em storage compartilhado vira defeito em produção quando a versão é promovida](#sondagem-em-storage-compartilhado-vira-defeito-em-producao)
+- [Arquivo de teste entra no repo e NÃO RODA — o `include` do runner não cobre a extensão](#teste-entra-no-repo-e-nao-roda-por-include)
+- [Validei a varredura contra o corpo do erro 500 e li "zero ocorrências" como sucesso](#validei-contra-a-pagina-de-erro-e-li-como-sucesso)
+- [Verificação pós-deploy mente por cache de borda — e o corpo do erro desmente o status](#verificacao-pos-deploy-mente-por-cache-de-borda)
 
 ---
 
@@ -13990,3 +14003,414 @@ forma do objeto.
 **Ref:** Micro Investors, 2026-08-18, `deletion_requests/service.py`. Mesmo bug já corrigido no
 módulo de votação em 2026-08-14 pelo `sqlstate`, e o comentário de lá registrava este como pendente.
 Relacionado: [[mock-responde-a-pergunta-errada]].
+
+---
+
+## Arquivo em `public/` sombreia a rota do Next com o mesmo nome — e a rota nunca roda {#arquivo-em-public-sombreia-rota-do-next}
+
+`tags: next.js, app router, public, static, route handler, rota morta, sombreamento, llms.txt, robots.txt, sitemap.xml, codigo que nunca executa`
+
+**Sintoma:** você edita `src/app/<nome>/route.ts`, faz build, sobe, e o conteúdo servido em `/<nome>` continua o antigo. Nenhum erro, nenhum aviso de build, e o arquivo editado está claramente correto.
+
+**Causa raiz:** existe `public/<nome>` com o mesmo caminho. No Next, o estático de `public/` é resolvido **antes** das rotas do sistema de arquivos, então ele ganha. A rota compila, entra no build, aparece na listagem de rotas — e nunca executa.
+
+🔑 **A pista que identifica isso em segundos é o tamanho do corpo servido bater exatamente com o do arquivo estático**, e não com o que a rota geraria. Medido em 2026-08-18: `/llms.txt` servia 3.842 bytes, idênticos ao `public/llms.txt`, enquanto a rota dinâmica gerava outro texto.
+
+**Solução:**
+1. Antes de debugar a rota, procure o sósia:
+   ```bash
+   ls public/<nome>* ; rg -l "<um trecho do texto servido>" public/ src/
+   ```
+2. Escolha **um** dono e apague o outro. Não deixe os dois "por segurança" — o que sobra é código que ninguém executa e que a próxima pessoa vai editar de novo.
+3. Para escolher, compare o CONTEÚDO, não a data nem a elegância. No caso medido, o estático tinha 6 seções curadas e a rota 4 mais pobres, e o único valor exclusivo da rota (listar posts do blog) tinha acabado de virar lista vazia — então a rota morreu.
+
+⚠️ **Vale para todo nome que o Next também resolve por rota:** `robots.txt`, `sitemap.xml`, `manifest.json`, `favicon.ico`. Um `public/sitemap.xml` esquecido congela o sitemap para sempre, e o sintoma é "o sitemap não atualiza", que manda a investigação para o lado errado.
+
+⚠️ **A docstring da rota morta mente sem intenção.** A do caso medido dizia que existia para incluir automaticamente posts novos — promessa que nunca foi cumprida um único dia. Ao apagar, leia a docstring: ela diz qual capacidade você está perdendo, e talvez ela precise voltar de outro jeito.
+
+Relacionado: [[guarda-morta-entrypoint]], [[next-canonical-layout-herdado]].
+
+---
+
+## `next build` com o dev server vivo corrompe `.next` — e o sintoma parece bug do seu código {#build-concorrente-com-dev-server-corrompe-o-next}
+
+`tags: next.js, .next, vendor-chunks, ENOENT, dev server, build concorrente, 500, falso defeito, cache de aba, EADDRINUSE, verificacao local`
+
+**Sintoma:** com `npm run dev` de pé, você roda `npm run build` na mesma pasta para "conferir". Depois disso o dev server começa a devolver **500** em rotas que funcionavam, o log enche de `ENOENT: lstat '.next/server/vendor-chunks'`, e uma página renderiza **sem CSS**, com texto branco sobre branco.
+
+**Causa raiz:** os dois processos escrevem no MESMO `.next`. O build reescreve os chunks debaixo do dev server, que segue servindo referências para arquivos que não existem mais. Nada disso é do seu código — mas todo o sintoma aponta para ele.
+
+🔑 **O caso que mais engana é o CSS pela metade**, porque ele parece bug de estilo autoral: uma folha carrega e a outra não, então **as regras com valor literal (`color: #fff`) aplicam e as com `var(--token)` viram inválidas**. O resultado é texto branco sobre fundo branco exatamente nos elementos do tema escuro — e a leitura natural ("apaguei o gradiente sem perceber") é falsa. O teste que decide em uma linha:
+```js
+getComputedStyle(document.documentElement).getPropertyValue('--um-token-qualquer')
+// vazio => a folha de tokens nao carregou; nao e o seu CSS
+```
+
+**Solução:**
+1. **Nunca rode `build` e `dev` na mesma árvore ao mesmo tempo.** Derrube o dev antes: mate quem escuta a porta, não o wrapper — `TaskStop`/Ctrl-C pode matar o `npm` e deixar o `node` filho segurando a porta, e o segundo `dev` falha com `EADDRINUSE` enquanto o primeiro, moribundo, continua respondendo.
+   ```powershell
+   (Get-NetTCPConnection -LocalPort <p> -State Listen).OwningProcess | % { Stop-Process -Id $_ -Force }
+   ```
+2. Para verificar o que vai para produção, use **build + `next start`**, nunca o dev — é o artefato real, e não compete com nada.
+3. Se já corrompeu: `rm -rf .next` e rebuild. Limpar só `.next/cache` não basta.
+
+⚠️ **Antes de culpar o código, confirme que a ABA não está velha.** No mesmo episódio, dois renders quebrados sobreviveram à troca do servidor porque o Chrome mantinha a versão anterior dos assets; o `?v=` do `<link>` na aba era diferente do que o servidor servia. `navigate_page(type: reload, ignoreCache: true)` resolveu, e só então o defeito real (nenhum) apareceu.
+
+⚠️ **Regra de leitura:** ao ver um defeito visual, cheque a fonte antes de "corrigir". Neste caso o nome do plano e o preço pareciam ter desaparecido do markup; `grep` no `page.tsx` mostrou as duas linhas intactas. Um `sed`/`Edit` "consertando" o que não estava quebrado é o dano real desta classe.
+
+Relacionado: [[next-build-eager-client]], [[validei-contra-a-pagina-de-erro-e-li-como-sucesso]].
+
+---
+
+## Comentário afirmando garantia que o código não entrega — a classe de bug mais difícil de ver {#comentario-afirma-garantia-que-o-codigo-nao-entrega}
+
+`tags: comentario mentiroso, doc drift, review, amortizado, guard que nao guarda, codigo morto, especificidade CSS, Number(null)`
+
+**Sintoma:** o código tem um comentário explicando por que ele é seguro/correto, e a explicação é **falsa**. Como o comentário parece cuidadoso e específico, ele desliga a suspeita de quem lê — inclusive a de quem o escreveu.
+
+**Frequência medida:** **quatro vezes numa única sessão** (2026-08-18), todas em código meu, todas pegas por review cross-provider e nenhuma por leitura própria:
+
+1. *"a poda roda só quando o mapa encosta no teto, então o custo é amortizado"* — a poda parava **exatamente** no teto, então o próximo item disparava varredura completa de novo. Não era amortizado.
+2. *"o que limita o caso desonesto é o rate limit acima"* — o rate limit conta **tentativas**, não **bytes**; as 5 primeiras passavam com o corpo que viesse.
+3. *"leitura interrompida vira corpo inválido"* — o código devolvia o mesmo valor para "estourou o teto" e "stream morreu", e o chamador respondia 413 nos dois.
+4. *"`.admin-input` e a utility têm especificidade igual, quem vence é a ordem de carregamento"* — `.admin-theme .admin-input` é **0,2,0** e utility é **0,1,0**: a utility perde SEMPRE. O `rounded-full` ao lado era código morto.
+
+🔑 **O padrão que une os quatro:** o comentário descreve a **intenção** no momento em que foi escrito, e sobrevive intacto quando o código ao redor muda — ou quando a intenção nunca chegou a ser implementada. Ele não é verificado por nada: nem compilador, nem teste, nem lint.
+
+**Solução — transformar a afirmação em asserção:**
+- Todo comentário que afirma uma **propriedade** (amortizado, limitado, ignorado, sempre/nunca) deve ter um teste com esse nome. Se a propriedade não é testável como está escrita, ela provavelmente não é verdadeira como está escrita.
+- Em review, ler o comentário como se fosse uma **claim a refutar**, não como contexto. Foi assim que os quatro caíram.
+- Ao mudar código, reler o comentário **acima e abaixo** do trecho: o drift entra por vizinhança.
+
+⚠️ Vale igual para comentário sobre dado externo. No mesmo dia, um comentário afirmava que o slot de vídeo editava `youtubeId` — verdade quando foi escrito, falsa desde a migração para mp4 duas semanas antes. Quem confiasse nele portaria o campo errado.
+
+---
+
+## Contagem zero sob `FORCE ROW LEVEL SECURITY` não é fato — e a mesma query mente em uma tabela e acerta na vizinha {#contagem-zero-sob-rls-force-nao-e-fato}
+
+`tags: postgres, RLS, row level security, FORCE RLS, current_setting, app.tenant_id, contagem falsa, medicao, falso negativo, pg_class, relforcerowsecurity, multi-tenant`
+
+**Sintoma:** você mede o banco para responder "o cliente já usou o produto?" e recebe `0`. Conclui que ninguém usou, e a decisão seguinte (não publicar depoimento, cancelar piloto, refazer seed) sai desse zero.
+
+**Causa raiz:** a tabela tem RLS com política por `current_setting('app.<discriminante>')`. Sem esse `SET` na sessão, a política não casa nada e o `count(*)` devolve **0 com sucesso** — sem erro, sem aviso. E `FORCE RLS` faz o **dono da tabela obedecer também**, então o truque de "conectar como owner" não salva.
+
+🔑 **O que torna isso especialmente traiçoeiro é que o RLS costuma estar em ALGUMAS tabelas e não em todas.** Medido em 2026-08-18: `empresas` e `usuarios` estavam sem RLS — logo `1 empresa, 1 usuário` era fato — enquanto `titulos` e `movimentos` estavam com RLS **e** `FORCE`. A mesma bateria de `count(*)` produziu, na mesma conexão, **dois números confiáveis e dois inventados**, e nada na saída distinguia um do outro.
+
+**Solução — nesta ordem, sempre:**
+1. **Antes de acreditar em qualquer contagem**, pergunte ao catálogo quais tabelas filtram:
+   ```sql
+   SELECT relname, relrowsecurity AS rls, relforcerowsecurity AS force_rls
+   FROM pg_class WHERE relname IN ('a','b','c');
+   ```
+2. Para as que filtram, leia a política e descubra o nome exato do setting:
+   ```sql
+   SELECT tablename, policyname, qual FROM pg_policies WHERE tablename = 'titulos';
+   ```
+3. Meça **com o contexto definido**, na mesma sessão:
+   ```sql
+   SET app.empresa_id = '<uuid>'; SELECT count(*) FROM titulos;
+   ```
+4. Ao relatar, **diga de qual tabela o número veio e se ela tem RLS**. "0 títulos" e "0 títulos medido com `app.empresa_id` definido" são afirmações diferentes.
+
+⚠️ **O harness de vazamento não pega isto, e a razão é estrutural:** ele procura dado de OUTRO tenant aparecendo onde não devia — falso-positivo. Uma rota (ou query) que não devolve nada é, para esse critério, perfeitamente segura. Este defeito é o outro sentido: falso-negativo, não viu o que devia. Cobrir só um lado é o padrão, e é por isso que este erro sobrevive a suíte verde.
+
+⚠️ **`pg_dump -U <owner>` também falha sob `FORCE RLS`** — o dump vira tabela vazia sem reclamar. Dump precisa de role com `BYPASSRLS` ou superuser.
+
+Relacionado: [[guarda-morta-entrypoint]], [[comentario-afirma-garantia-que-o-codigo-nao-entrega]].
+
+---
+
+## Contrato forçado sem rota de escape OBRIGA o modelo a alucinar — não é "o LLM errou" {#contrato-forcado-sem-rota-de-escape-obriga-o-modelo-a-alucinar}
+
+`tags: llm, tool_choice, function calling, alucinacao, contrato inviavel por construcao, openai, extrator, guarda`
+
+**Sintoma:** o modelo inventa dados plausíveis a partir de uma entrada que não os contém, e a investigação para em *"o LLM alucinou"* — que é descrição, não causa. Procura-se um default errado no código e não se acha nenhum, o que reforça a conclusão errada.
+
+**Caso medido (2026-08-18):** um bot financeiro propôs `receita · "sim" · R$ 1,00` a partir da mensagem `"sim"`. Varredura confirmou que **não existia** default `1.0` em lugar nenhum do caminho. A causa estava na chamada:
+
+```python
+tools=[EXTRACTION_TOOL],
+tool_choice={"type": "function", "function": {"name": "registrarLancamento"}},
+```
+
+`tool_choice` **forçado** numa única função, e um system prompt que só ensinava a extrair. Para o texto `"sim"` o modelo **não tinha resposta legal**: nenhuma saída do contrato correspondia a *"isto não é um lançamento"*. Ele não escolheu inventar — foi **obrigado**.
+
+🔑 **A generalização:** quando um contrato de saída não tem estado para "não se aplica", o modelo preenche com o que for mais provável. A alucinação vira **requisito do desenho**, não desvio dele. É a mesma família de defeito de um contrato de código impossível de honrar (ex.: sinal transitório em atributo de memória num caminho que relê o objeto N vezes) — o problema não é quem executa, é o que foi pedido.
+
+**Solução — dar uma saída legal, sem abrir mão da garantia:**
+- Acrescente uma segunda tool explícita (`naoEhLancamento`, `naoSeAplica`) e troque o `tool_choice` forçado por **`"required"`** — não por `"auto"`.
+- ⚠️ `"required"` mantém a garantia de que **sempre sai uma tool call**, então o caminho feliz não degrada para prosa livre. `"auto"` troca um bug silencioso por outro: o modelo passa a responder em texto e o caminho válido para de funcionar sem erro.
+- Passe `parallel_tool_calls=False` se o parse lê só `tool_calls[0]`: com duas tools, uma chamada paralela em segundo lugar seria descartada em silêncio.
+- Some uma guarda **determinística** de ancoragem (o dado proposto tem de ser rastreável à entrada). Ela cobre o caso em que o modelo ignora a rota de escape. Uma não substitui a outra.
+
+⚠️ **A guarda de ancoragem é sobre RASTREABILIDADE, nunca sobre magnitude.** No caso medido, `R$ 1,00` é valor perfeitamente legítimo (estacionamento, taxa); o defeito era o texto não conter valor **nenhum**. Ler o incidente como "valor baixo é suspeito" — a leitura mais tentadora, porque o print mostrava R$ 1,00 — derrubaria lançamento real. Congele isso num teste com esse nome.
+
+⚠️ **O risco do conserto é o INVERSO do bug, e é silencioso:** a rota de escape vira atrator e passa a recusar entrada válida porém bagunçada, sem erro e sem sintoma — só ausência. Troca-se dado inventado por dado que **sumiu**, e se descobre pelo cliente. Antes de trocar o contrato, **congele um corpus de regressão** com a classe "tem de passar" (não só a classe "tem de barrar") e emita uma métrica de taxa de recusa **com identificador de quem foi recusado** — taxa agregada esconde exatamente o caso que importa, que é um cliente cujo tráfego inteiro passou a ser recusado.
+
+---
+
+## `git checkout -- <arquivo>` restaura do ÍNDICE, e apaga a edição mais nova sem avisar {#git-checkout-restaura-do-index-e-apaga-a-edicao-mais-nova}
+
+`tags: git, mutation testing, restaurar mutacao, index vs HEAD, staged, perda silenciosa, checkout`
+
+**Sintoma:** você aplica uma correção, ela some, e nada no terminal disse que sumiu. O teste que a cobria continua verde (porque o arquivo de teste sobreviveu), então a perda só aparece — se aparecer — num `grep` depois.
+
+**Quando morde:** o ciclo padrão de **teste de mutação** manda restaurar com `git checkout -- <arquivo>`, *nunca* com `str.replace` cego. A recomendação está certa, mas tem um pressuposto não dito: **`checkout` restaura do ÍNDICE quando o arquivo está staged**, não do `HEAD` nem da sua última edição. A sequência que perde trabalho é banal:
+
+1. `git add <arquivo>` (para rodar o review, que lê o diff staged);
+2. você aplica **mais uma correção** no arquivo — agora o working tree está à frente do índice;
+3. você muta o arquivo para provar uma trava;
+4. `git checkout -- <arquivo>` → volta para o **passo 1**, e a correção do passo 2 evapora.
+
+**Caso medido (2026-08-18):** correção real perdida exatamente assim; o commit seguinte foi feito com a versão antiga do código e uma **mensagem que descrevia a versão nova** — mensagem e conteúdo divergindo sem nenhum sinal.
+
+🔑 **Por que é difícil de ver:** `checkout` não imprime nada, `git status` volta a "limpo" (que é o esperado depois de restaurar uma mutação), e o teste focado passa. Os três sinais que você normalmente usaria dizem "está tudo certo".
+
+**Solução:**
+- Depois de qualquer `git checkout -- <arquivo>`, **grepe o símbolo da sua última edição** no arquivo restaurado. É uma linha e fecha o buraco.
+- Ou mute **antes** de dar `git add`, mantendo índice e working tree iguais durante o ciclo de mutação.
+- Ou restaure com `git stash push --keep-index` + `git stash pop`, que preserva a edição não-staged.
+- Antes de commitar depois de um ciclo de mutação, confira `git diff --cached` de verdade — não confie no `git status` limpo.
+
+⚠️ Irmão do erro oposto, já catalogado: restaurar mutação com `str.replace` cego corrompe os sítios irmãos. Os dois têm a mesma raiz — **a restauração é um passo com estado, e ninguém a verifica**.
+
+---
+
+## O próximo número de migration NÃO é `max(main)+1` — são TRÊS fontes, e a terceira é o índice {#proximo-numero-de-migration-nao-e-max-da-main}
+
+tags: migration, git, sessao-paralela, indice-compartilhado, numeracao
+
+**Sintoma:** `ls execution/database/migrations/` mostra `115` como maior número, você cria a `116`, e
+ela colide com uma `116` que já existe — numa branch não mergeada, ou pior, **staged no índice por
+outra sessão, sem commit nenhum**.
+
+**Por que o instinto erra:** `ls` na `main` só enxerga o que pousou. Numeração de migration é um
+**namespace global do repositório**, não da branch; e ele é reservado no momento em que alguém
+escreve o arquivo, não no momento em que commita.
+
+**As três fontes, e a que quase todo mundo esquece é a 3ª:**
+
+1. **Histórico commitado, `main` ∪ branches** — `git log --all`
+2. **Índice compartilhado** — arquivo `git add`-ado por outra sessão e **ainda sem commit**. Não
+   aparece em `git log --all` (não existe commit), mas o número **já está tomado**.
+3. **Árvore de trabalho** — arquivo criado e nem stageado ainda.
+
+**O comando que cobre as três:**
+
+```bash
+{ git log --all --diff-filter=A --name-only --format= -- execution/database/migrations/
+  git ls-files execution/database/migrations/
+  ls execution/database/migrations/ | sed 's|^|x/|'
+} | grep -oE "[0-9]{3}" | sort -un | tail -1
+```
+
+**Medido no tiatendo, 2026-08-18** — os três degraus deram números diferentes no mesmo instante:
+`ls` na main → **115** (a 116 vivia numa branch) · `git log --all` → **116** · `git ls-files` →
+**117** (a 117 estava **staged por outra sessão**, sem commit). O próximo livre era **118**, e só a
+3ª fonte revelava isso. Duas frentes tinham escrito "migration 116" no plano, e um alarme de colisão
+que eu levantei estava certo no fato e errado no número.
+
+🔑 **A classe é maior que migration:** todo recurso numerado sequencialmente e reservado por escrita
+(porta, índice de ordem, id de fixture) tem o mesmo problema quando há sessão paralela. Pergunte
+sempre *"quem mais pode ter reservado isso sem ter commitado?"*.
+
+**Ref:** tiatendo 2026-08-18, frente G6/sonda de dependências; correção do operador sobre a
+numeração 116/117/118.
+
+---
+
+## Regra escrita em N lugares e enforçada em nenhum: enforcement ENUMERA tools, então toda tool nova nasce fora da guarda {#regra-escrita-em-n-lugares-e-enforcada-em-nenhum}
+
+`tags: enforcement, hook, matcher, PreToolUse, Edit, Write, ponto cego, regra documentada sem gate, assimetria de gate, caminho de menor resistencia, R23, tool nova nasce fora, guarda de caminho, guarda de comando`
+
+**Sintoma:** uma regra está escrita com todas as letras em vários lugares — no documento de regras,
+na skill que o agente invoca, no LEIA-ME da pasta — e **é violada de forma sistemática**, por
+sessões diferentes, durante semanas. Ninguém está desobedecendo de propósito; e quando você vai
+somar, descobre que **nenhum gate consegue ver a violação**.
+
+**Causa raiz — e ela é estrutural, não de disciplina.** Guarda de `PreToolUse` se registra por
+`matcher`, e matcher **enumera tools**. Toda guarda escrita quando existiam N tools cobre aquelas N.
+A tool N+1 nasce **fora** de todas elas, e nada avisa: não há erro, não há teste vermelho, não há
+log. A regra continua verdadeira no papel e indefensável na prática.
+
+**O caso (percus-kit, 2026-08-18):** R23 diz *"não edite o monólito direto"* em três lugares. Os 12
+hooks registrados casavam `Bash|PowerShell` ou `ExitPlanMode` — **nenhum** casava `Edit`/`Write`.
+Uma sessão que abrisse `COMO_RESOLVER.md` com a tool Edit passava por zero guardas. Resultado
+medido: **14 verbetes** entraram por ali sem âncora `{#slug}`, sem linha `tags:` e fora do Índice, e
+**11 estavam commitados havia semanas**.
+
+🔑 **É reincidência da mesma classe, não um caso novo.** Em 2026-07-31 o mesmo kit consertou
+*"matcher era só `Bash` e a tool PowerShell passava livre"*, estendendo para `Bash|PowerShell`.
+`Edit`/`Write` nunca entraram. **O ponto cego mudou de andar; não sumiu.** Quem conserta um matcher
+por incidente conserta o andar, não o prédio.
+
+⚠️ **A assimetria é o que DIRIGE a sessão pro caminho errado, e ela é invisível de dentro.** No caso,
+o gate cobrava 8 invariantes de quem escrevia no caminho **certo** (a caixa: um verbete por arquivo,
+slug == nome do arquivo, `tags:` presente, fence fechado…) e **nada** de quem escrevia no caminho
+**proibido**. Quem obedecia podia ser rejeitado; quem desobedecia, nunca. **Gate que só cobra de
+quem já está certo não é enforcement — é imposto sobre a disciplina**, e o caminho proibido vira o
+de menor resistência.
+
+**Solução:**
+1. **Trate "a regra está documentada" como zero evidência de enforcement.** A pergunta é *"qual gate
+   falha se eu violar isto agora?"* — e a resposta tem de ser um arquivo executável, não um
+   parágrafo. Três lugares dizendo a mesma coisa é um sinal de alerta, não de robustez: se
+   precisou repetir três vezes, é porque não há gate.
+2. **Ao somar uma guarda, pergunte qual conjunto ela enumera e o que está FORA.** Liste as tools que
+   o harness expõe e case contra os matchers registrados. O que sobrar é o ponto cego, e ele é
+   descobrível em minutos.
+3. **Barre na ESCRITA, não só no commit.** Gate de commit barra quando o texto já está no arquivo
+   errado, possivelmente misturado com trabalho de outra sessão. Guarda de `PreToolUse` barra na
+   decisão.
+4. **A mensagem tem de ENSINAR o caminho certo, não só recusar.** Guarda que só diz "não" ensina a
+   contornar. Diga para onde ir, com o caminho exato, e por que a regra existe.
+5. **Escreva junto o teste de que a guarda NÃO barra o legítimo.** No caso: `## Índice` e subtítulos
+   `###` não podem barrar, e a caixa tem de seguir livre. Guarda que ninguém consegue satisfazer é
+   desligada no primeiro aperto — e aí não guarda mais nada.
+
+⚠️ **Fronteira derivada por exclusão apodrece.** O teste que exigia matcher `Bash|PowerShell` de toda
+guarda definia o conjunto como *"PreToolUse que não é `ExitPlanMode`"*. Funcionou enquanto "guarda de
+PreToolUse" era sinônimo de "guarda de comando" — e **proibiria por construção** a primeira guarda de
+CAMINHO (que lê `tool_input.file_path`). O conserto não é somar a segunda exceção: é declarar o
+critério que faltava (campo `alvo`: `comando` | `caminho` | `plano`). **Lista de exceção que cresce é
+cheiro de critério ausente.**
+
+**Ref:** percus-kit 6.37.0, 2026-08-18. `knowledge-write-guard` (`PreToolUse`, `Edit|Write`) + bloco
+2b do `percus-gate.sh`. Suíte 385 → 400. Ver `#health-check-versao-vence-autoupdate` (matcher novo é
+mudança de REGISTRO e exige publicação; código de hook vem do kit por `git pull`) e
+`#hooks-percus-so-cobrem-tool-bash` (o mesmo ponto cego, um andar abaixo, em 2026-07-31).
+
+---
+
+## Smoke verde pode não ter exercitado a guarda — e smoke vermelho pode ser bug do harness {#smoke-verde-pode-nao-ter-exercitado-a-guarda}
+
+`tags: smoke, discriminador, prova fraca, roteamento, psql, boolean, harness, falso positivo, falso negativo`
+
+Duas faces do mesmo erro: **confundir o desfecho com o mecanismo**. As duas apareceram na mesma sessão (2026-08-18), em direções opostas.
+
+### Face A — verde sem ter medido nada
+
+**Sintoma:** o smoke passa, mas a guarda nova nunca rodou. A entrada foi **roteada para outro caminho** antes de chegar nela.
+
+**Caso medido:** um smoke afirmava que a mensagem `"sim"` não vira lançamento. Passou — e a métrica de recusa marcou **zero**, provando que o extrator sequer foi chamado: o classificador mandou `"sim"` para o ramo de conversa. O teste seria **igualmente verde com o código velho**. Pior: o incidente real acontecera justamente quando o roteamento caiu no outro ramo.
+
+🔑 "Nada foi escrito" é prova **fraca**: seria verdade também se a mensagem tivesse morrido dez camadas antes. Prova forte é **positiva** — um rastro que só existe se a guarda tiver executado.
+
+**Solução:**
+- Todo smoke de guarda precisa de um **discriminador positivo**: linha de log/tabela emitida pela própria guarda. Sem ele o caso é **INCONCLUSIVO**, e inconclusivo tem de bloquear igual à falha (só muda o diagnóstico).
+- Escolha uma entrada que comprovadamente **alcança** o caminho. Se `"sim"` roteia para conversa, use uma frase que roteia para o caminho sob teste mas continua inválida (ex.: `"paguei o mercado"` — tem verbo e alvo, não tem valor).
+- ⚠️ **O discriminador também nasce fraco:** contar as linhas do serviço **inteiro** dá verde por causa da atividade de outro usuário na mesma janela. Isole por identificador próprio (família/tenant/id da rodada). Um discriminador que mede o vizinho não discrimina nada.
+
+### Face B — vermelho com a produção correta
+
+**Sintoma:** o smoke reprova e a conclusão automática é "a produção quebrou". Pode ser o **assert**.
+
+**Caso medido:** o assert comparava `(expira_em > now())::text` com `"t"`. Em Postgres, `psql -t -A` renderiza um boolean **cru** como `t`/`f`, mas o **cast explícito** `(bool)::text` produz `true`/`false` — a comparação era False sempre, com o produto 100% certo.
+
+**Solução:** antes de reportar incidente a partir de smoke vermelho, rode um diagnóstico **read-only** que imprima os valores **crus** (o dado gravado, o relógio, o delta) em vez do booleano já avaliado. Se os valores crus estão certos, o defeito é do assert. Em SQL de smoke, devolva o dado bruto e compare em Python, ou aceite `("t", "true")` nos dois sentidos.
+
+⚠️ **Diagnosticar não é consertar.** Quando a regra da rodada é "se o smoke reprovar, pare e chame", medir a causa **antes** de reportar é parte de parar — não uma violação. O contrário produz incidente falso e pode motivar rollback de código correto.
+
+---
+
+## Sondagem de escrita em storage compartilhado vira defeito em produção quando a versão é promovida {#sondagem-em-storage-compartilhado-vira-defeito-em-producao}
+
+`tags: cloudflare kv, r2, s3, preview url, binding compartilhado, artefato de teste, arquivo de sondagem, imagem quebrada, naturalWidth, varredura por status code, kv key list, limpeza pos-probe`
+
+**Sintoma:** o site em produção serve um asset **quebrado** (imagem que não decodifica, arquivo minúsculo) num slot onde deveria estar o arquivo real. Nenhuma verificação acusou: as páginas respondem **200**, o asset responde **200**, e a suíte passa.
+
+**Causa raiz — a sondagem foi feita numa URL de *preview*, e isso pareceu seguro.** Preview e produção rodam **códigos** diferentes, mas os **bindings de dados são os mesmos**: o mesmo namespace KV, o mesmo bucket. O isolamento da preview é de *versão*, não de *dado*. O arquivo de teste escrito "na preview" já estava, desde o primeiro segundo, no armazenamento de produção — só não era lido enquanto a produção rodava um código que não consultava aquele caminho. **Promover a versão nova é o instante em que o lixo antigo começa a ser servido.**
+
+Caso medido em 2026-08-18: uma sondagem provou isolamento por slot subindo um WebP sintético de **112 bytes**, e o plano registrou o ETag `05ddea0e…` **como evidência de sucesso**. A chave nunca foi apagada. Quando a versão que lê o KV foi promovida, o apex passou a servir 112 bytes onde havia uma foto de 67.682 — em **3 pontos da home** e 1 do `/about` do site de um cliente, por ~3h30.
+
+🔑 **Duas armadilhas que se somam, e a segunda é a que engana:**
+1. **Documentar o artefato não é limpar o artefato.** O ETag do arquivo de teste estava escrito no plano; escrito como *prova*, não como *pendência*. Um valor registrado como resultado de medição não parece lixo.
+2. **Varredura por status code é cega para isto.** `15/15 → 200` e "todos os assets 200" continuam verdadeiros: o arquivo quebrado **existe** e é servido com `200 image/webp`. O que enxerga é o **decodificador**: no navegador, `img.complete && img.naturalWidth === 0`. Contagem de página e código HTTP nunca acham asset corrompido.
+
+**Solução:**
+1. **Encerrar toda sondagem de escrita listando o armazenamento**, não confiando no delete da própria sondagem: `wrangler kv key list --namespace-id <id>` (ou `aws s3 ls`). Um namespace que deveria estar vazio e tem 1 chave responde a pergunta em um comando.
+2. **Antes de promover qualquer versão que passe a LER um storage compartilhado, inventariar esse storage.** O estado de dados que a versão nova vai expor não é o que a versão velha expunha.
+3. **Incluir uma varredura de asset decodificável** na verificação pós-deploy — navegador headless, `naturalWidth === 0` em todo `<img>`, em todas as páginas. É o único gate que separa "servido" de "renderiza".
+
+⚠️ **Corolário para planos e specs:** ao registrar o hash/ETag de um arquivo de sondagem como evidência, registre **na mesma linha** que a chave precisa ser apagada — ou apague antes de escrever a linha. Evidência e pendência ficam idênticas no papel depois de algumas horas.
+
+Relacionado: [[verificacao-pos-deploy-mente-por-cache-de-borda]] · [[deploy-worker-cloudflare-conta-de-cliente]]
+
+---
+
+## Arquivo de teste entra no repo e NÃO RODA — o `include` do runner não cobre a extensão {#teste-entra-no-repo-e-nao-roda-por-include}
+
+`tags: vitest, jest, include, glob, .test.tsx, falso verde, cobertura fantasma, porte de componentes, esbuild jsx automatic, React is not defined`
+
+**Sintoma:** você porta/copia um conjunto de componentes com os testes deles, roda a suíte, tudo verde — e os testes novos **nunca executaram**. Nada avisa: não há erro, não há aviso, e o relatório diz "passed".
+
+**Causa raiz:** o `include` do runner enumera extensões, e a que chegou não está lá. Medido em 2026-08-18: `include: ['**/__tests__/**/*.test.ts', '**/*.test.ts']` — sete arquivos `.test.tsx` entraram no repo e ficaram fora da suíte, calados.
+
+🔑 **O que denuncia é a CONTAGEM, não o status.** A suíte foi de 130 para 143 quando deveria subir muito mais; foi só por isso que dei por falta. Depois de importar testes de fora, compare o número de **arquivos** de teste que o runner reporta com o número de arquivos que existem no disco:
+
+```
+find . -name "*.test.*" -not -path "*/node_modules/*" | wc -l   # o que existe
+# vs. "Test Files N passed" do runner
+```
+
+Divergência aí é teste que não roda. Confiar em "tudo verde" logo depois de trazer testes de outro repo é confiar num número que ainda não incluiu o que você acabou de trazer.
+
+**Solução:** `include: ['**/__tests__/**/*.test.{ts,tsx}', '**/*.test.{ts,tsx}']`.
+
+⚠️ **E vem um segundo tranco junto, no mesmo porte:** com os `.tsx` finalmente rodando, todos falham com **`ReferenceError: React is not defined`**. O `tsconfig.json` usa `"jsx": "preserve"` porque em produção quem transpila é o Next — mas o runner não passa pelo Next e cai no runtime clássico (`React.createElement`). Conserto: `esbuild: { jsx: 'automatic' }` na config do vitest. Os dois problemas são independentes e aparecem em sequência: consertar só o `include` troca "verde falso" por "vermelho total".
+
+⚠️ **Cuidado ao adicionar `useRouter`/hooks de framework a componente testado com `renderToStaticMarkup`:** não há contexto de router e os testes quebram em bloco. Se o componente precisa navegar, receba **callback do pai** — o pai já tem o router, e a folha continua pura e testável.
+
+---
+
+## Validei a varredura contra o corpo do erro 500 e li "zero ocorrências" como sucesso {#validei-contra-a-pagina-de-erro-e-li-como-sucesso}
+
+`tags: verificacao, falso verde, curl -o, HTTP 500, grep, rg, ausencia de match, medicao, criterio negativo, pagina de erro`
+
+**Sintoma:** você troca um texto em várias superfícies, roda `curl` para um arquivo e depois `rg "termo antigo"` nele. Sai **zero ocorrências**. Você declara limpo. Só que a troca não tinha pegado — e um pedaço do texto antigo continuava no ar.
+
+**Causa raiz:** o `curl` gravou o corpo de uma resposta **500** (a página de erro do framework), e a página de erro obviamente não contém o termo antigo. A varredura funcionou perfeitamente; ela só varreu o arquivo errado. Como o critério era **ausência**, o erro produziu exatamente o resultado que se esperava do sucesso.
+
+🔑 **Critério de ausência é o único que a falha total satisfaz.** "Não achei o termo" é indistinguível de "não achei nada, porque não havia nada para achar". Qualquer verificação cujo verde seja um zero precisa provar, antes, que estava olhando para conteúdo real.
+
+**Solução — duas linhas que fecham a classe inteira:**
+1. **Capture o status junto com o corpo, sempre**, e trate qualquer coisa fora de 2xx como medição inválida em vez de resultado:
+   ```bash
+   curl -s -o /tmp/x -w "status %{http_code} bytes %{size_download}\n" "$URL"
+   ```
+2. **Prove que o alvo tem conteúdo** com um controle positivo — algo que TEM de estar lá. Se o termo que deve existir também não aparece, a medição está morta, não o defeito resolvido:
+   ```bash
+   rg -c "termo que DEVE existir" /tmp/x   # se der 0, pare: o arquivo nao e o que voce pensa
+   rg -c "termo que NAO deve existir" /tmp/x
+   ```
+
+⚠️ **Corolário para varredura de repositório:** "varri e não achei" só vale para o que foi varrido. Uma varredura de marca feita em 5 páginas e nos chunks delas foi declarada — corretamente, com o limite dito em voz alta — e depois tratada como cobertura. O termo estava vivo em 21 lugares num arquivo de dados que não fazia parte das 5. **Declarar o limite não o remove:** ou a varredura cobre `src/` e `public/` inteiros, ou a conclusão é "não achei em X", nunca "não existe".
+
+⚠️ **Em Git Bash, `grep` não casa acento** e devolve zero em português sem reclamar — outro verde falso pela mesma porta. Use `rg` em qualquer varredura cujo critério seja ausência.
+
+Relacionado: [[verificacao-pos-deploy-mente-por-cache-de-borda]], [[contagem-zero-sob-rls-force-nao-e-fato]].
+
+---
+
+## Verificação pós-deploy mente por cache de borda — e o corpo do erro desmente o status {#verificacao-pos-deploy-mente-por-cache-de-borda}
+
+`tags: cloudflare, cache de borda, CF-Cache-Status, pos-deploy, falso negativo, rollback precipitado, grep -c vs grep -o, wrangler deployments list, 9106`
+
+**Sintoma:** segundos depois de promover uma versão, o domínio ainda serve o HTML **antigo** e uma rota nova da API responde **404**. Parece deploy falhado, e a tentação imediata é rodar rollback.
+
+**Causa raiz — são DUAS coisas somadas, e só uma delas é cache:**
+1. O HTML vem do cache de borda (`CF-Cache-Status: HIT`), então o corpo é o de antes.
+2. A propagação da versão leva alguns segundos, então uma medição feita no primeiro instante pega o estado antigo.
+
+🔑 **O que separa "não deployou" de "ainda não propagou/cacheou" é o CORPO, não o status.** Medido em 2026-08-18: a rota respondia `404`, mas o corpo era `{"error":"unauthenticated"}` — que **só o handler novo sabe produzir**. Ou seja, o código já estava no ar e a leitura é que estava velha. Ler só `%{http_code}` teria motivado um rollback desnecessário de um deploy que estava correto.
+
+**Solução:**
+1. Furar o cache antes de concluir qualquer coisa: `Cache-Control: no-cache` **e** um parâmetro único (`?cb=$(date +%s)`) — os dois, porque o parâmetro sozinho pode não bastar e o header sozinho pode ser ignorado por camadas intermediárias.
+2. Comparar o corpo, não o status.
+3. Só então decidir. O cache converge sozinho quando o HTML sai com `public, max-age=0, must-revalidate` (medido: minutos).
+
+⚠️ **Armadilha de medição que se soma a esta, e quase produziu um relatório falso:** `grep -c` conta **linhas que casam**, `grep -o | wc -l` conta **ocorrências**. Comparar um com o outro entre dois estados do mesmo arquivo produz uma "divergência" que não existe. Ao medir antes/depois, use a MESMA contagem dos dois lados — e desconfie de qualquer diferença que apareça só quando os comandos são diferentes.
+
+⚠️ **`wrangler deployments list` não serve pra descobrir a versão viva em conta com token account-owned** — ele bate em `/memberships` e devolve 9106. A lista sai pela API, e ter esse id ANTES de promover é o que torna o rollback uma linha: `GET /accounts/<id>/workers/scripts/<script>/deployments`.
+
+Relacionado: [[deploy-worker-cloudflare-conta-de-cliente]].
