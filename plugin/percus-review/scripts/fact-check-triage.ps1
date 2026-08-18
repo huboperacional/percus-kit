@@ -1,11 +1,11 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-  Vetor B (v6.14.0): triagem Llama upstream do fact-check Sonnet.
+  Vetor B (v6.14.0): triagem Groq upstream do fact-check Sonnet.
 
 .DESCRIPTION
   Recebe o mesmo markdown de findings do reviewer (stdin ou -FindingsFile),
-  parseia cada finding [SEV: risco|bug] e roda Llama 3.3 70B (via groq-llama
+  parseia cada finding [SEV: risco|bug] e roda GPT-OSS 120B (via groq-llama
   wrapper) como TRIADOR conservador: cada claim vira PLAUSIVEL (coerente, nao
   precisa do Sonnet) ou SUSPEITA (duvidoso / exige ler codigo -> escalar pro
   Sonnet). Em duvida -> SUSPEITA.
@@ -30,13 +30,13 @@
   Path pro groq-llama.ps1. Default: providers/groq-llama.ps1 relativo a este script.
 
 .PARAMETER Model
-  Modelo Groq. Default: llama-3.3-70b-versatile.
+  Modelo Groq. Default: openai/gpt-oss-120b.
 #>
 [CmdletBinding()]
 param(
     [string]$FindingsFile,
     [string]$Wrapper = "",
-    [string]$Model = "llama-3.3-70b-versatile"
+    [string]$Model = "openai/gpt-oss-120b"
 )
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -122,23 +122,49 @@ foreach ($f in $findings) {
             -PromptFile $tmpIn `
             -SystemPrompt $systemPrompt `
             -Model $Model `
-            -MaxTokens 64 2>&1
-        $json = $rawOut | ConvertFrom-Json -ErrorAction SilentlyContinue
-        if ($json -and $json.status -eq "ok" -and $json.content) {
+            -MaxTokens 1024 2>&1
+        # 1024, nao 64. O triador virou MODELO DE RACIOCINIO (openai/gpt-oss-120b) em 2026-08-18:
+        # ele gasta 60~270 tokens PENSANDO antes da primeira letra da resposta. Medido: com teto
+        # 64 e 128 o content volta VAZIO em 100% das amostras -- o teto inteiro vira reasoning.
+        # O teto alto nao custa o teto: a resposta util tem 1 linha, e so o raciocinio e volumoso.
+        $rawLines = @($rawOut) |
+            Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } |
+            ForEach-Object { $_.ToString() }
+        # O wrapper escreve AVISO no stderr e o `2>&1` funde os dois streams; o ErrorRecord entra
+        # como elemento [0] do array e o ConvertFrom-Json morre no primeiro caractere dele. O
+        # sintoma era "excecao ao chamar wrapper", que virava unverified em TODO finding -- ou
+        # seja, a trava anti-"conselho ratifica premissa nao verificada" falhava aberta e calada.
+        $jsonLine = $rawLines | Where-Object { $_.TrimStart().StartsWith('{') } | Select-Object -First 1
+        $json = if ($jsonLine) { $jsonLine | ConvertFrom-Json -ErrorAction SilentlyContinue } else { $null }
+        # "truncated" tambem serve: este consumidor le so a PRIMEIRA LINHA, e ela chega inteira
+        # muito antes do corte. Exigir "ok" descartava veredito bom por causa da justificativa
+        # comprida que vinha depois dele.
+        if ($json -and ($json.status -eq "ok" -or $json.status -eq "truncated") -and $json.content) {
             $firstLine = (($json.content -split "`n") | Where-Object { $_.Trim() } | Select-Object -First 1)
-            if ($firstLine -match '(?i)^\s*PLAUSIVEL') {
+            # O modelo responde "**PLAUSIVEL**" (negrito markdown) e acentua ("PLAUSIVEL" com I
+            # agudo). O padrao antigo exigia a palavra crua colada no inicio da linha, entao
+            # casava em nenhum dos dois e tudo caia em "formato inesperado". Tira enfase/pontuacao
+            # antes de casar, e o '.' cobre o acento sem quebrar o "fonte 100% ASCII" do arquivo.
+            $norm = ($firstLine -replace '[*_`#>~\s]', '')
+            # O motivo nem sempre cabe na linha do veredito: este modelo costuma responder
+            # "**SUSPEITA**" sozinho e justificar na linha seguinte. Sem este fallback a auditoria
+            # gravava veredito com reason vazio -- decisao sem o porque, que e o que a trava
+            # deveria estar documentando.
+            $proximaLinha = (($json.content -split "`n") | Where-Object { $_.Trim() } | Select-Object -Skip 1 -First 1)
+            $proximaLinha = if ($proximaLinha) { ($proximaLinha -replace '^[*_`#>~\s-]+', '').Trim() } else { "" }
+            if ($norm -match '(?i)^PLAUS.VEL') {
                 $f.triage = "plausivel"
-                if ($firstLine -match '(?i)PLAUSIVEL[:\s-]+(.+)') { $f.reason = $Matches[1].Trim() }
-            } elseif ($firstLine -match '(?i)^\s*SUSPEITA') {
+                $f.reason = if ($firstLine -match '(?i)PLAUS.VEL[*_:\s-]+(.+)') { $Matches[1].Trim() } else { $proximaLinha }
+            } elseif ($norm -match '(?i)^SUSPEITA') {
                 $f.triage = "suspeita"
-                if ($firstLine -match '(?i)SUSPEITA[:\s-]+(.+)') { $f.reason = $Matches[1].Trim() }
+                $f.reason = if ($firstLine -match '(?i)SUSPEITA[*_:\s-]+(.+)') { $Matches[1].Trim() } else { $proximaLinha }
             } else {
                 $f.triage = "unverified"
                 $f.reason = "triador retornou formato inesperado"
             }
         } else {
             $f.triage = "unverified"
-            $f.reason = if ($json.error) { "Llama error: $($json.error)" } else { "resposta nao parseavel do wrapper" }
+            $f.reason = if ($json.error) { "Groq error: $($json.error)" } else { "resposta nao parseavel do wrapper" }
         }
     } catch {
         $f.triage = "unverified"

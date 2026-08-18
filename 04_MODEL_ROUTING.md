@@ -50,11 +50,18 @@ A partir da Fase 6, o roteamento ganha **camada explícita de Haiku 4.5** pra ta
 |---|---|---|---|
 | DeepSeek | DeepSeek API | `deepseek-v4-flash` | $0.14/$0.28 |
 | Cross-Claude | Anthropic (subagent) | `claude-sonnet-5` (default; ver tabela por modo) | incluso na assinatura Claude Code |
-| Llama 3.3 70B | Groq API | `llama-3.3-70b-versatile` | Free 30 req/min, depois $0.59/$0.79 |
+| GPT-OSS 120B | Groq API | `openai/gpt-oss-120b` | Free 30 req/min, depois $0.15/$0.60 |
 
 Total estimado: ~$5/mês com volume Percus atual.
 
-**Setup do membro Llama:** obter `GROQ_API_KEY` em https://console.groq.com (gratuito) → adicionar no `.env` do projeto. Sem ela, conselho degrada pra 2 membros (Fase 5).
+> ⚠️ **A terceira perna deixou de ser Llama em 2026-08-18.** O Groq aposentou
+> `llama-3.3-70b-versatile` e a chave não enxerga **nenhum** Llama de chat — só os classificadores
+> `meta-llama/llama-prompt-guard-2-*`, que não conversam. A troca é de **família de modelo**, não de
+> versão: quem lia esta perna como "a perspectiva Llama" precisa saber que hoje é OpenAI-OSS. O id do
+> provider continua `groq-llama` de propósito (chave histórica em log, `default_set` e teste) — ele
+> **não** afirma qual modelo roda; quem afirma é o campo `model` do `providers/_registry.json`.
+
+**Setup do membro Groq:** obter `GROQ_API_KEY` em https://console.groq.com (gratuito) → adicionar no `.env` do projeto. Sem ela, conselho degrada pra 2 membros (Fase 5).
 
 ### Como o roteamento acontece de fato (não há um "model-router" único)
 
@@ -324,7 +331,7 @@ Orchestrator escolhe modelo Cross-Claude por mode (override com `-CrossClaudeMod
 | review | claude-sonnet-5 | Findings cross-provider, qualidade alta |
 | pre-mortem | claude-opus-5 | Raciocinio profundo, 3 motivos concretos |
 
-DeepSeek e Groq tambem aceitam `-DeepSeekModel` / `-GroqModel` (PS) ou `--deepseek-model` / `--groq-model` (bash). Default: `deepseek-v4-flash` e `llama-3.3-70b-versatile`.
+DeepSeek e Groq tambem aceitam `-DeepSeekModel` / `-GroqModel` (PS) ou `--deepseek-model` / `--groq-model` (bash). Default: `deepseek-v4-flash` e `openai/gpt-oss-120b`.
 
 Marker pro Agent tool dispatch passa a incluir bloco `---MODEL-HINT---<model>---END-MODEL-HINT---` em stderr, permitindo ao agente orquestrador saber qual modelo dispatchear para o subagent Cross-Claude.
 

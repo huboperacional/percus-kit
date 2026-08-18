@@ -18,7 +18,7 @@ Describe "council-tiebreaker.ps1 (Vetor D)" {
         $script:stub = Join-Path $stubDir "stub.ps1"
         Set-Content -Path $stub -Encoding utf8 -Value @'
 param([string]$PromptFile,[string]$SystemPrompt,[double]$Temperature,[int]$MaxTokens,[string]$Model,[string]$Endpoint)
-@{ provider="groq-llama"; status="ok"; content="TIE-BREAK: deepseek mais defensavel"; latency_ms=9; model="llama-3.3-70b-versatile" } | ConvertTo-Json -Compress
+@{ provider="groq-llama"; status="ok"; content="TIE-BREAK: deepseek mais defensavel"; latency_ms=9; model="openai/gpt-oss-120b" } | ConvertTo-Json -Compress
 exit 0
 '@
     }

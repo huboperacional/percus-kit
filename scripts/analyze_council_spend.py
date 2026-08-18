@@ -21,14 +21,18 @@ PRICING_PER_MTOKEN = {
     "deepseek-v4-flash":       {"in": 0.14,  "out": 0.28},   # default desde 2026-08-15
     "deepseek-v4-pro":         {"in": 0.435, "out": 0.87},   # default 2026-07-24..2026-08-15
     "deepseek-chat":           {"in": 0.27,  "out": 1.10},   # descontinuado 2026-07-24
-    "llama-3.3-70b-versatile": {"in": 0.59,  "out": 0.79},
-    # `groq-llama` sobrevive como alias porque mapeia 1:1 num unico modelo que nunca mudou de
-    # preco. Os aliases `deepseek` e `cross-claude` foram REMOVIDOS: eles resolvem por provider,
-    # e o provider trocou de modelo no tempo (deepseek-chat -> v4-pro -> v4-flash; sonnet 4.6 ->
-    # sonnet 5 / opus 5). Apontar o alias pro preco de hoje reprecificaria o passado -- que e o
-    # defeito que esta versao existe pra corrigir. Entrada sem `model` agora cai no aviso de
-    # MODELOS_SEM_PRECO, que e a resposta honesta: nao da pra saber qual modelo rodou.
-    "groq-llama":              {"in": 0.59,  "out": 0.79},
+    "llama-3.3-70b-versatile": {"in": 0.59,  "out": 0.79},   # decomissionado pela Groq ~2026-08
+    "openai/gpt-oss-120b":     {"in": 0.15,  "out": 0.60},   # default da perna Groq desde 2026-08-18
+    # O alias `groq-llama` foi REMOVIDO em 2026-08-18, pela regra que este bloco ja aplicava aos
+    # aliases `deepseek` e `cross-claude`: alias que resolve por PROVIDER so e seguro enquanto o
+    # provider mapeia 1:1 num unico modelo. A justificativa antiga dizia, literalmente, "mapeia
+    # 1:1 num unico modelo que nunca mudou de preco" -- e nesta data o provider trocou de modelo
+    # (llama-3.3-70b-versatile -> openai/gpt-oss-120b) e de preco (0.59/0.79 -> 0.15/0.60).
+    # Mantido, o alias precificaria run NOVO ao preco do modelo MORTO, 3,9x pra cima na entrada:
+    # exatamente o defeito de reprecificacao que este bloco existe pra impedir.
+    # Consequencia deliberada: entrada de log sem campo `model` cai em MODELOS_SEM_PRECO, que e a
+    # resposta honesta -- nao da pra saber qual dos dois rodou. Os wrappers emitem `model` no JSON
+    # de resposta, entao isso so atinge log antigo, que e justamente o caso ambiguo.
     "claude-haiku-4-5":        {"in": 1.00,  "out": 5.00},
     # Sonnet 5 esta em preco promocional de $2/$10 ate 2026-08-31. A tabela usa o preco REGULAR
     # de proposito: medidor que subestima e o defeito que esta versao acabou de consertar, e a

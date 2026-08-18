@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.38.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.39.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,65 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.39.0 — 2026-08-18
+
+**A terceira perna do conselho volta a responder — e a troca revelou que consertar o id do modelo
+era a parte fácil.**
+
+O verbete `groq-llama-3-3-decomissionado-404` (2026-08-17) já tinha o diagnóstico: a Groq aposentou
+`llama-3.3-70b-versatile`, a perna voltava 404 em ~300 ms, e o pré-mortem virava "2 de 2 disfarçado
+de 2 de 3". Catálogo reconferido com a chave real em 2026-08-18: o modelo segue ausente e os únicos
+`llama` visíveis são classificadores `prompt-guard`, que não conversam. **A troca é de família, não
+de versão.**
+
+**Perna Groq passa a rodar `openai/gpt-oss-120b`** — $0.15/$0.60 por 1M, **mais barata** que o Llama
+que substituiu ($0.59/$0.79). Varridos os 9 sítios que o verbete listava **mais 4 que ele não
+listava**: `04_MODEL_ROUTING.md`, `06_CONSELHO_PERCUS.md`, `README.md` e a tabela de preço do
+`analyze_council_spend.py`.
+
+**O id `groq-llama` foi MANTIDO de propósito.** É chave histórica em log de conselho, em
+`default_set` e em assert de teste; renomear orfanaria o passado sem ganho. A mentira ficou
+**declarada** onde alguém a lê: `_nota_id` no `_registry.json` e cabeçalho do `council-tiebreaker.ps1`
+— quem afirma o modelo é o campo `model`, nunca o id.
+
+🔑 **O que a troca quebrou, e que não tem nada a ver com Groq: `max_tokens` fixado pequeno encontra
+modelo de raciocínio.** O `gpt-oss-120b` gasta 62–270 tokens *pensando* antes da primeira letra, do
+**mesmo** orçamento. O `fact-check-triage` chamava com `-MaxTokens 64`. Medido: com teto 64 e 128 o
+`content` volta **vazio em 100% das amostras**. Três defeitos, todos falhando **aberto e calado**:
+
+1. teto de 64 → `content` vazio sempre;
+2. guarda `status -eq "ok"` descartava `truncated`, embora o consumidor leia só a **primeira linha**;
+3. regex `^\s*PLAUSIVEL` não casava `**PLAUSÍVEL**` — negrito markdown e acento — e tudo virava
+   "formato inesperado".
+
+**Por que isso é grave e não cosmético:** o `fact-check-triage` é o pré-requisito da skill
+`council-consult` antes de escalar finding crítico. Ele devolvia `unverified` em **todos** os
+findings, ou seja, a trava anti-"conselho ratifica premissa não verificada" rodava sem travar nada.
+Ferramenta de segurança que falha aberta é pior que ausente — o relatório continua parecendo
+completo. Corrigido: teto 1024, `truncated` aceito, veredito normalizado antes do match, e `reason`
+cai pra próxima linha não vazia (antes gravava veredito com motivo em branco).
+
+⚠️ **Bug de stream que só existia num dos dois idiomas.** No `.ps1` a chamada usava `2>&1`; o aviso
+do wrapper entra como `ErrorRecord` no índice `[0]` e mata o `ConvertFrom-Json` no primeiro
+caractere. O `.sh` irmão nunca teve o defeito — `capture_output=True` separa os streams. Mesma
+lógica, dois idiomas, um bug só num deles.
+
+**Preço: o alias que se auto-invalidou.** O `analyze_council_spend.py` justificava manter o alias
+`groq-llama` com "mapeia 1:1 num único modelo que nunca mudou de preço". A troca matou a premissa —
+mantido, ele precificaria run **novo** ao preço do modelo **morto**, 3,9× pra cima na entrada e
+calado. Alias removido pela mesma regra que já tinha removido `deepseek` e `cross-claude`; o id do
+modelo antigo **fica** na tabela para o histórico continuar somando ao preço da época.
+
+🔴 **Uma heurística do próprio kit foi REVOGADA.** O verbete ensinava que latência de três dígitos
+denuncia perna morta. A perna **saudável** agora responde em 636–789 ms — a heurística passou a
+produzir falso positivo. Sinal correto hoje: `status` + `content` não-vazio, não o relógio.
+
+Suíte: **419 Pester + 12 pytest, tudo verde** (2 casos novos no analisador de gasto; 1 caso antigo
+invertido de propósito, preservando a memória de que o alias existiu e por que morreu).
+
+Verbete novo: `troca-para-modelo-de-raciocinio-esvazia-teto-de-tokens` — leia **antes** de trocar
+qualquer modelo por um de raciocínio.
 
 ## Changelog v6.38.0 — 2026-08-18
 

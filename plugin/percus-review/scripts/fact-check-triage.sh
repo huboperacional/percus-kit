@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vetor B (v6.14.0) - Unix: triagem Llama upstream do fact-check Sonnet.
+# Vetor B (v6.14.0) - Unix: triagem Groq upstream do fact-check Sonnet.
 # Espelha fact-check-triage.ps1 (primario, testado via Pester). Usa python3 pra
 # parsing/JSON (confiavel) e chama o wrapper groq-llama.sh por finding.
 # Em duvida -> SUSPEITA (escala pro Sonnet). Falha graceful: erro -> unverified.
@@ -8,7 +8,7 @@
 set +e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRAPPER=""
-MODEL="llama-3.3-70b-versatile"
+MODEL="openai/gpt-oss-120b"
 FINDINGS_FILE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -76,29 +76,44 @@ for f in findings:
         with tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False, encoding='utf-8') as tf:
             tf.write(up)
             tmp = tf.name
+        # 1024, nao 64: o triador virou modelo de RACIOCINIO (openai/gpt-oss-120b) em 2026-08-18 e
+        # gasta 60~270 tokens pensando antes da primeira letra. Com teto 64/128 o content volta
+        # VAZIO em 100% das amostras. Aqui NAO ha o bug de stream do irmao .ps1: capture_output
+        # separa stdout de stderr, entao o aviso do wrapper nao contamina o json.loads.
         r = subprocess.run(['bash', wrapper, '--prompt-file', tmp, '--system-prompt', sysprompt,
-                            '--model', model, '--max-tokens', '64'],
+                            '--model', model, '--max-tokens', '1024'],
                            capture_output=True, text=True, encoding='utf-8')
         try:
             j = json.loads(r.stdout)
         except Exception:
             j = None
-        if j and j.get('status') == 'ok' and j.get('content'):
+        # "truncated" tambem serve: le-se so a PRIMEIRA LINHA, que chega muito antes do corte.
+        if j and j.get('status') in ('ok', 'truncated') and j.get('content'):
             first = next((l for l in j['content'].split('\n') if l.strip()), '')
-            if re.match(r'(?i)^\s*PLAUSIVEL', first):
+            # O modelo responde "**PLAUSIVEL**" (negrito) e acentua o I. O padrao antigo exigia a
+            # palavra crua no inicio da linha, entao nao casava nenhum dos dois e tudo virava
+            # "formato inesperado". Normaliza a enfase antes; '.' cobre o acento sem tirar o
+            # arquivo do 100% ASCII.
+            norm = re.sub(r'[*_`#>~\s]', '', first)
+            # O motivo nem sempre cabe na linha do veredito: este modelo costuma responder
+            # "**SUSPEITA**" sozinho e justificar na linha seguinte. Sem este fallback a
+            # auditoria gravava veredito com reason vazio -- decisao sem o porque.
+            _linhas = [l for l in j['content'].split('\n') if l.strip()]
+            prox = re.sub(r'^[*_`#>~\s-]+', '', _linhas[1]).strip() if len(_linhas) > 1 else ""
+            if re.match(r'(?i)^PLAUS.VEL', norm):
                 f["triage"] = "plausivel"
-                mm = re.search(r'(?i)PLAUSIVEL[:\s-]+(.+)', first)
-                f["reason"] = mm.group(1).strip() if mm else ""
-            elif re.match(r'(?i)^\s*SUSPEITA', first):
+                mm = re.search(r'(?i)PLAUS.VEL[*_:\s-]+(.+)', first)
+                f["reason"] = mm.group(1).strip() if mm else prox
+            elif re.match(r'(?i)^SUSPEITA', norm):
                 f["triage"] = "suspeita"
-                mm = re.search(r'(?i)SUSPEITA[:\s-]+(.+)', first)
-                f["reason"] = mm.group(1).strip() if mm else ""
+                mm = re.search(r'(?i)SUSPEITA[*_:\s-]+(.+)', first)
+                f["reason"] = mm.group(1).strip() if mm else prox
             else:
                 f["triage"] = "unverified"
                 f["reason"] = "triador retornou formato inesperado"
         else:
             f["triage"] = "unverified"
-            f["reason"] = ("Llama error: %s" % j.get('error')) if (j and j.get('error')) else "resposta nao parseavel do wrapper"
+            f["reason"] = ("Groq error: %s" % j.get('error')) if (j and j.get('error')) else "resposta nao parseavel do wrapper"
     except Exception as e:
         f["triage"] = "unverified"
         f["reason"] = "excecao ao chamar wrapper: %s" % e

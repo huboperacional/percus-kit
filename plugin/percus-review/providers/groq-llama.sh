@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Provider wrapper Llama 3.3 70B via Groq - single-shot consult
+# Provider wrapper GPT-OSS 120B via Groq - single-shot consult
 set -eo pipefail
 
 SYSTEM_PROMPT="Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
 TEMPERATURE="0.2"
 MAX_TOKENS="2048"
-MODEL="llama-3.3-70b-versatile"
+MODEL="openai/gpt-oss-120b"
 ENDPOINT="https://api.groq.com/openai/v1/chat/completions"
 PROMPT_FILE=""
 

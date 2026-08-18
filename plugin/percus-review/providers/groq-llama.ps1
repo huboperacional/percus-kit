@@ -1,7 +1,7 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-  Provider wrapper: Llama 3.3 70B via Groq — single-shot consult.
+  Provider wrapper: GPT-OSS 120B via Groq — single-shot consult.
 
 .DESCRIPTION
   Mesma interface de providers/deepseek.ps1. Free tier 30 req/min.
@@ -13,7 +13,7 @@ param(
     [string]$SystemPrompt = "Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos.",
     [double]$Temperature = 0.2,
     [int]$MaxTokens = 2048,
-    [string]$Model = "llama-3.3-70b-versatile",
+    [string]$Model = "openai/gpt-oss-120b",
     [string]$Endpoint = "https://api.groq.com/openai/v1/chat/completions"
 )
 . (Join-Path $PSScriptRoot "_resposta.ps1")

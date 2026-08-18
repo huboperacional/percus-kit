@@ -1,7 +1,7 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-  Council orchestrator: roda DeepSeek + Llama em paralelo (PowerShell jobs), agrega resultados.
+  Council orchestrator: roda DeepSeek + Groq em paralelo (PowerShell jobs), agrega resultados.
 
 .DESCRIPTION
   Le prompt via -PromptFile (path) ou stdin. Dispara providers em paralelo.
@@ -55,7 +55,7 @@ param(
     [string]$Mode = "consult"
     ,[int]$MaxInputTokens = 8000
     ,[string]$DeepSeekModel = "deepseek-v4-flash"
-    ,[string]$GroqModel     = "llama-3.3-70b-versatile"
+    ,[string]$GroqModel     = "openai/gpt-oss-120b"
     ,[AllowEmptyString()]
     # Os modelos de geracao 4 ficam para override de comparacao; o router usa os de geracao 5.
     # ATENCAO: em PowerShell o ValidateSet de um parametro revalida em CADA atribuicao a
@@ -466,7 +466,7 @@ if ((Get-Command Test-CouncilNeedsTieBreaker -ErrorAction SilentlyContinue) -and
             content  = $tb.content
             note     = "convergencia 2/3 informal -- tie-breaker fraco; operador decide"
         }
-        [Console]::Error.WriteLine("[council-orchestrator][Vetor D] tie-breaker Llama invocado (2 providers OK divergentes, sem groq-llama).")
+        [Console]::Error.WriteLine("[council-orchestrator][Vetor D] tie-breaker Groq invocado (2 providers OK divergentes, sem groq-llama).")
     }
 }
 

@@ -154,7 +154,7 @@ percus-kit/                          ← raiz do canon (canon + plugin = "percus
 Conselho 3-membros obrigatório (R11) — 3 providers distintos reduzem viés single-provider:
 - **DeepSeek API** (`deepseek-v4-flash`) — review cross-provider, código geral; pre-commit padrão
 - **Cross-Claude** (subagent Sonnet 5 / Opus 5 conforme o modo) — análise de design/raciocínio; quando a saída veio do próprio DeepSeek
-- **Llama via Groq** (`llama-3.3-70b-versatile`) — consultor rápido inline + triagem de fact-check (v6.14.0)
+- **GPT-OSS via Groq** (`openai/gpt-oss-120b`) — consultor rápido inline + triagem de fact-check (v6.14.0). Era Llama 3.3 70B até 2026-08-18, quando o Groq o aposentou; o id do provider segue `groq-llama` por compatibilidade histórica
 
 Opera em **4 modos**: review (pre-commit/marco), consult, pre-mortem, brainstorm. Pasta sensível ou marco escala pra duplo/triplo. Arquitetura completa em `06_CONSELHO_PERCUS.md`.
 

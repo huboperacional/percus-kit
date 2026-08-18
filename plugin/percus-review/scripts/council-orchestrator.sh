@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Council orchestrator (Unix) - roda DeepSeek + Llama em paralelo via background jobs.
+# Council orchestrator (Unix) - roda DeepSeek + Groq em paralelo via background jobs.
 # Cross-Claude (subagent Sonnet): emite marker em stderr OU le --cross-claude-file.
 #
 # F2 — Code Context Injection: --code-context-dir ou blocks ```file:path``` no prompt
@@ -14,7 +14,7 @@ CROSS_CLAUDE_FILE=""
 MODE="consult"
 MAX_INPUT_TOKENS=8000
 DEEPSEEK_MODEL="deepseek-v4-flash"
-GROQ_MODEL="llama-3.3-70b-versatile"
+GROQ_MODEL="openai/gpt-oss-120b"
 CROSS_CLAUDE_MODEL=""
 # F2 params
 CODE_CONTEXT_DIR=""
@@ -431,7 +431,7 @@ set +e
                 TB_CONTENT=$(echo "$TB_OUT" | jq -r '.content // ""')
                 TIE_BREAKER_INVOKED=true
                 TIE_BREAKER_JSON=$(jq -n --arg c "$TB_CONTENT" '{provider:"groq-llama", role:"tie-breaker", content:$c, note:"convergencia 2/3 informal -- tie-breaker fraco; operador decide"}' 2>/dev/null || echo "null")
-                echo "[council-orchestrator][Vetor D] tie-breaker Llama invocado (2 OK divergentes, sem groq-llama)." >&2
+                echo "[council-orchestrator][Vetor D] tie-breaker Groq invocado (2 OK divergentes, sem groq-llama)." >&2
             fi
         fi
     fi

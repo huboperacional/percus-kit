@@ -22,7 +22,14 @@ fase-introducao: Fase 6
 |---|---|---|---|---|
 | **DeepSeek** | DeepSeek API | `deepseek-v4-flash` | $0.14 / $0.28 | Review cross-provider, código geral |
 | **Cross-Claude** | Anthropic (subagent) | por modo: `claude-haiku-4-5` (consult) · `claude-sonnet-5` (review/analyze) · `claude-opus-5` (pre-mortem) | incluso na assinatura Claude Code | Análise de design, raciocínio profundo |
-| **Llama** | Groq API | `llama-3.3-70b-versatile` | Free 30 req/min, depois $0.59 / $0.79 | Resposta rápida (~500 tok/s), consultor inline |
+| **Groq** | Groq API | `openai/gpt-oss-120b` | Free 30 req/min, depois $0.15 / $0.60 | Resposta rápida, consultor inline |
+
+> ⚠️ **Esta perna não é mais Llama (2026-08-18).** O Groq aposentou `llama-3.3-70b-versatile`; a
+> chave só enxerga classificadores `prompt-guard`, que não conversam. Portanto a troca mudou a
+> **família** do modelo, não a versão — a diversidade cross-provider do conselho hoje é
+> DeepSeek · OpenAI-OSS · Anthropic. O id `groq-llama` foi mantido como chave estável (log antigo,
+> `default_set`, asserts); ele não afirma o modelo, o campo `model` do registry afirma.
+> Diagnóstico completo: `conhecimento/resolver/groq-llama-3-3-decomissionado-404.md`.
 
 > **Modelos revisados em 2026-08-15.** `deepseek-chat` foi descontinuado pela DeepSeek em 24/07 e o
 > substituto entrou como `-pro` numa correção de emergência — 3,1× mais caro que o `-flash`, sem

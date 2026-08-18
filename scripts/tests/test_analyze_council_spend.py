@@ -99,17 +99,58 @@ def test_parse_log_file_malformed_json(tmp_path):
     assert parse_log_file(log) == []
 
 
-def test_compute_cost_provider_fallback():
-    """Fallback por provider so vale onde o provider mapeia 1:1 num modelo estavel."""
+def test_groq_llama_perdeu_o_fallback_ao_trocar_de_familia():
+    """`groq-llama` mapeava 1:1 num modelo estavel -- ate 2026-08-18.
+
+    Nessa data o Groq aposentou `llama-3.3-70b-versatile` e a perna passou a rodar
+    `openai/gpt-oss-120b`: familia diferente E preco diferente (0.59/0.79 -> 0.15/0.60).
+    Com isso o provider deixou de mapear 1:1 e o alias caiu na MESMA regra que ja tinha
+    removido `deepseek` e `cross-claude`.
+
+    O teste antigo afirmava o oposto (alias vivo, 0.59+0.79). Ele nao estava errado quando
+    foi escrito -- caducou junto com a premissa. Mantido como caso invertido de proposito:
+    apagar o teste apagaria a memoria de que este alias ja existiu e por que morreu.
+    """
+    from analyze_council_spend import MODELOS_SEM_PRECO
+
+    MODELOS_SEM_PRECO.clear()
     entry = {
-        "model": "llama-mystery",
+        "model": "llama-mystery",   # modelo fora da tabela: forca o caminho do fallback
         "provider": "groq-llama",
         "tokens_in": 1_000_000,
         "tokens_out": 1_000_000,
     }
-    cost = compute_cost(entry)
-    # groq-llama: in=0.59, out=0.79 por M tokens
-    assert cost == pytest.approx(0.59 + 0.79)
+    assert compute_cost(entry) == 0.0
+    # o zero tem que deixar rastro: precificar run novo ao preco do modelo morto seria
+    # 3,9x pra cima na entrada, e calado.
+    assert "llama-mystery" in MODELOS_SEM_PRECO
+
+
+def test_modelo_aposentado_continua_precificavel_no_historico():
+    """Remover o ALIAS nao pode reprecificar o passado.
+
+    Log de marco/junho carrega `model: llama-3.3-70b-versatile` explicito; esse id fica na
+    tabela pro historico continuar somando ao preco da epoca. Quem sumiu foi so o atalho
+    por provider, que era o unico ambiguo.
+    """
+    entry = {
+        "model": "llama-3.3-70b-versatile",
+        "provider": "groq-llama",
+        "tokens_in": 1_000_000,
+        "tokens_out": 1_000_000,
+    }
+    assert compute_cost(entry) == pytest.approx(0.59 + 0.79)
+
+
+def test_modelo_novo_da_perna_groq_tem_preco():
+    """A perna Groq nova nao pode cair em MODELOS_SEM_PRECO -- senao o relatorio subestima."""
+    entry = {
+        "model": "openai/gpt-oss-120b",
+        "provider": "groq-llama",
+        "tokens_in": 1_000_000,
+        "tokens_out": 1_000_000,
+    }
+    assert compute_cost(entry) == pytest.approx(0.15 + 0.60)
 
 
 def test_provider_ambiguo_no_tempo_nao_tem_fallback():

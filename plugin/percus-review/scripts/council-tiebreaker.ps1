@@ -15,6 +15,12 @@
   Invoke-LlamaTieBreaker FAZ a chamada (groq-llama) e devolve o veredito como
   "tie-breaker fraco / convergencia 2/3 informal" — operador decide, nao e consenso.
 
+  ATENCAO ao nome: "Llama" aqui e IDENTIFICADOR HISTORICO, nao o modelo. Desde 2026-08-18 a
+  perna Groq roda openai/gpt-oss-120b -- o Groq aposentou llama-3.3-70b-versatile e a chave
+  nao enxerga nenhum Llama de chat. O nome da funcao e o id "groq-llama" foram mantidos de
+  proposito (chave estavel em log antigo, default_set e assert de teste); quem diz qual modelo
+  roda e providers/_registry.json (campo "model"), nunca este nome.
+
   Fonte 100% ASCII (PS 5.1 le .ps1 sem BOM como cp1252).
 #>
 
