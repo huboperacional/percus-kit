@@ -193,6 +193,7 @@
 - [Harness de ataque com corpo incompleto dá verde falso](harness-de-ataque-com-corpo-incompleto-da-verde-falso.md)
 - [A leitura de versão do `enforcement-health` VENCE no meio da sessão — `autoUpdate` fecha a divergência sozinho enquanto você "conserta"](health-check-versao-vence-autoupdate.md)
 - [Helper de teste aceita override e o DESCARTA em silêncio — os testes passam por coincidência](helper-de-teste-descarta-override-em-silencio.md)
+- [O heredoc citado do Bash come uma barra invertida, e o estrago sai na cara do cliente](heredoc-citado-do-bash-come-barra-invertida.md)
 - [Regra de esconder feita para um IFRAME também esconde o `<video>` que a substituiria](hide-rule-do-iframe-mata-o-video-hospedado.md)
 - [Hook PowerShell roda sob `powershell.exe` 5.1, não `pwsh` — arquivo produzido sem BOM (ou teste com acento literal no source) corrompe/quebra silenciosamente](hook-powershell-51-sem-bom-corrompe.md)
 - [Hook em PowerShell bloqueia commit legítimo vindo do git-bash (path `/d/...` e `-c` ≠ `-C`)](hook-ps-path-msys-e-match-case.md)
