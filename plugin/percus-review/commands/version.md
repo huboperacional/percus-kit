@@ -1,6 +1,5 @@
 ---
 description: Mostra a versão do plugin percus-review + changelog condensado e checa sincronia com o canon (.percus-version)
-disable-model-invocation: true
 allowed-tools: Read, Bash
 ---
 

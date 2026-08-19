@@ -30,3 +30,32 @@ aceitaria a de uma sessão manual.
 `/percus-review:spec-analyze` 1x), resolvido todas as vezes pedindo pro operador rodar o slash
 command explicitamente. Ver também memória local `percus_review_skill_bypass` (atualizada nesta
 sessão, memória antiga sugeria o bypass agora proibido).
+
+---
+
+### ✅ REVOGADO em 2026-08-19 (canon 6.40.0) — as travas foram REMOVIDAS
+
+`disable-model-invocation` saiu dos seis comandos (`review`, `deepseek-review`,
+`cross-claude-review`, `milestone-review`, `spec-analyze`, `version`). O fluxo descrito acima —
+"avise o operador e peça que ELE digite o slash command" — **não vale mais**: o agente invoca
+direto.
+
+**Por que caiu.** A trava cobrava um custo real e não entregava a garantia que a justificava:
+
+- **Não impedia auto-aprovação.** Ela bloqueia só a *Skill tool*. O script por baixo
+  (`deepseek-review.ps1`) sempre foi chamável por Bash — e foi chamado ~6 vezes numa única sessão
+  de 2026-08-19, com o hook R11 exigindo review a cada commit. Regra de honra, não enforcement.
+- **O marcador é forjável.** Um `latest.jsonl` encontrado no disco nessa mesma sessão trazia
+  `provider: cross-claude` e `model: claude-sonnet-5`: foi escrito **à mão por um agente**, sem
+  nenhuma chamada ao provedor acontecer. O que libera o commit pode existir sem review nenhuma.
+- **O custo era um round-trip humano por commit**, num ciclo em que o overhead já era fixo (~5 min
+  entre suíte de 184 s e review de 60–90 s) e não proporcional ao tamanho da mudança.
+
+🔑 **A lição é sobre a forma do controle, não sobre revisar ou não.** Fricção que depende de boa-fé
+não é controle — é imposto. Ou o mecanismo é verificável (marcador assinado, invocação registrada
+de forma não forjável), ou ele é só atrito com aparência de garantia. Manter o meio-termo é o pior
+dos casos: paga-se o preço todo dia e não se recebe a integridade nenhum dia.
+
+A revisão em si **continua obrigatória** — o que mudou foi quem pode disparar, e (na 6.40.0) o fato
+de a validade passar a ser o hash do diff em vez do relógio. Ver
+[[marcador-otimizado-pro-hook-apaga-o-historico-do-medidor]].

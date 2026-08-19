@@ -1,7 +1,6 @@
 ---
 description: Analyze de uma spec de feature pelo conselho (detecção estruturada estilo spec-kit /analyze) antes de virar [0]
 argument-hint: '<caminho/da/spec.md> [--deep]'
-disable-model-invocation: true
 allowed-tools: Read, Bash, Agent
 ---
 

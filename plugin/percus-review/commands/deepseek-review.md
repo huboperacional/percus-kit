@@ -1,7 +1,6 @@
 ---
 description: Force review via DeepSeek API (cross-provider real, sem router)
 argument-hint: '[--base <ref>]'
-disable-model-invocation: true
 allowed-tools: Read, Bash
 ---
 

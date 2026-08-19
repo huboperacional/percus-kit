@@ -93,10 +93,68 @@ fi
 # que atrapalha ensina a ser escapado.
 _AREAS_CONHECIMENTO="conhecimento/resolver conhecimento/fazer referencia/conhecimento/resolver referencia/conhecimento/fazer"
 
+# Enumera os verbetes de uma area a partir do INDICE DO GIT, nao do glob do disco.
+#
+# Por que (medido 2026-08-19): o glob varre a arvore inteira, entao arquivo UNTRACKED de outra
+# sessao no mesmo checkout barrava commit de quem nao tinha nada a ver com ele. Numa unica
+# sessao isso custou TRES escapes PERCUS_GATE_OVERSIZE declarados, em commits que nao tocavam
+# conhecimento/ nenhum -- ou seja, o gate estava fabricando o sinal de drift que ele proprio usa
+# pra dizer que algo esta errado.
+#
+# `git ls-files` lista o INDICE: rastreado + recem-staged, e NAO lista untracked. E exatamente o
+# conjunto pelo qual este commit responde. Rascunho de terceiro na arvore deixa de ser problema
+# meu; quando ELE der `git add`, vira problema dele.
+#
+# Uma chamada do git por AREA (nao por arquivo): 400 processos aqui foi metade do que fez a
+# primeira versao deste bloco levar 120 s.
+# Temp da listagem por area. Arquivo, e nao variavel, porque o `while read` precisa de
+# redirecionamento: com pipe, o corpo do loop roda em SUBSHELL e o $_lista montado la dentro
+# se perde ao sair -- o gate passaria a nao ver verbete nenhum e ficaria verde por vacuidade,
+# que e o pior modo de falhar pra um gate.
+_TMP_VERBETES="${TMPDIR:-/tmp}/percus-verbetes-$$"
+trap 'rm -f "$_TMP_VERBETES" "$_TMP_LSFILES"' EXIT
+
+# UMA chamada de git por execucao do gate, em cache. A primeira versao deste bloco chamava
+# `git rev-parse` + `git ls-files` por AREA e por SITIO -- 4 spawns por execucao. Parece
+# nada, mas gate-conhecimento.tests.ps1 executa o gate 48 vezes: o custo virou ~2,5 s por
+# execucao e a SUITE passou de 184 s pra mais de 600 s. Ou seja: a correcao que existia pra
+# acelerar o ciclo tinha desacelerado ele. Medido, nao suposto.
+_DENTRO_GIT=0
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 && _DENTRO_GIT=1
+_TMP_LSFILES="${TMPDIR:-/tmp}/percus-lsfiles-$$"
+: > "$_TMP_LSFILES"
+if [ "$_DENTRO_GIT" = "1" ]; then
+  git ls-files > "$_TMP_LSFILES" 2>/dev/null || :
+fi
+
+# Este arquivo pertence ao escopo do gate? Mesma regra do listar_verbetes_git, so que pra um
+# arquivo so: FORA de repo git a resposta e SIM (fallback conservador -- gate que responde
+# "nao" sem ter como saber fica verde por vacuidade, a pior falha possivel aqui).
+verbete_do_git() {
+  [ "$_DENTRO_GIT" = "1" ] || return 0
+  grep -qxF "$1" "$_TMP_LSFILES"
+}
+
+listar_verbetes_git() {
+  # FORA de um work tree do git (fixture de teste, diretorio solto) nao ha indice pra
+  # consultar, e a resposta honesta e o glob: valida tudo. Cair pra lista VAZIA aqui seria
+  # muito pior que o falso positivo que este helper veio matar -- gate que nao enxerga
+  # arquivo nenhum fica verde por vacuidade, a falha que este canon mais persegue.
+  if [ "$_DENTRO_GIT" = "1" ]; then
+    grep "^$1/[^/]*[.]md$" "$_TMP_LSFILES" || true
+  else
+    for _g in "$1"/*.md; do
+      [ -f "$_g" ] && printf "%s
+" "$_g"
+    done
+  fi
+}
+
 _lista=""
 for _d in $_AREAS_CONHECIMENTO; do
   [ -d "$_d" ] || continue
-  for _f in "$_d"/*.md; do
+  listar_verbetes_git "$_d" > "$_TMP_VERBETES"
+  while IFS= read -r _f; do
     [ -f "$_f" ] || continue
     # Expansao de parametro, nao basename: sao ~415 arquivos, e um processo por arquivo aqui
     # foi metade do que fez o gate passar de 120s na primeira versao deste bloco.
@@ -112,7 +170,7 @@ for _d in $_AREAS_CONHECIMENTO; do
     fi
     _lista="$_lista$_f
 "
-  done
+  done < "$_TMP_VERBETES"
 done
 
 if [ -n "$_lista" ]; then
@@ -347,7 +405,9 @@ for _d in $_AREAS_CONHECIMENTO; do
   _idx="$_d/INDICE.md"
   [ -f "$_idx" ] || continue
 
-  _disco=$(for _f in "$_d"/*.md; do
+  # Mesmo conjunto do bloco acima: indice do git, nao glob do disco -- senao o verbete
+  # untracked de outra sessao apareceria como "fora do INDICE" e barraria meu commit.
+  _disco=$(listar_verbetes_git "$_d" | while IFS= read -r _f; do
              [ -f "$_f" ] || continue
              _b=${_f##*/}; _b=${_b%.md}
              case "$_b" in INDICE|LEIA-ME) continue ;; esac
@@ -371,9 +431,23 @@ for _d in $_AREAS_CONHECIMENTO; do
   ' "$_idx" 2>/dev/null | sort -u)
 
   _dif=$(printf '%s\n%s\n' "$_disco" "$_listados" | sed '/^[[:space:]]*$/d' | sort | uniq -u)
+  # As duas direcoes deixaram de ser simetricas em 2026-08-19, e de proposito:
+  #
+  #   verbete que o GIT conhece e falta no INDICE.md -> VIOLACAO. E o defeito que deixou
+  #     14 verbetes invisiveis por semanas: escrito, commitado, e fora do indice.
+  #
+  #   entrada do INDICE.md sem verbete no git -> so e violacao se o arquivo tambem NAO
+  #     EXISTIR no disco. O gerador le o disco e o gate le o git; num checkout
+  #     compartilhado essa diferenca e permanente, porque outra sessao tem rascunho
+  #     untracked na arvore o tempo todo. Acusar isso barraria meu commit por causa do
+  #     arquivo dela -- o mesmo falso positivo que esta versao veio matar, voltando pela
+  #     porta dos fundos. Link para arquivo que existe e link que funciona; quando ela
+  #     commitar, a primeira regra passa a cobrar o indice.
   for _s in $_dif; do
     if [ -f "$_d/$_s.md" ]; then
-      violacao "$_d/$_s.md -- verbete FORA do INDICE.md (rode scripts/gerar-indice-conhecimento.ps1)"
+      if verbete_do_git "$_d/$_s.md"; then
+        violacao "$_d/$_s.md -- verbete FORA do INDICE.md (rode scripts/gerar-indice-conhecimento.ps1)"
+      fi
     else
       violacao "$_idx -- lista '$_s.md', que nao existe (rode scripts/gerar-indice-conhecimento.ps1)"
     fi

@@ -1,7 +1,6 @@
 ---
 description: Review do diff via router auto (DeepSeek default, escala pra duplo em pasta sensível)
 argument-hint: '[--base <ref>]'
-disable-model-invocation: true
 allowed-tools: Read, Bash, Agent
 ---
 

@@ -1,7 +1,6 @@
 ---
 description: Force review via subagent Cross-Claude (Sonnet, zero custo extra)
 argument-hint: '[--base <ref>]'
-disable-model-invocation: true
 allowed-tools: Read, Bash, Agent
 ---
 

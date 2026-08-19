@@ -1,7 +1,6 @@
 ---
 description: Review duplo (DeepSeek + Cross-Claude) para marco/PR — escopo <base>..HEAD
 argument-hint: '[--base <ref>]'
-disable-model-invocation: true
 allowed-tools: Read, Bash, Agent
 ---
 

@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.40.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.41.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,55 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.41.0 — 2026-08-19
+
+**O gate parou de barrar commit por causa de arquivo de outra sessão, e a suíte
+ficou 45% mais rápida.**
+
+**O gate enumerava verbetes pelo glob do disco** — então rascunho **untracked** de outra sessão no
+checkout compartilhado barrava commit de quem não tinha nada a ver com ele. Custou **três** escapes
+`PERCUS_GATE_OVERSIZE` declarados numa única sessão, em commits que não tocavam `conhecimento/`
+nenhum. 🔑 E escape reincidente vira achado de drift no próprio canon: **o gate estava fabricando o
+sinal que ele usa para dizer que algo vai mal.**
+
+Agora enumera pelo **índice do git** (`git ls-files`) — rastreado + recém-staged, sem untracked.
+É exatamente o conjunto pelo qual o commit responde. Quando a outra sessão der `git add`, o arquivo
+vira responsabilidade dela.
+
+⚠️ **O risco do conserto é o oposto do defeito, e foi ele que quase passou.** Gate que enxerga de
+menos fica **verde por vacuidade**. Três salvaguardas: fora de repo git cai no glob (valida tudo);
+verbete já rastreado continua sendo cobrado mesmo sem estar staged; e as duas direções do bloco 2d
+deixaram de ser simétricas de propósito — verbete do git fora do `INDICE.md` é violação, mas
+entrada do índice apontando para arquivo que **existe no disco** não é, porque o gerador lê o disco
+e o gate lê o git, e num checkout compartilhado essa diferença é permanente.
+
+⚠️ **A primeira versão deste conserto DESACELEROU o ciclo em vez de acelerar.** Chamava `git`
+4 vezes por execução do gate; `gate-conhecimento.tests.ps1` executa o gate **48 vezes**, e a suíte
+passou de 184 s para mais de 600 s. Corrigido com uma única chamada em cache. **Medido, não
+suposto** — e é a razão de o número aparecer neste changelog.
+
+**`scripts/rodar-suite.ps1`** paraleliza a suíte em processos: **184 s → 100,7 s** com tudo verde,
+e **63,6 s** no modo `-Afetados`, que roda só os testes ligados ao diff. Detalhes que importam:
+
+- **Round-robin, não blocos contíguos.** Os arquivos caros estão agrupados por nome (`gate-*`,
+  `external-*`); fatiar em blocos jogaria todos no mesmo processo e o paralelismo existiria só no
+  papel.
+- **Processos `pwsh` de verdade, não `Start-Job`.** Com runspaces na mesma sessão, testes que
+  invocam ferramenta externa travaram tudo com *"jobs are blocked waiting for user interaction"* —
+  **em silêncio**, sem nenhum teste falhar.
+- **`-Afetados` que não sabe mapear roda a suíte inteira.** Otimização que deixa de rodar por não
+  ter entendido o diff é otimização que esconde regressão.
+
+**As travas de invocação saíram** (`disable-model-invocation` em `review`, `deepseek-review`,
+`cross-claude-review`, `milestone-review`, `spec-analyze`, `version`). Elas cobravam um round-trip
+humano por commit e **não entregavam a garantia que as justificava**: bloqueavam só a Skill tool,
+enquanto o script por baixo sempre foi chamável por Bash — e o marcador que libera o commit é
+forjável, como um `latest.jsonl` escrito à mão por um agente comprovou. Fricção que depende de
+boa-fé não é controle, é imposto. A revisão continua obrigatória; mudou quem pode disparar.
+
+Suíte: **428 Pester + 15 pytest**, verde, com 4 casos novos cobrindo untracked ignorado, staged
+barrado, rastreado barrado e o fallback fora-de-repo.
 
 ## Changelog v6.40.0 — 2026-08-19
 
@@ -73,6 +122,8 @@ precisa de `-C`: o git já o chama com cwd na raiz do repo).
 
 Suíte: **424 Pester + 15 pytest** (5 casos novos cobrindo os dois caminhos e a precedência entre
 eles, inclusive o caso "editei depois da review" e o "`git add` não invalida").
+
+---
 
 ## Changelog v6.39.0 — 2026-08-18
 
