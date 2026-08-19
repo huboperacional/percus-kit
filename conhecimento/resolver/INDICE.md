@@ -228,6 +228,7 @@
 - [Marcador otimizado pro hook apaga o histórico que o medidor precisa — duas funções no mesmo arquivo, e a otimização de uma cega a outra](marcador-otimizado-pro-hook-apaga-o-historico-do-medidor.md)
 - [Medi a silhueta por subtração de fundo e ela mentiu (objeto e fundo com a mesma luminosidade)](mascara-fundo-objeto-mesma-luminancia.md)
 - [Métrica que dá o MESMO valor extremo pra população inteira é bug da medição, não achado](medicao-uniforme-na-populacao-inteira-e-bug-da-medicao.md)
+- [Meça antes de projetar a tolerância: o critério certo derrubou 85 ocorrências para 2](medir-antes-de-projetar-a-tolerancia.md)
 - [Mensagem de erro de serviço alheio virou "causa raiz" e documentou uma escassez que não existia](mensagem-de-erro-alheia-promovida-a-diagnostico.md)
 - [Área de staging compartilhada: mesclar cedo devolve a colisão que a caixa tinha eliminado](mesclar-so-imediatamente-antes-do-commit.md)
 - [Migração de UI+API pra novo domínio: cookie dinâmico por Host não basta, a base da API também](migracao-dominio-cookie-e-api-dinamicos.md)
