@@ -156,7 +156,7 @@ Sem isso, o registry volta a divergir na próxima troca de modelo, e o próximo 
 - [x] **Step 1:** bump 6.42.0 via `scripts/bump-canon.ps1` (7 pontos).
 - [x] **Step 2:** changelog 6.42.0 escrito.
 - [x] **Step 3:** verbete marcado RESOLVIDO, com a matriz medida e a correção da premissa falsa. Verbete novo: `#direcao-da-enumeracao-por-qual-lado-falha-alto`. Marcar `conhecimento/resolver/conselho-agent-marker-chamado-por-http.md` como **RESOLVIDO**, com a matriz de modelos medida na Task 2 Step 1 — que é o dado reutilizável desta sessão. Corrigir também a afirmação do verbete de que o `cross-claude` "não deveria ser chamado por HTTP": ela parte do registry, e o registry é que está errado.
-- [x] **Step 4 (metade):** 3/3 PROVADO pelo kit — `.deepseek/council-log/20260819-144208-consult.jsonl`, `respostas_usaveis: 3`, `respostas_degradadas: 0`. ⏳ **Falta publicar**: push (R20, exige aprovação) + `/plugin update` do operador. Até lá o cache em 6.41.0 segue com o wrapper quebrado.
+- [x] **Step 4 (metade):** 3/3 PROVADO pelo kit — `.deepseek/council-log/20260819-144208-consult.jsonl`, `respostas_usaveis: 3`, `respostas_degradadas: 0`. ✅ **Publicado** 2026-08-19: `44e1835..f8ce87b main -> main`, autorização R20 `28fff642`. ⏳ Falta só o cache local pegar a 6.42.0 pelo `autoUpdate` (reinício de sessão) — até lá o plugin instalado segue com o wrapper quebrado, nesta máquina e nas outras.
 
 ---
 
