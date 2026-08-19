@@ -16,18 +16,100 @@ try {
     if (-not $command) { exit 0 }
 
     # Lista de comandos que sao "acao externa publica" (R20)
+    #
+    # ATENCAO -- ISTO E BLOCKLIST POR ENUMERACAO, e blocklist erra sempre pro mesmo lado: o que
+    # nasce depois dela passa. Medido em 2026-08-19: um `wrangler versions deploy` rodado por ssh
+    # publicou um site em PRODUCAO e nao casou padrao nenhum. O operador tinha autorizado na
+    # conversa, mas o guard teria deixado passar do mesmo jeito -- a protecao naquele caminho era
+    # ilusoria. A 6.41.0 ja documentara esta exata classe ("a coisa N+1 nasceu fora da guarda").
+    # Por isso os padroes abaixo descrevem CLASSES de acao -- publicar, executar em outra maquina,
+    # mutar estado alheio por HTTP -- em vez de nomes de ferramenta, um a um.
+    #
+    # O que ele CONTINUA sem cobrir, declarado aqui para nao virar falsa seguranca: chamada de SDK
+    # dentro de um script (`python deploy.py`), ferramenta de deploy que ainda nao existe, e
+    # qualquer coisa que nao passe pelo campo `command` do Bash. A R20 segue sendo
+    # responsabilidade do agente e do operador; este hook e rede, nao garantia.
+    #
+    # ⚠️ Efeito colateral conhecido: como o guard le o TEXTO do comando, procurar ou editar estes
+    # padroes dispara o proprio guard (`grep 'slack-cli' guard.sh` bloqueia). Editar este arquivo
+    # exige ferramenta de edicao, nao shell.
+
+    # Inicio de comando: comeco da string, ou logo depois de um separador de shell. Serve para
+    # distinguir EXECUTAR de MENCIONAR -- ver o bloco "publicar" abaixo.
+    # `[;&|(]+` com o MAIS: o irmao .sh ja usava, e este nao -- divergencia pega pelo review.
+    # `;; ssh vps` escapava so aqui. Regra duplicada em duas linguagens diverge no detalhe, nao
+    # no desenho; e o detalhe que decide se a guarda pega.
+    $cmdIni = '(?:^|[;&|(]+\s*|&&\s*|\|\|\s*|\bthen\s+|\bdo\s+)'
+
     $externalPatterns = @(
+        # --- interacao publica em plataforma de terceiros ---
         'gh\s+(pr|issue)\s+comment',
         'gh\s+pr\s+(close|merge)',
         'gh\s+issue\s+close',
         'slack-cli',
         'git\s+push',
-        'mailto:'
+        'mailto:',
+        # --- publicar: o resultado fica visivel pra quem nao e a gente (add. 2026-08-19) ---
+        #
+        # ⚠️ Estes vem ANCORADOS em POSICAO DE COMANDO (`$cmdIni` = inicio da linha, ou depois de
+        # ; & | ( && ||), e a razao foi medida na mesma sessao em que nasceram: sem a ancora, a
+        # primeira versao bloqueou a redacao de um documento que apenas CITAVA `wrangler versions
+        # deploy` dentro de uma tag HTML. Guard que impede escrever sobre deploy vira imposto, e
+        # imposto acaba desligado -- pior que guard nenhum. Os padroes de cima (gh/git/slack) NAO
+        # sao ancorados de proposito: sao especificos o bastante para prosa raramente casar, e
+        # afrouxa-los custaria deteccao real.
+        "$cmdIni(sudo\s+)?(npx\s+|npm\s+exec\s+|yarn\s+)?wrangler\s+(versions\s+|pages\s+|triggers\s+)?(deploy|publish)",
+        "$cmdIni(sudo\s+)?docker\s+stack\s+deploy",
+        "$cmdIni(sudo\s+)?docker\s+service\s+(create|update|scale|rm)",
+        "$cmdIni(sudo\s+)?(npx\s+)?vercel\s+(deploy|--prod)",
+        "$cmdIni(sudo\s+)?(npx\s+)?netlify\s+deploy",
+        "$cmdIni(sudo\s+)?kubectl\s+(apply|rollout|delete)",
+        # --- executar em OUTRA maquina: o efeito nao fica nesta (ancorado pelo mesmo motivo) ---
+        #
+        # ⚠️ NAO exige `user@host`. A primeira versao exigia, e o review pegou o buraco: `ssh vps
+        # 'cmd'`, com alias do ~/.ssh/config, e a forma MAIS comum de execucao remota e nao tem
+        # arroba nenhuma -- passava batido. O `\s` depois de `ssh` ja exclui `ssh-keygen`/`ssh-add`,
+        # e o `[^\s-]` no host impede casar uma flag solta.
+        # O host pode terminar em espaco, em separador de comando OU no fim da string:
+        # `ssh host;` e `ssh host &` sao execucao remota igual, e a 1a versao exigia espaco
+        # depois do host -- as duas formas escapavam. Achado do review.
+        "$cmdIni(sudo\s+)?ssh\s+(-\S+\s+)*[^\s-]\S*(\s|[;&|]|$)"
+    )
+
+    # --- mutar estado alheio por HTTP. Lista SEPARADA de proposito: so ela aceita a isencao de
+    #     host local, e por isso nao precisa da lista negativa que a versao anterior usava para
+    #     decidir quem podia ser isentado. O review pegou o defeito daquela: um POST para localhost
+    #     num comando que por acaso contivesse a substring "gh" (num nome de arquivo, p.ex.) ficava
+    #     sem a isencao e era bloqueado. Separar as duas familias resolve pela estrutura.
+    #
+    #     GET fica de fora DE PROPOSITO: ler e livre, escrever e que precisa do operador.
+    #     Ancorados como os de deploy, e pelo mesmo motivo -- prosa que CITA `curl -X POST` nao e
+    #     um POST.
+    $httpMutationPatterns = @(
+        "$cmdIni(sudo\s+)?curl\b[^|;]*\s-X\s*[`"']?(POST|PUT|PATCH|DELETE)",
+        "$cmdIni(sudo\s+)?curl\b[^|;]*\s--request\s+[`"']?(POST|PUT|PATCH|DELETE)"
     )
 
     $isExternalAction = $false
     foreach ($p in $externalPatterns) {
         if ($command -match $p) { $isExternalAction = $true; break }
+    }
+
+    if (-not $isExternalAction) {
+        foreach ($p in $httpMutationPatterns) {
+            if ($command -match $p) { $isExternalAction = $true; break }
+        }
+        # Isencao de host local: mutacao HTTP contra a propria maquina nao sai daqui, e bloquear
+        # isso transformaria o guard em imposto sobre desenvolvimento normal -- guard barulhento
+        # acaba desligado, que e pior que guard ausente (licao das travas de invocacao da 6.41.0).
+        # Conservador: basta UMA url externa no comando para continuar valendo.
+        if ($isExternalAction) {
+            $urls = [regex]::Matches($command, '(?i)https?://[^\s"''`)]+')
+            if ($urls.Count -gt 0) {
+                $externas = @($urls | Where-Object { $_.Value -notmatch '(?i)://(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])' })
+                if ($externas.Count -eq 0) { $isExternalAction = $false }
+            }
+        }
     }
 
     if (-not $isExternalAction) { exit 0 }

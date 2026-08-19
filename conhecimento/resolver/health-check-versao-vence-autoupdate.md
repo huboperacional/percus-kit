@@ -1,6 +1,6 @@
 ## A leitura de versão do `enforcement-health` VENCE no meio da sessão — `autoUpdate` fecha a divergência sozinho enquanto você "conserta" {#health-check-versao-vence-autoupdate}
 
-`tags: enforcement-health, SessionStart, versao instalada diferente do kit, autoUpdate, installed_plugins.json, plugin cache, percus-review, trampolim, hooks.json, registro vs codigo, aviso obsoleto, retrato do launch`
+`tags: enforcement-health, SessionStart, versao instalada diferente do kit, autoUpdate, installed_plugins.json, plugin cache, percus-review, trampolim, hooks.json, registro vs codigo, aviso obsoleto, retrato do launch, md5sum falso alarme, CRLF, comparacao de registro`
 
 **Sintoma:** o `SessionStart` abre a sessão com `versao instalada (X) diferente da do kit (Y) --
 mudanca de REGISTRO (matcher, hook novo) ainda nao vale nesta maquina`. Você trata o aviso como
@@ -42,8 +42,12 @@ automático mexendo naquilo que o check mede, o check é um **gatilho pra ir olh
 observação final. O sinal de que isso aconteceu costuma vir de fora do check — aqui, de uma linha de
 log de outra ferramenta citando uma versão impossível.
 
+🔴 **A comparação do item 3 dá FALSO ALARME se não normalizar a quebra de linha — medido em 2026-08-19, entre cache `6.40.0` e kit `6.41.0`.** O `diff` cru de `hooks.json` devolveu `1,102c1,102` — **todas** as 102 linhas marcadas como diferentes — e o `md5sum` divergiu nos dois arquivos. Pela regra como estava escrita, isso significaria "registro novo, precisa de publicação". Normalizando (`diff <(tr -d '\r' < cache) <(tr -d '\r' < kit)`) o resultado é **idêntico**: a diferença inteira era **CRLF no cache contra LF no kit** — o pacote publicado atravessa uma fronteira que converte a quebra de linha, o clone do kit não. 🔑 **Hash e diff cru medem o TRANSPORTE; o que decide publicação é o CONTEÚDO.** Normalize os dois lados antes de comparar, sempre — vale igual pro `hooks-manifest.json`, e pegou de volta quem escreveu este parágrafo: o próprio verbete está em CRLF. (Mesma família de [#crlf-mente-em-tres-camadas-ao-fatiar-arquivo], noutra fronteira.)
+
+**3ª ocorrência do fechamento sozinho: 2026-08-19** (depois de 11/08 e 15/08). O `installed_plugins.json` foi relido e dizia `6.40.0`; o parágrafo do `CLAUDE.md` foi escrito com esse número; **minutos depois**, na mesma sessão, o `percus-review-auto.sh` imprimiu `plugin pasta=6.41.0` (`lastUpdated: 17:47:11Z`) e o texto teve de ser reescrito antes do commit — exatamente como em 11/08. Três de três: **escreva o parágrafo já contando que a divergência vai fechar sozinha**, em vez de descrevê-la como estado.
+
 **Relacionado:** [#smoke-certo-mas-caminho-nao-rodou] (confirme o caminho, não a saída) ·
 [#teste-string-nao-prova-gate-runtime] (conferir o texto do arquivo não prova o que roda).
 
-**Ref:** Scraper-prospeccao, alinhamento ao canon 6.35.0 (2026-08-11). `installed_plugins.json`
+**Ref:** Scraper-prospeccao, alinhamento ao canon 6.35.0 (2026-08-11); e alinhamento 6.39.0→6.41.0 (2026-08-19), `lastUpdated: 2026-08-19T17:47:11Z`, que trouxe o falso alarme de CRLF. `installed_plugins.json`
 `lastUpdated: 2026-08-11T22:57:34Z`. R23.

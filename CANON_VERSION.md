@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.42.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.43.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,89 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.43.0 — 2026-08-19
+
+**O `external-action-guard` não pegava deploy nenhum — e a R20 achava que pegava.**
+
+Medido no pior jeito possível: um deploy de Worker rodado por execução remota **publicou um site em
+produção** e não casou nenhum dos 6 padrões da lista. O operador tinha autorizado na conversa, mas o
+gate teria deixado passar do mesmo jeito. A proteção naquele caminho era **ilusória**, e ninguém
+sabia porque guard que não bloqueia não faz barulho.
+
+A lista era blocklist por **enumeração** (6 nomes de ferramenta: `gh pr comment`, `gh pr close`,
+`gh issue close`, `slack-cli`, `git push`, `mailto:`). Blocklist erra sempre para o mesmo lado: o
+que nasce depois dela passa. 🔑 **A 6.41.0 já tinha documentado esta exata classe** — *"a coisa N+1
+nasceu fora da guarda"* — ao inverter a direção da regra da R11. Aqui a inversão completa não cabe
+(allowlist num guard de shell proibiria `ls`), então os padrões passaram a descrever **classes de
+ação**: publicar, executar em outra máquina, mutar estado alheio por HTTP.
+
+**GET fica de fora de propósito.** Ler é livre; escrever é que precisa do operador. Guard barulhento
+acaba desligado, que é pior que guard ausente — a mesma lição que a 6.41.0 tirou das travas de
+invocação.
+
+⚠️ **A primeira versão do conserto errou para o outro lado, e isso é metade do aprendizado:** ela
+bloqueou a **redação de um documento** que apenas *citava* um comando de deploy dentro de uma tag
+HTML. Os padrões novos ficaram **ancorados em posição de comando** (início de linha, ou depois de
+`;` `&` `|` `(` `&&` `||`). Executar bloqueia; mencionar, não. Os padrões antigos ficam sem âncora
+de propósito: já são específicos, e afrouxá-los custaria detecção real.
+
+🔴 **SETE defeitos vieram do review, em três rodadas, e o fact-check descartou todos.** O bloco Audit
+mostrava o path truncado (`…guard.ps`), que é por que ele "não conseguiu verificar" — e
+`infundado == total` é alarme, não silêncio:
+
+1. execução remota **sem `user@`** escapava. Alias do `~/.ssh/config` é a forma mais comum e não tem
+   arroba nenhuma;
+2. host terminando em `;`, `&` ou fim de string escapava — a versão anterior exigia espaço depois;
+3. os padrões de HTTP não estavam ancorados, ao contrário dos de deploy — prosa citando um POST
+   viraria bloqueio;
+4. a isenção de host local dependia de uma **lista negativa**, então um POST para `localhost` num
+   comando que por acaso contivesse a substring `gh` (num nome de arquivo) ficava sem isenção.
+   Resolvido pela **estrutura**: duas famílias de padrão separadas, e só a de HTTP aceita isenção;
+5. o `cmdIni` **divergia entre os dois irmãos** (`[;&|(]` no `.ps1`, `[;&|(]+` no `.sh`), então um
+   separador duplo escapava só no Windows;
+6. no `.sh`, `\$` dentro de aspas duplas é `$` **literal**, não a âncora de fim de string — então
+   um comando de execução remota sem sufixo nenhum não casava **só no Unix**. A rodada anterior
+   deste mesmo changelog afirmava ter fechado essa divergência; não tinha;
+7. `then`/`do` sem fronteira de palavra no `.sh` (o `.ps1` usa `\b`, que ERE não tem): a palavra
+   `heathen` casaria pela substring `then `.
+
+🔑 **Os itens 5, 6 e 7 são a mesma coisa dita três vezes: regra duplicada em duas linguagens diverge
+no DETALHE, não no desenho — e é o detalhe que decide se a guarda pega.** Um teste de paridade que
+compare o TEXTO dos padrões não pegaria nenhum dos três: em cada caso o texto está certo para uma
+linguagem e errado para a outra. Só teste comportamental, rodando os dois, separa.
+
+⚠️ **Dois findings foram recusados com motivo declarado**, não ignorados: capturar `ftp://`/`file://`
+na isenção de host local (a família de HTTP é `curl` com verbo, que não usa esses esquemas), e
+tratar a flag de porta como parâmetro em vez de host — ali o guard bloqueia com o número no lugar do
+host, e **é conservador de propósito**: continua sendo execução remota, e errar para o lado de pedir
+o operador custa um round-trip, enquanto errar para o outro custou um deploy em produção sem gate.
+
+⚠️ **E a suíte quase mediu a coisa errada:** quatro casos "falharam" até se descobrir que o guard
+estava **permitindo por uma autorização em lote ativa**, criada por outra sessão no mesmo repo. A
+suíte passou a rodar de um cwd sem `.percus/`, e isso está escrito no cabeçalho dela.
+
+E um oitavo que **só o teste comportamental pegou**: no irmão Unix, `([[:space:]]|$)` no lugar de
+`` (que ERE não tem) **consome** um caractere — o padrão passou a exigir dois espaços e
+`curl -X POST` deixou de casar. Falha silenciosa, para o lado errado. Os dois arquivos tinham o
+mesmo texto e comportamentos diferentes; leitura não pegaria.
+
+**Suíte comportamental nova**, alimentando o hook pelo STDIN como o harness faz: **17 casos no
+`.ps1` e 21 no `.sh`**, verdes nos dois, sob `powershell.exe` 5.1 que é o runtime real do hook.
+
+**O que o guard continua sem cobrir está escrito dentro dele**, para não virar falsa segurança:
+chamada de SDK dentro de um script (`python deploy.py`), ferramenta de deploy que ainda não existe,
+e qualquer coisa que não passe pelo campo `command` do Bash. A R20 segue sendo responsabilidade do
+agente e do operador; o hook é rede, não garantia. ⚠️ Efeito colateral inerente, também
+documentado: **procurar ou editar estes padrões dispara o próprio guard** — editar o arquivo exige
+ferramenta de edição, não shell.
+
+🔑 **Achado operacional de tabela, que não é código:** a autorização em lote da R20 é **por
+diretório, não por sessão**. O arquivo `.percus/acao-externa-autorizada.json` criado por uma sessão
+**autoriza qualquer outra** que trabalhe no mesmo repo durante os 60 min — medido em 2026-08-19,
+quando um teste do guard voltou "permitindo" por causa de uma autorização criada por outra sessão
+para publicar esta mesma versão. Fica registrado como propriedade conhecida, não como defeito
+corrigido.
 
 ## Changelog v6.42.0 — 2026-08-19
 
