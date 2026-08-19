@@ -94,6 +94,37 @@ try {
         [Console]::Error.WriteLine("  searched: $searched")
     }
 
+    # === POLITICA DE RISCO: review por CRITERIO, nao por frequencia (2026-08-19) ===
+    # Medido: 26 chamadas do conselho em modo review geraram achado em 8 (31%) -- e os 2 achados
+    # materiais de uma sessao inteira vieram de diffs que mexiam em LOGICA e CONTRATO, nenhum de
+    # commit trivial. Pagar 60-90 s uniformes por um beneficio concentrado e o desperdicio; o
+    # porteiro fica onde ja pegou coisa.
+    #
+    # Conservador de proposito: a dispensa e uma LISTA FECHADA de extensoes de texto puro. Tudo
+    # que nao estiver nela exige review, inclusive extensao nova. A regra "dispensa o que eu
+    # reconheco como inofensivo" falha para o lado seguro; a inversa ("exige so o que eu
+    # reconheco como perigoso") deixa o desconhecido passar -- que e como enforcement por
+    # enumeracao ja mordeu este kit duas vezes.
+    #
+    # Um unico arquivo fora da lista ja exige review do commit inteiro: nao existe "meio
+    # revisado".
+    try {
+        $dispensaveis = @('.md', '.txt', '.rst', '.adoc')
+        $mudados = @(git -C $repoRoot diff HEAD --name-only 2>$null | Where-Object { $_ })
+        if ($mudados.Count -gt 0) {
+            $temCodigo = $false
+            foreach ($m in $mudados) {
+                $ext = [IO.Path]::GetExtension($m)
+                if ($dispensaveis -notcontains $ext.ToLower()) { $temCodigo = $true; break }
+            }
+            if (-not $temCodigo) {
+                # Silencio: dispensa nao e evento. Aviso a cada commit de texto viraria ruido, e
+                # ruido e o que faz o operador parar de ler os avisos que importam.
+                exit 0
+            }
+        }
+    } catch { }
+
     if (-not (Test-Path $reviewDir)) {
         [Console]::Error.WriteLine("[percus:hook pre-commit] BLOCK: nenhum /percus-review:review em .deepseek/reviews/ do repo target")
         Write-BlockContext -searched $reviewDir

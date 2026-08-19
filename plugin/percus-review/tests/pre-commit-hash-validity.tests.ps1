@@ -37,6 +37,10 @@ Describe "pre-commit-check.ps1 — validade por hash do diff" {
         }
 
         # Repo com 1 commit e uma alteracao pendente, pra `git diff HEAD` nao ser vazio.
+        # O arquivo e .ps1 e NAO .txt de proposito: a politica de risco (6.41.0) dispensa
+        # review de diff so-texto, entao uma fixture .txt sairia com exit 0 antes de chegar na
+        # logica de hash -- e os testes passariam/falhariam por um motivo que nao e o que eles
+        # afirmam medir. Achado quando as duas mudancas se encontraram na suite.
         function New-RepoComDiff {
             param([double]$IdadeLatestMin = 60, [switch]$SemMarcadorHash)
             $dir = Join-Path ([IO.Path]::GetTempPath()) ("percus-hash-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
@@ -47,12 +51,12 @@ Describe "pre-commit-check.ps1 — validade por hash do diff" {
                 & git init -q . 2>$null
                 & git config user.email "t@t.t" 2>$null
                 & git config user.name "t" 2>$null
-                Set-Content -Path (Join-Path $dir "a.txt") -Value "original" -Encoding utf8
-                & git add a.txt 2>$null
+                Set-Content -Path (Join-Path $dir "a.ps1") -Value "original" -Encoding utf8
+                & git add a.ps1 2>$null
                 & git commit -q -m "base" --no-verify 2>$null
                 # alteracao pendente: acento de proposito, que e o que expunha a divergencia
                 # de encoding entre os runtimes
-                Set-Content -Path (Join-Path $dir "a.txt") -Value "alterado com acentuacao" -Encoding utf8
+                Set-Content -Path (Join-Path $dir "a.ps1") -Value "alterado com acentuacao" -Encoding utf8
             } finally { Pop-Location }
 
             $rev = Join-Path $dir ".deepseek\reviews"
@@ -108,7 +112,7 @@ Describe "pre-commit-check.ps1 — validade por hash do diff" {
         # mascararia o resultado do hash -- o teste passaria sem provar nada sobre o mecanismo
         # que ele diz testar.
         $repo = New-RepoComDiff -IdadeLatestMin 60
-        Set-Content -Path (Join-Path $repo "a.txt") -Value "editado DEPOIS da review" -Encoding utf8
+        Set-Content -Path (Join-Path $repo "a.ps1") -Value "editado DEPOIS da review" -Encoding utf8
         Invoke-Hook -RepoDir $repo | Should -Be 2 -Because "codigo alterado depois da review nao esta revisado, mesmo dentro da janela"
     }
 
@@ -118,7 +122,7 @@ Describe "pre-commit-check.ps1 — validade por hash do diff" {
         # revisar de novo o mesmo conteudo -- o retrabalho que este mecanismo veio matar.
         $repo = New-RepoComDiff -IdadeLatestMin 60
         Push-Location $repo
-        try { & git add a.txt 2>$null } finally { Pop-Location }
+        try { & git add a.ps1 2>$null } finally { Pop-Location }
         Invoke-Hook -RepoDir $repo | Should -Be 0 -Because "stage nao muda o conteudo, so onde ele esta"
     }
 

@@ -72,6 +72,31 @@ boa-fé não é controle, é imposto. A revisão continua obrigatória; mudou qu
 Suíte: **428 Pester + 15 pytest**, verde, com 4 casos novos cobrindo untracked ignorado, staged
 barrado, rastreado barrado e o fallback fora-de-repo.
 
+---
+
+**A review R11 passou a ser exigida por CRITÉRIO DE RISCO, não por frequência.**
+
+Base medida, não intuição: nos logs de conselho, **26 chamadas em modo review geraram achado em 8
+(31%)** — dois terços não acham nada. E os **dois achados materiais** de uma sessão inteira vieram
+de diffs que mexiam em lógica e contrato; **nenhum** veio de commit trivial. Valor real,
+distribuição desigual — pagar 60–90 s uniformes por benefício concentrado é o desperdício.
+
+A dispensa é uma **lista fechada** de extensões de texto puro (`.md`, `.txt`, `.rst`, `.adoc`).
+🔑 A direção da regra é a decisão inteira: "dispensa o que eu reconheço como inofensivo" falha para
+o lado seguro; a inversa, "exige só o que eu reconheço como perigoso", deixa o **desconhecido**
+passar. Enforcement por enumeração já mordeu este kit duas vezes exatamente assim, e as duas foram
+"a coisa N+1 nasceu fora da guarda". Extensão nova, arquivo sem extensão (`Dockerfile`, `Makefile`)
+e um único arquivo de código no meio de vinte `.md` exigem review do commit inteiro — não existe
+commit meio revisado.
+
+⚠️ **As duas mudanças desta versão se encontraram na suíte, e foi ela que avisou.** Os testes de
+validade por hash usavam uma fixture `a.txt` — que a política nova dispensa. Eles saíam com exit 0
+antes de chegar à lógica de hash, ou seja, passariam a medir outra coisa sem dizer. Fixture trocada
+para `.ps1`. É o tipo de interação que nenhuma leitura de diff pega, porque cada mudança está certa
+sozinha.
+
+Suíte: **433 Pester + 15 pytest** em 98,4 s pelo executor paralelo (5 casos novos de política).
+
 ## Changelog v6.40.0 — 2026-08-19
 
 **A validade da review deixa de ser TEMPO e passa a ser CONTEÚDO. A janela de 5 minutos media a

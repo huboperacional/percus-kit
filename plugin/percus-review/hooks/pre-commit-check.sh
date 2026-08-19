@@ -51,6 +51,38 @@ block_context() {
   echo "  searched: $searched" >&2
 }
 
+# === POLITICA DE RISCO: review por CRITERIO, nao por frequencia (2026-08-19) ===
+# Medido: 26 chamadas do conselho em modo review geraram achado em 8 (31%), e os 2 achados
+# materiais de uma sessao inteira vieram de diffs que mexiam em LOGICA e CONTRATO -- nenhum de
+# commit trivial. Pagar 60-90 s uniformes por beneficio concentrado e o desperdicio.
+#
+# Conservador de proposito: a dispensa e LISTA FECHADA de extensoes de texto puro. Tudo que nao
+# estiver nela exige review, inclusive extensao nova -- a regra inversa ("exige so o que eu
+# reconheco como perigoso") deixa o desconhecido passar, que e como enforcement por enumeracao
+# ja mordeu este kit duas vezes. Um unico arquivo fora da lista exige review do commit inteiro.
+# Linha a linha, com redirecionamento de ARQUIVO. Nao `for _m in $MUDADOS`: isso quebra por
+# whitespace e "docs/meu arquivo.md" viraria dois tokens, o primeiro sem extensao -- o hook
+# passaria a exigir review de um commit de texto puro. Falha pro lado seguro, mas errado.
+# E nao `| while`: pipe roda o corpo em SUBSHELL e o TEM_CODIGO se perderia ao sair. (R11)
+_TMP_MUD="${TMPDIR:-/tmp}/percus-mudados-$$"
+git -C "$REPO_ROOT" diff HEAD --name-only > "$_TMP_MUD" 2>/dev/null || :
+TEM_CODIGO=0
+while IFS= read -r _m; do
+  [ -n "$_m" ] || continue
+  case "$_m" in
+    *.md|*.txt|*.rst|*.adoc) ;;
+    *) TEM_CODIGO=1; break ;;
+  esac
+done < "$_TMP_MUD"
+_TEVE_MUDANCA=0
+[ -s "$_TMP_MUD" ] && _TEVE_MUDANCA=1
+rm -f "$_TMP_MUD"
+# Silencio: dispensa nao e evento. Aviso a cada commit de texto vira ruido, e ruido e o que
+# faz o operador parar de ler os avisos que importam.
+if [ "$_TEVE_MUDANCA" = "1" ] && [ "$TEM_CODIGO" = "0" ]; then
+  exit 0
+fi
+
 if [ ! -d "$REVIEW_DIR" ]; then
   echo "[percus:hook pre-commit] BLOCK: nenhum /percus-review:review em .deepseek/reviews/ do repo target" >&2
   block_context "$REVIEW_DIR"
