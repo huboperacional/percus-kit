@@ -82,6 +82,65 @@ def parse_log_file(path: Path) -> list[dict[str, Any]]:
     return parse_log_data(data, path)
 
 
+def parse_spend_file(path: Path) -> list[dict[str, Any]]:
+    """Le `.deepseek/spend/<YYYY-MM>.jsonl` -- a telemetria do caminho de REVIEW.
+
+    Por que existe (medido em 2026-08-19): o marcador `.deepseek/reviews/latest.jsonl` e
+    SOBRESCRITO a cada review, decisao de 2026-07-20 que existe pra nao pendurar o hook R11
+    em ~148s enumerando milhares de arquivos. A decisao esta certa pro hook e deixa o custo
+    cego: naquele dia os logs de conselho de 62 diretorios `.deepseek` somaram $0.89 de um
+    painel de $29.76. 97% do gasto era invisivel -- e justamente pelo caminho mais usado do
+    kit (review existe em 48 projetos, o dobro do conselho).
+
+    🔑 Diferenca de formato que morde: council-log tem extensao `.jsonl` mas e UM objeto por
+    ARQUIVO. Aqui e JSONL de verdade -- N objetos, um por LINHA, append. Ler este arquivo com
+    `json.loads(texto_inteiro)` devolve zero entradas sem erro nenhum, que e o mesmo modo de
+    falhar calado que esta funcao existe pra acabar. Por isso o parser e proprio, e nao
+    reaproveita `parse_log_file`.
+
+    Linha corrompida (append concorrente cortado no meio) e PULADA, nao aborta o arquivo:
+    perder o mes inteiro por causa de uma linha e o oposto de medir o gasto.
+
+    Entrada sem `usage` e DESCARTADA em vez de estimada. O spend nao guarda o texto do prompt
+    nem da resposta -- telemetria nao e copia de conteudo -- entao nao ha de onde estimar, e
+    chutar zero somaria silenciosamente errado no total.
+    """
+    entries: list[dict[str, Any]] = []
+    try:
+        texto = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return []
+    for linha in texto.splitlines():
+        linha = linha.strip()
+        if not linha:
+            continue
+        try:
+            d = json.loads(linha)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(d, dict):
+            continue
+        usage = d.get("usage") or {}
+        tokens_in = usage.get("prompt_tokens")
+        tokens_out = usage.get("completion_tokens")
+        if tokens_in is None and tokens_out is None:
+            continue
+        model = d.get("model") or ""
+        entries.append({
+            "provider": d.get("provider") or model or "unknown",
+            "model": model,
+            # O modo identifica a FERRAMENTA, nao o modo do conselho: e isso que finalmente
+            # separa "gastei revisando" de "gastei consultando" no relatorio.
+            "mode": d.get("tool") or "review",
+            "timestamp": d.get("timestamp", ""),
+            "tokens_in": int(tokens_in or 0),
+            "tokens_out": int(tokens_out or 0),
+            "latency_ms": int(d.get("latency_ms") or 0),
+            "source": str(path),
+        })
+    return entries
+
+
 def _estimate_tokens(prompt: str, completion: str) -> tuple[int, int]:
     try:
         import tiktoken
@@ -210,6 +269,24 @@ def main():
         if ts < cutoff:
             continue
         entries.extend(parse_log_data(raw, log))
+
+    # Telemetria do caminho de REVIEW. O filtro de cutoff acima e POR ARQUIVO porque cada
+    # council-log e uma consulta so. Aqui nao da: o spend e um arquivo por MES com N linhas,
+    # entao o corte tem que ser POR LINHA -- filtrar por arquivo incluiria agosto inteiro num
+    # relatorio de 7 dias, ou descartaria as linhas de hoje junto com as do dia 1.
+    for spend in Path(args.root).rglob(".deepseek/spend/*.jsonl"):
+        for e in parse_spend_file(spend):
+            ts_str = e.get("timestamp") or ""
+            if ts_str:
+                try:
+                    ts = datetime.fromisoformat(re.sub(r"[+-]\d{2}:\d{2}$|Z$", "", ts_str))
+                except ValueError:
+                    ts = cutoff
+            else:
+                ts = cutoff
+            if ts < cutoff:
+                continue
+            entries.append(e)
 
     agg = aggregate(entries)
     md = render_markdown(agg, entries, args.days)

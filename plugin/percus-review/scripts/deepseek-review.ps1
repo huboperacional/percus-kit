@@ -206,6 +206,50 @@ $logTmp  = Join-Path $logDir 'latest.jsonl.tmp'
     findings   = $findings
 } | ConvertTo-Json -Depth 5 -Compress | Out-File -FilePath $logTmp -Encoding utf8
 Move-Item -Path $logTmp -Destination $logFile -Force
+
+# === TELEMETRIA DE GASTO (2026-08-19) ===
+# Diretorio SEPARADO do marcador, de proposito. O latest.jsonl e sobrescrito a cada review
+# (2026-07-20) pra manter o hook R11 em O(1) -- decisao certa, que custou a visibilidade do
+# custo: em 2026-08-19 os logs de conselho de 62 diretorios .deepseek somavam $0.89 de um
+# painel de $29.76. 97% do gasto invisivel, e justamente pelo caminho MAIS usado (review
+# existe em 48 projetos, o dobro do conselho).
+#
+# Formato: APPEND de uma linha por review em .deepseek/spend/<YYYY-MM>.jsonl. Arquivo por MES
+# (12 por ano, nao milhares) -- e o que impede a volta do acumulo que pendurou o hook em 148s.
+# O hook nunca varre este diretorio: ele so olha .deepseek/reviews/latest.jsonl.
+#
+# NAO grava prompt nem resposta: telemetria nao e copia de conteudo. So o que precifica.
+#
+# try/catch com silencio deliberado: este script libera o commit (R11). Se a telemetria
+# falhar (disco cheio, permissao, corrida no append), o review TEM que seguir -- o mesmo
+# principio que ja fez os campos ausentes virarem $null no marcador em vez de quebrar.
+try {
+    $spendDir = Join-Path (Get-Location) '.deepseek\spend'
+    if (-not (Test-Path $spendDir)) { New-Item -ItemType Directory -Path $spendDir -Force | Out-Null }
+    # UTC nos DOIS irmaos, de proposito. O .sh usa `date -u`; se este usasse hora local, o
+    # mesmo instante cairia em dia diferente conforme o script que rodou -- e na virada do mes,
+    # em ARQUIVO diferente. O parser tira o offset e compara naive, entao a divergencia nao
+    # apareceria como erro: apareceria como relatorio de N dias silenciosamente torto (4h de
+    # deslocamento neste fuso). Achado pelo R11 antes de commitar.
+    $agoraUtc  = [DateTime]::UtcNow
+    $spendFile = Join-Path $spendDir ($agoraUtc.ToString('yyyy-MM') + '.jsonl')
+    $linha = @{
+        timestamp  = $agoraUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        tool       = 'deepseek-review'
+        provider   = 'deepseek'
+        model      = $Model
+        usage      = $response.usage
+        diff_lines = ($diff -split "`n").Count
+    } | ConvertTo-Json -Depth 5 -Compress
+    # Uma linha por chamada, com \n no fim: append curto e a forma mais proxima de atomico que
+    # da pra ter sem lock. Se duas sessoes appendarem no mesmo instante e uma linha sair
+    # cortada, o leitor (parse_spend_file) pula a linha ruim em vez de perder o mes.
+    Add-Content -Path $spendFile -Value $linha -Encoding utf8
+} catch {
+    # Silencio proposital -- ver comentario acima. A ausencia de telemetria nao pode custar
+    # um commit.
+}
+
 # Auto-poda: o mecanismo agora e latest.jsonl unico. Remove marcadores
 # <timestamp>.jsonl irmaos (pilhas antigas drenam sozinhas no proximo review,
 # sem depender de limpeza manual nem de reinstalar os hooks). Produtor-side.

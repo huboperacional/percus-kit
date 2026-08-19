@@ -174,3 +174,73 @@ def test_render_markdown_empty_entries():
     """aggregate={} e entries=[] nao deve crashar."""
     result = render_markdown({}, [], 30)
     assert "Nenhum custo apurado" in result
+
+
+# --- telemetria de gasto do caminho de REVIEW (2026-08-19) --------------------
+# Contexto: o marcador .deepseek/reviews/latest.jsonl e SOBRESCRITO a cada review
+# (decisao de 2026-07-20, pra nao pendurar o hook R11 em 148s enumerando milhares
+# de arquivos). Otimo pro hook, cego pro custo: em agosto/2026 os logs de conselho
+# de 62 diretorios somaram $0.89 de um painel de $29.76 -- 97% invisivel, porque o
+# caminho mais usado do kit (review, presente em 48 projetos) nao deixava rastro.
+# A telemetria mora em .deepseek/spend/<YYYY-MM>.jsonl: APPEND, arquivo por mes
+# (12/ano, nao milhares), em diretorio que o hook nao varre.
+
+def test_le_spend_jsonl_com_varias_linhas(tmp_path):
+    """spend/*.jsonl e JSONL DE VERDADE: N objetos, um por linha.
+
+    Diferente do council-log, que apesar da extensao .jsonl e UM objeto por arquivo.
+    Ler o spend com json.loads(arquivo inteiro) devolveria zero entradas -- que e
+    exatamente o modo de falhar calado que esta telemetria existe pra acabar.
+    """
+    from analyze_council_spend import parse_spend_file
+
+    d = tmp_path / ".deepseek" / "spend"
+    d.mkdir(parents=True)
+    log = d / "2026-08.jsonl"
+    log.write_text(
+        '{"timestamp":"2026-08-19T08:00:00","tool":"deepseek-review","provider":"deepseek",'
+        '"model":"deepseek-v4-flash","usage":{"prompt_tokens":1000000,"completion_tokens":1000000}}\n'
+        '{"timestamp":"2026-08-19T09:00:00","tool":"deepseek-review","provider":"deepseek",'
+        '"model":"deepseek-v4-flash","usage":{"prompt_tokens":500000,"completion_tokens":0}}\n',
+        encoding="utf-8",
+    )
+    entries = parse_spend_file(log)
+    assert len(entries) == 2
+    assert entries[0]["model"] == "deepseek-v4-flash"
+    assert entries[0]["tokens_in"] == 1_000_000
+    assert compute_cost(entries[0]) == pytest.approx(0.14 + 0.28)
+
+
+def test_spend_ignora_linha_corrompida_sem_perder_as_boas(tmp_path):
+    """Append concorrente pode deixar linha pela metade. Uma linha ruim nao pode
+    apagar o mes inteiro do relatorio -- perder tudo por causa de uma linha e o
+    oposto de 'medir o gasto'."""
+    from analyze_council_spend import parse_spend_file
+
+    d = tmp_path / ".deepseek" / "spend"
+    d.mkdir(parents=True)
+    log = d / "2026-08.jsonl"
+    log.write_text(
+        '{"timestamp":"2026-08-19T08:00:00","model":"deepseek-v4-flash",'
+        '"usage":{"prompt_tokens":1000000,"completion_tokens":0}}\n'
+        '{"timestamp":"2026-08-19T08:30:00","model":"deepseek-v4-fl\n'   # cortada no meio
+        '\n'                                                              # linha vazia
+        '{"timestamp":"2026-08-19T09:00:00","model":"deepseek-v4-flash",'
+        '"usage":{"prompt_tokens":1000000,"completion_tokens":0}}\n',
+        encoding="utf-8",
+    )
+    entries = parse_spend_file(log)
+    assert len(entries) == 2, "as duas linhas boas tem que sobreviver a uma corrompida"
+
+
+def test_spend_sem_usage_nao_inventa_token(tmp_path):
+    """Sem usage nao da pra estimar: o review nao guarda o texto do prompt nem da
+    resposta no spend (de proposito -- telemetria nao e copia do conteudo). Entrada
+    sem usage e DESCARTADA, em vez de virar zero calado dentro do total."""
+    from analyze_council_spend import parse_spend_file
+
+    d = tmp_path / ".deepseek" / "spend"
+    d.mkdir(parents=True)
+    log = d / "2026-08.jsonl"
+    log.write_text('{"timestamp":"2026-08-19T08:00:00","model":"deepseek-v4-flash"}\n', encoding="utf-8")
+    assert parse_spend_file(log) == []

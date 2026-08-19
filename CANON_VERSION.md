@@ -82,6 +82,52 @@ invertido de propósito, preservando a memória de que o alias existiu e por que
 Verbete novo: `troca-para-modelo-de-raciocinio-esvazia-teto-de-tokens` — leia **antes** de trocar
 qualquer modelo por um de raciocínio.
 
+---
+
+**Segunda parte: o medidor de gasto era cego para o caminho que mais gasta.**
+
+Disparado por uma pergunta do operador — *"não é possível que ainda estamos usando o DeepSeek
+errado"* — diante de um painel de **$29,76** em agosto. Não estamos: os três caminhos
+(`deepseek-review`, `council-orchestrator`, `deepseek-impl`) estão em `deepseek-v4-flash`, e os
+logs confirmam no uso real — última chamada em `v4-pro` foi 11/08, tudo desde 16/08 é `flash`.
+
+🔑 **O problema não era o modelo, era não dar pra saber.** Somados **todos** os logs mensuráveis
+dos **62** diretórios `.deepseek` da máquina: **$0,89** de um painel de **$29,76**. **97% do gasto
+invisível.** A causa é estrutural: `.deepseek/reviews/latest.jsonl` é **sobrescrito** a cada review
+— decisão correta de 2026-07-20, tomada porque arquivos por timestamp acumulavam milhares de
+marcadores e penduravam o hook R11 em **~148 s**. Ótimo para o hook, cego para o custo. E é o
+caminho **mais** usado do kit: `reviews` existe em **48** projetos, o dobro dos 32 com `council-log`.
+
+**Correção, sem desfazer a decisão de 2026-07-20.** A telemetria sai do marcador e ganha diretório
+próprio: `.deepseek/spend/<YYYY-MM>.jsonl`, **append**, **um arquivo por mês** — 12 por ano, não
+milhares, e o hook nunca varre esse diretório. O marcador `latest.jsonl` continua exatamente como
+está, O(1). As duas funções deixam de disputar o mesmo arquivo.
+
+⚠️ **Cuidado de formato que morde:** `council-log/*.jsonl` tem extensão `.jsonl` mas é **um objeto
+por arquivo**; o spend é JSONL **de verdade** — N objetos, um por linha. Ler o spend com
+`json.loads(texto_inteiro)` devolve zero entradas **sem erro nenhum**. Por isso `parse_spend_file`
+é parser próprio, e não reaproveita `parse_log_file`. Linha cortada por append concorrente é
+**pulada**, não aborta o mês; entrada sem `usage` é **descartada**, não vira zero calado.
+
+**O que a primeira medição já revelou:** uma review real gastou **31.747 tokens de saída — 31.197
+deles (98%) em raciocínio** — para produzir uma lista curta de findings. Isso é ~**$0,010 por
+review**, e explica a ordem de grandeza que faltava: ~2.900 reviews em 48 projetos ao longo de 19
+dias são ~3 por projeto por dia, com o R11 disparando a cada commit. O gasto não é preço errado, é
+**raciocínio em volume** — e agora aparece com nome próprio (`mode = deepseek-review`) no relatório.
+
+⚠️ **Drift entre os irmãos, encontrado no caminho:** o `deepseek-review.sh` nunca recebeu os campos
+`model`/`usage` que o `.ps1` ganhou em 2026-08-15. O marcador Unix segue incompleto; a telemetria
+nova grava os dois de qualquer jeito, então o gasto do caminho Unix passa a ser mensurável mesmo
+assim. Emparelhar o marcador fica pendente.
+
+⚠️ **E um limite que apareceu sozinho:** o `latest.jsonl` encontrado no disco durante este trabalho
+tinha `provider: cross-claude` e `model: claude-sonnet-5` — foi escrito **à mão por um agente**, não
+pelo script. O marcador que libera o commit pode existir sem nenhuma chamada ao DeepSeek. Mais um
+motivo para a telemetria de custo não morar nele.
+
+Suíte: **419 Pester + 15 pytest** (3 casos novos: JSONL multi-linha, linha corrompida que não
+derruba o mês, e entrada sem `usage` que não vira token inventado).
+
 ## Changelog v6.38.0 — 2026-08-18
 
 **A base de conhecimento deixa de ser dois arquivos gigantes e vira um arquivo por verbete. O

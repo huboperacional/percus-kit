@@ -186,6 +186,40 @@ jq -n \
     --arg findings "$FINDINGS" \
     '{ timestamp: $timestamp, base: $base, diff_lines: $diff_lines, findings: $findings }' \
     > "$LOG_TMP" && mv -f "$LOG_TMP" "$LOG_FILE"
+# === TELEMETRIA DE GASTO (2026-08-19) ===
+# Diretorio SEPARADO do marcador, de proposito. O latest.jsonl e sobrescrito a cada review
+# (2026-07-20) pra manter o hook R11 em O(1) -- decisao certa, que custou a visibilidade do
+# custo: em 2026-08-19 os logs de conselho de 62 diretorios .deepseek somavam $0.89 de um
+# painel de $29.76. 97% invisivel, pelo caminho MAIS usado (review existe em 48 projetos).
+#
+# APPEND de uma linha por review em .deepseek/spend/<YYYY-MM>.jsonl -- arquivo por MES, que e
+# o que impede a volta do acumulo que pendurou o hook em 148s. O hook nunca varre este dir.
+#
+# NOTA: o marcador acima nao grava model/usage nesta versao .sh (o irmao .ps1 passou a gravar
+# em 2026-08-15 e este ficou para tras). A telemetria abaixo grava os dois de qualquer jeito,
+# entao o gasto do caminho Unix passa a ser mensuravel mesmo com o marcador incompleto.
+#
+# `|| true` no fim: este script libera o commit (R11). Telemetria que falha nao pode custar um
+# commit -- mesmo principio que fez os campos ausentes virarem null no marcador.
+{
+    SPEND_DIR=".deepseek/spend"
+    mkdir -p "$SPEND_DIR"
+    SPEND_FILE="${SPEND_DIR}/$(date -u +%Y-%m).jsonl"
+    # -c: uma linha so. Append curto e o mais proximo de atomico sem lock; se duas sessoes
+    # appendarem juntas e uma linha sair cortada, o leitor pula a linha ruim em vez de perder
+    # o mes inteiro.
+    # DIFF_LINES com piso 0: `--argjson` exige JSON numerico valido e ABORTA o bloco se vier
+    # vazio. No marcador acima isso falharia alto; aqui, com o `|| true`, falharia em SILENCIO
+    # -- devolvendo exatamente a cegueira de custo que esta telemetria veio acabar.
+    printf '%s' "$RESPONSE" | jq -c \
+        --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --arg model "$MODEL" \
+        --argjson diff_lines "${DIFF_LINES:-0}" \
+        '{timestamp: $timestamp, tool: "deepseek-review", provider: "deepseek",
+          model: $model, usage: .usage, diff_lines: $diff_lines}' \
+        >> "$SPEND_FILE"
+} 2>/dev/null || true
+
 # Auto-poda: so latest.jsonl fica (mecanismo novo). Marcadores <ts>.jsonl irmaos
 # drenam sozinhos no proximo review -- pilha nunca mais cresce, sem tocar hooks.
 for old in "$LOG_DIR"/*.jsonl; do
