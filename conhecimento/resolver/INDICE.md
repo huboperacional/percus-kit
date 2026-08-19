@@ -439,6 +439,7 @@
 - [Upload de arquivo pra VPS via Bash falha com erro de bash confuso ("C:/Program: No such file", "X: No such file or directory") mesmo pra arquivo pequeno](vps-upload-msys-path-mangling.md)
 - [Watchdog de confirmação de entrega dispara falso-positivo contra device de teste automatizado (não gera ack)](watchdog-ack-device-teste-automatizado.md)
 - [Webhook que "nunca chega": o provedor DESATIVOU a assinatura sozinho depois das suas respostas inválidas](webhook-desativado-pelo-provedor-apos-resposta-invalida.md)
+- [Workers Builds falha em todo push porque o diretório de assets é gerado e está no `.gitignore`](workers-builds-sem-build-command-nao-acha-out.md)
 - [Worktree novo nasce SEM histórico de review — R11 bloqueia o 1º commit mesmo com review recente na main](worktree-novo-sem-historico-review.md)
 - [`git worktree remove` falha com "Invalid argument" (não timeout) quando o worktree tem uma junction do Windows dentro](worktree-remove-junction-windows.md)
 - [`xfail` que sempre xpassa é pior que teste nenhum](xfail-que-xpassa-anuncia-defeito-que-nao-demonstra.md)
