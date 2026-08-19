@@ -18,6 +18,12 @@
 param(
     [string]$Base = "",
     [string]$Model = "deepseek-v4-flash",
+    # "low" por padrao (2026-08-19). Este script roda a CADA commit em dezenas de projetos, e
+    # e o maior gastador do kit: a telemetria nova mostrou uma review real queimando 31.747
+    # tokens de saida, 31.197 deles (98%) so RACIOCINANDO, pra produzir uma lista curta de
+    # findings. Ver o bloco de medicao no corpo do request. "" omite o campo.
+    [ValidateSet("none","low","medium","high","")]
+    [string]$ReasoningEffort = "low",
     [double]$Temperature = 0.0,
     [string]$Endpoint = "https://api.deepseek.com/v1/chat/completions"
 )
@@ -117,14 +123,28 @@ NÃO aponte estilo subjetivo sem regra concreta. NÃO sugira refactor fora do di
 
 $userMsg = "AGENTS.md do projeto:`n$agents`n`n---`n`nGit diff:`n$diff"
 
-$body = @{
+$bodyObj = @{
     model       = $Model
     temperature = $Temperature
     messages    = @(
         @{ role = "system"; content = $systemPrompt },
         @{ role = "user"; content = $userMsg }
     )
-} | ConvertTo-Json -Depth 10 -Compress
+}
+# reasoning_effort (2026-08-19). Medido no mesmo prompt real de review (11 KB):
+#   sem effort : completion 13805, raciocinio 12826 (80% do teto), 3284 chars de resposta
+#   effort=low : completion  4395, raciocinio  2934 (18% do teto), 5140 chars de resposta
+#   effort=med : completion 14207, raciocinio 12751 -- praticamente igual ao default
+# Nao e economia apertando qualidade: `low` devolveu MAIS texto, porque o orcamento parou de
+# ser consumido pensando. E resolve a perna que voltava VAZIA -- com 80% do teto indo pra
+# raciocinio, bastava a variacao normal (medida entre 6784 e 16000 no mesmo prompt) pra nao
+# sobrar nada pra resposta.
+#
+# ❌ NAO "consertar" isso subindo max_tokens: ja foi feito (8192 -> 16000) e o sintoma voltou
+# identico, porque o raciocinio se expande ate encher o teto que existir. Ver
+# conhecimento/resolver/cross-claude-review-queima-16000-e-volta-vazio.md.
+if ($ReasoningEffort) { $bodyObj.reasoning_effort = $ReasoningEffort }
+$body = $bodyObj | ConvertTo-Json -Depth 10 -Compress
 
 # === CRITICAL: PS 5.1 UTF-8 BUG FIX ===
 # PS 5.1 default encoding is UTF-16 LE. DeepSeek API expects UTF-8.

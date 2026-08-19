@@ -36,6 +36,11 @@ param(
     # ficava DENTRO da faixa de variacao, e a mesma pergunta voltava ok, truncada ou vazia na
     # sorte. A 6.36.2 trocou o modelo de -pro pra -flash e nao reavaliou o teto ao lado.
     [int]$MaxTokens = 16000,
+    # "low" por padrao -- ver o bloco de medicao junto do corpo do request. Nao e economia
+    # apertando qualidade: no mesmo prompt o `low` devolveu MAIS texto que o default, porque o
+    # orcamento parava de ser consumido pensando. Use "" pra omitir o campo.
+    [ValidateSet("none","low","medium","high","")]
+    [string]$ReasoningEffort = "low",
     [string]$Model = "deepseek-v4-flash",
     [string]$Endpoint = "https://api.deepseek.com/v1/chat/completions"
 )
@@ -80,7 +85,7 @@ if (-not $userPrompt -or $userPrompt.Trim().Length -eq 0) {
     exit 1
 }
 
-$body = @{
+$bodyObj = @{
     model       = $Model
     temperature = $Temperature
     max_tokens  = $MaxTokens
@@ -88,7 +93,24 @@ $body = @{
         @{ role = "system"; content = $SystemPrompt },
         @{ role = "user";   content = $userPrompt }
     )
-} | ConvertTo-Json -Depth 10 -Compress
+}
+# reasoning_effort (2026-08-19): o CONSERTO da perna que voltava vazia. Subir max_tokens NAO
+# resolve -- ja foi feito (8192 -> 16000) e o sintoma voltou identico, porque o raciocinio se
+# expande ate encher o teto que existir. Ver conhecimento/resolver/
+# cross-claude-review-queima-16000-e-volta-vazio.md, que registra a mesma classe e proibe
+# explicitamente subir o teto de novo.
+#
+# Medido no mesmo prompt de review real (11 KB), max_tokens=16000:
+#   sem effort : completion 13805, raciocinio 12826 (80% do teto), 3284 chars de resposta
+#   effort=low : completion  4395, raciocinio  2934 (18% do teto), 5140 chars de resposta
+#   effort=med : completion 14207, raciocinio 12751 -- praticamente igual ao default
+# `low` gasta 3,1x menos E devolve MAIS conteudo. O default queimava 80% do orcamento pensando,
+# e era essa margem estreita que virava content vazio quando a variacao subia.
+#
+# Valores aceitos, testados contra a API real (a doc so documenta "high"): none, low, medium,
+# high. String vazia OMITE o campo e restaura o comportamento anterior.
+if ($ReasoningEffort) { $bodyObj.reasoning_effort = $ReasoningEffort }
+$body = $bodyObj | ConvertTo-Json -Depth 10 -Compress
 
 $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
 $headers = @{

@@ -11,6 +11,13 @@ set -euo pipefail
 
 BASE=""
 MODEL="${DEEPSEEK_MODEL:-deepseek-v4-flash}"
+# reasoning_effort (2026-08-19): este script roda a CADA commit e e o maior gastador do kit
+# -- a telemetria mostrou uma review queimando 31.747 tokens de saida, 31.197 (98%) so
+# raciocinando. Medido no mesmo prompt real de 11 KB: sem effort gastou 12826 tokens
+# pensando e devolveu 3284 chars; com low gastou 2934 e devolveu 5140. Gasta menos E
+# devolve mais. NAO trocar por max_tokens maior: ver
+# conhecimento/resolver/cross-claude-review-queima-16000-e-volta-vazio.md. "" omite o campo.
+REASONING_EFFORT="${DEEPSEEK_REASONING_EFFORT:-low}"
 TEMPERATURE="${DEEPSEEK_TEMPERATURE:-0.0}"
 ENDPOINT="${DEEPSEEK_ENDPOINT:-https://api.deepseek.com/v1/chat/completions}"
 
@@ -122,6 +129,7 @@ BODY="$(jq -n \
     --argjson temperature "$TEMPERATURE" \
     --arg sys "$SYSTEM_PROMPT" \
     --rawfile usr "$USER_MSG_FILE" \
+    --arg effort "$REASONING_EFFORT" \
     '{
         model: $model,
         temperature: $temperature,
@@ -129,7 +137,8 @@ BODY="$(jq -n \
             { role: "system", content: $sys },
             { role: "user", content: $usr }
         ]
-    }')"
+    }
+    + (if $effort == "" then {} else {reasoning_effort: $effort} end)')"
 
 # === CALL API ===
 # Body via stdin (--data-binary @-), NÃO via argv. Em git-bash Windows, curl

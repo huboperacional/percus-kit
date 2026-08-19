@@ -55,6 +55,14 @@ param(
     [string]$Mode = "consult"
     ,[int]$MaxInputTokens = 8000
     ,[string]$DeepSeekModel = "deepseek-v4-flash"
+    # A ALAVANCA que faltava (2026-08-19). Ate aqui o wrapper diagnosticava certo a perna
+    # vazia ("gastou o teto RACIOCINANDO -- suba o teto") e o orchestrator nao expunha
+    # NENHUM controle de saida: so -MaxInputTokens e -MaxTokensPerFile, que mexem na ENTRADA.
+    # O conselho dava o conselho e nao dava a alavanca. Default "low" porque medido no mesmo
+    # prompt real: 12826 tokens de raciocinio sem effort contra 2934 com low, e MAIS texto de
+    # resposta. So a perna DeepSeek usa -- o wrapper do Groq nao tem este parametro.
+    ,[ValidateSet("none","low","medium","high","")]
+     [string]$DeepSeekReasoningEffort = "low"
     ,[string]$GroqModel     = "openai/gpt-oss-120b"
     ,[AllowEmptyString()]
     # Os modelos de geracao 4 ficam para override de comparacao; o router usa os de geracao 5.
@@ -362,7 +370,7 @@ foreach ($p in $asyncProviders) {
         default        { "" }
     }
     $jobs[$p] = Start-Job -ScriptBlock {
-        param($Wrapper, $PromptF, $SysPrompt, $EnvVars, $ModelArg, $ModeArg)
+        param($Wrapper, $PromptF, $SysPrompt, $EnvVars, $ModelArg, $ModeArg, $EffortArg)
         foreach ($kv in $EnvVars.GetEnumerator()) {
             if ($kv.Value) { Set-Item -Path "env:$($kv.Key)" -Value $kv.Value }
         }
@@ -375,6 +383,15 @@ foreach ($p in $asyncProviders) {
             } else {
                 & $Wrapper -PromptFile $PromptF -Mode $ModeArg
             }
+        } elseif ($Wrapper -match 'deepseek') {
+            # -ReasoningEffort so existe no wrapper da DeepSeek. Passar pro groq-llama.ps1
+            # abortaria a perna por parametro desconhecido -- por isso o ramo e proprio, e nao
+            # um argumento a mais no ramo generico.
+            if ($ModelArg) {
+                & $Wrapper -PromptFile $PromptF -SystemPrompt $SysPrompt -Model $ModelArg -ReasoningEffort $EffortArg
+            } else {
+                & $Wrapper -PromptFile $PromptF -SystemPrompt $SysPrompt -ReasoningEffort $EffortArg
+            }
         } else {
             if ($ModelArg) {
                 & $Wrapper -PromptFile $PromptF -SystemPrompt $SysPrompt -Model $ModelArg
@@ -382,7 +399,7 @@ foreach ($p in $asyncProviders) {
                 & $Wrapper -PromptFile $PromptF -SystemPrompt $SysPrompt
             }
         }
-    } -ArgumentList $wrapperPath, $tmpPrompt, $SystemPrompt, $envSnapshot, $modelForProvider, $Mode
+    } -ArgumentList $wrapperPath, $tmpPrompt, $SystemPrompt, $envSnapshot, $modelForProvider, $Mode, $DeepSeekReasoningEffort
 }
 
 # Collect cross-claude (already provided OR marker)

@@ -11,6 +11,15 @@ TEMPERATURE="0.2"
 # seja, 8192 caia no meio da faixa e a mesma pergunta voltava ok/truncada/vazia na sorte.
 # Tem que bater com o default do deepseek.ps1 -- os dois runtimes respondem a mesma pergunta.
 MAX_TOKENS="16000"
+# reasoning_effort (2026-08-19): conserto da perna que voltava vazia. Subir MAX_TOKENS NAO
+# resolve -- ja foi feito (8192 -> 16000) e o sintoma voltou igual, porque o raciocinio se
+# expande ate encher o teto que existir. Ver conhecimento/resolver/
+# cross-claude-review-queima-16000-e-volta-vazio.md, que PROIBE subir o teto de novo.
+# Medido no mesmo prompt real de review (11 KB), teto 16000:
+#   sem effort -> 12826 tokens so pensando (80% do teto), 3284 chars de resposta
+#   low        ->  2934 tokens so pensando (18% do teto), 5140 chars de resposta
+# Gasta 3,1x menos E devolve MAIS texto. Vazio ("") omite o campo e volta ao antigo.
+REASONING_EFFORT="${DEEPSEEK_REASONING_EFFORT:-low}"
 MODEL="deepseek-v4-flash"
 ENDPOINT="https://api.deepseek.com/v1/chat/completions"
 PROMPT_FILE=""
@@ -21,6 +30,7 @@ while [[ $# -gt 0 ]]; do
         --system-prompt) SYSTEM_PROMPT="$2"; shift 2;;
         --temperature) TEMPERATURE="$2"; shift 2;;
         --max-tokens) MAX_TOKENS="$2"; shift 2;;
+        --reasoning-effort) REASONING_EFFORT="$2"; shift 2;;
         --model) MODEL="$2"; shift 2;;
         --endpoint) ENDPOINT="$2"; shift 2;;
         *) shift;;
@@ -62,7 +72,9 @@ jq -n \
     --argjson max "$MAX_TOKENS" \
     --arg sys "$SYSTEM_PROMPT" \
     --arg usr "$USER_PROMPT" \
-    '{model: $model, temperature: $temp, max_tokens: $max, messages: [{role:"system",content:$sys},{role:"user",content:$usr}]}' > "$BODY_FILE"
+    --arg effort "$REASONING_EFFORT" \
+    '{model: $model, temperature: $temp, max_tokens: $max, messages: [{role:"system",content:$sys},{role:"user",content:$usr}]}
+     + (if $effort == "" then {} else {reasoning_effort: $effort} end)' > "$BODY_FILE"
 
 START_MS=$(date +%s%3N)
 # 180s: com teto 16000 e modelo que raciocina, resposta legitima ja levou 80s (medido 2026-08-16).

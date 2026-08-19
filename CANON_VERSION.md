@@ -128,6 +128,54 @@ motivo para a telemetria de custo não morar nele.
 Suíte: **419 Pester + 15 pytest** (3 casos novos: JSONL multi-linha, linha corrompida que não
 derruba o mês, e entrada sem `usage` que não vira token inventado).
 
+---
+
+**Terceira parte: a perna DeepSeek parava de responder — e o conserto certo era o oposto do óbvio.**
+
+Sintoma relatado de duas sessões independentes: a perna DeepSeek volta **vazia**, às vezes 3× seguidas.
+A observação que resolveu o diagnóstico veio de fora: *"não era tamanho — coube com 20k na rodada 6 e
+não coube com 7k na rodada 7"*. Entrada menor falhando onde a maior passou **elimina** tamanho de
+prompt como causa: o gasto de raciocínio não é proporcional à entrada, é função da dificuldade.
+
+🔴 **O conserto óbvio é proibido, e estava escrito na própria base.** `cross-claude-review-queima-16000-e-volta-vazio`
+diz literalmente: *"❌ NÃO subir `max_tokens` de novo. Já foi feito (8192→16000) e o sintoma voltou
+idêntico — teto maior é só pensamento maior."* O raciocínio se expande até encher o teto que existir.
+Subir o teto compra tempo e devolve o mesmo bug com número maior.
+
+**O controle certo é `reasoning_effort`.** Testado contra a API real antes de aplicar — porque o mesmo
+verbete registra que "consertar chamada de LLM por memória" já produziu prescrição que devolvia HTTP
+400. A doc da DeepSeek só documenta `"high"`; a API **aceita** `none`, `low`, `medium` e `high`.
+
+Medido no mesmo prompt real de review (11 KB), `max_tokens=16000`:
+
+| configuração | completion | raciocínio | sobrou p/ resposta | texto |
+|---|---:|---:|---:|---:|
+| sem `effort` (como estava) | 13.805 | **12.826 (80% do teto)** | 979 | 3.284 chars |
+| **`effort=low`** | **4.395** | **2.934 (18% do teto)** | 1.461 | **5.140 chars** |
+| `effort=medium` | 14.207 | 12.751 | 1.456 | 4.915 chars |
+
+🔑 **Não é economia apertando qualidade: `low` devolveu MAIS texto.** O orçamento parou de ser
+consumido pensando. E a margem explica o vazio: com 80% do teto indo para raciocínio, bastava a
+variação normal — medida entre 6.784 e 16.000 tokens no *mesmo* prompt — para não sobrar nada.
+`medium` é indistinguível do default, então não há meio-termo útil aqui.
+
+Aplicado nos **quatro** corpos de request que existiam: `providers/deepseek.ps1`, `providers/deepseek.sh`,
+`scripts/deepseek-review.ps1` e `scripts/deepseek-review.sh`. Default `low` em todos, `""` restaura o
+comportamento anterior.
+
+**E a alavanca que faltava.** O wrapper diagnosticava certo (*"gastou o teto RACIOCINANDO — suba o
+teto"*) e o `council-orchestrator` **não expunha nenhum controle de saída** — só `-MaxInputTokens` e
+`-MaxTokensPerFile`, que mexem na entrada. O conselho dava o conselho e não dava a alavanca. Agora há
+`-DeepSeekReasoningEffort`, em ramo próprio de invocação: passar o parâmetro no ramo genérico abortaria
+a perna Groq, cujo wrapper não o conhece.
+
+Verificado ponta a ponta: o mesmo cenário que devolvia `empty` em 137 s agora volta **`ok` em 81 s**.
+
+**Efeito colateral relevante para custo:** o `deepseek-review` roda a cada commit em dezenas de projetos
+e era o maior gastador do kit — a telemetria da segunda parte flagrou uma review queimando **31.747
+tokens de saída, 31.197 (98%) em raciocínio**. O mesmo `effort=low` corta isso na origem. As duas
+partes desta versão se encontram aqui: uma tornou o gasto visível, a outra o reduziu.
+
 ## Changelog v6.38.0 — 2026-08-18
 
 **A base de conhecimento deixa de ser dois arquivos gigantes e vira um arquivo por verbete. O
