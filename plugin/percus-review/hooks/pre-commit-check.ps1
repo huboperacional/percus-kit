@@ -101,6 +101,46 @@ try {
         exit 2
     }
 
+    # === VALIDADE POR CONTEUDO, ANTES DA VALIDADE POR TEMPO (2026-08-19) ===
+    # Se existe marcador para o hash do diff ATUAL, a review cobre exatamente este codigo --
+    # libera sem olhar relogio. Tempo nunca foi proxy de "isto foi revisado": a janela de 5 min
+    # forcava re-review do MESMO diff depois de rodar a suite (184 s) e, no sentido contrario,
+    # deixava commitar codigo editado depois da review desde que dentro da janela.
+    #
+    # `git diff HEAD` (nao `--cached`) porque ele NAO muda no `git add` -- assim o fluxo
+    # editar -> revisar -> stage -> commit nao invalida a review no meio.
+    #
+    # Lookup DIRETO pelo nome: O(1), sem enumerar o diretorio. E a mesma propriedade que a
+    # decisao de 2026-07-20 protegia quando o dir acumulava milhares de arquivos.
+    #
+    # Falha graceful: qualquer erro aqui cai no caminho antigo (latest.jsonl + 5 min).
+    # ⚠️ Hash do ARQUIVO escrito por `git diff --output=`, nunca da saida capturada pelo shell:
+    # PowerShell decodifica a saida do processo com o encoding do console, e diff com acento
+    # produz hash diferente do bash pro MESMO diff (medido 2026-08-19). Com --output= quem
+    # escreve os bytes e o git, igual nos dois runtimes.
+    try {
+        $tmpDiff = [System.IO.Path]::GetTempFileName()
+        try {
+            # `-C $repoRoot` e obrigatorio: o hook roda no cwd do AGENTE, nao no repo alvo. O
+            # repo alvo sai do proprio comando (`cd /d/x && git commit`, `git -C /d/x commit`) e
+            # ja foi resolvido acima pro $reviewDir. Sem o -C, o hash sairia do diff do
+            # diretorio errado, nunca casaria com o marcador, e a otimizacao viraria codigo
+            # morto que sempre cai no fallback -- falha silenciosa. Pego por teste, nao por
+            # leitura: e a mesma classe de resolucao de repo target que
+            # pre-commit-path-resolution.tests.ps1 ja documentava.
+            git -C $repoRoot diff HEAD --output=$tmpDiff 2>$null | Out-Null
+            $sha = [System.Security.Cryptography.SHA256]::Create()
+            $fs  = [IO.File]::OpenRead($tmpDiff)
+            try { $hashHex = ([BitConverter]::ToString($sha.ComputeHash($fs)) -replace '-','').ToLower().Substring(0,12) }
+            finally { $fs.Dispose() }
+        } finally { Remove-Item $tmpDiff -Force -ErrorAction SilentlyContinue }
+        $porHash = Join-Path $reviewDir "d-$hashHex.jsonl"
+        if (Test-Path $porHash) {
+            $idade = (Get-Date) - (Get-Item $porHash).LastWriteTime
+            if ($idade.TotalHours -le 24) { exit 0 }
+        }
+    } catch { }
+
     # Path fixo latest.jsonl (2026-07-20) -- O(1), sem enumerar o dir inteiro.
     # Fallback ao Sort-Object so se ausente (wrapper antigo ainda em transicao).
     $latestPath = Join-Path $reviewDir 'latest.jsonl'

@@ -227,6 +227,55 @@ $logTmp  = Join-Path $logDir 'latest.jsonl.tmp'
 } | ConvertTo-Json -Depth 5 -Compress | Out-File -FilePath $logTmp -Encoding utf8
 Move-Item -Path $logTmp -Destination $logFile -Force
 
+# === MARCADOR POR HASH DO DIFF (2026-08-19) ===
+# A validade da review deixa de ser TEMPO e passa a ser CONTEUDO.
+#
+# Por que: a janela de 5 min media a coisa errada. Consertar um finding, rodar a suite (184 s
+# nesta maquina) ou bumpar versao estourava a janela e forcava re-review -- que revisava
+# exatamente o mesmo diff de novo, ~90 s e ~$0,01 por nada. E o inverso tambem era falso: dentro
+# dos 5 min dava pra editar tudo e commitar com o aval de uma review que nunca viu aquele codigo.
+# Tempo nao e proxy de "isto foi revisado"; hash e.
+#
+# Hash de `git diff HEAD`, nao de `--cached`, de proposito: `git diff HEAD` NAO muda quando voce
+# faz `git add`. Com o diff staged, o fluxo natural (editar -> revisar -> stage -> commit)
+# invalidaria a review no `git add`, que e exatamente o retrabalho que este bloco vem matar.
+#
+# Resolve tambem o marcador compartilhado entre sessoes: o hash de outra sessao simplesmente nao
+# casa com o meu diff. Nao precisa de id de sessao -- o conteudo ja discrimina.
+#
+# O acumulo de 2026-07-20 (milhares de arquivos, hook pendurado em 148 s) NAO volta: o hook faz
+# lookup DIRETO do arquivo do hash, nunca enumera o diretorio, e a poda abaixo e por idade.
+# ⚠️ O diff vai pra ARQUIVO via `git diff --output=`, e o hash e do ARQUIVO -- nunca da saida
+# capturada pelo shell. Medido em 2026-08-19: capturar `git diff HEAD` no PowerShell e no bash e
+# hashear o texto produziu hashes DIFERENTES pro mesmo diff (24b54443f4ed vs b5a3110dfee7),
+# porque o PowerShell decodifica a saida do processo usando o encoding do console e o diff tem
+# acentos. Com `--output=` quem escreve os bytes e o git, identico nos dois runtimes.
+# A divergencia seria FALHA SILENCIOSA: o hook nao acharia o marcador, cairia no caminho antigo
+# de 5 min, e ninguem descobriria que a otimizacao nunca funcionou no runtime Unix.
+try {
+    $hashHex = $null
+    $tmpDiff = [System.IO.Path]::GetTempFileName()
+    try {
+        # -C na raiz, igual aos hooks: se o review rodar de um subdiretorio, o hash tem que ser
+        # o mesmo que o hook calcula, senao o marcador nunca casa e a otimizacao morre calada.
+        $repoTop = (git rev-parse --show-toplevel 2>$null)
+        if (-not $repoTop) { $repoTop = (Get-Location).Path }
+        git -C $repoTop diff HEAD --output=$tmpDiff 2>$null | Out-Null
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        $fs  = [IO.File]::OpenRead($tmpDiff)
+        try { $hashHex = ([BitConverter]::ToString($sha.ComputeHash($fs)) -replace '-','').ToLower().Substring(0,12) }
+        finally { $fs.Dispose() }
+    } finally { Remove-Item $tmpDiff -Force -ErrorAction SilentlyContinue }
+    # Guarda do hash vazio: sem ela, git falhando geraria o marcador "d-.jsonl" -- lixo que ainda
+    # por cima casaria com um hash vazio do outro lado, liberando commit sem review.
+    if ($hashHex) {
+        Copy-Item -Path $logFile -Destination (Join-Path $logDir "d-$hashHex.jsonl") -Force
+    }
+} catch {
+    # Marcador por hash e otimizacao: se falhar, o latest.jsonl + regra de 5 min continua
+    # valendo e o commit segue pelo caminho antigo. Nunca derrubar o review por causa disto.
+}
+
 # === TELEMETRIA DE GASTO (2026-08-19) ===
 # Diretorio SEPARADO do marcador, de proposito. O latest.jsonl e sobrescrito a cada review
 # (2026-07-20) pra manter o hook R11 em O(1) -- decisao certa, que custou a visibilidade do
@@ -270,11 +319,21 @@ try {
     # um commit.
 }
 
-# Auto-poda: o mecanismo agora e latest.jsonl unico. Remove marcadores
-# <timestamp>.jsonl irmaos (pilhas antigas drenam sozinhas no proximo review,
-# sem depender de limpeza manual nem de reinstalar os hooks). Produtor-side.
+# Auto-poda, produtor-side. Antes apagava TUDO que nao fosse latest.jsonl; agora preserva os
+# marcadores por hash (d-*.jsonl) dentro da validade e apaga o resto.
+#
+# O que continua sendo apagado sem dó: <timestamp>.jsonl de wrappers antigos -- eram eles que
+# acumulavam aos milhares e penduravam o hook em 148 s (2026-07-20).
+#
+# 24 h de validade para o d-*.jsonl: o hash ja garante que o conteudo revisado e o mesmo, entao
+# o prazo nao serve pra "frescor" -- serve so pra impedir que o diretorio cresca sem fim. Um dia
+# de trabalho gera dezenas de hashes distintos, nao milhares, e o hook nunca enumera este dir.
+$limiteMarcador = (Get-Date).AddHours(-24)
 Get-ChildItem $logDir -Filter '*.jsonl' -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -ne 'latest.jsonl' } |
+    Where-Object {
+        $_.Name -ne 'latest.jsonl' -and
+        -not ($_.Name -like 'd-*.jsonl' -and $_.LastWriteTime -gt $limiteMarcador)
+    } |
     Remove-Item -Force -ErrorAction SilentlyContinue
 
 # === OUTPUT ===

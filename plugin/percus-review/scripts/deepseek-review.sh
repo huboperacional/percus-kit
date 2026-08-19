@@ -195,6 +195,34 @@ jq -n \
     --arg findings "$FINDINGS" \
     '{ timestamp: $timestamp, base: $base, diff_lines: $diff_lines, findings: $findings }' \
     > "$LOG_TMP" && mv -f "$LOG_TMP" "$LOG_FILE"
+
+# === MARCADOR POR HASH DO DIFF (2026-08-19) ===
+# Validade da review deixa de ser TEMPO e passa a ser CONTEUDO. A janela de 5 min media a coisa
+# errada: consertar um finding ou rodar a suite estourava a janela e forcava re-review do MESMO
+# diff. `git diff HEAD` (nao --cached) porque ele NAO muda no `git add`, entao o fluxo
+# editar -> revisar -> stage -> commit nao invalida a review no meio.
+# Resolve tambem o marcador compartilhado entre sessoes: o hash de outra sessao nao casa com o
+# meu diff, sem precisar de id de sessao. O tr -d e o $(...) existem pra bater byte a byte com
+# o irmao PowerShell -- hash divergente entre runtimes seria falha silenciosa.
+# Falha aqui nao derruba nada: latest.jsonl ja foi escrito e a regra de 5 min segue valendo.
+if command -v sha256sum >/dev/null 2>&1; then
+    # Hash do ARQUIVO escrito por `git diff --output=`, nunca da saida capturada pelo shell:
+    # o irmao PowerShell decodifica a saida do processo com o encoding do console, e diff com
+    # acento gerava hash DIFERENTE pro mesmo diff (medido 2026-08-19). Com --output= quem
+    # escreve os bytes e o git, identico nos dois runtimes.
+    TMP_DIFF="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-diff-$$")"
+    # -C na raiz, igual aos hooks: se o review rodar de um subdiretorio, o hash tem que ser o
+    # mesmo que o hook calcula, senao o marcador nunca casa e a otimizacao morre em silencio.
+    REPO_TOP=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
+    git -C "$REPO_TOP" diff HEAD --output="$TMP_DIFF" 2>/dev/null || true
+    DIFF_HASH=$(sha256sum "$TMP_DIFF" 2>/dev/null | cut -c1-12)
+    rm -f "$TMP_DIFF"
+    # Guarda do hash vazio: sem ela, `git diff` falhando gera o marcador "d-.jsonl" -- lixo que
+    # ainda por cima casaria com um hash vazio do outro lado, liberando commit sem review.
+    if [ -n "$DIFF_HASH" ]; then
+        cp -f "$LOG_FILE" "$LOG_DIR/d-$DIFF_HASH.jsonl" 2>/dev/null || true
+    fi
+fi
 # === TELEMETRIA DE GASTO (2026-08-19) ===
 # Diretorio SEPARADO do marcador, de proposito. O latest.jsonl e sobrescrito a cada review
 # (2026-07-20) pra manter o hook R11 em O(1) -- decisao certa, que custou a visibilidade do
@@ -231,9 +259,20 @@ jq -n \
 
 # Auto-poda: so latest.jsonl fica (mecanismo novo). Marcadores <ts>.jsonl irmaos
 # drenam sozinhos no proximo review -- pilha nunca mais cresce, sem tocar hooks.
+# Poda: preserva marcadores por hash (d-*.jsonl) dentro de 24 h e apaga o resto. O que
+# continua sendo apagado sem do e o <timestamp>.jsonl de wrapper antigo -- eram esses que
+# acumulavam aos milhares e penduravam o hook em 148 s (2026-07-20). As 24 h nao sao
+# "frescor" (o hash ja garante o conteudo): sao so o teto que impede crescimento sem fim.
 for old in "$LOG_DIR"/*.jsonl; do
     [ "$old" = "$LOG_FILE" ] && continue
-    [ -e "$old" ] && rm -f "$old"
+    case "$(basename "$old")" in
+        d-*.jsonl)
+            [ -n "$(find "$old" -mmin +1440 2>/dev/null)" ] && rm -f "$old"
+            ;;
+        *)
+            [ -e "$old" ] && rm -f "$old"
+            ;;
+    esac
 done
 
 # === OUTPUT ===

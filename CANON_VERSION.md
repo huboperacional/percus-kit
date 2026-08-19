@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.39.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.40.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,57 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.40.0 — 2026-08-19
+
+**A validade da review deixa de ser TEMPO e passa a ser CONTEÚDO. A janela de 5 minutos media a
+coisa errada nas duas direções.**
+
+Disparado por uma observação do operador: *"parece que coisas simples ficaram extremamente lentas
+de serem concluídas"*. Medido nesta máquina: suíte Pester **184 s**, review R11 **60–90 s** por
+commit, gate 1 s, pytest 1 s. 🔑 **O overhead é FIXO, não proporcional à mudança** — um conserto de
+um caractere paga o mesmo que um refactor de 500 linhas. É por isso que a lentidão aparece
+justamente nas tarefas simples: o denominador encolheu e o numerador não.
+
+A janela de 5 min errava dos **dois** lados:
+
+- **Restritiva à toa:** consertar um finding, rodar a suíte de 184 s ou bumpar versão estourava a
+  janela e forçava re-review do **mesmo** diff — ~90 s e ~$0,01 revisando o que já fora revisado.
+- **Permissiva quando não devia:** dentro dos 5 min dava para editar qualquer coisa e commitar com
+  o aval de uma review que nunca viu aquele código.
+
+**Tempo nunca foi proxy de "isto foi revisado". Hash é.** O marcador agora também é gravado como
+`.deepseek/reviews/d-<hash12>.jsonl`, e o hook faz **lookup direto** desse nome — O(1), sem
+enumerar o diretório, que é a propriedade que a decisão de 2026-07-20 protegia (arquivos por
+timestamp acumulavam aos milhares e penduravam o hook em ~148 s). A poda passou a preservar
+`d-*.jsonl` por 24 h e continua apagando os `<timestamp>.jsonl` de wrappers antigos.
+
+**`git diff HEAD`, não `--cached`, de propósito:** ele não muda no `git add`. Com o diff staged, o
+fluxo natural (editar → revisar → stage → commit) invalidaria a review exatamente no `git add`.
+
+**Resolve de graça o marcador compartilhado entre sessões.** O hash de outra sessão não casa com o
+meu diff — não é preciso id de sessão, o conteúdo já discrimina. O `latest.jsonl` + regra de 5 min
+continuam como **fallback**, porque o plugin instalado fica versões atrás em dezenas de projetos.
+
+⚠️ **Duas armadilhas encontradas medindo, não lendo:**
+
+1. **Hash divergia entre runtimes.** Capturar `git diff HEAD` no PowerShell e no bash e hashear o
+   texto deu resultados **diferentes** para o mesmo diff (`24b54443f4ed` vs `b5a3110dfee7`): o
+   PowerShell decodifica a saída do processo com o encoding do console, e o diff tem acentos. A
+   correção é `git diff --output=<arquivo>` e hash do **arquivo** — quem escreve os bytes é o git,
+   idêntico nos dois. Seria falha silenciosa: o hook nunca acharia o marcador e cairia no caminho
+   antigo sem dizer por quê.
+2. **O hook rodava `git` no diretório errado.** Ele executa no cwd do agente, não no repo alvo —
+   faltava `-C $repoRoot`. Sem isso a otimização vira código morto que sempre cai no fallback.
+   **Pego por teste, não por leitura**, e é a mesma classe de resolução de repo target que
+   `pre-commit-path-resolution.tests.ps1` já documentava.
+
+Aplicado nas quatro portas que leem ou escrevem o marcador: `hooks/pre-commit-check.{ps1,sh}`,
+`scripts/deepseek-review.{ps1,sh}` e o git hook nativo `git-hooks/pre-commit.template.sh` (que não
+precisa de `-C`: o git já o chama com cwd na raiz do repo).
+
+Suíte: **424 Pester + 15 pytest** (5 casos novos cobrindo os dois caminhos e a precedência entre
+eles, inclusive o caso "editei depois da review" e o "`git add` não invalida").
 
 ## Changelog v6.39.0 — 2026-08-18
 

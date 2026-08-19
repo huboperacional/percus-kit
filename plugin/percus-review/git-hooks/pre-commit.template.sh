@@ -34,6 +34,26 @@ else
             exit 1
         fi
 
+        # === VALIDADE POR CONTEUDO, ANTES DA POR TEMPO (2026-08-19) ===
+        # Marcador d-<hash>.jsonl prova que ESTE diff foi revisado. Aqui o hook JA roda dentro
+        # do repo (git chama o hook com cwd na raiz), entao nao precisa de -C como no gemeo
+        # PreToolUse, que roda no cwd do agente.
+        # Hash do ARQUIVO escrito por `git diff --output=`, nunca da saida capturada pelo shell:
+        # shells diferentes decodificam diferente e o hash divergiria em silencio.
+        if command -v sha256sum >/dev/null 2>&1; then
+            TMP_DIFF="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-diff-$$")"
+            git diff HEAD --output="$TMP_DIFF" 2>/dev/null || true
+            DIFF_HASH=$(sha256sum "$TMP_DIFF" 2>/dev/null | cut -c1-12)
+            rm -f "$TMP_DIFF"
+            POR_HASH="$REVIEW_DIR/d-$DIFF_HASH.jsonl"
+            if [ -n "$DIFF_HASH" ] && [ -f "$POR_HASH" ]; then
+                H_MTIME=$(stat -c %Y "$POR_HASH" 2>/dev/null || stat -f %m "$POR_HASH" 2>/dev/null)
+                if [ -n "$H_MTIME" ] && [ $(( $(date +%s) - H_MTIME )) -le 86400 ]; then
+                    exit 0
+                fi
+            fi
+        fi
+
         # Path FIXO latest.jsonl (2026-07-20): o wrapper sobrescreve sempre o
         # mesmo arquivo, entao o hook le UM path conhecido -- O(1), sem stat em N.
         # Compat: wrapper antigo deixou <ts>.jsonl -> fallback pega o mais novo.
