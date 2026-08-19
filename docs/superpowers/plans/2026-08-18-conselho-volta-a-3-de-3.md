@@ -84,13 +84,13 @@ Conferir `MODEL` / `$Model =` em `scripts/fact-check-triage.ps1` e `.sh`: espera
 
 **Previsão testável que sai daqui:** `pre-mortem` usa `claude-opus-5` e `review` usa `claude-sonnet-5`. Se o diagnóstico estiver certo, **só o `consult` quebra**. Confirmar isso ANTES de codar muda o tamanho do conserto — e é de graça, porque o próximo `council-pre-mortem` já responde a pergunta.
 
-- [ ] **Step 1: medir quais modelos aceitam `effort`, em vez de deduzir**
+- [x] **Step 1: medir quais modelos aceitam `effort`, em vez de deduzir** — feito 2026-08-19, 11 chamadas. Achou um defeito A MAIS que o relatado: `claude-sonnet-4-6` recusa `xhigh`.
 
 Uma chamada mínima por modelo (`claude-haiku-4-5`, `claude-sonnet-5`, `claude-opus-5`) contra `POST /v1/messages`, duas vezes cada: uma com `output_config: {effort: "low"}` e uma sem, registrando só o status HTTP. `max_tokens: 16`, prompt de uma palavra.
 
 Anotar a matriz resultante no verbete. **Custo: centavos.** É a diferença entre consertar a classe e remendar o sintoma.
 
-- [ ] **Step 2: tornar `effort` opcional nos dois wrappers**
+- [x] **Step 2: tornar `effort` opcional nos dois wrappers** — feito. `"none"` no ValidateSet + tabela de dados `_effort-capabilities.json` lida pelos DOIS (uma cópia só).
 
 `cross-claude.ps1`: acrescentar `"none"` ao `ValidateSet` e montar o corpo condicional —
 
@@ -101,11 +101,11 @@ if ($Effort -ne "none") { $body.output_config = @{ effort = $Effort } }
 
 `cross-claude.sh`: mesmo comportamento, montando o JSON sem a chave quando `EFFORT=none`. Atenção: hoje o env `PERCUS_CROSS_CLAUDE_EFFORT` só troca o VALOR — `""` mandaria `effort: ""`, que é outro 400.
 
-- [ ] **Step 3: o orchestrator escolhe `none` para modelo que não aceita**
+- [x] **Step 3 — RESOLVIDO DE OUTRA FORMA, de propósito.** O plano queria adjacência modelo/effort no `switch` do orquestrador. Não foi feito assim: o wrapper tem OUTROS chamadores (`smoke-cache-f1.ps1`, invocação manual), e conhecimento que vive só no orquestrador não protege nenhum deles — o 400 voltaria por fora. Pior: seria uma SEGUNDA cópia da regra, que é o defeito que o Step 2 acabou de matar. A tabela + o teste de paridade dão a mesma propriedade ("trocar modelo obriga a revisitar o parâmetro") cobrindo todos os chamadores.
 
 Ao lado do `switch ($Mode)` que define `$CrossClaudeModel`, definir `$CrossClaudeEffort` pela MESMA tabela, no MESMO bloco — para que trocar de modelo obrigue a revisitar o parâmetro que anda junto. Essa adjacência é o conserto de verdade: a causa raiz não é o `effort`, é o modelo e o parâmetro morarem longe um do outro. Mesmo bloco em `council-orchestrator.sh`.
 
-- [ ] **Step 4: teste negativo — o único que prova alguma coisa**
+- [x] **Step 4: teste negativo** — 10 casos em `provider-limites.tests.ps1`. Visto VERMELHO (3 falhas) com o `effort` incondicional reintroduzido, antes de aceito.
 
 Em `tests/provider-limites.tests.ps1` — o arquivo cuja razão de existir é justamente "trocou o modelo e não reavaliou o parâmetro ao lado", e que hoje tem **zero** ocorrência de `effort`:
 
@@ -138,9 +138,9 @@ Exige extrair a montagem do corpo para uma função `Build-CrossClaudeBody` — 
 *A favor:* o comportamento atual é deliberado e melhor; o defeito está na documentação, não no código.
 *Contra:* mantém o registry como prosa — o que o Step 2 endereça.
 
-- [ ] **Step 1: aplicar a decisão do operador** no `providers/_registry.json` da FONTE.
+- [x] **Step 1: decisão (B)**, levada ao conselho a pedido do operador: 3/3 rejeitaram (A); 2/3 em "B + teste de sincronia". Divergência: DeepSeek queria apagar o arquivo.
 
-- [ ] **Step 2: impedir que a divergência volte** — teste que lê o registry e confere contra o código:
+- [x] **Step 2: `provider-registry-sync.tests.ps1`** (6 casos), visto vermelho ao restaurar a mentira. Era a condição que o conselho pôs em cima de (B):
 
 ```powershell
 It "todo provider type=http tem wrapper que existe no disco" { ... }
@@ -153,10 +153,10 @@ Sem isso, o registry volta a divergir na próxima troca de modelo, e o próximo 
 
 ## Task 4: fechar o rastro
 
-- [ ] **Step 1:** `plugin.json` — bump de versão.
-- [ ] **Step 2:** `CANON_VERSION.md` — entrada de changelog (R25).
-- [ ] **Step 3:** marcar `conhecimento/resolver/conselho-agent-marker-chamado-por-http.md` como **RESOLVIDO**, com a matriz de modelos medida na Task 2 Step 1 — que é o dado reutilizável desta sessão. Corrigir também a afirmação do verbete de que o `cross-claude` "não deveria ser chamado por HTTP": ela parte do registry, e o registry é que está errado.
-- [ ] **Step 4:** publicar e provar 3/3 numa consulta real, lendo `respostas_usaveis` no `council-log`.
+- [x] **Step 1:** bump 6.42.0 via `scripts/bump-canon.ps1` (7 pontos).
+- [x] **Step 2:** changelog 6.42.0 escrito.
+- [x] **Step 3:** verbete marcado RESOLVIDO, com a matriz medida e a correção da premissa falsa. Verbete novo: `#direcao-da-enumeracao-por-qual-lado-falha-alto`. Marcar `conhecimento/resolver/conselho-agent-marker-chamado-por-http.md` como **RESOLVIDO**, com a matriz de modelos medida na Task 2 Step 1 — que é o dado reutilizável desta sessão. Corrigir também a afirmação do verbete de que o `cross-claude` "não deveria ser chamado por HTTP": ela parte do registry, e o registry é que está errado.
+- [x] **Step 4 (metade):** 3/3 PROVADO pelo kit — `.deepseek/council-log/20260819-144208-consult.jsonl`, `respostas_usaveis: 3`, `respostas_degradadas: 0`. ⏳ **Falta publicar**: push (R20, exige aprovação) + `/plugin update` do operador. Até lá o cache em 6.41.0 segue com o wrapper quebrado.
 
 ---
 

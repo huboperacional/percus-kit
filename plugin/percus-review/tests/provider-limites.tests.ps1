@@ -257,3 +257,104 @@ Describe "R11 nao libera commit com review vazia ou cortada" {
         $trecho | Should -Match '(?m)^\s*exit\s+[1-9]'      -Because "sair 0 sem marcador deixa o hook adivinhar"
     }
 }
+Describe "output_config.effort so vai para modelo que aceita" {
+    # Os testes de COMPORTAMENTO aqui montam o corpo de verdade e olham as chaves, em vez de
+    # raspar o fonte com regex -- foi teste-que-le-fonte que deixou o `temperature` vivo um mes
+    # no cross-claude.sh, com o teste de paridade verde e a perna 100% quebrada.
+    #
+    # Duas excecoes deliberadas leem o fonte, e leem METADADO, nao logica: o conteudo do
+    # ValidateSet (que nao da para observar montando corpo) e a ausencia de lista de modelo
+    # hardcoded nos wrappers. Metadado nao tem como ser exercitado; logica tem, e ai vale a regra.
+    #
+    # Matriz medida contra POST /v1/messages em 2026-08-19 (max_tokens:16, prompt de uma palavra):
+    #   claude-haiku-4-5   sem effort 200 | effort=low   400 "does not support the effort parameter"
+    #   claude-sonnet-4-6  sem effort 200 | effort=xhigh 400 "Supported levels: high, low, max, medium"
+    #   sonnet-5 / opus-5 / opus-4-7: 200 nos dois casos.
+
+    BeforeAll {
+        $script:provDir = Join-Path (Split-Path $PSScriptRoot -Parent) "providers"
+        . (Join-Path $script:provDir "_cross-claude-body.ps1")
+        $script:caps = Get-EffortCapabilities
+    }
+
+    It "a tabela _effort-capabilities.json existe e e JSON valido" {
+        # Se ela sumir, os dois wrappers abortam alto de proposito -- este teste garante que o
+        # arquivo viaja junto no pacote do plugin, que e onde ele pode se perder.
+        $script:caps.sem_effort | Should -Not -BeNullOrEmpty
+    }
+
+    It "NAO manda output_config para <Model> (a API devolve 400)" -ForEach @(
+        @{ Model = 'claude-haiku-4-5' }
+    ) {
+        $body = Build-CrossClaudeBody -Model $Model -MaxTokens 16 -Effort 'low' -Caps $script:caps
+        $body.ContainsKey('output_config') | Should -Be $false
+    }
+
+    It "manda output_config para <Model>, que aceita" -ForEach @(
+        @{ Model = 'claude-sonnet-5' }
+        @{ Model = 'claude-opus-5'   }
+        @{ Model = 'claude-opus-4-7' }
+    ) {
+        $body = Build-CrossClaudeBody -Model $Model -MaxTokens 16 -Effort 'low' -Caps $script:caps
+        $body.output_config.effort | Should -Be 'low'
+    }
+
+    It "-Effort none desliga o parametro em qualquer modelo" {
+        $body = Build-CrossClaudeBody -Model 'claude-opus-5' -MaxTokens 16 -Effort 'none' -Caps $script:caps
+        $body.ContainsKey('output_config') | Should -Be $false
+    }
+
+    It "rebaixa nivel que o modelo nao conhece em vez de tomar 400" {
+        # claude-sonnet-4-6 aceita effort, mas nao o nivel xhigh -- e o ValidateSet do wrapper
+        # oferece xhigh. Latente hoje (o default e low); vira 400 no dia que alguem passar xhigh.
+        $body = Build-CrossClaudeBody -Model 'claude-sonnet-4-6' -MaxTokens 16 -Effort 'xhigh' -Caps $script:caps
+        $body.output_config.effort | Should -Be 'high'
+    }
+
+    It "normaliza o nivel para minusculas antes de mandar" {
+        # -Effort "HIGH" passa no ValidateSet (case-insensitive) e passaria no -contains tambem,
+        # entao seria enviado como "HIGH". A API recusa: medido 2026-08-19, HTTP 400
+        # "Input should be 'low', 'medium', 'high', 'xhigh' or 'max'". O .sh normaliza com tr;
+        # este teste impede o .ps1 de divergir no MESMO env var.
+        $body = Build-CrossClaudeBody -Model 'claude-opus-5' -MaxTokens 16 -Effort 'HIGH' -Caps $script:caps
+        $body.output_config.effort | Should -BeExactly 'high'
+    }
+
+    It "NONE em caixa alta desliga igual a none" {
+        $body = Build-CrossClaudeBody -Model 'claude-opus-5' -MaxTokens 16 -Effort 'NONE' -Caps $script:caps
+        $body.ContainsKey('output_config') | Should -Be $false
+    }
+
+    It "o nivel de rebaixamento vem da tabela, nao do codigo" {
+        $script:caps.fallback_nivel | Should -Not -BeNullOrEmpty
+    }
+
+    It "<Arq> le o nivel de fallback da tabela em vez de fixar no codigo" -ForEach @(
+        @{ Arq = '_cross-claude-body.ps1' }
+        @{ Arq = 'cross-claude.sh'        }
+    ) {
+        # "rebaixa para high" escrito nos dois wrappers e mais uma copia da mesma regra: muda
+        # num, o outro segue calado. A politica mora na tabela; aqui so se le.
+        $src    = Get-Content (Join-Path $script:provDir $Arq) -Raw
+        $codigo = ($src -split "`n" | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
+        $codigo | Should -Match 'max_tokens|EFFORT|Effort' -Because "anti-vacuidade: tem que sobrar codigo apos tirar comentario"
+        $codigo | Should -Match 'fallback_nivel'           -Because "o nivel preferido e lido da tabela"
+        $codigo | Should -Not -Match 'high'                -Because "nivel fixo no codigo e a duplicacao voltando"
+    }
+
+    It "o ValidateSet do wrapper aceita 'none' -- sem isso nao ha como desligar" {
+        $src = Get-Content (Join-Path $script:provDir "cross-claude.ps1") -Raw
+        $src | Should -Match 'ValidateSet\("low","medium","high","xhigh","max","none"\)'
+    }
+
+    It "<Arq> nao tem lista de modelo propria: le a tabela compartilhada" -ForEach @(
+        @{ Arq = 'cross-claude.ps1' }
+        @{ Arq = 'cross-claude.sh'  }
+    ) {
+        # Anti-drift. Se um dos dois voltar a decidir por conta propria, as duas copias divergem
+        # calado -- que e literalmente a historia deste arquivo (#regra-duplicada-ps1-sh).
+        $src = Get-Content (Join-Path $script:provDir $Arq) -Raw
+        $src | Should -Match '_effort-capabilities\.json' -Because "a fonte da regra e o JSON, nao o wrapper"
+        $src | Should -Not -Match 'claude-haiku-4-5"?\s*(\)|\]|,)' -Because "nome de modelo hardcoded aqui e a duplicacao voltando"
+    }
+}

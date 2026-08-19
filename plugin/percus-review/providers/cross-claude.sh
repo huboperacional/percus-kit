@@ -7,6 +7,10 @@
 
 set -eo pipefail
 
+# BASE_DIR no topo: a tabela de effort e lida sempre, nao so quando ha system-prompt em
+# arquivo. Antes isto vivia dentro do if do prompt e nao servia para o resto do script.
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 SYSTEM_PROMPT=""
 SYSTEM_PROMPT_EXPLICIT=0
 # NAO existe TEMPERATURE aqui: a familia Opus 4.7+ / Sonnet 5 / Fable 5 removeu os sampling
@@ -105,6 +109,44 @@ trap 'rm -f "$BODY_FILE"' EXIT
 # responde 400 ("thinking.type.enabled is not supported for this model").
 EFFORT="${PERCUS_CROSS_CLAUDE_EFFORT:-low}"
 
+# Nem todo modelo aceita output_config.effort, e a tabela e a MESMA que o cross-claude.ps1 le --
+# _effort-capabilities.json, um arquivo so. Duas copias da mesma regra em .ps1 e .sh foi como o
+# `temperature` sobreviveu um mes neste exato arquivo (#regra-duplicada-ps1-sh).
+CAPS_FILE="$BASE_DIR/_effort-capabilities.json"
+if [[ ! -f "$CAPS_FILE" ]]; then
+    # Falha ALTO. Seguir sem a tabela mandaria effort para modelo que rejeita (400) ou,
+    # pior, omitiria para modelo que precisa -- e sem effort a perna volta VAZIA com HTTP 200.
+    echo "[cross-claude-provider] tabela de effort ausente: $CAPS_FILE" >&2
+    exit 1
+fi
+
+# String vazia nao e "desligado": `effort: ""` e outro 400. Normaliza para none.
+[[ -z "$EFFORT" ]] && EFFORT="none"
+# Minusculas: o ValidateSet do .ps1 e case-insensitive, entao la "NONE" desliga. Sem esta linha
+# o mesmo env var desligaria no PowerShell e mandaria effort:"NONE" (400) no bash -- os dois
+# interpretadores divergindo calados, que e exatamente a classe que este arquivo veio matar.
+# tr em vez de ${EFFORT,,}: nao depende de bash 4+.
+EFFORT=$(printf '%s' "$EFFORT" | tr '[:upper:]' '[:lower:]')
+# O NOME DO MODELO nao e normalizado de proposito: `CLAUDE-HAIKU-4-5` devolve 404 "model: ..."
+# nos dois interpretadores (medido 2026-08-19), antes de o effort importar. Normalizar mascararia
+# ID invalido. Case do NIVEL sim; case do MODELO nao.
+
+if [[ "$EFFORT" != "none" ]]; then
+    if jq -e --arg m "$MODEL" '.sem_effort | index($m)' "$CAPS_FILE" >/dev/null; then
+        echo "[cross-claude-provider] $MODEL nao aceita output_config.effort -- omitindo (medido 2026-08-19: HTTP 400)." >&2
+        EFFORT="none"
+    else
+        NIVEIS=$(jq -r --arg m "$MODEL" '.niveis_por_modelo[$m] // empty | join(",")' "$CAPS_FILE")
+        if [[ -n "$NIVEIS" && ",$NIVEIS," != *",$EFFORT,"* ]]; then
+            # Preferido vem da tabela, nao hardcoded aqui -- ver _nota_fallback.
+            ALVO=$(jq -r '.fallback_nivel // empty' "$CAPS_FILE")
+            [[ -z "$ALVO" || ",$NIVEIS," != *",$ALVO,"* ]] && ALVO="${NIVEIS##*,}"
+            echo "[cross-claude-provider] $MODEL nao aceita effort='$EFFORT' (aceita: $NIVEIS) -- usando '$ALVO'." >&2
+            EFFORT="$ALVO"
+        fi
+    fi
+fi
+
 jq -n \
     --arg model "$MODEL" \
     --argjson max "$MAX_TOKENS" \
@@ -114,7 +156,6 @@ jq -n \
     '{
         model: $model,
         max_tokens: $max,
-        output_config: { effort: $effort },
         system: [
             {
                 type: "text",
@@ -125,7 +166,8 @@ jq -n \
         messages: [
             { role: "user", content: $usr }
         ]
-    }' > "$BODY_FILE"
+    }
+    + (if $effort == "none" then {} else { output_config: { effort: $effort } } end)' > "$BODY_FILE"
 
 START_MS=$(date +%s%3N)
 # 180s, nao 60s: com thinking ligado e teto 16000, resposta LEGITIMA ja levou 80s (medido

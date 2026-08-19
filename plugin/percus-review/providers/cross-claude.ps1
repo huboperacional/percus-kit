@@ -60,15 +60,23 @@ param(
     # ⚠️ E o controle NAO e `thinking.budget_tokens`: nos modelos 5 esse campo foi
     # REMOVIDO e a API responde 400 ("thinking.type.enabled is not supported for
     # this model"). Medido na mesma bateria. O controle vivo e `output_config.effort`.
-    [ValidateSet("low","medium","high","xhigh","max")]
+    # "none" existe para DESLIGAR o parametro. Sem ele nao havia como chamar um modelo que
+    # nao aceita effort, e o modo consult (Haiku 4.5) devolvia 400 em toda chamada.
+    # O normal e nao precisar: o wrapper ja omite sozinho pelos dados de
+    # _effort-capabilities.json. "none" e para o caso em que quem chama sabe mais.
+    [ValidateSet("low","medium","high","xhigh","max","none")]
     [string]$Effort = "low",
     [string]$Model = "claude-sonnet-5",
     [string]$Endpoint = "https://api.anthropic.com/v1/messages",
     [ValidateSet("consult","review","pre-mortem","analyze")]
     [string]$Mode = "consult"
 )
-. (Join-Path $PSScriptRoot "_resposta.ps1")
+# ANTES dos dot-source, nao depois: se um deles faltar no pacote instalado, com o default
+# Continue o erro e nao-terminante e o script segue ate estourar la na frente com mensagem que
+# nao aponta para a causa. Falha alta e imediata no carregamento e o que se quer.
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "_resposta.ps1")
+. (Join-Path $PSScriptRoot "_cross-claude-body.ps1")
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -123,29 +131,12 @@ if (-not $userPrompt -or $userPrompt.Trim().Length -eq 0) {
     exit 1
 }
 
-# IMPORTANTE: system deve ser array de blocks com cache_control — NAO string simples.
-# Anthropic API rejeita cache_control se system for string.
-# NAO enviar temperature/top_p/top_k: a familia Opus 4.7+ / Sonnet 5 / Fable 5 removeu os
-# sampling params e retorna 400 se recebidos. O pre-mortem usa claude-opus-5, entao enviar
-# temperature quebrava o cross-claude do conselho toda vez. Steering vai por prompt, nao por sampling.
-$body = @{
-    model      = $Model
-    max_tokens = $MaxTokens
-    # Ver o comentario do parametro -Effort: e isto que impede a resposta de sair
-    # vazia. `thinking` fica FORA do corpo de proposito -- adaptativo e o default
-    # nos modelos 5, e qualquer configuracao explicita de budget e 400.
-    output_config = @{ effort = $Effort }
-    system     = @(
-        @{
-            type          = "text"
-            text          = $SystemPrompt
-            cache_control = @{ type = "ephemeral" }
-        }
-    )
-    messages   = @(
-        @{ role = "user"; content = $userPrompt }
-    )
-} | ConvertTo-Json -Depth 10 -Compress
+# O corpo e montado por Build-CrossClaudeBody (_cross-claude-body.ps1), fora deste arquivo, para
+# que o teste possa inspecionar as chaves sem chamar a API. As regras de system/cache_control,
+# sampling param e output_config.effort estao documentadas la e na tabela _effort-capabilities.json.
+$bodyObj = Build-CrossClaudeBody -Model $Model -MaxTokens $MaxTokens -Effort $Effort `
+                                 -SystemPrompt $SystemPrompt -UserPrompt $userPrompt
+$body = $bodyObj | ConvertTo-Json -Depth 10 -Compress
 
 $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
 $headers = @{

@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.41.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.42.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,81 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.42.0 — 2026-08-19
+
+**A perna Cross-Claude do conselho voltou. Ela mandava `output_config.effort` para um modelo que
+recusa o parâmetro, e o modo `consult` tomava 400 em toda chamada.**
+
+Não foi diagnóstico daqui: **dois projetos relataram o mesmo 400 no mesmo dia** (Familia Milionaria
+e Micro), com o arquivo e a linha. Reincidência em campo é sinal de classe, não de caso.
+
+**Medido antes de codar**, contra `POST /v1/messages` (`max_tokens:16`, 11 chamadas, centavos):
+
+| modelo | sem `effort` | `effort=low` | `effort=xhigh` |
+|---|---|---|---|
+| `claude-haiku-4-5` | 200 | **400** `does not support the effort parameter` | — |
+| `claude-sonnet-4-6` | 200 | 200 | **400** `Supported levels: high, low, max, medium` |
+| `claude-sonnet-5` / `opus-5` / `opus-4-7` | 200 | 200 | 200 |
+
+A medição achou **um defeito a mais do que os dois relatos**: `claude-sonnet-4-6` aceita `effort`
+mas recusa `xhigh` — e `xhigh` está no `ValidateSet` do wrapper. Latente hoje só porque o default é
+`low`. Deduzir do nome do modelo não pegaria isso.
+
+🔑 **A direção da enumeração é a decisão inteira, e ela é o OPOSTO da que a 6.41.0 tomou.** A
+tabela lista quem **recusa**, não quem aceita: modelo desconhecido **recebe** `effort`, e se não
+suportar a API devolve 400 — alto, imediato, com o nome do parâmetro na mensagem. A direção inversa
+faria o modelo novo cair sem `effort`, e sem `effort` a perna volta **vazia com HTTP 200** — falha
+muda, que já custou 6.36.4 e 6.41.0 a este kit. O critério comum às duas versões não é "allowlist",
+é **qual direção falha alto**: no R11 o desconhecido tem que ser barrado porque passar é o risco;
+aqui tem que passar porque ser barrado é o risco. A razão está escrita **dentro** da tabela
+(`_nota_direcao`), não só aqui — quem for "harmonizar" as duas listas vai estar olhando o arquivo,
+não o changelog.
+
+**Uma tabela, dois interpretadores.** `providers/_effort-capabilities.json` é lido pelo
+`cross-claude.ps1` **e** pelo `cross-claude.sh`. Duas cópias da mesma regra foi exatamente como o
+`temperature` sobreviveu um mês no `.sh` depois de consertado no `.ps1`. Tabela ausente **aborta
+alto** nos dois: seguir sem ela devolveria a perna vazia, que é a falha que este conserto existe
+para matar.
+
+**O corpo saiu de dentro do wrapper** para `Build-CrossClaudeBody` (`_cross-claude-body.ps1`), para
+que o teste monte o corpo e olhe as chaves **sem chamar a API**. Enquanto era inline, a única
+aferição possível era raspar o fonte com regex — e teste-que-lê-fonte foi o que deixou o
+`temperature` passar.
+
+**O `_registry.json` deixou de mentir — e essa é a parte que custou mais caro.** Ele declarava
+`cross-claude` como `type: agent-marker` com `wrapper_ps1: null`, mas **nenhum script o lê**: quem
+decide HTTP-vs-marcador é o orquestrador, por `Test-Path` + `ANTHROPIC_API_KEY`, e o caminho direto
+existe porque é o único que habilita `cache_control`. ⚠️ **Essa linha já tinha induzido um
+diagnóstico errado**: um verbete concluiu, citando o registry, que o provider "não deveria ser
+chamado por HTTP". Documentação com aparência de configuração engana com a mesma autoridade de um
+log. Agora é `type: http-or-marker` com os wrappers reais, e `provider-registry-sync.tests.ps1`
+cobra a sincronia — sem o teste o arquivo volta a divergir, e aí a DeepSeek tem razão em dizer que
+arquivo morto é pior que ausente.
+
+**Decisão levada ao conselho** (3/3 usáveis, 0 degradadas — a primeira consulta cheia depois do
+conserto, que é também a prova dele): **3/3 rejeitaram** honrar o registry no código, todos pelo
+mesmo motivo — perder o prompt caching custa em toda rodada. **2/3** convergiram em "registry
+honesto **+ teste de sincronia**". Divergência registrada: a DeepSeek queria **apagar** o registry
+e mover a regra para comentário no orquestrador; o custo que ela mesma nomeou (quebrar parser
+externo, e ainda precisar do teste de CI) foi o que manteve a maioria.
+
+**Os dois guards foram vistos VERMELHOS antes de aceitos** — 3 falhas ao reintroduzir o `effort`
+incondicional, 1 ao restaurar a mentira do registry. Guard que nunca reprovou não é guard.
+
+⚠️ **A review R11 pegou três defeitos reais neste diff, e os três eram da própria classe que ele
+diz matar.** (1) `PERCUS_CROSS_CLAUDE_EFFORT=NONE` em caixa alta: o `ValidateSet` do `.ps1` é
+case-insensitive e desligava, o `.sh` comparava com `!=` e mandava `effort:"NONE"` — 400. (2) O
+mesmo pelo outro lado: `-Effort "HIGH"` chegava à API como `"HIGH"`, medido 400 `Input should be
+'low', 'medium', 'high', 'xhigh' or 'max'`. (3) A política de rebaixamento (`high`, senão o último
+nível) estava escrita **nos dois wrappers**, fora da tabela — uma segunda cópia da mesma regra,
+nascida dentro do commit que existe para eliminar cópias. Virou `fallback_nivel` no JSON. 🔑 **Matar
+uma classe de defeito não imuniza o conserto contra ela**; foi a review, não a suíte, que viu — os
+testes cobriam o caminho que eu tinha em mente. A review também apontou que o teste de sincronia do
+registry só varria o `.ps1`: corrigido para varrer os dois orquestradores.
+
+Suíte: **454 Pester + 15 pytest** em 141,3 s pelo executor paralelo (21 casos novos).
+
 
 ## Changelog v6.41.0 — 2026-08-19
 

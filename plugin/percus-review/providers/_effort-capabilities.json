@@ -1,0 +1,26 @@
+{
+  "_nota": "Quais modelos Anthropic aceitam output_config.effort, e com quais niveis. Lido pelo cross-claude.ps1 E pelo cross-claude.sh -- arquivo UNICO de proposito: o defeito do 'temperature' sobreviveu em TRES copias da mesma regra (ver #regra-duplicada-ps1-sh) porque cada interpretador tinha a sua. Aqui nao ha o que divergir.",
+
+  "_nota_direcao": "A tabela enumera quem RESTRINGE, nao quem aceita -- e a direcao e a decisao inteira. Modelo desconhecido RECEBE effort. Se ele nao aceitar, a API devolve 400: alto, imediato, com o nome do parametro na mensagem. A direcao inversa (allowlist de quem aceita) faz o modelo novo cair SEM effort, e sem effort a perna volta VAZIA com HTTP 200 -- falha muda, que ja custou 6.36.4 e 6.41.0 a este kit. NAO 'harmonize' isto com a lista fechada da politica de review R11 (6.41.0): la o desconhecido tem que ser barrado porque passar e o risco; aqui o desconhecido tem que passar porque ser barrado e o risco. O criterio comum nao e 'allowlist', e QUAL DIRECAO FALHA ALTO.",
+
+  "_nota_medicao": "Medido contra POST /v1/messages em 2026-08-19, max_tokens:16, prompt de uma palavra, 11 chamadas. Confere com o catalogo da skill claude-api (tabela Thinking & Effort). Refazer a medicao ao acrescentar modelo -- nao deduzir do nome.",
+
+  "sem_effort": [
+    "claude-haiku-4-5"
+  ],
+
+  "niveis_por_modelo": {
+    "claude-sonnet-4-6": ["low", "medium", "high", "max"]
+  },
+
+  "_nota_fallback": "Para onde rebaixar quando o nivel pedido nao existe no modelo. Mora AQUI, e nao nos wrappers, porque politica escrita duas vezes diverge calada -- se so o .ps1 mudasse para 'low', o .sh continuaria em 'high' e ninguem veria. Se o valor nao estiver entre os niveis do modelo, cada wrapper cai no ultimo nivel aceito.",
+  "fallback_nivel": "high",
+
+  "_medido": {
+    "claude-haiku-4-5":  "sem effort 200 | effort=low 400 'This model does not support the effort parameter.'",
+    "claude-sonnet-5":   "sem effort 200 | effort=low 200",
+    "claude-opus-5":     "sem effort 200 | effort=low 200",
+    "claude-opus-4-7":   "sem effort 200 | effort=low 200",
+    "claude-sonnet-4-6": "sem effort 200 | effort=low 200 | effort=xhigh 400 'Supported levels: high, low, max, medium'"
+  }
+}
