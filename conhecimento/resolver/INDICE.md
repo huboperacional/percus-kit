@@ -215,6 +215,7 @@
 - [Integração externa OPCIONAL desarmada não grita: silêncio é idêntico a "ninguém usou ainda"](integracao-opcional-desarmada-nao-grita.md)
 - [`Agent` com `isolation:worktree` pode nascer dezenas de commits atrás da `main` — nunca confie no HEAD sem checar](isolation-worktree-nasce-stale.md)
 - [Relatório com JANELA de período re-introduz viés de sobrevivência que você "já consertou"](janela-reintroduz-vies-sobrevivencia.md)
+- [Um job morre no IMPORT e o `except` "não-bloqueante" esconde por dias](job-morre-no-import-e-o-except-nao-bloqueante-esconde-por-dias.md)
 - [`deepseek-review.sh` morre com "jq: Argument list too long" (diff > ~30KB no Windows)](jq-argv-too-long-review.md)
 - [Editar JSON (plugin.json) via sed/CLI quebra a string com aspas](json-sed-aspas.md)
 - [Junction de node_modules compartilhada entre worktrees corrompe e trava Turbopack](junction-node-modules-worktree-risco.md)
