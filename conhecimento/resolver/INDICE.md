@@ -333,6 +333,7 @@
 - [Mesma regra escrita em dois interpretadores (.ps1 + .sh) diverge calada](regra-duplicada-ps1-sh.md)
 - [Regra escrita em N lugares e enforçada em nenhum: enforcement ENUMERA tools, então toda tool nova nasce fora da guarda](regra-escrita-em-n-lugares-e-enforcada-em-nenhum.md)
 - [`importlib.reload(config)` num teste polui a suite inteira (quebra testes que rodam depois)](reload-config-polui-suite.md)
+- [Timeline sai fora de ordem: o relógio empata e o desempate é UUID aleatório](relogio-empata-e-o-desempate-por-uuid-sorteia-a-ordem.md)
 - [Preciso verificar que uma página admin/dashboard renderiza, mas o MCP de browser caiu / precisa login](render-smoke-in-container.md)
 - [Replace cross-repo por string literal mede a STRING, não a REGRA — e meio par commitado é pior que nenhum](replace-cross-repo-mede-string-nao-regra.md)
 - ["O backend já aceita X" — repo ≠ imagem em prod (422 silencioso pós-deploy parcial)](repo-nao-e-imagem-em-prod.md)
