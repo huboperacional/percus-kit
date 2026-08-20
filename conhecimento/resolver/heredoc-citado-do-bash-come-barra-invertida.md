@@ -42,5 +42,22 @@ leu o diff** e apontou o `chr(92)` no fonte.
 - **Prove a linha nova por assert**, não pela palavra: `assert chr(10) + "-" in txt` mata o defeito
   3; `assert "pagar" in txt` não mata nada.
 
+**A mitigação que faltava, e ela é de BUILD (Família Milionária, 2026-08-20):** este verbete já
+existia e o defeito aconteceu **sete vezes na mesma sessão** — porque a disciplina ("não use
+heredoc para isso") depende de alguém lembrar no momento certo, e o momento certo é justamente
+quando se está no meio de outra coisa. O que fechou foi transformar a lição em trava:
+
+> **todo bloco ` ```python ` de plano ou spec TEM de compilar**, senão o build reprova
+> (`tests/test_planos_tem_python_valido.py`).
+
+O modo de falha que ela pega é o pior dos três acima e não estava listado: o plano é lido por um
+**executor que não escreveu nada daquilo**. Um passo de prova com `SyntaxError` aborta ANTES de
+rodar o teste e ANTES de restaurar o arquivo — mas ainda imprime o veredito. Ele **parece cobertura
+e não é**, e o executor descobre com o arquivo de produção já mutado.
+
+⚠️ A trava nasce VERDE por inventário fechado (44 documentos antigos com trechos ilustrativos que
+nunca foram feitos pra compilar) e **só encolhe**. Trava vermelha no dia 1 é trava que alguém
+desliga.
+
 **Ver também:** [[mutacao-sobrevive-por-guarda-redundante]] — a mesma família: o teste que observa
 a coisa errada fica verde em cima do defeito.
