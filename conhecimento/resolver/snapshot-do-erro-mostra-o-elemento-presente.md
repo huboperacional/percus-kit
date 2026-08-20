@@ -50,11 +50,35 @@ olhando o relatório.
 
 **Como resolver, do mais correto ao mais barato:**
 1. **Rode a e2e contra o build de produção** (`next build && next start`), não contra `next dev`:
-   mata a classe inteira, e de quebra você testa o que vai para o ar.
+   mata a classe inteira, e de quebra você testa o que vai para o ar. **Feito no caso real, e o
+   resultado foi 73/73 com o tempo POR TESTE caindo de ~1,5 s para ~0,45 s.** As três armadilhas
+   da migração estão logo abaixo — nenhuma é óbvia e as três mordem.
 2. **Passo de aquecimento** antes da suíte: um `page.goto` em cada rota, fora das asserções.
 3. **Timeout explícito e folgado** na asserção da rota mais pesada, **com o porquê escrito** —
    qual tela, qual tempo medido, sob qual condição. Sem a frase, o próximo leitor vê número
    mágico e corta de volta "porque 15 s é exagero".
+
+### As três armadilhas de trocar `dev` por `build && start`
+
+1. 🔴 **`reuseExistingServer` PRECISA virar `false`.** Com dev server, reusar era seguro porque ele
+   recompila ao mudar o arquivo. Com build estático, reusar significa rodar a suíte contra o
+   **bundle da execução anterior**: verde sobre código que não é o do disco. Isso é **pior** que o
+   flake que a migração conserta — flake você percebe, bundle velho você não. Com `false`, porta
+   ocupada falha em voz alta, e esse é o desfecho desejado.
+2. 🟡 **Isole o diretório de build.** `next dev` e `next build` usam `.next`, então a e2e derruba o
+   servidor de desenvolvimento de quem está trabalhando. Faça o `next.config.js` ler
+   `distDir: process.env.NEXT_DIST_DIR || '.next'` e rode a suíte com `NEXT_DIST_DIR=.next-e2e`
+   (no build **e** no start). Acrescente o diretório ao `.gitignore`.
+3. 🟡 **Acrescente `<distDir>/types/**/*.ts` ao `include` do `tsconfig.json`.** Sem isso o
+   `next build` reescreve o arquivo a cada execução — e o diff sujo aparece como se alguém
+   tivesse editado o tsconfig. De quebra, ele reformata os arrays inteiros.
+
+### O que a migração revela (e é o argumento a favor dela)
+
+O dev server **esconde defeitos de produção**. No caso real apareceram dois no primeiro dia:
+`sharp` ausente degradando imagem em silêncio (verbete próprio), e uma medição de geometria de
+diálogo incompatível com o layout em repouso, que o dev nunca acusou. Trocar o harness não é
+higiene: é passar a medir o que vai para o ar.
 
 **O que NÃO fazer:**
 - ❌ Subir o timeout **global**: some com o sinal de lentidão de todo o resto.
@@ -66,7 +90,7 @@ quanto a tela demora.* Contra servidor de desenvolvimento, essa duração **não
 depende do que já foi compilado, e é por isso que a suíte parece honesta na sua máquina e flaka
 na primeira execução limpa.
 
-**Relacionado:** [Alarme falso mata o alarme](alarme-falso-mata-o-alarme.md)
+**Relacionado:** [Alarme falso mata o alarme](alarme-falso-mata-o-alarme.md) · [`sharp` ausente serve imagem sem otimizar](sharp-ausente-serve-imagem-sem-otimizar.md)
 
 **Ref:** Empresa Milionária, 2026-08-20, `empresa-frontend/tests/e2e/guarda-visual.spec.ts` e
 `playwright.pj.config.ts` — descoberto durante o P21 (envelope de erro), quando a falha se

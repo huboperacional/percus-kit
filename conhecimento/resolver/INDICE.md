@@ -362,6 +362,7 @@
 - [Sessão que "morre toda hora" pode ser troca de perfil do browser, não bug de auth](sessao-morre-toda-hora-e-perfil-do-browser.md)
 - [Task dada como "fechada" com prova que só cobria metade do canal: hook fala por stderr num `SessionStart` que sai 0, e nunca aparece](sessionstart-stderr-nunca-aparece.md)
 - [Duas sessões Claude no MESMO diretório de trabalho colidem em checkout E em deploy, não só em commit](sessoes-paralelas-mesmo-diretorio-colidem.md)
+- [`sharp` ausente: o log grita, a resposta é 200 e a imagem vai ao ar sem otimizar](sharp-ausente-serve-imagem-sem-otimizar.md)
 - [Suíte verde e boot morto: a versão da lib na IMAGEM não é a da sua máquina](skew-lib-imagem-vs-local.md)
 - [Skill do plugin referida como slash command (`/percus-review:checkpoint`) — não existe](skill-nao-e-slash.md)
 - [Smoke devolve o resultado CERTO e a sua mudança nem rodou — confirme o CAMINHO, não a saída](smoke-certo-mas-caminho-nao-rodou.md)
