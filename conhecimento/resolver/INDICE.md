@@ -174,6 +174,7 @@
 - [O golden de regressão existe, está VERDE, e guarda um caminho MORTO](golden-de-regressao-que-guarda-caminho-morto.md)
 - [Negativa de palavra-chave em NÍVEL DE CONTA no Google Ads: erro diz "shared set does not exist" e a lista existe](google-ads-negativa-conta-sharedset-tipo-proprio.md)
 - [Device GOWA (número novo/cold) banido "toda hora" com volume baixo](gowa-device-ban-usync.md)
+- [Grep com regex em CSS emitido devolve zero e parece prova](grep-com-regex-em-css-emitido-mente.md)
 - [`grep -i` do Git Bash não casa ACENTO: a varredura de "não sobrou nada" dá verde falso em português](grep-do-git-bash-nao-casa-acento.md)
 - [`grep -iF` aborta com SIGABRT no Git Bash: a combinação quebra, cada flag sozinha funciona](grep-if-aborta-git-bash.md)
 - [Perna Groq do conselho responde 404: `llama-3.3-70b-versatile` foi decomissionado](groq-llama-3-3-decomissionado-404.md)
