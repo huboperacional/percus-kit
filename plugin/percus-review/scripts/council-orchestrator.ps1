@@ -348,6 +348,67 @@ if ($trunc.truncated) {
 $tmpPrompt = [System.IO.Path]::GetTempFileName()
 $userPrompt | Out-File -FilePath $tmpPrompt -Encoding utf8 -NoNewline
 
+# F.5b Teto de entrada POR PROVIDER.
+#
+# `-MaxInputTokens` e um numero so para as tres pernas, mas as pernas nao tem o mesmo limite.
+# A Groq no tier on_demand da 8000 TOKENS POR MINUTO (entrada + saida, somados no minuto entre
+# todas as chamadas) -- e com 8000 de entrada mais 2048 de saida a chamada pede 10048 e nao tem
+# como passar. Medido 2026-08-19: 39 ocorrencias de HTTP 413 nos council-log, todas nesta perna.
+# O 413 nao e tamanho: o corpo diz `on tokens per minute (TPM): Limit 8000`.
+#
+# Baixar o `-MaxInputTokens` global "resolveria" a Groq truncando a DeepSeek e o Cross-Claude
+# junto, que aguentam o prompt inteiro -- pagar com a qualidade das duas pernas boas pelo limite
+# da terceira. Cada uma passa a ter o seu teto.
+$promptFilePorProvider = @{}
+$systemPorProvider = @{}
+$limitesPath = Join-Path $providersDir "_provider-limites.json"
+if (Test-Path $limitesPath) {
+    $limites = Get-Content $limitesPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($prov in $asyncProviders) {
+        # Guarda defensiva espelhando o `// empty` do lado bash: sob Set-StrictMode, acessar
+        # propriedade ausente num objeto $null lanca em vez de devolver $null, e o orquestrador
+        # abortaria por causa de uma tabela sem a chave -- perdendo as TRES pernas por causa de
+        # uma linha de configuracao.
+        # Acesso por PSObject.Properties, nao por ponto. Sob Set-StrictMode -Version 2+, o acesso
+        # direto a uma propriedade AUSENTE lanca -- e provider fora da tabela (deepseek,
+        # cross-claude) e o caso NORMAL aqui, nao a excecao. A primeira versao desta guarda
+        # protegia $limites nulo e deixava justamente a metade que o comentario prometia cobrir:
+        # a excecao derrubaria o orquestrador inteiro, perdendo as TRES pernas por causa de um
+        # provider que so nao tem teto proprio. Latente por ambiente, que e o pior tipo.
+        $tetoProp = if ($limites -and $limites.entrada_max_tokens) { $limites.entrada_max_tokens.PSObject.Properties[$prov] } else { $null }
+        $teto = if ($tetoProp) { $tetoProp.Value } else { $null }
+        # Provider sem teto proprio segue no arquivo comum -- comportamento de sempre.
+        if (-not $teto) { continue }
+        # O SYSTEM PROMPT tambem entra na conta, e pode ser enorme: o F2 injeta codigo DENTRO
+        # dele (ate 8 arquivos x MaxTokensPerFile). A primeira versao so subtraia o system do
+        # teto e travava o resto em 500 -- entao com system grande a soma
+        # (system + user + saida) estourava o teto de novo e a perna caia igual, agora sem
+        # ninguem entender por que, ja que "tinha teto". Nao e hipotetico: os 413 medidos em
+        # modo `analyze` sao exatamente esse caso.
+        #
+        # Metade do teto para cada lado: o system e truncado se passar de metade, e o que
+        # sobrar do teto vai para o user. Assim system + user <= teto SEMPRE, e o clamp deixa
+        # de poder mentir.
+        $sysMax  = [int][Math]::Floor($teto / 2)
+        $sysTok  = Measure-Tokens $SystemPrompt
+        $sysEste = $SystemPrompt
+        if ($sysTok -gt $sysMax) {
+            $st = Limit-Prompt $SystemPrompt $sysMax
+            $sysEste = $st.text
+            $sysTok  = $sysMax
+            [Console]::Error.WriteLine("[council-orchestrator] perna '$prov': system prompt truncado de $($st.original_tokens) -> ~$sysMax tokens (cabe no teto de $teto).")
+        }
+        $tetoUtil = $teto - $sysTok
+        $tp = Limit-Prompt $userPrompt $tetoUtil
+        $systemPorProvider[$prov] = $sysEste
+        if (-not $tp.truncated) { continue }
+        [Console]::Error.WriteLine("[council-orchestrator] perna '$prov' tem teto proprio de $teto tokens: prompt truncado de $($tp.original_tokens) -> ~$tetoUtil (o das outras pernas fica inteiro).")
+        $f = [System.IO.Path]::GetTempFileName()
+        $tp.text | Out-File -FilePath $f -Encoding utf8 -NoNewline
+        $promptFilePorProvider[$prov] = $f
+    }
+}
+
 # Dispatch async providers as PS jobs
 $jobs = @{}
 $start = Get-Date
@@ -369,6 +430,11 @@ foreach ($p in $asyncProviders) {
         "cross-claude" { $CrossClaudeModel }
         default        { "" }
     }
+    # Cada perna le o SEU arquivo: quem tem teto proprio recebe a versao truncada, o resto
+    # recebe o prompt inteiro. Avaliado AQUI, no escopo do pai -- dentro do Start-Job o
+    # hashtable nao existe, e o job receberia caminho nulo.
+    $promptParaEste = if ($promptFilePorProvider.ContainsKey($p)) { $promptFilePorProvider[$p] } else { $tmpPrompt }
+    $sysParaEste = if ($systemPorProvider.ContainsKey($p)) { $systemPorProvider[$p] } else { $SystemPrompt }
     $jobs[$p] = Start-Job -ScriptBlock {
         param($Wrapper, $PromptF, $SysPrompt, $EnvVars, $ModelArg, $ModeArg, $EffortArg)
         foreach ($kv in $EnvVars.GetEnumerator()) {
@@ -399,7 +465,7 @@ foreach ($p in $asyncProviders) {
                 & $Wrapper -PromptFile $PromptF -SystemPrompt $SysPrompt
             }
         }
-    } -ArgumentList $wrapperPath, $tmpPrompt, $SystemPrompt, $envSnapshot, $modelForProvider, $Mode, $DeepSeekReasoningEffort
+    } -ArgumentList $wrapperPath, $promptParaEste, $sysParaEste, $envSnapshot, $modelForProvider, $Mode, $DeepSeekReasoningEffort
 }
 
 # Collect cross-claude (already provided OR marker)
@@ -462,6 +528,7 @@ if ($crossClaude) {
 }
 
 Remove-Item $tmpPrompt -Force -ErrorAction SilentlyContinue
+foreach ($f in $promptFilePorProvider.Values) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
 
 $totalLatency = [int]((Get-Date) - $start).TotalMilliseconds
 

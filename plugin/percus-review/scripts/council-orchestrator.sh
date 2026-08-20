@@ -291,6 +291,41 @@ FINAL_ORIG_TOK="$ORIG_TOK"
 TMP_PROMPT=$(mktemp)
 echo -n "$USER_PROMPT" > "$TMP_PROMPT"
 
+# F.5b Teto de entrada POR PROVIDER -- espelho exato do bloco no council-orchestrator.ps1.
+# Le a MESMA tabela (_provider-limites.json). Motivo: --max-input-tokens e um numero so para as
+# tres pernas, e a Groq no tier on_demand da 8000 TOKENS POR MINUTO (entrada + saida). Com 8000
+# de entrada + 2048 de saida a chamada pede 10048 e nao passa. O HTTP 413 diz "Payload Too
+# Large" e mente: o corpo diz "on tokens per minute (TPM): Limit 8000".
+declare -A PROMPT_FILES
+declare -A SYSTEM_FILES
+LIMITES_FILE="$PROVIDERS_DIR/_provider-limites.json"
+if [[ -f "$LIMITES_FILE" ]]; then
+    for p in "${ASYNC_PROVIDERS[@]}"; do
+        TETO=$(jq -r --arg p "$p" '.entrada_max_tokens[$p] // empty' "$LIMITES_FILE")
+        # Provider sem teto proprio segue no arquivo comum -- comportamento de sempre.
+        [[ -z "$TETO" ]] && continue
+        # O SYSTEM PROMPT tambem entra na conta (o F2 injeta codigo dentro dele). Metade do teto
+        # para cada lado, para que system + user <= teto SEMPRE -- ver comentario gemeo no .ps1.
+        SYS_MAX=$(( TETO / 2 ))
+        SYS_TOK=$(estimate_tokens "$SYSTEM_PROMPT")
+        SYS_ESTE="$SYSTEM_PROMPT"
+        if [ "$SYS_TOK" -gt "$SYS_MAX" ]; then
+            truncate_prompt "$SYSTEM_PROMPT" "$SYS_MAX"
+            SYS_ESTE="$TRUNC_TEXT"
+            SYS_TOK="$SYS_MAX"
+            echo "[council-orchestrator] perna '$p': system prompt truncado -> ~$SYS_MAX tokens (cabe no teto de $TETO)." >&2
+        fi
+        SYSTEM_FILES[$p]="$SYS_ESTE"
+        TETO_UTIL=$(( TETO - SYS_TOK ))
+        truncate_prompt "$USER_PROMPT" "$TETO_UTIL"
+        [ "$TRUNCATED" != "true" ] && continue
+        echo "[council-orchestrator] perna '$p' tem teto proprio de $TETO tokens: prompt truncado de ${ORIG_TOK} -> ~${TETO_UTIL} (o das outras pernas fica inteiro)." >&2
+        PF=$(mktemp)
+        echo -n "$TRUNC_TEXT" > "$PF"
+        PROMPT_FILES[$p]="$PF"
+    done
+fi
+
 # Dispatch async providers as background jobs, collect output to per-provider files
 declare -A OUTPUT_FILES
 START_MS=$(date +%s%3N)
@@ -302,6 +337,20 @@ for p in "${ASYNC_PROVIDERS[@]}"; do
     fi
     OUT=$(mktemp)
     OUTPUT_FILES[$p]="$OUT"
+    # stdout do wrapper e o CONTRATO (JSON puro); stderr e diagnostico. Ate 6.42.0 este bloco
+    # usava `> "$OUT" 2>&1`, juntando os dois no mesmo arquivo -- entao qualquer aviso do wrapper
+    # virava lixo antes do JSON e a perna era contada como `error`. Ficou latente enquanto os
+    # avisos eram raros; a 6.42.0 acrescentou um aviso que dispara em TODA consulta com Haiku
+    # (o effort omitido) e a perna cross-claude passou a falhar sempre no caminho bash. Agora o
+    # stderr do wrapper sobe pro stderr do orquestrador, onde da pra ler sem sujar o contrato.
+    #
+    # NAO ha redirecionamento de stderr abaixo, e a AUSENCIA e deliberada: sem redirecionar,
+    # o fd 2 do filho ja e o fd 2 do pai. Medido: com `2>&1` o OUT recebe stdout+stderr
+    # (o defeito); sem redirecionar, o OUT sai limpo. Se voce veio ate aqui achando que
+    # falta um `2>&1`, e o contrario -- era ele que quebrava a perna.
+    # Quem tem teto proprio le o seu arquivo; o resto le o comum.
+    PROMPT_PARA_ESTE="${PROMPT_FILES[$p]:-$TMP_PROMPT}"
+    SYS_PARA_ESTE="${SYSTEM_FILES[$p]:-$SYSTEM_PROMPT}"
     MODEL_ARG=""
     case "$p" in
         deepseek)     MODEL_ARG="$DEEPSEEK_MODEL";;
@@ -314,15 +363,15 @@ for p in "${ASYNC_PROVIDERS[@]}"; do
         # senao wrapper detecta override e pula o file load.
         if [[ "$WRAPPER" == *cross-claude* ]]; then
             if [[ -n "$MODEL_ARG" ]]; then
-                bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --mode "$MODE" --model "$MODEL_ARG" > "$OUT" 2>&1
+                bash "$WRAPPER" --prompt-file "$PROMPT_PARA_ESTE" --mode "$MODE" --model "$MODEL_ARG" > "$OUT"
             else
-                bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --mode "$MODE" > "$OUT" 2>&1
+                bash "$WRAPPER" --prompt-file "$PROMPT_PARA_ESTE" --mode "$MODE" > "$OUT"
             fi
         else
             if [[ -n "$MODEL_ARG" ]]; then
-                bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --system-prompt "$SYSTEM_PROMPT" --model "$MODEL_ARG" > "$OUT" 2>&1
+                bash "$WRAPPER" --prompt-file "$PROMPT_PARA_ESTE" --system-prompt "$SYS_PARA_ESTE" --model "$MODEL_ARG" > "$OUT"
             else
-                bash "$WRAPPER" --prompt-file "$TMP_PROMPT" --system-prompt "$SYSTEM_PROMPT" > "$OUT" 2>&1
+                bash "$WRAPPER" --prompt-file "$PROMPT_PARA_ESTE" --system-prompt "$SYS_PARA_ESTE" > "$OUT"
             fi
         fi
     ) &
@@ -384,7 +433,21 @@ if [[ -n "$CROSS_CLAUDE_JSON" ]]; then
     RESPONSES_JSON=$(echo "$RESPONSES_JSON" | jq --argjson r "$CROSS_CLAUDE_JSON" '. + [$r]')
 fi
 
+# O RESULT (mais abaixo) precisa do prompt e do system prompt, e precisa recebe-los por
+# --rawfile, nao por argv.
+#
+# ATENCAO ao que estas copias contem: o prompt GLOBAL (ja com a truncagem de
+# --max-input-tokens), NAO a versao por perna do bloco F.5b. Uma perna com teto proprio
+# recebeu MENOS texto do que o que aparece aqui no log. Se um dia o log precisar refletir o
+# que cada perna viu de fato, isso muda a estrutura do RESULT -- nao basta trocar a variavel.
+# Um unico trap cobre os dois arquivos: trap posterior SUBSTITUI o anterior, nao soma.
+TMP_PROMPT_KEEP=$(mktemp)
+RESULT_SYS_FILE=$(mktemp)
+printf '%s' "$USER_PROMPT"   > "$TMP_PROMPT_KEEP"
+printf '%s' "$SYSTEM_PROMPT" > "$RESULT_SYS_FILE"
+trap 'rm -f "$TMP_PROMPT_KEEP" "$RESULT_SYS_FILE"' EXIT
 rm -f "$TMP_PROMPT"
+for PF in "${PROMPT_FILES[@]}"; do rm -f "$PF"; done
 
 END_MS=$(date +%s%3N)
 TOTAL_LATENCY=$((END_MS - START_MS))
@@ -451,13 +514,32 @@ fi
 # Build code_context_files JSON array
 CC_FILES_JSON=$(printf '%s\n' "${CODE_CONTEXT_FILES[@]:-}" | jq -R . | jq -s . 2>/dev/null || echo "[]")
 
+# Quantas pernas REALMENTE responderam. Ate 6.43.0 o lado bash nao emitia estes dois campos --
+# so o .ps1 emitia -- e a skill manda o agente ler `respostas_usaveis` antes de sintetizar. No
+# caminho bash ele lia `null` e nao tinha como saber que o "conselho de 3" era de 1. Perna muda
+# some do relatorio: e o pior tipo de degradacao, a que se parece com sucesso.
+USAVEIS=$(printf '%s' "$RESPONSES_JSON" | jq '[.[] | select(.status=="ok" and ((.content // "") | tostring | length) > 0)] | length')
+DEGRADADAS=$(printf '%s' "$RESPONSES_JSON" | jq -c '[.[] | select((.status!="ok") or (((.content // "") | tostring | length) == 0)) | (.provider + ": " + (.status|tostring))]')
+TOTAL_PERNAS=$(printf '%s' "$RESPONSES_JSON" | jq 'length')
+if [ "$(printf '%s' "$DEGRADADAS" | jq 'length')" -gt 0 ]; then
+    echo "[council-orchestrator] ATENCAO: $USAVEIS de $TOTAL_PERNAS pernas responderam. Degradadas:" >&2
+    printf '%s' "$DEGRADADAS" | jq -r '.[] | "  - " + .' >&2
+    echo "  Perna vazia ou cortada NAO conta como perspectiva. Nao trate isto como consenso." >&2
+fi
+# O jq FINAL tambem nao pode receber prompt pelo argv. A varredura de 6.44.0 corrigiu os tres
+# wrappers e passou batido por ESTE bloco, no proprio arquivo que estava sendo editado --
+# quarta reincidencia de #conserto-num-sitio-nao-varre-os-irmaos, pega pela review R11.
+# Aqui o estrago seria maior que numa perna: se este jq morre, o RESULT inteiro sai vazio e
+# o conselho some -- as tres pernas responderam e ninguem ve.
 RESULT=$(jq -n \
     --arg mode "$MODE" \
     --arg ts "$(date -Iseconds)" \
-    --arg prompt "$USER_PROMPT" \
-    --arg sys "$SYSTEM_PROMPT" \
+    --rawfile prompt "$TMP_PROMPT_KEEP" \
+    --rawfile sys "$RESULT_SYS_FILE" \
     --argjson wanted "$(printf '%s\n' "${WANTED[@]}" | jq -R . | jq -s .)" \
     --argjson responses "$RESPONSES_JSON" \
+    --argjson usaveis "$USAVEIS" \
+    --argjson degradadas "$DEGRADADAS" \
     --argjson total_lat "$TOTAL_LATENCY" \
     --argjson cross_pending "$CROSS_PENDING" \
     --argjson truncated "${FINAL_TRUNCATED:-false}" \
@@ -467,7 +549,7 @@ RESULT=$(jq -n \
     --arg pv_consensus "$PREMISE_CONSENSUS" \
     --argjson tb_invoked "${TIE_BREAKER_INVOKED:-false}" \
     --argjson tb "${TIE_BREAKER_JSON:-null}" \
-    '{mode:$mode, timestamp:$ts, prompt:$prompt, system_prompt:$sys, providers_called:$wanted, responses:$responses, total_latency_ms:$total_lat, cross_claude_pending:$cross_pending, truncated:$truncated, original_token_count:$orig_tok, has_code_context:$has_ctx, code_context_files:$cc_files, premise_validity_consensus:$pv_consensus, tie_breaker_invoked:$tb_invoked, tie_breaker:$tb}')
+    '{mode:$mode, timestamp:$ts, prompt:$prompt, system_prompt:$sys, providers_called:$wanted, responses:$responses, respostas_usaveis:$usaveis, respostas_degradadas:$degradadas, total_latency_ms:$total_lat, cross_claude_pending:$cross_pending, truncated:$truncated, original_token_count:$orig_tok, has_code_context:$has_ctx, code_context_files:$cc_files, premise_validity_consensus:$pv_consensus, tie_breaker_invoked:$tb_invoked, tie_breaker:$tb}')
 
 echo "$RESULT" > "$LOG_FILE"
 echo "$RESULT"

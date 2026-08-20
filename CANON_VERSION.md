@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.43.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.44.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,95 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.44.0 — 2026-08-20
+
+**A perna Groq caía com HTTP 413 e o status mentia. Não era tamanho de payload: era cota de tokens
+por minuto — e o wrapper descartava justamente o campo que dizia isso.**
+
+Relatado como "o Llama caiu com 413 em duas das três rodadas de review". A base já tinha verbete
+para o sintoma, com uma causa raiz **errada** ("a Groq tem limite de payload HTTP menor") e um
+contorno manual. Medido contra a API viva, o corpo do erro diz outra coisa:
+
+```
+"message": "Request too large ... on tokens per minute (TPM): Limit 8000, Requested 10329"
+"type": "tokens",  "code": "rate_limit_exceeded"
+```
+
+**8000 tokens por MINUTO** no tier `on_demand`, entrada + saída, somados entre todas as chamadas.
+🔑 **A aritmética que ninguém tinha feito:** `-MaxInputTokens 8000` + `-MaxTokens 2048` de saída
+pede **10048** contra teto de 8000 — no tamanho máximo a perna era **impossível, não azarada**.
+E como a cota é do minuto, rodadas seguidas comem o orçamento uma da outra: daí falhar com prompt
+pequeno, daí "2 de 3 rodadas", daí truncar não resolver.
+
+⚠️ **Por que sobreviveu a 39 ocorrências registradas nos `council-log`:** o `catch` guardava só
+`$_.Exception.Message` — o cego `"(413) Payload Too Large"` — e jogava fora `$_.ErrorDetails.Message`,
+que traz o JSON acima. **Sem o corpo, o diagnóstico vira leitura do nome do status, e o nome estava
+errado.** Detalhe que vale mais que o conserto: a interpolação `"$_"` sozinha **já mostra o corpo**
+(`ErrorRecord.ToString()` prefere `ErrorDetails`); é a forma explícita `$_.Exception.Message`, a que
+*parece* mais cuidadosa, que cega. A lição já estava escrita e aplicada no `cross-claude.ps1` — e
+não varrida para os irmãos.
+
+**Teto de entrada por provider** (`providers/_provider-limites.json`, lido pelos dois orquestradores):
+Groq com 5000 de entrada (5000 + 2048 = 7048, cabe), DeepSeek e Cross-Claude com o prompt inteiro.
+Um `-MaxInputTokens` único ou estoura a menor ou trunca as duas maiores à toa — pagar com a
+qualidade de duas pernas boas pelo limite da terceira.
+
+**Três defeitos a mais, todos achados porque o teste foi rodar de verdade em vez de ler:**
+
+1. **`jq: Argument list too long` nos três wrappers bash.** Com prompt de ~8000 tokens,
+   `jq --arg usr "$USER_PROMPT"` morre com exit 126, **stdout sai vazio**, e o orquestrador conta a
+   perna como `error` **sem mensagem**. Não parece argv estourado; parece provider mudo. E só
+   acontecia em prompt grande — exatamente quando a terceira voz faz mais falta. Agora `--rawfile`,
+   que lê do disco. ⚠️ O comentário sobre esta classe **já estava dentro dos arquivos**, aplicado ao
+   corpo do `curl` logo abaixo do bloco `jq` defeituoso: consertaram um lado da fronteira e deixaram
+   o outro. Terceira reincidência de `#conserto-num-sitio-nao-varre-os-irmaos` nesta sessão.
+
+2. **Regressão minha da 6.42.0.** O orquestrador bash rodava o wrapper com `> "$OUT" 2>&1`, juntando
+   stderr no arquivo do JSON. Latente enquanto avisos eram raros — até a 6.42.0 acrescentar um aviso
+   que dispara em **toda** consulta com Haiku. A perna cross-claude passou a falhar **sempre** no
+   caminho bash. stdout é o contrato; stderr agora sobe pro stderr do orquestrador.
+
+3. **O lado bash não emitia `respostas_usaveis` nem `respostas_degradadas`.** Só o `.ps1` emitia — e
+   a skill manda o agente ler esse campo antes de sintetizar. No caminho bash ele lia `null` e não
+   tinha como saber que o "conselho de 3" era de 1. 🔑 **Perna muda que some do relatório é o pior
+   tipo de degradação: a que se parece com sucesso.** É literalmente o sintoma relatado — "o conselho
+   rodou com menos gente do que aparenta".
+
+**Guards vistos VERMELHOS antes de aceitos:** a aritmética reprova com 7000+2048=9048, e o guard de
+argv reprova ao voltar `--arg`. Um deles reprovou primeiro por motivo errado — casava o padrão
+antigo **citado no comentário** do próprio conserto; corrigido com o strip que este arquivo de teste
+já usava. Teste que não distingue falar de fazer mede a coisa errada.
+
+⚠️ **Até onde o conserto vai — medido, e a parte mais fácil de mentir.** Ele torna uma chamada
+isolada **determinística**: o que era impossível por aritmética passa a caber. Ele **não** resolve
+a cota do minuto — duas rodadas seguidas dentro do mesmo minuto ainda estouram; medido nesta
+sessão, a 2ª rodada devolveu `429 Rate limit reached`. Isso é do tier gratuito, não do kit.
+🔑 **O que mudou de verdade é que a falha agora DIZ o motivo**: antes saía como
+`413 (Payload Too Large)` sem corpo, e foi essa mudez que sustentou uma causa raiz errada por 39
+ocorrências.
+
+⚠️ **A varredura que este changelog declara NÃO ficou completa — e foi a review R11 que pegou.**
+Depois de corrigir os três wrappers, o `jq` FINAL do próprio `council-orchestrator.sh` ainda
+passava prompt e system prompt por `--arg`: quarta reincidência da mesma classe, no arquivo que
+eu estava editando, dentro do commit que documenta a lição. Ali o estrago seria maior que numa
+perna — se aquele `jq` morre, o `RESULT` inteiro sai vazio e o conselho some com as três pernas
+tendo respondido. Corrigido para `--rawfile`. 🔑 **Declarar uma classe varrida não a varre; só o
+grep varre — e eu escrevi a instrução do grep no verbete sem rodá-la no arquivo aberto à minha
+frente.**
+
+⏳ **Fica PENDENTE, nomeado em vez de silencioso:** o system prompt ainda viaja por argv até os
+wrappers (`--system-prompt "$SYS"` / `-SystemPrompt $Sys`). Com o F2 injetando código dentro
+dele, pode estourar o argv com o mesmo sintoma de perna muda. O conserto é um
+`--system-prompt-file` nos três wrappers das duas linguagens, com teste de paridade — mudança de
+interface, que merece a sua própria verificação em vez de ser emendada no fim desta.
+
+**O que NÃO foi feito, e por quê:** retry com espera de 1 min resolveria o TPM, mas destrói o ciclo
+de ~2 min por commit; e subir para o Dev Tier da Groq resolve com dinheiro — decisão do operador,
+não default do kit. Fica registrado nos dois verbetes.
+
+Suíte: **465 Pester + 15 pytest** em 185,6 s (13 casos novos).
+
 
 ## Changelog v6.43.0 — 2026-08-19
 

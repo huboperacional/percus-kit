@@ -358,3 +358,105 @@ Describe "output_config.effort so vai para modelo que aceita" {
         $src | Should -Not -Match 'claude-haiku-4-5"?\s*(\)|\]|,)' -Because "nome de modelo hardcoded aqui e a duplicacao voltando"
     }
 }
+Describe "teto de ENTRADA por provider (o 413 da Groq nao era tamanho, era taxa)" {
+    # Medido 2026-08-19 contra a API viva: HTTP 413 "Payload Too Large" da Groq traz no CORPO
+    # `on tokens per minute (TPM): Limit 8000, Requested 10329`. Nao e limite de requisicao, e
+    # cota por MINUTO somando entrada + saida entre todas as chamadas. Com -MaxInputTokens 8000
+    # e -MaxTokens 2048 de saida, uma chamada cheia pede 10048 contra teto de 8000: impossivel.
+    # 39 ocorrencias nos council-log antes disto, todas nesta perna.
+
+    BeforeAll {
+        $script:raiz    = Split-Path $PSScriptRoot -Parent
+        $script:provDir = Join-Path $script:raiz "providers"
+        $script:lim     = Get-Content (Join-Path $script:provDir "_provider-limites.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+
+    It "a tabela declara teto para a perna groq-llama" {
+        $script:lim.entrada_max_tokens.'groq-llama' | Should -BeGreaterThan 0
+    }
+
+    It "entrada + saida da Groq cabe nos 8000 TPM do tier on_demand" {
+        # A aritmetica que o defeito violava. Se alguem subir o teto de entrada sem olhar a
+        # saida, este teste reprova ANTES de a perna voltar a cair em producao.
+        $entrada = [int]$script:lim.entrada_max_tokens.'groq-llama'
+        $wrapper = Get-Content (Join-Path $script:provDir "groq-llama.ps1") -Raw
+        $m = [regex]::Match($wrapper, '\$MaxTokens\s*=\s*(\d+)')
+        $m.Success | Should -Be $true -Because "o default de saida tem que ser localizavel"
+        $saida = [int]$m.Groups[1].Value
+        ($entrada + $saida) | Should -BeLessThan 8000
+    }
+
+    It "<Arq> le a tabela em vez de fixar o teto no codigo" -ForEach @(
+        @{ Arq = 'scripts/council-orchestrator.ps1' }
+        @{ Arq = 'scripts/council-orchestrator.sh'  }
+    ) {
+        $src = Get-Content (Join-Path $script:raiz $Arq) -Raw
+        $src | Should -Match '_provider-limites\.json'
+    }
+
+    It "<Arq> emite respostas_usaveis (perna muda tem que aparecer no relatorio)" -ForEach @(
+        @{ Arq = 'scripts/council-orchestrator.ps1' }
+        @{ Arq = 'scripts/council-orchestrator.sh'  }
+    ) {
+        # Ate 6.43.0 so o .ps1 emitia. No caminho bash o agente lia null e nao tinha como saber
+        # que o "conselho de 3" era de 1 -- degradacao que se parece com sucesso.
+        $src = Get-Content (Join-Path $script:raiz $Arq) -Raw
+        $src | Should -Match 'respostas_usaveis'
+        $src | Should -Match 'respostas_degradadas'
+    }
+}
+
+Describe "prompt nao passa pelo argv do jq nos wrappers bash" {
+    # Medido 2026-08-19: com prompt de ~8000 tokens, `jq --arg usr "$USER_PROMPT"` morre com
+    # "Argument list too long" (exit 126), stdout sai VAZIO e o orquestrador conta a perna como
+    # error SEM mensagem. Falhava so em prompt grande -- quando a terceira voz faz mais falta.
+    #
+    # O comentario sobre esta MESMA classe ja existia nos arquivos, aplicado ao corpo do curl.
+    # Consertaram o curl e deixaram o jq ao lado: por isso o teste varre os tres de uma vez.
+
+    BeforeAll { $script:provDir = Join-Path (Split-Path $PSScriptRoot -Parent) "providers" }
+
+    It "<Arq> usa --rawfile para o prompt, nao --arg" -ForEach @(
+        @{ Arq = 'cross-claude.sh' }
+        @{ Arq = 'deepseek.sh'     }
+        @{ Arq = 'groq-llama.sh'   }
+    ) {
+        $src    = Get-Content (Join-Path $script:provDir $Arq) -Raw
+        $codigo = ($src -split "`n" | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
+        $codigo | Should -Match 'jq -n'                        -Because "anti-vacuidade: o bloco jq tem que sobrar"
+        $codigo | Should -Match '--rawfile usr'
+        $codigo | Should -Match '--rawfile sys'
+        $codigo | Should -Not -Match '--arg usr'
+        $codigo | Should -Not -Match '--arg sys'
+    }
+
+    It "o jq FINAL do orquestrador tambem usa --rawfile" {
+        # A QUARTA reincidencia da classe aconteceu AQUI, nao nos wrappers -- e o guard original
+        # so varria os wrappers, entao teria ficado verde. Guard que nao cobre o lugar onde o
+        # defeito reincidiu nao e guard, e memoria seletiva.
+        #
+        # Aqui o estrago e maior que numa perna: se este jq morre, o RESULT inteiro sai vazio e o
+        # conselho some com as tres pernas tendo respondido.
+        $orq    = Join-Path (Split-Path $script:provDir -Parent) "scripts/council-orchestrator.sh"
+        $src    = Get-Content $orq -Raw
+        $codigo = ($src -split "`n" | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
+        $codigo | Should -Match 'RESULT=\$\(jq -n'   -Because "anti-vacuidade: o bloco final tem que existir"
+        $codigo | Should -Match '--rawfile prompt'
+        $codigo | Should -Match '--rawfile sys'
+        $codigo | Should -Not -Match '--arg prompt'
+        $codigo | Should -Not -Match '--arg sys'
+    }
+
+    It "o orquestrador bash nao joga stderr do wrapper dentro do JSON" {
+        # `> "$OUT" 2>&1` fazia qualquer aviso do wrapper virar lixo antes do JSON, e a perna
+        # era contada como error. Latente ate a 6.42.0 acrescentar um aviso que dispara sempre.
+        $src = Get-Content (Join-Path (Split-Path $script:provDir -Parent) "scripts/council-orchestrator.sh") -Raw
+        # Strip de comentario e obrigatorio aqui: o proprio conserto deixou o padrao antigo
+        # CITADO num comentario, para explicar o que mudou. Sem o strip, o teste reprova o
+        # arquivo por FALAR do defeito em vez de por COMETE-LO -- a armadilha que este mesmo
+        # arquivo de teste ja registra no bloco de sampling param.
+        $codigo = ($src -split "`n" | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
+        $codigo | Should -Match '--prompt-file'    -Because "anti-vacuidade: o dispatch tem que existir"
+        $codigo | Should -Not -Match '> "\$OUT" 2>&1'
+    }
+}

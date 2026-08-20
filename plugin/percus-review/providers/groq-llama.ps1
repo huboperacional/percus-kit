@@ -93,7 +93,14 @@ try {
         provider   = "groq-llama"
         model      = $Model
         status     = "error"
-        error      = $_.Exception.Message
+    # NAO usar apenas $_.Exception.Message: num erro HTTP ele e o cego "(413) Payload Too Large",
+    # e o motivo REAL vem no corpo JSON da resposta, em $_.ErrorDetails.Message. Custou 39
+    # ocorrencias de 413 diagnosticadas como "payload grande" quando o corpo dizia
+    # "tokens per minute (TPM): Limit 8000" -- limite de TAXA, nao de tamanho (ver
+    # #groq-llama-413-payload-too-large). Curiosidade que vale saber: a interpolacao "$_"
+    # sozinha JA mostra o corpo (ErrorRecord.ToString() prefere ErrorDetails); e a forma
+    # explicita $_.Exception.Message que descarta. O jeito que parece mais cuidadoso e o cego.
+        error      = $(if ($_.ErrorDetails -and $_.ErrorDetails.Message) { "$($_.Exception.Message) :: $($_.ErrorDetails.Message)" } else { $_.Exception.Message })
         latency_ms = [int]((Get-Date) - $start).TotalMilliseconds
     } | ConvertTo-Json -Depth 10 -Compress
     exit 1

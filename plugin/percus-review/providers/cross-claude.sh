@@ -96,7 +96,18 @@ fi
 # JSON longo/multibyte pelo argv do curl.exe nativo via MSYS/Git-Bash e a fronteira
 # corrompe o texto. --data-binary @arquivo le bytes direto do disco, sem cruzar argv.
 BODY_FILE=$(mktemp)
-trap 'rm -f "$BODY_FILE"' EXIT
+# PROMPT vai pra ARQUIVO, nao pro argv do jq. Mesma classe do corpo do curl logo abaixo -- e o
+# comentario dela ja estava neste arquivo, so que aplicado ao curl e nao ao jq ao lado. Medido
+# 2026-08-19: com prompt de ~8000 tokens o `jq --arg usr` morre com "Argument list too long"
+# (exit 126), stdout sai VAZIO, e o orquestrador conta a perna como `error` SEM mensagem.
+# Falhava so em prompt grande -- exatamente quando a terceira voz faz mais falta.
+SYS_FILE=$(mktemp)
+USR_FILE=$(mktemp)
+printf '%s' "$SYSTEM_PROMPT" > "$SYS_FILE"
+printf '%s' "$USER_PROMPT"   > "$USR_FILE"
+# trap DEPOIS das atribuicoes: registrado antes, ele referenciaria $SYS_FILE/$USR_FILE
+# ainda vazios, e uma saida precoce chamaria `rm -f ""`.
+trap 'rm -f "$BODY_FILE" "$SYS_FILE" "$USR_FILE"' EXIT
 # 🔴 EFFORT E O QUE IMPEDE A RESPOSTA DE SAIR VAZIA. Medido em 2026-08-17, mesmo
 # prompt, tres vezes:
 #   sem controle -> output_tokens=16000, stop_reason=max_tokens, 0 char de texto, 153s
@@ -150,8 +161,8 @@ fi
 jq -n \
     --arg model "$MODEL" \
     --argjson max "$MAX_TOKENS" \
-    --arg sys "$SYSTEM_PROMPT" \
-    --arg usr "$USER_PROMPT" \
+    --rawfile sys "$SYS_FILE" \
+    --rawfile usr "$USR_FILE" \
     --arg effort "$EFFORT" \
     '{
         model: $model,

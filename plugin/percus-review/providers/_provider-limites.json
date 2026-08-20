@@ -1,0 +1,16 @@
+{
+  "_nota": "Teto de ENTRADA por provider, em tokens. Lido pelo council-orchestrator (.ps1 e .sh). Existe porque `-MaxInputTokens` e UM numero para as tres pernas, e as pernas nao tem o mesmo limite: um valor que cabe na Groq trunca a DeepSeek e o Cross-Claude a toa, e um valor que serve aos dois estoura na Groq.",
+
+  "_nota_tpm": "O caso que originou o arquivo: a Groq no tier `on_demand` tem 8000 TOKENS POR MINUTO -- entrada + saida, somados no minuto, entre TODAS as chamadas. Nao e limite de tamanho de requisicao, embora o HTTP responda 413 'Payload Too Large' e o corpo revele a verdade: `on tokens per minute (TPM): Limit 8000, Requested 10329`. Medido 2026-08-19. Com `-MaxInputTokens 8000` e `-MaxTokens 2048` de saida, uma chamada cheia pede 10048 contra teto de 8000: NAO TEM COMO PASSAR. E como a cota e por minuto, rodadas seguidas comem o orcamento uma da outra -- dai o sintoma ser intermitente e enganar o diagnostico.",
+
+  "_nota_ate_onde_vai": "O QUE ISTO RESOLVE E O QUE NAO RESOLVE, medido 2026-08-20. RESOLVE: uma chamada isolada deixa de ser impossivel por aritmetica -- antes, 8000 de entrada + 2048 de saida pediam 10048 contra teto de 8000, e a perna caia SEMPRE no tamanho maximo. NAO RESOLVE: a cota e por MINUTO e cumulativa, entao duas rodadas seguidas dentro do mesmo minuto ainda estouram -- medido, a 2a rodada devolveu 429 \"Rate limit reached\". Isso e do tier gratuito, nao do kit: as saidas sao retry com espera de ~1min (que destroi o ciclo de ~2min por commit) ou o Dev Tier da Groq (decisao de custo do operador). A diferenca e que agora a falha DIZ o motivo em vez de sair como 413/429 sem corpo.",
+  "_nota_direcao": "Lista quem RESTRINGE. Provider ausente usa o `-MaxInputTokens` global, que e o comportamento de sempre -- acrescentar um provider aqui nunca muda o vizinho. Se um provider novo tiver limite apertado e ninguem registrar, ele falha com o erro do proprio fornecedor, alto e nomeado; e por isso que o corpo do erro precisa aparecer (ver o catch de groq-llama.ps1).",
+
+  "entrada_max_tokens": {
+    "groq-llama": 5000
+  },
+
+  "_medido": {
+    "groq-llama": "TPM 8000 no tier on_demand (2026-08-19). 5000 de entrada + 2048 de saida = 7048, cabe com folga. 39 ocorrencias de 413 nos council-log antes disto."
+  }
+}

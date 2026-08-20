@@ -1,7 +1,7 @@
 {
   "name": "percus-review",
-  "version": "6.43.0",
-  "description": "v6.43.0 | Percus kit Fase 7 — canon de regras (percus-kit/) + plugin de review cross-provider (DeepSeek + Cross-Claude + GPT-OSS via Groq). Versao atual, changelog e historico de versoes: CANON_VERSION.md (single-source, R25 — o NUMERO da versao e duplicado de proposito no inicio, pra aparecer no painel de plugins; o changelog nao).",
+  "version": "6.44.0",
+  "description": "v6.44.0 | Percus kit Fase 7 — canon de regras (percus-kit/) + plugin de review cross-provider (DeepSeek + Cross-Claude + GPT-OSS via Groq). Versao atual, changelog e historico de versoes: CANON_VERSION.md (single-source, R25 — o NUMERO da versao e duplicado de proposito no inicio, pra aparecer no painel de plugins; o changelog nao).",
   "author": { "name": "Percus" },
   "commands": "./commands",
   "scripts": "./scripts",
