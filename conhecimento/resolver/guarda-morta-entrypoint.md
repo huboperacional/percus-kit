@@ -35,3 +35,20 @@ pelo mesmo motivo do sintoma original desta entrada. Generaliza o "Como achar": 
 é só "B é subconjunto de A?" (bypass total) — é "A ∩ B é vazio?" (query completa: existe qualquer
 mensagem que ative as duas camadas?). Se não for vazio E a camada de cima roda primeiro E não
 delega, a de baixo é inalcançável PRA ESSE SUBCONJUNTO, mesmo continuando viva pro resto.
+
+Visto em: Empresa Milionária, P21 (2026-08-20) — variante **schema come a regra do domínio**, e o
+que a expôs foi o TESTE-PRIMEIRO. Ao escrever o teste antes do código, `POST /titulos` com
+`valor: 0` deveria bater na regra `ValorInvalido` do caso de uso; falhou dizendo que `detail` era
+lista, não objeto — porque `TituloCriar.valor` declara `Field(gt=0)` e quem recusou foi o
+**Pydantic**, uma camada antes. A regra do domínio não estava morta: continuava alcançável pela
+rota de **aprovação**, cujo `AprovacaoCorpo.valor` não tem a restrição (os campos são correções
+opcionais do aprovador). Duas lições que a entrada anterior não cobre:
+
+1. **"Apague a guarda morta" é o conselho ERRADO nesta variante.** Ela está morta em uma rota e
+   viva em outra, e a rota onde vive é a que mexe em dinheiro já lançado. Apagar por "estava
+   inalcançável" — medido num endpoint só — abriria o buraco no outro.
+2. **Teste-primeiro é o detector barato.** Escrito DEPOIS, o mesmo teste passaria: `422` é `422`,
+   e ninguém olha se quem respondeu foi o schema ou o domínio. O verde teria medido o Pydantic e
+   declarado coberta uma regra jamais exercitada. A pergunta que fica no bolso: *quando o teste
+   verde recusa, QUEM recusou?* — em API com validação declarativa, a resposta raramente é a
+   camada que você acha.
