@@ -194,6 +194,7 @@
 - [Guarda no ponto da ESCRITA não protege fluxo de DOIS turnos](guarda-de-escrita-nao-cobre-dois-turnos.md)
 - [Guarda escrita a partir da forma que VOCÊ acabou de usar nasce cega à forma majoritária](guarda-de-link-escrita-da-forma-que-voce-acabou-de-usar.md)
 - [Guarda contra ação destrutiva tem que ser testada com PERGUNTAS, não só com comandos](guarda-destrutiva-testar-com-perguntas.md)
+- [Guarda endurecida sem ser rodada nasce vermelha — e fica vermelha até alguém tropeçar nela](guarda-endurecida-sem-rodar-nasce-vermelha.md)
 - [Guarda que lê o FONTE some junto com a string que ela procura](guarda-fonte-strip-string.md)
 - [Guarda nova pode ser INALCANÇÁVEL pela frase que reproduz o defeito — meça o ALCANCE, não o veredito](guarda-inalcancavel-meca-o-alcance.md)
 - [Guarda MEDIDA funcionando fica INERTE quando o DADO muda de forma (ninguém tocou no código)](guarda-inerte-por-mudanca-de-dado.md)
