@@ -70,6 +70,26 @@ patterns=(
   # PROPOSITO: continua sendo execucao remota, e errar para o lado de pedir o operador custa um
   # round-trip; errar para o outro custou um deploy em producao sem gate.
   "${cmd_ini}(sudo[[:space:]]+)?ssh[[:space:]]+(-[^[:space:]]+[[:space:]]+)*[^[:space:]-][^[:space:]]*${cmd_fim}"
+  # ⚠️ Wrapper LOCAL que abre sessao remota -- gemeo do padrao no .ps1, add. 2026-08-21.
+  # Medido: o guard barrou o `ssh` direto e o MESMO efeito passou pelo wrapper do projeto
+  # (`python scripts/vps_exec.py`), porque o texto do comando nao carrega a palavra procurada.
+  # O sinal e o NOME do script declarar destino remoto (vps/ssh), nao o conteudo dele.
+  # ⛔ Exige INTERPRETADOR na frente: sem isso `cat scripts/vps_exec.py` bloquearia, e guard que
+  # impede LER o wrapper vira imposto. Ha teste para os dois lados no .tests.ps1.
+  # ⚠️ ERE nao tem \b nem \w: `[_[:alnum:]]*` faz o papel do \w*, e a fronteira final vem do
+  # ponto da extensao. Divergir do irmao .ps1 aqui e exatamente como a guarda vaza -- e a
+  # primeira versao DIVERGIU: ela usava `[^[:space:]]*(vps|ssh)`, sem exigir fronteira, enquanto
+  # o .ps1 usa `\S*\b(vps|ssh)`. O review cross-provider pegou: `myvps.py` bloqueava aqui e
+  # passava la. Alinhado pela semantica de TOKEN (a do .ps1), nao afrouxando, porque afrouxar
+  # bloquearia `transship.py` -- que contem "ssh" no meio de uma palavra e nao tem nada de
+  # remoto. Falso positivo assim vira imposto, e imposto acaba desligado.
+  # `([^[:space:]]*[^[:alnum:]])?` = prefixo opcional que TERMINA em nao-alfanumerico; e o que
+  # faz `scripts/vps_exec.py` e `deploy-vps.sh` casarem e `myvps.py` nao.
+  # ⛔ A fronteira e explicita dos DOIS lados e identica ao gemeo .ps1 (que usa lookaround):
+  # nao-alfanumerico antes de vps/ssh, e nao-alfanumerico (ou fim) depois da extensao. A 1a
+  # versao errou nos dois pontos e o review cross-provider pegou: `my_vps.py` e
+  # `vps_exec.pyfoo` casavam aqui e nao la, cada um um bypass pelo outro provedor.
+  "${cmd_ini}(sudo[[:space:]]+)?(python[0-9.]*|py|uv[[:space:]]+run|poetry[[:space:]]+run|node|bash|sh|pwsh|powershell(\.exe)?)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*([^[:space:]]*[^[:alnum:]])?(vps|ssh)[-_]?[_[:alnum:]]*\.(py|sh|ps1|mjs|js)([^[:alnum:]]|$)"
 )
 
 # --- mutar estado alheio por HTTP. Lista SEPARADA de proposito: so ela aceita a isencao de host

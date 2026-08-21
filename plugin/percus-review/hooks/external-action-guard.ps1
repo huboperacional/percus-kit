@@ -26,9 +26,15 @@ try {
     # mutar estado alheio por HTTP -- em vez de nomes de ferramenta, um a um.
     #
     # O que ele CONTINUA sem cobrir, declarado aqui para nao virar falsa seguranca: chamada de SDK
-    # dentro de um script (`python deploy.py`), ferramenta de deploy que ainda nao existe, e
-    # qualquer coisa que nao passe pelo campo `command` do Bash. A R20 segue sendo
-    # responsabilidade do agente e do operador; este hook e rede, nao garantia.
+    # dentro de um script cujo NOME nao denuncia o destino (`python deploy.py`, `python sync.py`),
+    # ferramenta de deploy que ainda nao existe, e qualquer coisa que nao passe pelo campo
+    # `command` do Bash. A R20 segue sendo responsabilidade do agente e do operador; este hook e
+    # rede, nao garantia.
+    # 📌 Em 2026-08-21 esta lacuna ENCOLHEU, mas nao fechou: wrapper cujo nome carrega `vps`/`ssh`
+    # passou a casar (ver o padrao no fim da lista). O caso que motivou foi medido -- o guard
+    # barrou o comando remoto direto e deixou passar o wrapper equivalente do projeto. Um script
+    # com nome neutro continua invisivel, e nomear isso e mais honesto do que deixar parecer
+    # coberto.
     #
     # ⚠️ Efeito colateral conhecido: como o guard le o TEXTO do comando, procurar ou editar estes
     # padroes dispara o proprio guard (`grep 'slack-cli' guard.sh` bloqueia). Editar este arquivo
@@ -73,7 +79,27 @@ try {
         # O host pode terminar em espaco, em separador de comando OU no fim da string:
         # `ssh host;` e `ssh host &` sao execucao remota igual, e a 1a versao exigia espaco
         # depois do host -- as duas formas escapavam. Achado do review.
-        "$cmdIni(sudo\s+)?ssh\s+(-\S+\s+)*[^\s-]\S*(\s|[;&|]|$)"
+        "$cmdIni(sudo\s+)?ssh\s+(-\S+\s+)*[^\s-]\S*(\s|[;&|]|$)",
+        # ⚠️ Wrapper LOCAL que abre sessao remota. Medido em 2026-08-21: o guard barrou o `ssh`
+        # direto e o MESMO efeito passou pelo wrapper do projeto (`python scripts/vps_exec.py`),
+        # porque o texto do comando nao carrega a palavra que o padrao acima procura. O agente
+        # respeitou o bloqueio e reportou em vez de usar o atalho -- mas contar com isso e contar
+        # com disciplina, nao com rede.
+        # O sinal usado e o NOME do script declarar destino remoto (`vps`/`ssh`), nao o que ele
+        # faz por dentro: adivinhar conteudo de script arbitrario e o buraco que o bloco "o que
+        # ele continua sem cobrir" mantem aberto de proposito.
+        # ⛔ Exige INTERPRETADOR na frente. Sem isso, `cat scripts/vps_exec.py` e
+        # `grep vps_exec RUNBOOK.md` bloqueariam -- guard que impede LER o wrapper vira imposto,
+        # e imposto acaba desligado. Ha teste para os dois lados.
+        # ⛔ NAO use `\b` aqui. Ele parece a escolha obvia e DIVERGE do gemeo .sh em dois pontos,
+        # os dois pegos pelo review cross-provider:
+        #   1. `\b` trata `_` como caractere de PALAVRA, entao `my_vps.py` nao casava aqui e
+        #      casava no .sh -- e `_` e justamente o separador mais comum em nome de script.
+        #   2. `\b` no fim da extensao nao tem equivalente automatico em ERE, e `vps_exec.pyfoo`
+        #      casava so no .sh.
+        # A fronteira agora e explicita e identica nas duas linguagens: nao-alfanumerico dos dois
+        # lados. Lookaround aqui, classe de caractere la -- mesma semantica, sintaxe de cada uma.
+        "$cmdIni(sudo\s+)?(python[0-9.]*|py|uv\s+run|poetry\s+run|node|bash|sh|pwsh|powershell(\.exe)?)\s+(-\S+\s+)*\S*(?<![A-Za-z0-9])(vps|ssh)[-_]?[A-Za-z0-9_]*\.(py|sh|ps1|mjs|js)(?![A-Za-z0-9])"
     )
 
     # --- mutar estado alheio por HTTP. Lista SEPARADA de proposito: so ela aceita a isencao de

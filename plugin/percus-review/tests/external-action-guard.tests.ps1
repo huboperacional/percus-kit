@@ -102,6 +102,79 @@ Describe "external-action-guard.ps1 hook" {
         Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 
+    # --- wrapper local que executa em OUTRA maquina (add. 2026-08-21) ---
+    #
+    # 🔑 Nasceu de um caso medido: o guard barrou o comando remoto direto, mas o MESMO efeito
+    # passou batido pelo wrapper do projeto, porque o texto do comando nao carrega a palavra que
+    # o padrao procura. O bloco "o que ele continua sem cobrir" ja declarava essa lacuna; estes
+    # testes a estreitam para a familia cujo NOME declara destino remoto.
+    #
+    # ⛔ Os dois ultimos It sao tao importantes quanto os tres primeiros: um guard que impede
+    # LER ou CITAR o wrapper vira imposto, e imposto acaba desligado -- e ai nao guarda nada.
+    It "bloqueia wrapper local que executa em outra maquina -- <Cmd>" -ForEach @(
+        @{ Cmd = "python scripts/vps_exec.py uptime" }
+        @{ Cmd = "python3 scripts/vps_put.py local.txt /root/x" }
+        @{ Cmd = "python scripts/vps_upload_stream.py a.bundle /root/a.bundle" }
+    ) {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"' + $Cmd + '"}}'
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        $LASTEXITCODE | Should -Be 2
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
+
+    # 🔴 LACUNA DECLARADA, e ela e a causa raiz das divergencias que este bloco corrige: esta
+    # suite exercita SO o hook .ps1. O gemeo .sh nao tem teste automatizado nenhum, entao a
+    # unica coisa que impede os dois de divergirem e alguem medir na mao. Em 2026-08-21 os dois
+    # divergiram TRES vezes seguidas (fronteira antes do token, `_` como separador, fronteira
+    # depois da extensao) e as tres so apareceram porque foram medidas.
+    # Ate existir suite para o .sh, re-verifique assim, com os MESMOS casos do -ForEach abaixo:
+    #   echo '{"tool_input":{"command":"python myvps.py"}}' > /tmp/c.json
+    #   bash hooks/external-action-guard.sh < /tmp/c.json ; echo $?
+    # Esperado: 2 = bloqueou, 0 = passou. Tem que bater com o `Esperado` de cada caso aqui.
+
+    # ⚠️ Fronteira de TOKEN, e os dois lados sao deliberados. O review cross-provider pegou que a
+    # 1a versao do gemeo .sh nao exigia fronteira: `myvps.py` bloqueava no bash e passava no
+    # PowerShell -- bypass num dos provedores. Alinhado pela semantica de token (a do .ps1) em vez
+    # de afrouxar, porque afrouxar bloquearia `transship.py`, que contem "ssh" no meio de uma
+    # palavra e nao tem nada de remoto.
+    It "so casa vps/ssh como TOKEN do nome, nunca no meio de palavra -- <Cmd>" -ForEach @(
+        @{ Cmd = "python scripts/vps_exec.py uptime"; Esperado = 2 }
+        @{ Cmd = "bash deploy-vps.sh"; Esperado = 2 }
+        @{ Cmd = "python ssh_tunnel.py"; Esperado = 2 }
+        @{ Cmd = "python transship.py"; Esperado = 0 }
+        @{ Cmd = "python myvps.py"; Esperado = 0 }
+        # ⛔ Estes dois vieram do review cross-provider, e cada um era um bypass POR PROVEDOR:
+        # `_` e separador (o `\b` do .NET discordava do `[^[:alnum:]]` do ERE), e a extensao
+        # precisa de fronteira no fim (so o .ps1 tinha). Se um dia divergirem de novo, e aqui
+        # que aparece.
+        @{ Cmd = "python my_vps.py"; Esperado = 2 }
+        @{ Cmd = "python vps_exec.pyfoo"; Esperado = 0 }
+    ) {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"' + $Cmd + '"}}'
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        $LASTEXITCODE | Should -Be $Esperado
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
+
+    It "NAO bloqueia LER ou CITAR o wrapper, so EXECUTAR -- <Cmd>" -ForEach @(
+        @{ Cmd = "cat scripts/vps_exec.py" }
+        @{ Cmd = "grep -n vps_exec docs/RUNBOOK_DEPLOY.md" }
+    ) {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $stdin = '{"tool_input":{"command":"' + $Cmd + '"}}'
+        $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+        $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
+
     It "permite git push se override setado (R20 escape)" {
         $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
