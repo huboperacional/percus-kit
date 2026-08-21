@@ -37,6 +37,7 @@
 - [`next build` com o dev server vivo corrompe `.next` — e o sintoma parece bug do seu código](build-concorrente-com-dev-server-corrompe-o-next.md)
 - [Deploy sobe código VELHO com tag NOVA: diretório de build compartilhado entre serviços](build-dir-compartilhado-tag-nova.md)
 - ["Camada velha" que a camada nova referencia N vezes não está velha — está pendente de migração](camada-velha-ainda-apontada.md)
+- [Campo de CRM reusado muda de significado por fonte — ler sempre o mesmo produz erro nos DOIS sentidos](campo-de-crm-reusado-muda-de-significado-por-fonte.md)
 - [Campo de escrita que SUBSTITUI a coleção inteira — o "adicionar uma tag" que apaga as outras (e derruba uma regra de negócio junto)](campo-de-escrita-substitui-colecao-inteira.md)
 - [Campo novo no schema sem editor na tela é inalcançável — e a frente morre calada](campo-de-schema-sem-editor-na-tela-e-inalcancavel.md)
 - [Card promete forma de resposta que ninguém lê — audite pelo ESTADO de sessão](card-promete-resposta-que-ninguem-le.md)
