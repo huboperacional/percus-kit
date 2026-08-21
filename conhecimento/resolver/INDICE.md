@@ -106,6 +106,7 @@
 - [Deploy: `docker build ... | tail && service update` mascara build falho → outage](deploy-pipe-mascara-exit.md)
 - [Deploy `--quick` pula o SCP INTEIRO, não só "arquivo novo" — código antigo compila e roda sem erro](deploy-quick-pula-scp-inteiro-nao-so-arquivo-novo.md)
 - [Deploy de Worker na conta de OUTRA pessoa: 3 armadilhas que param o deploy antes de começar](deploy-worker-cloudflare-conta-de-cliente.md)
+- [O detector de trava escrito no plano nasce FROUXO e VÁCUO ao mesmo tempo, e o inventário "fechado" pode estar pequeno demais](detector-de-trava-nasce-frouxo-e-vacuo-ao-mesmo-tempo.md)
 - [Devolutiva cross-time escrita a partir da MEMÓRIA acusa o bug errado](devolutiva-reverificar-no-codigo.md)
 - [`"100" * 3` é dinheiro por repetição de string — a mesma expressão vira aritmética ou concatenação conforme o tipo que chegou](dinheiro-por-repeticao-de-string.md)
 - [A direção da enumeração se escolhe por QUAL LADO FALHA ALTO, não por "allowlist é mais seguro"](direcao-da-enumeracao-por-qual-lado-falha-alto.md)
