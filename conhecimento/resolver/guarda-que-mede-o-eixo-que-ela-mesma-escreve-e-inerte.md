@@ -47,10 +47,32 @@ projeto já fazia certo (o reset noturno carimba coluna própria e **não** toca
 era **divergência entre dois workers**, não limitação da modelagem. Conserto = remover o token do
 `SET`.
 
-**Prova que fecha o caso, e ela é histórica — colha ANTES do deploy:** o caminho feliz não emite
-evento, então a evidência é o A/B no banco. Pré-conserto, `carimbo_da_acao − momento_da_acao ≈ 0` em
-100% das linhas; pós-conserto tem de ficar **estritamente negativo**. Depois do deploy o baseline é
-irrecuperável.
+**Prova que fecha o caso — e a versão "histórica" desta receita FALHOU quando foi executada.**
+
+> ⚠️ **CORREÇÃO MEDIDA (2026-08-23, tiatendo).** Este parágrafo dizia: *"o baseline já está no banco;
+> pré-conserto `carimbo − momento_da_acao ≈ 0` em 100% das linhas; colha ANTES do deploy porque
+> depois é irrecuperável"*. **Medido em PROD antes de deployar: 0 de 19 linhas.** O A/B histórico
+> **não existia**, por dois motivos que se repetem em qualquer produto com conversa longa: *(1)* os
+> registros da ação viviam quase todos numa **única conversa** que acumulava dezenas de entidades ao
+> longo de semanas, então **não havia como parear ação com entidade** — todo `JOIN` pela conversa
+> vira produto cartesiano (a 1ª tentativa cruzou UMA mensagem com 60 pedidos); *(2)* onde o carimbo
+> sobreviveria, **outro processo o sobrescreveu depois** (no caso, o reset noturno). E não havia
+> nenhuma entidade viva no estado necessário.
+
+**Faça a prova CONSTRUÍDA, não garimpada** — ela é mais barata, não depende de arqueologia e não
+transforma o deploy em decisão irreversível:
+1. Crie a entidade pelo caminho real.
+2. **Leia o carimbo no banco imediatamente**, antes de qualquer disparo.
+3. Espere a guarda agir sozinha.
+4. Assere **as duas coisas juntas**: que a ação ACONTECEU (log + registro + o contador próprio dela
+   subindo) **e** que o carimbo **não moveu**. Sem a primeira metade, "carimbo parado" é
+   indistinguível de "worker morto".
+
+🔑 **O discriminante é a MAGNITUDE, não o sinal.** Código velho: o carimbo é escrito no claim e a
+ação sai logo depois → `|delta|` de **poucos segundos**. Código novo: o carimbo fica na última
+atividade real, que por definição é ≥ o piso de ociosidade → `|delta| ≥ o piso`. Medido no fechamento
+desta classe: **−338,05 s** contra um piso de 300 s. Defina esse limiar **antes** do deploy, por
+escrito, senão qualquer número posterior parece confirmar.
 
 **Irmãos:** [guarda-que-isenta-remove-o-teto-que-ela-nao-ve](guarda-que-isenta-remove-o-teto-que-ela-nao-ve.md)
 (o teto some porque você isentou quem mais precisava dele; aqui some porque ele mede o próprio
