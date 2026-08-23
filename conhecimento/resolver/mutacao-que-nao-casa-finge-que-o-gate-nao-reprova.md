@@ -41,3 +41,33 @@ que fez o backup, ou use caminho absoluto do scratchpad, e **confira o arquivo d
 
 **Regra geral:** toda verificação por mutação precisa provar **duas** coisas, não uma: que o defeito
 entrou, e que a suíte reagiu. Provar só a segunda é provar nada.
+
+---
+
+**Reincidiu em 2026-08-23, por CRLF, e num gate de SQL — 12 verdes seguidos.** A injeção era
+`sed '/^BEGIN;$/a ALTER TABLE … DROP CONSTRAINT <nome>;'`, uma constraint por vez, contra um canário
+rodado no Postgres real. As **13 passaram com a constraint derrubada**. O `sed` não injetou nada: o
+arquivo saíra de `io.open(..., "w")` do Python no Windows, que traduz `
+` → `
+`, a linha era
+`BEGIN;`, e o âncora `^BEGIN;$` nunca casou. 🔑 **Âncora de regex é a superfície onde CRLF
+morde** — `$` casa fim de linha, e o `` está antes dele.
+
+Verificação da injeção, no mesmo molde do `print` de confirmação acima:
+
+```bash
+sed "/^BEGIN;\$/a ALTER TABLE public.$T DROP CONSTRAINT $C;" canario.sql > variante.sql
+test $(grep -c 'ALTER TABLE' variante.sql) -eq 1 || { echo "INJECAO FALHOU em $C"; continue; }
+```
+
+**E o resultado esperado tem de ser exato, não só "ficou vermelho".** Com o defeito posto, o gate
+reprova **exatamente** os casos mapeados, e o placar fecha no mesmo total de sempre:
+
+| o que se observa | o que significa |
+|---|---|
+| nenhum caso caiu | a injeção não aconteceu |
+| caíram os casos mapeados, total fecha | ✅ o gate protege aquilo, e só aquilo |
+| caíram casos **a mais** | o gate está **acoplado** — no caso real, com o `CHECK` derrubado o `INSERT` passa e **grava**, e dois casos dividindo o mesmo sujeito faziam o segundo colidir na chave primária, com exceção de outra classe, matando o bloco antes dos casos seguintes |
+
+**Trave o transporte, não só a lógica:** `.gitattributes` com `*.sql text eol=lf` / `*.sh text eol=lf`
+em toda pasta cujo conteúdo é lido por âncora de regex ou executado como shell.

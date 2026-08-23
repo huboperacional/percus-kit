@@ -58,6 +58,7 @@
 - [Cloudflare: `X-Auth-Key` recusa a chave e o token Bearer funciona](cloudflare-token-vs-global-key.md)
 - [Coluna usada como critério de ORDENAÇÃO/desempate que ninguém nunca escreveu](coluna-ordenacao-nunca-escrita.md)
 - [Grade com contagem de colunas fixa promete "sem fileira órfã" e só cumpre para um total](colunas-fixas-prometem-fileira-inteira-para-um-total-so.md)
+- [Comando escrito em markdown não sobrevive ao transporte — e falha calado](comando-em-markdown-nao-sobrevive-ao-transporte.md)
 - [Comentário afirmando garantia que o código não entrega — a classe de bug mais difícil de ver](comentario-afirma-garantia-que-o-codigo-nao-entrega.md)
 - [Comentário `//` na mesma linha de `function nome(){` engole a declaração inteira — nada no app funciona, e o erro aponta pra linha errada](comentario-engole-function.md)
 - [Comentário não é gate — e o terceiro consumidor nasce sem ler nenhum dos dois](comentario-nao-e-gate.md)
