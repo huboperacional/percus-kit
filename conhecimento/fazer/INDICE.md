@@ -11,6 +11,7 @@
 - [Build Docker frio/lento (Next.js): cache incremental + fontes self-hosted](deploy-build-cache.md)
 - [Deploy na VPS Percus](deploy-vps.md)
 - [Preencher os gatilhos S/N no dia 1 de projeto novo](gatilhos-dia-1.md)
+- [Guarda que acusa texto correto não é guarda rigorosa — é guarda que ensina a equipe a afrouxar guardas](guarda-que-acusa-texto-correto-e-desligada.md)
 - [Antes de construir andaime de login, veja se o MCP de browser já está logado](mcp-browser-perfil-persistente.md)
 - [Subir uma migration Alembic](migration-alembic.md)
 - [Migration de BACKFILL (versionar row que já existe em prod)](migration-backfill.md)
