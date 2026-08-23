@@ -232,6 +232,7 @@
 - [Guarda que o entrypoint real nunca alcança: teste de componente ISOLADO cria a ilusão](guarda-morta-entrypoint.md)
 - [Guarda que usa uma ferramenta para EMITIR o próprio bloqueio fica muda quando ela falta](guarda-muda-sem-a-ferramenta-que-usa-pra-falar.md)
 - [Guarda que ISENTA casos remove o teto que ela não vê — todo isento precisa de teto irmão](guarda-que-isenta-remove-o-teto-que-ela-nao-ve.md)
+- [Guarda que mede o eixo que ela mesma escreve nasce inerte a partir da 2ª passagem](guarda-que-mede-o-eixo-que-ela-mesma-escreve-e-inerte.md)
 - ["Cinto de segurança" extra CORTA o caso legítimo — e alargá-lo vira guarda morta](guarda-redundante-tesoura-ou-morta.md)
 - [Guarda que não emite evento: torne a fala PREVISÍVEL e preveja-a ANTES do disparo](guarda-sem-evento-torne-a-fala-previsivel-e-preveja-a-antes.md)
 - [Conversa escalada pra humano fica MUDA e ninguém percebe (54 msgs em 34 min)](handoff-mudo-sem-salvaguarda.md)
