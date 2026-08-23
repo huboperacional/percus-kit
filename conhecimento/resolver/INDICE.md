@@ -158,6 +158,7 @@
 - [Estado de sessão compartilhado por DOIS emissores vaza a capacidade que só um deles oferece](estado-compartilhado-por-dois-emissores-vaza-capacidade.md)
 - ["Em curso" guardado como id global: o `finally` de uma operação apaga o estado da outra](estado-em-curso-por-id-global-vaza-entre-operacoes.md)
 - [Estorno por soft-delete faz o relatório do mês passado mudar depois de entregue — use contra-lançamento](estorno-soft-delete-muda-relatorio-ja-entregue.md)
+- [A evidência do turno some quando o container é substituído](evidencia-de-turno-expira-com-o-ciclo-do-container.md)
 - [`extra_forbidden` derruba TODO import, não "quando alguém ler a variável"](extra-forbidden-quebra-no-import-nao-na-leitura.md)
 - [Fact-check da review marca finding REAL como "INFUNDADO" porque não conseguiu verificar](fact-check-infundado-e-nao-verificado.md)
 - [Fact-check trunca o path do finding e descarta como INFUNDADO um achado que estava certo](fact-check-trunca-path-e-descarta-finding-valido.md)
