@@ -74,5 +74,5 @@ await page.addStyleTag({ content:
 - Escape unicode em regex vai como `\u0300-\u036f`, e confira com `cat -A`: ferramentas de edição gravam o
   caractere real no lugar do escape, em silêncio.
 
-Relacionados: [[texto-sobre-a-regra-e-indistinguivel-da-regra]],
+Relacionados: [[comentario-sobre-a-regra-desliga-a-regra]],
 [[rodar-a-suite-reescreve-a-evidencia-historica]], [[a-sabotagem-prova-o-que-voce-imaginou]]
