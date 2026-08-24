@@ -180,6 +180,7 @@
 - [Fallback de env não dispara com string vazia — `??` some com o default, e o erro é silencioso](fallback-de-env-nao-dispara-com-string-vazia.md)
 - [Falsificação feita POR FORA do que a fixture reconstrói não falsifica nada](falsificacao-desfeita-pela-fixture.md)
 - [Falsificação NÃO fica vermelha — e a trava está boa; o TESTE é que está fraco](falsificacao-verde-porque-outra-camada-barrou.md)
+- [O fator de vencimento do boleto ESTOUROU em 22/02/2025 — a fórmula de sempre erra por 24 anos e ninguém reclama](fator-de-vencimento-do-boleto-estourou-em-2025.md)
 - [Feature construída sobre módulo atrás de feature-flag OFF nasce MORTA e verde nos testes](feature-sobre-flag-off-nasce-morta.md)
 - [Ferramenta de medição queima a sessão de refresh, e o sintoma aparece na corrida seguinte](ferramenta-de-medicao-queima-a-sessao-de-refresh.md)
 - [Reescrever histórico para tirar segredo: o `--replace-text` também acerta onde a string era legítima](filter-repo-atinge-uso-legitimo.md)
