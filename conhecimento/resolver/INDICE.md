@@ -253,6 +253,7 @@
 - ["Cinto de segurança" extra CORTA o caso legítimo — e alargá-lo vira guarda morta](guarda-redundante-tesoura-ou-morta.md)
 - [Guarda que não emite evento: torne a fala PREVISÍVEL e preveja-a ANTES do disparo](guarda-sem-evento-torne-a-fala-previsivel-e-preveja-a-antes.md)
 - [Guarda passa verde porque não mede nada — sabote a guarda, não só o código](guarda-verde-porque-nao-mede-nada.md)
+- [O GUC de tenant nunca volta a ser indefinido — vira string VAZIA, e todo `current_setting` fora da política precisa de `NULLIF`](guc-de-tenant-nunca-volta-a-ser-indefinido.md)
 - [Conversa escalada pra humano fica MUDA e ninguém percebe (54 msgs em 34 min)](handoff-mudo-sem-salvaguarda.md)
 - [Harness de ataque com corpo incompleto dá verde falso](harness-de-ataque-com-corpo-incompleto-da-verde-falso.md)
 - [Harness que diverge do alvo produz número errado com cara de medição](harness-que-diverge-do-alvo-produz-numero-errado-com-cara-de-medicao.md)
