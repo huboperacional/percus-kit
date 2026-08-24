@@ -5,6 +5,7 @@
 > `grep -l "tags:.*<termo>" conhecimento/resolver/*.md`
 
 - [404 "por design" transforma erro de tenancy em bug invisível](404-por-design-esconde-tenancy.md)
+- [A função que você vai construir pode já existir no formato do dado](a-funcao-pode-ja-existir-no-formato-do-dado.md)
 - [A porta onde o estado MORRE não é a porta onde o defeito está — e o teste na porta errada nasce verde](a-porta-onde-o-estado-morre-nao-e-a-porta-do-defeito.md)
 - [A sabotagem prova o que você imaginou, não o que esqueceu](a-sabotagem-prova-o-que-voce-imaginou.md)
 - [Função de "abandonar/encerrar" duplicada sem os irmãos: grava o status terminal mas esquece a trilha E o estado efêmero associado](abandonar-duplicado-sem-trilha-e-estado-efemero.md)
@@ -266,6 +267,7 @@
 - [Import hoisted mata a semente do setup — e o sintoma só aparece na tarefa que vira o default](import-hoisted-mata-a-semente-do-setup.md)
 - [INCONCLUSIVO sem evidência não ensina nada — e esconde o caso em que o culpado é o harness](inconclusivo-sem-evidencia-nao-ensina-nada.md)
 - [Adicionar um arquivo ao índice do git e depois fechar o registro sem restringir o escopo pode levar junto o que outro processo já tinha preparado no mesmo diretório](indice-git-compartilhado-leva-trabalho-alheio.md)
+- [Índice único não impede o efeito que acontece ANTES do INSERT](indice-unico-nao-impede-efeito-que-acontece-antes-do-insert.md)
 - [Design travado num primitivo que a infra de teste não suporta (ex.: Lua no fakeredis)](infra-teste-suporta-primitivo.md)
 - [`<input type="date">` mostra mm/dd mesmo com a página inteira em pt-BR](input-date-formato-idioma-navegador.md)
 - [Integração externa OPCIONAL desarmada não grita: silêncio é idêntico a "ninguém usou ainda"](integracao-opcional-desarmada-nao-grita.md)
@@ -511,6 +513,7 @@
 - [`with TestClient(app)` dispara o lifespan em CADA teste: 4s de setup viram 13 minutos de suíte](testclient-dispara-lifespan-por-teste.md)
 - [Teste que executa um hook sem isolar o `cwd` afere o estado da máquina, não o hook](teste-de-hook-roda-na-raiz-le-estado-real.md)
 - [Arquivo de teste entra no repo e NÃO RODA — o `include` do runner não cobre a extensão](teste-entra-no-repo-e-nao-roda-por-include.md)
+- [Teste escrito junto com o código herda a premissa errada dele](teste-escrito-junto-com-o-codigo-herda-a-premissa-errada.md)
 - [Teste que verifica ESTADO FINAL não pega regressão de ORDEM entre duas chamadas assíncronas](teste-estado-final-nao-pega-ordem.md)
 - [Teste que forja o NOME da classe de exceção passa com o código quebrado](teste-forja-nome-da-classe-de-excecao.md)
 - [Teste chama o script no mesmo processo e "prova" silêncio: `Write-Host` e `\[Console\]::Error` não passam pelo `2>&1`](teste-in-process-nao-captura-console-error.md)
