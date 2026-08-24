@@ -167,6 +167,7 @@
 - [Estorno por soft-delete faz o relatório do mês passado mudar depois de entregue — use contra-lançamento](estorno-soft-delete-muda-relatorio-ja-entregue.md)
 - [A evidência do turno some quando o container é substituído](evidencia-de-turno-expira-com-o-ciclo-do-container.md)
 - [`extra_forbidden` derruba TODO import, não "quando alguém ler a variável"](extra-forbidden-quebra-no-import-nao-na-leitura.md)
+- [Fact-check de spec que não abre o CÓDIGO produz defeito FANTASMA](fact-check-de-spec-que-nao-abre-o-codigo-produz-defeito-fantasma.md)
 - [Fact-check da review marca finding REAL como "INFUNDADO" porque não conseguiu verificar](fact-check-infundado-e-nao-verificado.md)
 - [Fact-check trunca o path do finding e descarta como INFUNDADO um achado que estava certo](fact-check-trunca-path-e-descarta-finding-valido.md)
 - [Guard `try/except` fail-open esconde import errado: a feature vira no-op silencioso](fail-open-esconde-import-errado.md)
