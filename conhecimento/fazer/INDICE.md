@@ -5,6 +5,7 @@
 > `grep -l "tags:.*<termo>" conhecimento/fazer/*.md`
 
 - [Deploy do auth-service com migration nova (`auth-service-deploy.sh`)](auth-service-deploy-migration-nova.md)
+- [Autorizar uma ação externa (git push, vps_exec) bloqueada pelo R20 no MEIO da sessão](autorizar-acao-externa-bloqueada-no-meio-da-sessao.md)
 - [Rodar checkpoint no próprio percus-kit (canon/tooling, sem PLANO/HANDOFF)](checkpoint-no-canon-tooling.md)
 - [Commitar no canon / projeto (com review obrigatório R11)](commit-com-review.md)
 - [Decompor trabalho grande em frentes](decompor-frentes.md)

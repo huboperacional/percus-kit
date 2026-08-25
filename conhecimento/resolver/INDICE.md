@@ -53,6 +53,7 @@
 - [Campo escrito e nunca lido só mente quando o primeiro dado depende dele](campo-escrito-nunca-lido-mente-quando-alguem-depende.md)
 - [Card promete forma de resposta que ninguém lê — audite pelo ESTADO de sessão](card-promete-resposta-que-ninguem-le.md)
 - [O caso que ANCORA a ausência dá PASS por mérito do bug quando o caso irmão falha](caso-ancora-da-ausencia-passa-por-merito-do-bug.md)
+- [Categoria nova cadastrada, gravada, e invisível pro consumidor — porque uma lista de enumeração não foi atualizada](categoria-nova-esquecida-em-lista-de-enumeracao.md)
 - [A causa escrita num achado de changelog/handoff é hipótese — reproduza antes de consertar](causa-declarada-em-achado-e-hipotese.md)
 - [Chave de junção normalizada em um lado só: UPDATE vira no-op silencioso e a coluna nasce morta](chave-normalizada-so-de-um-lado.md)
 - [CHECK bicondicional ACEITA a linha proibida quando o discriminante é NULL (UNKNOWN passa)](check-bicondicional-unknown.md)
