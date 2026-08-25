@@ -31,3 +31,11 @@ em **todos** os projetos, não só naquele.
 
 **Relacionado:** [#hook-que-sai-zero-nao-avisa] — mesma família: o que está configurado não é o que
 está rodando.
+
+**Recorrência confirmada:** Família Milionária, 2026-08-25 — mesmíssimo sintoma, mesmíssima variável
+(`DEEPSEEK_API_KEY`), rotacionada DUAS vezes pelo operador no `.env` do projeto e continuou
+autenticando com o valor velho (`****d818`) até o script errar de novo. Confirma o "Conserto" acima:
+a rotação de 31/07 (Micro Investors) só sobrepôs o `.env`, nunca a fonte `User` do Windows — por
+isso "resolvido" reabriu num projeto totalmente diferente. Workaround pontual usado (não é o
+conserto definitivo): `$env:CHAVE = $null` antes de chamar o script, forçando o fallback pro `.env`
+só naquele processo filho.

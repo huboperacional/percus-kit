@@ -17,3 +17,14 @@ escopo original da tarefa) ou pedir autorização explícita do operador pra um 
 
 **Ref:** Paid Media Automation, sessão cont.157 (2026-08-07) — trilha do título isolado bloqueada
 por TODO em `approvals/page.tsx:138`, não relacionado ao diff da tarefa em andamento.
+
+**Detalhe mecânico que custou 2 tentativas (Família Milionária, 2026-08-25):** o `mock-scan`
+detecta o escape via regex `-m\s+"([^"]+)"` com `[regex]::Match` — **só o PRIMEIRO** `-m "..."` do
+comando, não todos. Um `git commit -m "assunto" -m "corpo" -m "MOCK-OK: motivo"` com o marcador no
+3º `-m` FALHA silenciosamente (o hook nunca olha ali). Precisa estar dentro do PRIMEIRO `-m` (pode
+ser um único `-m "assunto\n\ncorpo\n\nMOCK-OK: motivo"` com quebras de linha reais). E `dois-hooks`:
+há também um hook NATIVO separado (`.githooks/pre-commit`, instalado por
+`percus-review:install-git-hooks`) que impõe o TTL de 5min do R11 lendo `.deepseek/reviews/*.jsonl`
+por `mtime` — um review real rodado >5min antes (ex.: por causa de uma pergunta ao operador no meio)
+bloqueia mesmo com achados tratados; a solução é rodar o review de novo IMEDIATAMENTE antes do commit,
+sem nenhuma pausa (nem uma pergunta) entre as duas chamadas.
