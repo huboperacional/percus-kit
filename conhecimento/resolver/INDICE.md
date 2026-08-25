@@ -4,6 +4,7 @@
 > Para achar por CLASSE de sintoma, prefira:
 > `grep -l "tags:.*<termo>" conhecimento/resolver/*.md`
 
+- [`401` num wrapper que herda ambiente NÃO prova nada sobre a chave — teste a credencial direto antes de reemitir](401-em-wrapper-que-herda-env-nao-prova-nada-sobre-a-chave.md)
 - [404 "por design" transforma erro de tenancy em bug invisível](404-por-design-esconde-tenancy.md)
 - [A função que você vai construir pode já existir no formato do dado](a-funcao-pode-ja-existir-no-formato-do-dado.md)
 - [A porta onde o estado MORRE não é a porta onde o defeito está — e o teste na porta errada nasce verde](a-porta-onde-o-estado-morre-nao-e-a-porta-do-defeito.md)
@@ -37,6 +38,7 @@
 - [Auditar SPA em produção de fora: bata na ROTA INTERNA, nunca em `/`](auditar-spa-rota-interna.md)
 - [Auditoria cross-repo que lê o CHECKOUT LOCAL vira evidência circular](auditoria-cross-repo-working-tree.md)
 - [Auditoria de conta de anuncios: validar a PROPRIA proposta nao acha erro de ausencia](auditoria-validar-propria-proposta-nao-acha-ausencia.md)
+- [Ausência numa tabela só é prova se o PRODUTOR escreve nela — abra o produtor, não o consumidor](ausencia-numa-tabela-so-e-prova-se-o-produtor-escreve-nela.md)
 - [Ausência por design não é falha — e o teste sintético não distingue as duas](ausencia-por-design-vs-falha.md)
 - [Autenticou no provedor central, e não existe no produto](autenticou-mas-nao-existe-aqui.md)
 - [Gate de 120s: o custo não era o `awk`, era um `basename` por arquivo](basename-por-arquivo-e-o-custo-real-do-loop-em-shell.md)
@@ -62,6 +64,7 @@
 - [Ambiguidade de dado (2 formas válidas do mesmo identificador) — classificar por formato corrompe](classificar-formato-corrompe.md)
 - [CLAUDE.md aponta pro caminho ANTIGO do canon (`_Novo_Projeto`) — script não existe mais, renomeado pra `percus-kit`](claudemd-caminho-canon-stale.md)
 - [Backfill manual via CLI (`--account-id`) grava dado real mas não atualiza a tabela de saúde da coleta](cli-backfill-nao-atualiza-collection-log.md)
+- [Clique não dispara em `/dev-preview` sob Playwright — verifique se o React hidratou ANTES de suspeitar do código](clique-nao-dispara-em-dev-preview-verifique-hidratacao-antes-do-codigo.md)
 - [Cloudflare proxied (laranja) impede Traefik/Let's Encrypt de emitir cert](cloudflare-proxy-quebra-acme.md)
 - [Cloudflare: `X-Auth-Key` recusa a chave e o token Bearer funciona](cloudflare-token-vs-global-key.md)
 - [Casar unidade de franquia com CNPJ só por CEP é ambíguo em ~85% dos casos — desempate por nome da marca resolve a maioria](cnpj-cep-desempate-por-marca.md)
