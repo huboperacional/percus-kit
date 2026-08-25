@@ -61,11 +61,39 @@ for cmd in curl jq git; do
 done
 
 # === COLLECT DIFF ===
+# ⚠️ `2>/dev/null || true` num portao é a receita do falso-verde: `git diff`
+# falhando vira string vazia, o teste abaixo lê "diff vazio" e o script sai 0 --
+# R11 satisfeito sem ter revisado nada. Medido no irmão PowerShell em 2026-08-25,
+# com arquivo staged. Portão que não consegue medir REPROVA.
 if [[ -n "$BASE" ]]; then
-    DIFF="$(git diff "$BASE...HEAD" 2>/dev/null || true)"
+    if ! git rev-parse --verify --quiet "$BASE^{commit}" >/dev/null 2>&1; then
+        echo "[deepseek-review] ERRO: --base '$BASE' não é um ref git válido." >&2
+        echo "  Rode sem argumento (revisa staged+working tree) ou passe --base <ref>." >&2
+        exit 2
+    fi
+    _err="$(mktemp)"
+    if ! DIFF="$(git diff "$BASE...HEAD" 2>"$_err")"; then
+        echo "[deepseek-review] ERRO: git diff '$BASE...HEAD' falhou: $(cat "$_err")" >&2
+        rm -f "$_err"; exit 2
+    fi
+    rm -f "$_err"
 else
-    CACHED="$(git diff --cached 2>/dev/null || true)"
-    UNSTAGED="$(git diff 2>/dev/null || true)"
+    # Este ramo é o MAIS usado (invocação sem argumento) e ficou com o
+    # `2>/dev/null || true` na primeira versão do conserto — três linhas abaixo
+    # do comentário que denuncia o padrão. Achado pela review DeepSeek do
+    # próprio patch: consertar uma cópia não conserta a classe.
+    # stderr para ARQUIVO, não para o stdout: com `2>&1` os avisos do git
+    # ("LF will be replaced by CRLF") entravam no DIFF enviado ao modelo.
+    _err="$(mktemp)"
+    if ! CACHED="$(git diff --cached 2>"$_err")"; then
+        echo "[deepseek-review] ERRO: git diff --cached falhou: $(cat "$_err")" >&2
+        rm -f "$_err"; exit 2
+    fi
+    if ! UNSTAGED="$(git diff 2>"$_err")"; then
+        echo "[deepseek-review] ERRO: git diff falhou: $(cat "$_err")" >&2
+        rm -f "$_err"; exit 2
+    fi
+    rm -f "$_err"
     DIFF="$(printf '%s\n%s' "$CACHED" "$UNSTAGED" | sed -e 's/^[[:space:]]*$//' )"
 fi
 

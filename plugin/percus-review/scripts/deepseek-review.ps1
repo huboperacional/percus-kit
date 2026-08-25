@@ -45,14 +45,29 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Helper: roda git sem deixar stderr virar NativeCommandError em PS 5.1
 function Invoke-GitSafe {
+    # ⚠️ SILENCIAR stderr E IGNORAR o exit code era a receita de um portao que
+    # passa em silencio: `git diff` falhando devolvia vazio, o chamador lia
+    # "diff vazio" e o script saia 0 -- R11 satisfeito sem ter revisado nada.
+    # Medido em 2026-08-25 com arquivo staged: saida "Nada pra revisar", exit 0.
+    # Agora a falha do git PROPAGA. Portao que nao consegue medir REPROVA.
+    # stderr vai para ARQUIVO, nao para o stdout: com `2>&1` os avisos do git
+    # ("LF will be replaced by CRLF", dicas de hint) entravam no texto do DIFF
+    # enviado ao modelo -- o portao passaria a revisar ruido junto com o codigo.
+    # Achado pela review DeepSeek do proprio patch, e visivel no output dela.
     param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
+    $errFile = [System.IO.Path]::GetTempFileName()
     try {
-        $output = & git @Arguments 2>$null
+        $output = & git @Arguments 2>$errFile
+        if ($LASTEXITCODE -ne 0) {
+            $erro = (Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)
+            throw "git $($Arguments -join ' ') falhou (exit $LASTEXITCODE): $erro"
+        }
         return $output
     } finally {
         $ErrorActionPreference = $prev
+        Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -77,6 +92,21 @@ if (-not $env:DEEPSEEK_API_KEY) {
 
 # === COLLECT DIFF ===
 if ($Base) {
+    # `$Base` e o PRIMEIRO parametro posicional, e os skills mandam o texto de
+    # contexto posicionalmente ("diff staged: ..."). Esse texto virava -Base, o
+    # `git diff "<texto>...HEAD"` falhava, e o script saia 0 dizendo "diff
+    # vazio" -- toda invocacao com contexto passava sem revisar nada.
+    # Validar aqui separa "ref que nao existe" de "voce passou contexto".
+    # `git` DIRETO aqui, nao Invoke-GitSafe: aquela agora LANCA em exit != 0, e
+    # o ponto desta checagem e' justamente tratar o exit != 0 com uma mensagem
+    # que diz o que fazer. Com Invoke-GitSafe o usuario levava um stack trace.
+    $null = & git rev-parse --verify --quiet "$Base^{commit}" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[deepseek-review] ERRO: -Base '$Base' nao e um ref git valido." -ForegroundColor Red
+        Write-Host "  Se voce quis passar CONTEXTO, nao passe posicionalmente -- o 1o posicional e -Base." -ForegroundColor Red
+        Write-Host "  Rode sem argumento (revisa staged+working tree) ou use -Base <ref>." -ForegroundColor Red
+        exit 2
+    }
     $diff = (Invoke-GitSafe diff "$Base...HEAD") -join "`n"
 } else {
     $cached = (Invoke-GitSafe diff --cached) -join "`n"
