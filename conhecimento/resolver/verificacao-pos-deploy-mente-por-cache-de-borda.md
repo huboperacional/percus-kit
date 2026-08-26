@@ -20,3 +20,16 @@
 ⚠️ **`wrangler deployments list` não serve pra descobrir a versão viva em conta com token account-owned** — ele bate em `/memberships` e devolve 9106. A lista sai pela API, e ter esse id ANTES de promover é o que torna o rollback uma linha: `GET /accounts/<id>/workers/scripts/<script>/deployments`.
 
 Relacionado: [deploy-worker-cloudflare-conta-de-cliente](deploy-worker-cloudflare-conta-de-cliente.md).
+
+**Recorrência confirmada, variante Next.js + Docker Swarm (Família Milionária, 2026-08-26):** não
+é só Worker. Um app Next.js atrás de Cloudflare (VPS + Swarm, não Workers) tem DUAS camadas de
+cache empilhadas — o `Cache-Control` que o PRÓPRIO Next.js escreve (`s-maxage=3600,
+stale-while-revalidate=86400`) vira o TTL que a Cloudflare respeita na borda (`cf-cache-status`),
+mais o cache interno do Next.js (`x-nextjs-cache: HIT/MISS`, independente do da Cloudflare — um
+redeploy do container já zera esse, então "HIT" aqui não é sinal de conteúdo velho). `docker exec
+... grep` no container confirmou o build novo correto enquanto `curl` no domínio público ainda
+devolvia o link antigo — `?cb=$(date +%s)` bastou sozinho pra furar (bypassou os dois: virou
+`cf-cache-status: MISS` e o corpo já veio atualizado). ⚠️ **Sem token de API Cloudflare
+configurado, não existe purge automático** — o self-heal depende só do `s-maxage` vencer (aqui,
+até 1h). Se o deploy for perto de um lançamento/anúncio e o conteúdo precisar estar certo na
+hora, ou se consegue um token pra purge, ou se avisa o operador que a janela de propagação existe.
