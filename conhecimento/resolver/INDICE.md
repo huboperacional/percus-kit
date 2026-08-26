@@ -454,6 +454,7 @@
 - [Reviewer cross-provider (R11/conselho) acusa "migration ausente"/"campo morto" que JÁ existe — ele só vê o diff staged](reviewer-so-ve-diff-staged.md)
 - [Review volta vazia parecendo limpa: o revisor ABORTOU por causa de um binário no diff](revisor-aborta-com-binario.md)
 - [RLS ligada, política escrita, e o app continua vendo tudo: faltou `FORCE`, ou o role é superusuário](rls-sem-force-dono-ignora-politica.md)
+- [`WITH CHECK` não existe para `DELETE` — política `FOR ALL` com `USING` mais largo que `WITH CHECK` abre exclusão, não só leitura](rls-with-check-nao-existe-para-delete.md)
 - [`rm -rf` de "limpeza" no dir de deploy do VPS apaga segredos reais nunca commitados](rm-rf-deploy-dir-apaga-env.md)
 - [Rodar a suíte reescreve a evidência histórica, e o diff parece ruído binário](rodar-a-suite-reescreve-a-evidencia-historica.md)
 - [Rota que ainda não existe devolve 404 — e isso deixa o teste VERDE sem implementação](rota-inexistente-deixa-teste-verde.md)
