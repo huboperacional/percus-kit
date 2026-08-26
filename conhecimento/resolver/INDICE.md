@@ -26,6 +26,7 @@
 - [Antes de culpar o código, desça a cadeia até a ENTREGA](antes-de-culpar-o-codigo-desca-ate-a-entrega.md)
 - ["Antes/depois" corrigido no olho fica MAIS exagerado que o original — meça o realce especular só no objeto](antes-depois-sem-instrumento-de-brilho.md)
 - [`brightness(0) invert(1)` num app icon devolve retângulo branco liso, não a silhueta da marca](app-icon-solido-nao-vira-silhueta-por-alfa.md)
+- [Argumento posicional vira parâmetro e o gate passa vazio — valide o parâmetro, não confie no chamador](argumento-posicional-vira-parametro-e-o-gate-passa-vazio.md)
 - [Arquivo em `public/` sombreia a rota do Next com o mesmo nome — e a rota nunca roda](arquivo-em-public-sombreia-rota-do-next.md)
 - [Arquivo untracked engana toda ferramenta que lê o ÍNDICE do git — quatro ocorrências no mesmo dia](arquivo-untracked-engana-a-ferramenta-que-le-o-indice.md)
 - [Arquivo VAZIO escapa de toda checagem feita em `awk`: sem registros, `FNR==1` nunca dispara](arquivo-vazio-escapa-de-checagem-por-awk.md)
