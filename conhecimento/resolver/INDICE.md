@@ -468,6 +468,7 @@
 - [Rodar a suíte reescreve a evidência histórica, e o diff parece ruído binário](rodar-a-suite-reescreve-a-evidencia-historica.md)
 - [Rota que ainda não existe devolve 404 — e isso deixa o teste VERDE sem implementação](rota-inexistente-deixa-teste-verde.md)
 - [Tela logada pede indexação porque `'use client'` não exporta `metadata`](rota-logada-herda-index-do-layout-raiz.md)
+- [Rota nunca chama `commit()` — resposta 200 correta, escrita nunca sobrevive ao fim da sessão](rota-nunca-comita-resposta-200-com-escrita-fantasma.md)
 - [Rótulo curto casa DENTRO de outra palavra e escolhe a coisa errada (no caminho do dinheiro)](rotulo-casa-dentro-de-palavra.md)
 - [Runner de teste que sai 0 sem rodar nada — o gate é a PRESENÇA do veredito](runner-de-teste-sai-zero-sem-rodar-nada.md)
 - [Saída de comando morto no timeout não é resultado — cabeçalho sem conteúdo embaixo parece exatamente igual a "não há nada"](saida-de-comando-morto-no-timeout-nao-e-resultado.md)
