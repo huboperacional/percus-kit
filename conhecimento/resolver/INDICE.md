@@ -5,6 +5,7 @@
 > `grep -l "tags:.*<termo>" conhecimento/resolver/*.md`
 
 - [`401` num wrapper que herda ambiente NÃO prova nada sobre a chave — teste a credencial direto antes de reemitir](401-em-wrapper-que-herda-env-nao-prova-nada-sobre-a-chave.md)
+- [`401` com chave IDÊNTICA entre `.env` e variável de ambiente não é o padrão de env-var-velha — pode ser a chave morta de verdade](401-identico-nao-e-env-stale-pode-ser-chave-morta.md)
 - [404 "por design" transforma erro de tenancy em bug invisível](404-por-design-esconde-tenancy.md)
 - [A função que você vai construir pode já existir no formato do dado](a-funcao-pode-ja-existir-no-formato-do-dado.md)
 - [A porta onde o estado MORRE não é a porta onde o defeito está — e o teste na porta errada nasce verde](a-porta-onde-o-estado-morre-nao-e-a-porta-do-defeito.md)
