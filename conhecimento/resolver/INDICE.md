@@ -392,6 +392,7 @@
 - [ORM manda `NULL` explícito por cima do `DEFAULT now()` do Postgres quando o atributo Python nunca é tocado](orm-null-explicito-sobrepoe-server-default.md)
 - [Override que SUBSTITUI o padrão global faz a escrita ir para o lugar errado, em silêncio](override-substitui-e-a-escrita-vai-pro-lugar-errado.md)
 - [Pagar.me recusa cobrança com erro rotativo (telefone → documento → billing_address) sem dizer os 3 de uma vez](pagarme-erro-rotativo-antifraude.md)
+- [`Series.apply()` do pandas coage `None` em `NaT` quando a maioria dos retornos é datetime — `isinstance(x, datetime)` mente](pandas-apply-coage-none-em-nat-isinstance-datetime-mente.md)
 - [Parâmetro adicionado e NÃO propagado: suíte verde, defeito vivo — e a contagem não é o discriminador](parametro-adicionado-sem-propagar.md)
 - [Bot conversacional re-pergunta info que o cliente já deu FORA DE ORDEM (checkout/wizard)](parking-info-fora-de-ordem.md)
 - [Parser de dinheiro assume um idioma e lê mil vezes menos — `1.500` vira R$ 1,50](parser-de-dinheiro-assume-locale.md)

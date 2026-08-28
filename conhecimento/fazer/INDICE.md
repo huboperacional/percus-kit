@@ -4,6 +4,7 @@
 > Para achar por CLASSE de sintoma, prefira:
 > `grep -l "tags:.*<termo>" conhecimento/fazer/*.md`
 
+- [Agente dispatchado com `isolation:"worktree"` não vê a autorização R20 do projeto](agente-isolado-em-worktree-nao-ve-autorizacao-r20-do-projeto.md)
 - [Deploy do auth-service com migration nova (`auth-service-deploy.sh`)](auth-service-deploy-migration-nova.md)
 - [Autorizar uma ação externa (git push, vps_exec) bloqueada pelo R20 no MEIO da sessão](autorizar-acao-externa-bloqueada-no-meio-da-sessao.md)
 - [Rodar checkpoint no próprio percus-kit (canon/tooling, sem PLANO/HANDOFF)](checkpoint-no-canon-tooling.md)
