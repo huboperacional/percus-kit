@@ -23,6 +23,7 @@
 - [Priorizar perguntas no `grilling` com P0-P4 e camadas](priorizacao-grilling-p0-p4.md)
 - [Consultar o conselho (consult / pre-mortem / analyze)](rodar-conselho.md)
 - [Rota nova nasce em módulo próprio, e é isso que torna as frentes paralelizáveis](rota-nova-em-modulo-proprio-destrava-paralelo.md)
+- [SDD em árvore compartilhada: o `BASE` do `review-package` fica errado se gravado antes do dispatch](sdd-review-package-base-em-arvore-compartilhada.md)
 - [Smoke de fluxo de cartão Pagar.me em PROD sem browser/OTP](smoke-pagarme-card-sem-browser.md)
 - [Fechar subagent-driven-development num worktree nativo do harness (`EnterWorktree`)](subagent-driven-worktree-nativo.md)
 - [Sincronizar código para um diretório de deploy que NÃO é repositório git](sync-para-diretorio-de-deploy-que-nao-e-repo-git.md)
