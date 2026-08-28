@@ -542,6 +542,7 @@
 - [Stub `autouse` que protege a suíte apaga o objeto sob teste — e os testes DELE viram verde vazio ou vermelho enigmático](stub-global-apaga-o-objeto-sob-teste.md)
 - [Subagente que promete "reporto quando terminar" um comando em background não retoma sozinho — precisa de outro SendMessage](subagent-background-promise-nao-se-cumpre-sozinho.md)
 - [Subagent commita trabalho ALHEIO que achou no working tree, mesmo com instrução explícita de não tocar](subagent-commita-trabalho-alheio-sem-autorizacao.md)
+- [Subagente revisor ignora proibição explícita de `git checkout`/`git stash` em worktree compartilhado](subagent-revisor-ignora-proibicao-de-checkout-em-worktree-compartilhado.md)
 - [Subagente que dispara trabalho longo em background e espera notificação trava CALADO](subagente-que-espera-notificacao-de-background-trava-calado.md)
 - [`subprocess.run(text=True)` sem `encoding=` decodifica stdout como cp1252 no Windows — texto acentuado derruba a thread leitora](subprocess-text-true-sem-encoding-cp1252.md)
 - [Suíte E2E com teste de logout mata a própria sessão (revogação, não rotação)](suite-e2e-com-teste-de-logout-mata-a-propria-sessao.md)
