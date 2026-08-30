@@ -257,6 +257,7 @@
 - [Guard test que proíbe um vocabulário legado (regex `\bword\b`) colide com nome novo legítimo que contém a mesma palavra](guard-legado-word-boundary-colide-nome-novo.md)
 - [Guard `PreToolUse` não se autoriza de DENTRO da própria chamada: a variável tem que preexistir no processo](guard-pretooluse-nao-se-autoriza-de-dentro-da-chamada.md)
 - [Guard que IMPRIME uma checagem mas não mede nada](guard-que-imprime-mas-nao-mede.md)
+- [Guard R20 bloqueia a gravação da própria autorização](guard-r20-bloqueia-a-gravacao-da-propria-autorizacao.md)
 - [Guard CERTO sem caminho alternativo produz o OPOSTO do que protege](guard-sem-caminho-alternativo.md)
 - [Guarda de ação externa barra o COMMIT porque a MENSAGEM cita a ação](guarda-casa-a-mensagem-nao-a-acao.md)
 - [Guarda que parseia código-fonte com regex lê o FORMATO, não o código — e a formatação nova cega a guarda](guarda-com-parser-de-fonte-le-o-formato-nao-o-codigo.md)
