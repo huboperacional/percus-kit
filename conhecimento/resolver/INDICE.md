@@ -80,6 +80,7 @@
 - [Comentário `//` na mesma linha de `function nome(){` engole a declaração inteira — nada no app funciona, e o erro aponta pra linha errada](comentario-engole-function.md)
 - [Comentário não é gate — e o terceiro consumidor nasce sem ler nenhum dos dois](comentario-nao-e-gate.md)
 - [O comentário que documenta a guarda pode desligar a guarda](comentario-sobre-a-regra-desliga-a-regra.md)
+- [`git commit -- <pathspec>` commita o DISCO, não o que você stageou — e leva a edição alheia junto](commit-com-pathspec-leva-o-disco-nao-o-staged.md)
 - [Padronizar componente compartilhado: regra por POSIÇÃO vaza + env Jinja é por-rota (tiatendo I6)](componente-compartilhado-posicao-e-env.md)
 - [Teste que prova que N cópias CONCORDAM nunca prova que o valor ANDOU](concordancia-nao-prova-avanco.md)
 - [Fluxo de confirmação com allowlist fixo cancela silenciosamente em vez de reprompt](confirmacao-allowlist-cancela-em-vez-de-reprompt.md)
