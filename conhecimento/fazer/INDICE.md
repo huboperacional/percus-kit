@@ -12,6 +12,7 @@
 - [Decompor trabalho grande em frentes](decompor-frentes.md)
 - [Build Docker frio/lento (Next.js): cache incremental + fontes self-hosted](deploy-build-cache.md)
 - [Deploy na VPS Percus](deploy-vps.md)
+- [`docker exec <container> python scripts/foo.py` numa imagem FastAPI dá `ModuleNotFoundError: app` sem `PYTHONPATH` explícito](docker-exec-script-python-precisa-pythonpath-app.md)
 - [Preencher os gatilhos S/N no dia 1 de projeto novo](gatilhos-dia-1.md)
 - [Guarda que acusa texto correto não é guarda rigorosa — é guarda que ensina a equipe a afrouxar guardas](guarda-que-acusa-texto-correto-e-desligada.md)
 - [Antes de construir andaime de login, veja se o MCP de browser já está logado](mcp-browser-perfil-persistente.md)
