@@ -28,6 +28,14 @@ escreveram que `401` significa *"chave inválida ou revogada"*. Um `curl` direto
 do arquivo** naquele instante, devolveu **HTTP 200** — a chave estava boa o tempo todo. O
 `council-orchestrator.ps1` rodava com a variável herdada de uma sessão iniciada horas antes.
 
+**REINCIDIU em tiatendo (2026-08-26), mesma chave, confirmando a regra.** Operador rotacionou a
+`DEEPSEEK_API_KEY` de novo (a antiga tinha vazado no output do agente em 25/08). `.env` do projeto já
+tinha a chave nova (confirmado por **sufixo mascarado** — últimos 4 chars, sem nunca imprimir o valor
+completo). Rodar `deepseek-review.sh` na mesma sessão devolveu `401` com a chave **antiga** ainda
+citada no erro (`****d818 is invalid`) — a sessão do agente tinha subido antes da rotação. Nenhum
+`curl` foi necessário desta vez: comparar o sufixo mascarado do `.env` contra o sufixo mascarado do
+`os.environ` já discriminou "propagação" de "credencial" sem expor nenhum segredo em texto.
+
 **Discriminante, em uma linha.** Antes de qualquer conclusão sobre a credencial:
 
 ```bash

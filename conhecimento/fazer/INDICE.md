@@ -17,6 +17,7 @@
 - [Antes de construir andaime de login, veja se o MCP de browser já está logado](mcp-browser-perfil-persistente.md)
 - [Medir o "depois" de uma mudança em produção SEM deployar](medir-o-depois-de-uma-mudanca-sem-deployar.md)
 - [Subir uma migration Alembic](migration-alembic.md)
+- [Rodar migration ANTES do rollout do backend (o deploy não faz isso por você)](migration-antes-do-rollout-com-imagem-nova.md)
 - [Migration de BACKFILL (versionar row que já existe em prod)](migration-backfill.md)
 - [Escapar o mock-scan sem sujar o assunto do commit](mock-ok-no-corpo.md)
 - [Não-objetivo sem prazo lê-se "nunca", e alguém vai citá-lo para vetar o próprio roadmap](nao-objetivo-sem-prazo-le-se-nunca.md)
