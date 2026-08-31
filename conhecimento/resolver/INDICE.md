@@ -162,6 +162,7 @@
 - [Repositório com DOIS `.env`: a credencial que vale depende do diretório de onde você sobe a app](dois-env-a-credencial-depende-da-cwd.md)
 - [Dois hooks de pre-commit diferentes bloqueiam por motivos diferentes](dois-hooks-pre-commit-r11-mock-scan.md)
 - [Dois vocabulários de token convergem por apelido, não por rename em massa](dois-vocabularios-de-token-convergem-por-apelido-nao-por-rename.md)
+- [Domínio novo passa no CORS e ainda dá `422 redirect_uri not allowed`](dominio-verde-no-cors-mas-422-no-redirect-uri.md)
 - [`DROP COLUMN` no rollback falha: uma view `SELECT *` depende da coluna nova](down-migration-view-select-star.md)
 - [Teardown de teste não consegue dropar tabela com FK auto-referencial: desligue a checagem, em AUTOCOMMIT](drop-table-fk-auto-referencial-no-teardown.md)
 - [Depois de um `DROP TABLE`, "voltar a tag" não é rollback](drop-table-rollback-pareado.md)
