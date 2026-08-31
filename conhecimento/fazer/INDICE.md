@@ -21,6 +21,7 @@
 - [Escapar o mock-scan sem sujar o assunto do commit](mock-ok-no-corpo.md)
 - [Não-objetivo sem prazo lê-se "nunca", e alguém vai citá-lo para vetar o próprio roadmap](nao-objetivo-sem-prazo-le-se-nunca.md)
 - [Negativar concorrentes em conta de mídia paga sem fogo amigo](negativas-sem-fogo-amigo.md)
+- [Migration do Plexco Tasks em produção: `docker run` da imagem NOVA, não `docker exec`](plexco-migration-com-imagem-nova.md)
 - [Priorizar perguntas no `grilling` com P0-P4 e camadas](priorizacao-grilling-p0-p4.md)
 - [Provar uma guarda dentro de um loop agendado: arme só a precondição, nunca o coletor](provar-guarda-de-loop-agendado-sem-chamar-o-coletor.md)
 - [Consultar o conselho (consult / pre-mortem / analyze)](rodar-conselho.md)
