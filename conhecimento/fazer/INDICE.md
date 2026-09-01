@@ -22,6 +22,7 @@
 - [Migration de BACKFILL (versionar row que já existe em prod)](migration-backfill.md)
 - [Escapar o mock-scan sem sujar o assunto do commit](mock-ok-no-corpo.md)
 - [Não-objetivo sem prazo lê-se "nunca", e alguém vai citá-lo para vetar o próprio roadmap](nao-objetivo-sem-prazo-le-se-nunca.md)
+- [Não fazer `git stash` de arquivos que um SUBAGENTE em background ainda está editando](nao-stashar-arquivos-de-subagente-ainda-rodando.md)
 - [Negativar concorrentes em conta de mídia paga sem fogo amigo](negativas-sem-fogo-amigo.md)
 - [Migration do Plexco Tasks em produção: `docker run` da imagem NOVA, não `docker exec`](plexco-migration-com-imagem-nova.md)
 - [Priorizar perguntas no `grilling` com P0-P4 e camadas](priorizacao-grilling-p0-p4.md)
