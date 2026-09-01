@@ -18,3 +18,16 @@ Quando a coluna é mapeada no SQLAlchemy **sem `default=` e sem `server_default=
 [#fixture-mais-benigno-que-a-realidade](fixture-mais-benigno-que-a-realidade.md) — lá o teste não alcança o defeito; aqui nenhum teste mockado alcançaria, porque `default=` só é aplicado no **flush** e a suíte usa sessão mockada que nunca dá flush. Só `[5-T]` em prod pega.
 
 **Ref:** Micro Investors, 2026-08-16 — 42 colunas em 21 models; provado em prod com CREATE → ler do banco → PATCH (`created_at` preservado, `updated_at` avançado) → DELETE.
+
+**Variante que não passa pelo ORM nenhum (Empresa Milionária, 31/08/2026):** teste `postgres`
+constrói o INSERT com `session.execute(text("INSERT INTO ... VALUES ..."))` cru, sem instanciar
+o objeto ORM — mais comum do que parece em fixture de teste contra banco real, pra evitar puxar
+todo o grafo de relationships só pra semear uma linha. Nesse caminho o `default=` do
+`mapped_column` **nunca entra em jogo de jeito nenhum** (não é "NULL vence o default", é "o
+mecanismo que aplicaria o default nem roda") — colunas `NOT NULL` com `default=` mas sem
+`server_default=` (`documento_fiscal_emitido`, `visibilidade`, `ativo`,
+`whatsapp_verificado`/`email_verificado`/`onboarding_completo` no caso real) estouram
+`NotNullViolationError` na hora, e só aparecem na PRIMEIRA vez que aquele INSERT cru roda contra
+Postgres de verdade — SQLite não tinha essas colunas exercitadas do mesmo jeito, e o arquivo nunca
+tinha chegado tão longe antes. Fix: incluir o valor explícito no `text()`, não mudar o model —
+o model já está certo pro caminho ORM normal.
