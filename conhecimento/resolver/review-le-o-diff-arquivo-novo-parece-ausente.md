@@ -40,3 +40,13 @@ pior, uma migration duplicada de coluna que já existe.
 **Ref:** Empresa Milionária, Fase B, 2026-08-14. O mesmo padrão gerou finding em três commits
 diferentes (`listar_titulos.py`, `test_endpoints_edicao.py`, `parcelar_titulo.py`), sempre com o
 mesmo texto de "não está no diff".
+
+**A mesma causa produz o oposto do finding fantasma: "sem findings críticos" que não avaliou
+nada.** Medido em 2026-08-31, mesmo projeto: rodei o review sobre um diretório novo inteiro
+(9 arquivos `.ts`/`.sql` de um harness, todos `??`) SEM dar `git add` antes. O wrapper reportou
+`decisao: deepseek (... 4 arquivo(s))` — os 4 eram arquivos ALHEIOS já rastreados e modificados
+por outra sessão; os 9 meus, recém-criados, nunca entraram no `git diff` e o veredito
+"sem findings críticos" não dizia nada sobre eles. `git add` dos meus arquivos e rodar de novo
+mudou pra `13 arquivo(s)` e aí sim produziu 3 achados reais (dois confirmados por mim, um
+corrigido). **A contagem de arquivos no log do wrapper é o sinal barato**: se ela não bate com
+o que você espera revisar, o silêncio "sem findings" é silêncio de quem não olhou, não aprovação.
