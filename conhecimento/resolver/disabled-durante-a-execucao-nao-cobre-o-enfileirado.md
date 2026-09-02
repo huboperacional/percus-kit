@@ -46,7 +46,21 @@ que RED fabricado.
 
 **Sintoma no teste de tela:** o `.click()` **passa** (o botão estava habilitado) e a falha cai na
 **asserção seguinte**, não no clique. Foi esse detalhe que separou esta causa de "gravação em voo
-travaria o clique" — que é verdadeira, e cobre outro caso. Explica também requisição que chega ao
-servidor muito depois do clique, fora de ordem com a limpeza do próprio teste.
+travaria o clique" — que é verdadeira, e cobre outro caso.
+
+⚠️ **Não use um teste de tela vermelho como evidência DESTE defeito — foi o erro cometido no caso
+que originou este verbete.** Em 2026-09-01 atribuí a esta fila um spec que falhava, e a medição do
+dia seguinte mostrou outra causa: **latência de rede por requisição**. O ambiente de teste falava
+com o banco por túnel (~1,3s para conectar, ~0,5s por round-trip, contra 0,258s dentro da própria
+máquina), a tela fazia DUAS chamadas por ação (grava e recarrega) e só fechava com as duas —
+**15.205ms contra um orçamento de 15.000ms, errando por 200ms**. O defeito da fila era real e
+independente; ele simplesmente não era o que pintava aquele teste de vermelho.
+
+**Como separar os dois, e é barato:** meça uma chamada TRIVIAL do mesmo ambiente — um `/health`,
+um `SELECT 1`. Se ela custa o mesmo que a operação real (foi o caso: 5,6–5,9s contra 5,3–6,2s), o
+gargalo é transporte, não a aplicação, e nenhum conserto de estado no cliente vai mudar isso. Só
+depois disso o defeito da fila se prova como se deve: **cronometrando o `disabled` do botão** —
+com o contador síncrono ele fecha em t+0,5s, ou seja, no instante do clique e não quando a
+gravação sai da fila.
 
 Ver também [[fix-depois-do-teardown-herda-o-verde]].
