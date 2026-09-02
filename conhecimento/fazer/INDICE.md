@@ -4,6 +4,7 @@
 > Para achar por CLASSE de sintoma, prefira:
 > `grep -l "tags:.*<termo>" conhecimento/fazer/*.md`
 
+- [Achatar a base antes da cadeia de delta build estourar 125 camadas](achatar-a-base-antes-da-cadeia-de-delta-build-estourar-125-camadas.md)
 - [Agente dispatchado com `isolation:"worktree"` não vê a autorização R20 do projeto](agente-isolado-em-worktree-nao-ve-autorizacao-r20-do-projeto.md)
 - [Deploy do auth-service com migration nova (`auth-service-deploy.sh`)](auth-service-deploy-migration-nova.md)
 - [Autorizar uma ação externa (git push, vps_exec) bloqueada pelo R20 no MEIO da sessão](autorizar-acao-externa-bloqueada-no-meio-da-sessao.md)
@@ -20,6 +21,7 @@
 - [Subir uma migration Alembic](migration-alembic.md)
 - [Rodar migration ANTES do rollout do backend (o deploy não faz isso por você)](migration-antes-do-rollout-com-imagem-nova.md)
 - [Migration de BACKFILL (versionar row que já existe em prod)](migration-backfill.md)
+- [Migration precisa de `BEGIN/COMMIT`, e o teste que executa o `.sql` não pode executar o `COMMIT`](migration-com-begin-e-o-teste-que-executa-o-sql.md)
 - [Escapar o mock-scan sem sujar o assunto do commit](mock-ok-no-corpo.md)
 - [Não-objetivo sem prazo lê-se "nunca", e alguém vai citá-lo para vetar o próprio roadmap](nao-objetivo-sem-prazo-le-se-nunca.md)
 - [Não fazer `git stash` de arquivos que um SUBAGENTE em background ainda está editando](nao-stashar-arquivos-de-subagente-ainda-rodando.md)
