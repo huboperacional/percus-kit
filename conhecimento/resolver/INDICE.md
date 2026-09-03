@@ -263,6 +263,7 @@
 - [Imagem buildada de `git archive` feito no WINDOWS morre sem log: `entrypoint.sh` em CRLF](git-archive-windows-crlf-mata-entrypoint.md)
 - [`git checkout <branch> -- .` sobrescreve a árvore INTEIRA em silêncio, revertendo trabalho não relacionado](git-checkout-branch-dashdash-dot-sobrescreve-arvore-inteira.md)
 - [`git checkout -- <arquivo>` restaura do ÍNDICE, e apaga a edição mais nova sem avisar](git-checkout-restaura-do-index-e-apaga-a-edicao-mais-nova.md)
+- [O ÍNDICE do git é compartilhado entre sessões — `git diff --cached` de antes do commit não prova o que entra](git-indice-compartilhado-entre-sessoes.md)
 - [A ordem do `git log` NÃO diz o que está na imagem: quem diz é a HORA do `git archive`](git-log-nao-diz-o-que-esta-na-imagem.md)
 - [`git stash push -- <path>` grava a árvore INTEIRA, e o pop corrompe o que você já commitou](git-stash-push-com-path-grava-a-arvore-inteira.md)
 - [`.gitignore` não protege o tarball de deploy — sem `.dockerignore`, o `.env` viaja junto](gitignore-nao-protege-o-tarball-de-deploy.md)
