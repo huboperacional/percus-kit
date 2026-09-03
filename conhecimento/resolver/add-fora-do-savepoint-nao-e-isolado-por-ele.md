@@ -63,5 +63,5 @@ vencedora quando consulta) e deixe só o índice de pé. ⚠️ Não neutralize 
 conferências junto: se as tabelas dependentes também colidirem, o teste morre no índice
 errado e passa verde sem nunca exercitar o caminho que existe para provar.
 
-Relacionado: [[sem-relationship-o-unit-of-work-nao-ordena-insert]],
-[[commit-num-handler-pj-mata-o-contexto-de-rls]].
+Relacionado: [[unit-of-work-sem-relationship-nao-ordena-insert-por-fk]],
+`commit-num-handler-pj-mata-o-contexto-de-rls` (verbete nao escrito).

@@ -48,4 +48,4 @@ ERRADO e sair bonita. Valide a existência de um arquivo-marco do pacote antes d
 Achado em 2026-08-30 (Paid Media Automation, gate G1 da frente de Lead Ads). Os três buracos —
 booleano coagido, numérico que aborta, caminho de código não validado — foram levantados por três
 rodadas de review cross-provider **no próprio gate**, não no código de produção. Parente de
-[[teste-pode-travar-uma-afirmacao-falsa]].
+`teste-pode-travar-uma-afirmacao-falsa` (verbete nao escrito).

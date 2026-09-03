@@ -54,4 +54,4 @@ real de decisão cara e desnecessária (contratar plano, criar domínio, trocar 
 resolver um erro de uma linha de configuração.
 
 Relacionado: [[401-em-wrapper-que-herda-env-nao-prova-nada-sobre-a-chave]],
-[[variavel-ausente-no-shell-pode-estar-no-arquivo-de-ambiente]].
+`variavel-ausente-no-shell-pode-estar-no-arquivo-de-ambiente` (verbete nao escrito).

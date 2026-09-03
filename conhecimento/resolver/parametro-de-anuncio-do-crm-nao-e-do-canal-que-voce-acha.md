@@ -42,4 +42,4 @@ Quem lê a query string sem olhar o **host** captura os dois casos e não perceb
 Achado em 2026-08-30 (Paid Media Automation, frente de atribuição de Meta Lead Ads). O código já
 estava correto por acaso — o guard de host existia; o que faltava era o teste que o prende. Foi um
 review cross-provider que levantou o risco, e ele era um **falso-positivo sobre o código com um
-núcleo verdadeiro adjacente**: ver [[falso-positivo-do-conselho-pode-ter-nucleo-verdadeiro-ao-lado]].
+núcleo verdadeiro adjacente**: ver `falso-positivo-do-conselho-pode-ter-nucleo-verdadeiro-ao-lado` (verbete nao escrito).

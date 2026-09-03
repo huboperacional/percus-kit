@@ -57,4 +57,4 @@ resultado carregar dado de cliente, ele vai para um diretório **ignorado pelo g
 
 Validado em 2026-08-30 (Paid Media Automation, gate G1 da frente de Lead Ads). Requer janela **R20**
 aberta — é leitura de produção. Ver também
-[[gate-que-coage-tipo-aprova-a-regressao-que-deveria-barrar]].
+[gate que coage tipo aprova a regressao que deveria barrar](../resolver/gate-que-coage-tipo-aprova-a-regressao-que-deveria-barrar.md).

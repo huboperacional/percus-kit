@@ -46,5 +46,5 @@ análise (a coluna é nova e nullable? a tabela tem uma linha só?) e diga qual 
 como parte do checklist de infra. Dump que termina com erro no meio ainda deixa arquivo em disco —
 tamanho de arquivo não é prova de backup.
 
-Relacionado: [[rls-sem-contexto-devolve-banco-vazio]],
-[[suite-e-producao-montam-schemas-diferentes]].
+Relacionado: `rls-sem-contexto-devolve-banco-vazio` (verbete nao escrito),
+`suite-e-producao-montam-schemas-diferentes` (verbete nao escrito).
