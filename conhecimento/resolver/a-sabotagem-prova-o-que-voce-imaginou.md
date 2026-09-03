@@ -51,4 +51,35 @@ primeira tentativa. Padrão bom costuma produzir pelo menos um falso positivo qu
 corrigir o padrão. Senão a próxima versão do padrão volta a ser provada só contra o que você já
 sabia.
 
-Relacionado: [[comentario-sobre-a-regra-desliga-a-regra]], [[o-screenshot-pega-o-que-a-guarda-nao-ve]].
+---
+
+### Corolário de 2026-09-03: a REVIEW acha o que a sabotagem não alcança, por motivo estrutural
+
+Quatro tasks seguidas (Empresa Milionária, fatia 1 da produção) produziram **~60 sabotagens, quase
+todas pegando** — e a review cross-provider ainda devolveu **sete bugs reais** em cima disso. O
+padrão dos sete é único e vale mais que a contagem: **não havia caminho de teste passando por eles**.
+
+- Dava para `POST /inicio` numa etapa **concluída** — nenhum teste tentava, porque a máquina de
+  estados não estava escrita.
+- Concluir de novo **reescrevia `fim_real`** — nenhum teste clicava duas vezes.
+- A ordenação punha os sem-data no fim em `asc` e **no topo** em `desc` — o teste só exercitava `asc`.
+- `DividirOrdem` não exigia OS aberta, enquanto `FundirOrdens` exigia — **assimetria entre dois
+  arquivos**, invisível para quem lê um de cada vez.
+
+**A distinção que resolve:** *sabotar mede a guarda que existe; a review lê o código e pergunta pelo
+estado que ninguém exercitou.* Sabotagem é falseamento de hipótese — precisa da hipótese primeiro.
+Onde não há teste, não há o que sabotar, e o verde é silêncio, não aprovação.
+
+⚠️ **E a review de OUTRA sessão pegou o que a própria não pegou.** O caso da assimetria veio de um
+R11 rodado por uma sessão vizinha varrendo a árvore compartilhada. A diferença não foi sorte nem
+competência: quem escreveu tratava fusão e divisão como assuntos separados, e quem chegou de fora
+leu os dois no mesmo diff. **Review de terceiro não é redundância da própria — é outro recorte**, e
+numa árvore com várias sessões isso está de graça.
+
+**Como usar:** rode as duas, e não trate uma como cerimônia depois da outra. Quando a review
+apontar um caso, **acrescente a sabotagem correspondente** (o corolário acima) — foi assim que as
+guardas dos sete nasceram já mordendo, e uma delas nasceu VAZIA e só apareceu porque foi sabotada
+na sequência.
+
+Relacionado: [[comentario-sobre-a-regra-desliga-a-regra]], [[o-screenshot-pega-o-que-a-guarda-nao-ve]],
+[[assert-sobre-conteiner-maior-que-o-alvo-passa-vazio]].
