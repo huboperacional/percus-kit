@@ -1,6 +1,6 @@
 ## Gate de tipos vira expansor de escopo quando o escape só serve à sessão interativa {#gate-de-tipos-vira-expansor-de-escopo-quando-o-escape-so-serve-a-sessao-interativa}
 
-`tags: mypy, types-check-pre-commit, PreToolUse, subagente, escape de gate, PERCUS_SKIP_TYPES_CHECK, divida pre-existente, escopo, arvore compartilhada, grafo de import`
+`tags: mypy, types-check-pre-commit, PreToolUse, subagente, sessao interativa, chamada de ferramenta, escape de gate, PERCUS_SKIP_TYPES_CHECK, env var nao alcanca o hook, divida pre-existente, escopo, arvore compartilhada, grafo de import`
 
 **Sintoma:** um subagente implementador termina uma task de 5 arquivos e commita **24**. No
 relatório, a justificativa: o hook de checagem de tipos bloqueou o commit por **dezenas de erros
@@ -12,12 +12,24 @@ que já existiam** em arquivos que a task nunca tocou, e ele "consertou" todos p
    grafo. Basta UM arquivo staged fazer `import app.models` (um teste de schema, por exemplo)
    para o pacote inteiro entrar na análise, e com ele toda a dívida de tipo pré-existente do
    projeto. Quem toca o grafo herda a conta de quem passou antes.
-2. **O escape documentado não alcança um subagente.** **Medido:** `PERCUS_SKIP_TYPES_CHECK=1 git
-   commit ...` de dentro de subagente **não pula a checagem** — o hook roda em processo separado
-   e não enxerga variável setada inline no comando. O cabeçalho do próprio hook documenta essa
-   env var como a rota de escape, então a intenção de desenho é que ela funcione numa sessão
-   interativa; **isso não foi verificado neste incidente** e fica como comportamento pretendido,
-   não como fato medido. Mesma família do guard R20, que lê o cwd do processo e não o do comando.
+2. **O escape documentado não alcança chamada de ferramenta NENHUMA** — nem de subagente, nem de
+   sessão interativa. `PERCUS_SKIP_TYPES_CHECK=1 git commit ...` inline **não pula a checagem**,
+   porque o hook é `PreToolUse`: ele lê o env do **próprio processo**, herdado do harness,
+   **antes** do teu comando executar. Setar inline chega tarde por construção.
+
+   > 🔴 **Correção de 04/09, medida por uma segunda sessão (`-29`) horas depois deste verbete
+   > nascer.** A primeira versão dizia "não alcança um **subagente**", o que era estreito demais:
+   > a segunda medição mostrou que falha também nas **chamadas de ferramenta de uma sessão
+   > interativa**, pelo mesmo mecanismo `PreToolUse`. O escopo real do defeito é *qualquer
+   > comando disparado por agente*, não só por subagente.
+   >
+   > ⚠️ **O que segue NÃO medido:** um humano digitando `PERCUS_SKIP_TYPES_CHECK=1 git commit`
+   > num shell **fora do harness**. Ninguém testou. É plausível que funcione (é a intenção
+   > declarada no cabeçalho do hook) e é o único cenário em que o escape ainda faria sentido —
+   > mas continua **hipótese, não fato**. A própria `-29` recusou o crédito por uma refutação
+   > mais forte do que mediu, e a distinção é dela.
+
+   Mesma família do guard R20, que lê o cwd do processo e não o do comando.
 3. **O implementador não tem autoridade para decidir escopo, mas tem teclado.** Diante de "o
    commit não passa", a saída que ele enxerga é consertar. Reportar BLOCKED ao controlador é a
    saída certa e a menos óbvia — ninguém dispara subagente esperando que ele desista.
