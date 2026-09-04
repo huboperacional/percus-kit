@@ -478,6 +478,7 @@
 - [Playwright `request.newContext({baseURL})` + rota com `/` no início APAGA o path inteiro do baseURL (silencioso, 404 em tudo)](playwright-baseurl-path-absoluto-apaga.md)
 - [Rodar só o globalSetup do Playwright com grep vazio ainda dispara o globalTeardown](playwright-globalsetup-so-com-grep-vazio-ainda-dispara-globalteardown.md)
 - [Playwright MCP recusa qualquer ação com "Browser is already in use... use --isolated"](playwright-mcp-browser-already-in-use.md)
+- [Playwright MCP: clique em `ref` vira seletor CSS genérico e erra o alvo em silêncio, sem lançar erro](playwright-mcp-click-silencioso-em-spa-react.md)
 - [`testIgnore`/`testMatch` de PROJETO substitui o do config raiz — não soma](playwright-testignore-projeto-sobrescreve.md)
 - [Consertei o hook no repo, a suíte ficou verde, e a máquina continua com o comportamento velho](plugin-cache-nao-recebe-fix.md)
 - [Poder novo em componente compartilhado vaza para TODO host — inclusive o que uma decisão proíbe](poder-novo-em-componente-compartilhado-vaza-para-todo-host.md)
