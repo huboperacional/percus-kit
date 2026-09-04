@@ -33,10 +33,29 @@ confundi-las custa tempo:**
 **Causa 1 — o CWD do PROCESSO (a mais comum).** O guard procura
 `.percus/acao-externa-autorizada.json` **relativo ao diretório atual da sessão**, e o cwd
 **persiste entre chamadas**. Um `cd <subpasta>` numa chamada anterior faz o guard passar a
-procurar em `<subpasta>/.percus/...`, que não existe — e ele recusa **tudo**, com a autorização
+procurar em `<subpasta>/.percus/...` — e ele recusa **tudo**, com a autorização da raiz
 perfeitamente válida e fresca. Corrigir exige mover o cwd **numa chamada separada**: o hook é
 `PreToolUse`, então um `cd` dentro do próprio comando roda DEPOIS da checagem e não alcança.
 Detalhe completo em `guard-r20-le-o-cwd-do-processo`.
+
+> 🔴 **SEGUNDO SABOR DA CAUSA 1, medido em 04/09:** a subpasta pode ter um `.percus/`
+> **ANINHADO**, não versionado (`.gitignore`), sobrado de uma sessão antiga. Aí o guard não
+> falha por "arquivo ausente" — ele **acha um arquivo, lê, e recusa por idade**. O bloqueio é o
+> mesmo `BLOCK (R20)` genérico dos dois sabores, então a mensagem não distingue.
+>
+> **Por que atrapalha a depuração:** você abre o arquivo da RAIZ, vê `consumido:false`, escopo
+> certo e timestamp fresco, e conclui "é frescor". Não é o arquivo que o hook leu — ele lê
+> `(Get-Location).Path + .percus/`. A checagem que parece confirmar não toca no que decidiu.
+>
+> **Não confie no caminho nem no id que este verbete citar** — eles apodrecem. Numa mesma tarde
+> um aninhado em `empresa-api/` foi visto por duas sessões independentes e **desapareceu** ~20
+> min depois (alguém limpou), enquanto outro em `empresa-frontend/` (id `e3d8f957`, 27/08) seguia
+> de pé e ninguém tinha notado. **Varra antes de concluir:** liste TODOS os `.percus/` da árvore
+> (busca recursiva incluindo ocultos) e compare o `id` de cada um com o da raiz. Aninhado
+> abandonado é lixo ativo — proponha a remoção em vez de conviver.
+>
+> ⚠️ A correção é a mesma dos dois sabores (mover o cwd em chamada separada), então o valor deste
+> parágrafo é só encurtar a depuração e apagar o lixo — não muda o que fazer.
 
 **Causa 2 — frescor do timestamp.** O guard compara o `timestamp_unix` com o relógio no momento
 da ação. O arquivo continua `consumido: false`, com id e escopo certos, e mesmo assim recusa
