@@ -41,3 +41,8 @@ zerarem, o bug é este. Prova por mutação vale pra scripts de dado, não só p
 reportou sucesso, `kanban_columns.color` (escalar) persistiu certo, `meta.statuses[].color`
 (JSONB aninhado) não persistiu nada. Achado rodando o dry-run de novo, não por review de código.
 Relacionado: `sqlalchemy-enum-grava-name`.
+
+**Ver também:** [[copia-local-de-dict-compartilhado-nao-chega-no-segundo-leitor]] — mecanismo
+OPOSTO: lá, um SEGUNDO leitor que relê o container original só vê a correção se a mutação for
+IN-PLACE (cópia corta a propagação); aqui, é o ORM que só detecta mudança se ela vier por
+REATRIBUIÇÃO de cópia (mutação in-place é invisível ao dirty-tracking).
