@@ -10,8 +10,8 @@ try {
     $stdin = [Console]::In.ReadToEnd()
     if (-not $stdin) { exit 0 }
 
-    $input = $stdin | ConvertFrom-Json
-    $command = $input.tool_input.command
+    $payload = $stdin | ConvertFrom-Json
+    $command = $payload.tool_input.command
 
     if ($command -notmatch '\bgit\s+commit\b') { exit 0 }
     if ($command -match '\bgit\s+commit\s+--amend\s+--no-edit\b') { exit 0 }

@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.44.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.44.1`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,57 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.44.1 — 2026-09-04
+
+**5 hooks de `PreToolUse`/`Stop` estavam completamente inertes desde que nasceram — ~4 meses —
+porque `$input` é variável reservada do PowerShell, e atribuir a ela mata a leitura de stdin do
+próprio script. Achado investigando uma devolutiva cross-produto sobre outro bug, não por suspeita.**
+
+Devolutiva da Plexco Tasks (`docs/cross-product/2026-09-04-percus-kit-bug-types-check-monorepo.md`)
+relatou que `types-check-pre-commit` pulava em silêncio (sem aviso) em monorepo com frontend numa
+subpasta — 5 dias de CI vermelho lá porque o hook nunca chegava a checar. Escrevendo o teste de
+regressão mais simples possível (TDD, `superpowers:systematic-debugging`) para o fix de monorepo,
+até o caso trivial (tsconfig na raiz) falhou. Instrumentação isolou a causa numa linha:
+`$input = $stdin | ConvertFrom-Json` — `$input` é a variável automática de pipeline do PowerShell, e
+atribuir a ela drena `[Console]::In` antes do código do usuário poder lê-lo, mesmo via
+`powershell.exe -File` com stdin real (`cmd.exe /c "... < payload.json"`, o caminho real de
+produção, não artefato de teste). O guard seguinte (`if (-not $stdin) { exit 0 }`) então dispara
+sempre — silêncio indistinguível de "rodei e não achei nada".
+
+A mesma linha existia, copiada, em **5 hooks**: `types-check-pre-commit.ps1`,
+`auth-import-pre-commit.ps1`, `migration-check-pre-commit.ps1`, `on-stop-check.ps1`,
+`pre-plan-exit.ps1`. Os 4 primeiros nasceram no mesmo commit (`719f166`, 2026-05-16); o último 2
+semanas antes. Nenhum tinha teste — nada exercitava stdin real de ponta a ponta — e é exatamente
+por isso que sobreviveu: `auth-import`/`migration-check` são guardas de segurança/integridade, e
+"o gate existe no código" não é o mesmo que "o gate roda". Ver
+`conhecimento/resolver/input-reservado-mata-stdin-em-hook-ps1.md`.
+
+**Fix mecânico:** `$input` → `$payload` nos 5 (`crud-evidence-warn.ps1` já usava o nome certo).
+Confirmado por evidência direta (redirecionamento `<` real via `cmd.exe`, não só leitura de
+código), nos 5.
+
+**+ o bug de monorepo que motivou a investigação**, agora corrigido em `types-check-pre-commit`
+(`.ps1` e `.sh`): `tsconfig.json`/`.venv` são achados subindo a árvore a partir de CADA arquivo
+staged (`Find-PercusNearestConfigDir`/`find_percus_nearest_config_dir`), não só na raiz do
+projeto — resolve qualquer layout (`frontend/`, `apps/web/`, `backend/`). Skip sem tsconfig/venv
+em lugar nenhum agora emite aviso audível em vez de silêncio puro.
+
+**+ 1 achado do próprio `/code-review` do kit sobre este diff, antes de commitar:** o walk-up que
+busca o binário `tsc` a partir do tsconfig (quando não está co-localizado) comparava um path
+CANONICALIZADO (de `Find-PercusNearestConfigDir`) contra `$projectRoot` CRU (a string literal do
+`cd "..."` do comando, sem normalizar barra/trailing-slash/symlink) — a comparação de "cheguei na
+raiz" podia nunca bater. No `.sh` isso é grave: `dirname "/"` devolve `/` pra sempre, então o loop
+não tinha outra saída (commit trava para sempre — DoS real, não só risco de pegar um `tsc` de fora
+do repo). Corrigido canonicalizando `$projectRoot`/`project_root` uma vez, logo após resolvê-lo.
+Confirmado RED→GREEN nos dois idiomas com um `tsc` "vizinho" fora do repo que grava um arquivo ao
+ser executado — a evidência tem que ser um efeito colateral direto, não o texto do erro (esse é
+filtrado pelo match de staged-file antes de chegar na saída do hook, e um teste anterior deu verde
+por esse motivo errado antes de eu perceber).
+
+⚠️ **Hooks exigem publicação pra valer** (nota do topo deste arquivo): bump → push → marketplace
+update → `/plugin update`, ou `${CLAUDE_PLUGIN_ROOT}` continua resolvendo pra pasta instalada e
+os 5 hooks seguem inertes em todo projeto até isso acontecer.
 
 ## Changelog v6.44.0 — 2026-08-20
 

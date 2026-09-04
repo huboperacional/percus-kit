@@ -48,6 +48,27 @@ get_percus_staged_files() {
     done <<< "$files"
 }
 
+find_percus_nearest_config_dir() {
+    # Acha o diretorio mais proximo (subindo a arvore a partir de um arquivo staged,
+    # parando em project_root) que contem um marker (arquivo ou pasta). Resolve monorepo
+    # (tsconfig.json/.venv numa subpasta como frontend/, nao na raiz) sem o hook precisar
+    # saber o layout. Devolvida Plexco Tasks 2026-09-04 (equivalente bash de
+    # Find-PercusNearestConfigDir em _helpers.ps1 -- mantenha os dois em paridade).
+    local project_root="$1" rel_file="$2" marker="$3"
+    local root dir
+    root=$(cd "$project_root" && pwd)
+    dir=$(dirname "$root/$rel_file")
+    while [[ "$dir" == "$root"* ]]; do
+        if [[ -e "$dir/$marker" ]]; then
+            echo "$dir"
+            return 0
+        fi
+        [[ "$dir" == "$root" ]] && break
+        dir=$(dirname "$dir")
+    done
+    return 1
+}
+
 get_percus_staged_content() {
     local project_root="$1"
     local rel_path="$2"

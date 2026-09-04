@@ -9,13 +9,13 @@ try {
     $stdin = [Console]::In.ReadToEnd()
     if (-not $stdin) { exit 0 }
 
-    $input = $stdin | ConvertFrom-Json
-    $toolName = $input.tool_name
+    $payload = $stdin | ConvertFrom-Json
+    $toolName = $payload.tool_name
     if ($toolName -ne "ExitPlanMode") { exit 0 }
 
     if ($env:PERCUS_HOOKS_DISABLED) { exit 0 }
 
-    $plan = $input.tool_input.plan
+    $plan = $payload.tool_input.plan
     if (-not $plan) { exit 0 }
 
     $lines = ($plan -split "`n").Count

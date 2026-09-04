@@ -6,8 +6,8 @@ try {
     $stdin = [Console]::In.ReadToEnd()
     if (-not $stdin) { exit 0 }
 
-    $input = $stdin | ConvertFrom-Json
-    $transcriptPath = $input.transcript_path
+    $payload = $stdin | ConvertFrom-Json
+    $transcriptPath = $payload.transcript_path
     if (-not $transcriptPath -or -not (Test-Path $transcriptPath)) { exit 0 }
 
     # Skip flag (escape pro user)
