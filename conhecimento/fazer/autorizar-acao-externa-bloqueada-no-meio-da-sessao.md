@@ -26,24 +26,40 @@ uso (auditoria, opcional mas recomendado quando a ação é sensível):
 ```
 que grava em `.percus/autorizacoes-usadas.jsonl` (mascarando credenciais no comando logado).
 
-**Por que o bloqueio aparece NO MEIO da sessão — MEDIDO em 2026-09-04 (Empresa Milionária,
-sessão `-7b`), fechando o "não investigado" que esta seção trazia antes:** é **frescor**, não
-matcher. O arquivo continua `consumido: false`, com o escopo certo e o id certo — e mesmo assim
-recusa, porque o guard compara o `timestamp_unix` com o relógio no momento da ação. Num bloco
-longo de trabalho legítimo (subir container efêmero → migrar → rodar a suíte → rodar os R1 →
-derrubar tudo), a autorização gravada no início **envelhece antes do bloco terminar**: naquela
-sessão foi preciso regravar o MESMO id e o MESMO escopo **três vezes**, mexendo só no timestamp.
+**Por que o bloqueio aparece NO MEIO da sessão — medido em 2026-09-04 (Empresa Milionária,
+sessão `-7b`), fechando o "não investigado" que esta seção trazia antes. São DUAS causas, e
+confundi-las custa tempo:**
 
-🔴 **O caso que custa caro é o TEARDOWN.** Uma das recusas caiu exatamente no
-`docker rm -f <container-efêmero>`. Recusar o teardown é **o único caminho pelo qual uma janela
-R20 deixa container órfão na VPS** — e o modo de falha é silencioso na direção pior: quem não
-perceber encerra a sessão achando que limpou, e a infra fica de pé consumindo recurso, fora de
-qualquer inventário.
+**Causa 1 — o CWD do PROCESSO (a mais comum).** O guard procura
+`.percus/acao-externa-autorizada.json` **relativo ao diretório atual da sessão**, e o cwd
+**persiste entre chamadas**. Um `cd <subpasta>` numa chamada anterior faz o guard passar a
+procurar em `<subpasta>/.percus/...`, que não existe — e ele recusa **tudo**, com a autorização
+perfeitamente válida e fresca. Corrigir exige mover o cwd **numa chamada separada**: o hook é
+`PreToolUse`, então um `cd` dentro do próprio comando roda DEPOIS da checagem e não alcança.
+Detalhe completo em `guard-r20-le-o-cwd-do-processo`.
 
-**Regra prática:** trate a autorização como combustível, não como crachá. **Regrave o timestamp
-imediatamente antes do teardown**, sempre — nunca confie na autorização que abriu a janela para
-fechá-la. E ao planejar um bloco longo, conte com regravações no meio: elas são esperadas, não
-sinal de que algo deu errado.
+**Causa 2 — frescor do timestamp.** O guard compara o `timestamp_unix` com o relógio no momento
+da ação. O arquivo continua `consumido: false`, com id e escopo certos, e mesmo assim recusa
+porque envelheceu. Num bloco longo e legítimo (subir container efêmero → migrar → rodar a suíte
+→ rodar os R1 → derrubar tudo), a autorização gravada no início **envelhece antes do bloco
+terminar**.
+
+🔑 **O teste que DISCRIMINA as duas, e é barato:** antes de regravar qualquer coisa, rode um
+comando externo **trivial** (ex.: `ssh <alias> "echo teste"`). Se ele também for recusado, é
+**cwd** — regravar timestamp não vai resolver e você vai regravar três vezes achando que é
+frescor. Se ele passar, é **frescor**. Foi exatamente essa a confusão na sessão que produziu
+este registro: as recusas foram atribuídas a frescor, o timestamp foi regravado três vezes sem
+efeito, e a causa era o cwd deixado por um `cd empresa-api` de uma chamada anterior.
+
+🔴 **O caso que custa caro é o TEARDOWN — e vale para as DUAS causas.** Uma das recusas caiu
+exatamente no `docker rm -f <container-efêmero>`. Recusar o teardown é **o único caminho pelo
+qual uma janela R20 deixa container órfão na VPS** — e o modo de falha é silencioso na direção
+pior: quem não perceber encerra a sessão achando que limpou, e a infra fica de pé consumindo
+recurso, fora de qualquer inventário.
+
+**Regra prática:** trate a autorização como combustível, não como crachá. **Antes do teardown,
+confirme o cwd na raiz do projeto (em chamada separada) E regrave o timestamp** — nunca confie
+na autorização que abriu a janela para fechá-la.
 
 **Não assuma que "já passou antes nesta sessão" significa que vai passar de novo** — se bloquear,
 trate como um bloqueio novo e siga o procedimento acima.
