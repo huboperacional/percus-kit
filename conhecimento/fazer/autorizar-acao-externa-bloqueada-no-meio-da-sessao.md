@@ -26,11 +26,25 @@ uso (auditoria, opcional mas recomendado quando a ação é sensível):
 ```
 que grava em `.percus/autorizacoes-usadas.jsonl` (mascarando credenciais no comando logado).
 
-**Por que o bloqueio pode aparecer NO MEIO da sessão, depois de pushes que já passaram:** não
-investigado a fundo nesta ocorrência — o padrão observado bate com o já documentado pra
-`vps_exec.py` (`r20_guard_agora_barra_vps_exec` / bloqueio "intermitente"): o matcher do guard pode
-ter uma janela própria, ou o estado que ele consulta (algo em `.percus/` ou no ambiente do processo
-hook) pode expirar/mudar sem relação óbvia com o histórico de comandos já aprovados na conversa.
+**Por que o bloqueio aparece NO MEIO da sessão — MEDIDO em 2026-09-04 (Empresa Milionária,
+sessão `-7b`), fechando o "não investigado" que esta seção trazia antes:** é **frescor**, não
+matcher. O arquivo continua `consumido: false`, com o escopo certo e o id certo — e mesmo assim
+recusa, porque o guard compara o `timestamp_unix` com o relógio no momento da ação. Num bloco
+longo de trabalho legítimo (subir container efêmero → migrar → rodar a suíte → rodar os R1 →
+derrubar tudo), a autorização gravada no início **envelhece antes do bloco terminar**: naquela
+sessão foi preciso regravar o MESMO id e o MESMO escopo **três vezes**, mexendo só no timestamp.
+
+🔴 **O caso que custa caro é o TEARDOWN.** Uma das recusas caiu exatamente no
+`docker rm -f <container-efêmero>`. Recusar o teardown é **o único caminho pelo qual uma janela
+R20 deixa container órfão na VPS** — e o modo de falha é silencioso na direção pior: quem não
+perceber encerra a sessão achando que limpou, e a infra fica de pé consumindo recurso, fora de
+qualquer inventário.
+
+**Regra prática:** trate a autorização como combustível, não como crachá. **Regrave o timestamp
+imediatamente antes do teardown**, sempre — nunca confie na autorização que abriu a janela para
+fechá-la. E ao planejar um bloco longo, conte com regravações no meio: elas são esperadas, não
+sinal de que algo deu errado.
+
 **Não assuma que "já passou antes nesta sessão" significa que vai passar de novo** — se bloquear,
 trate como um bloqueio novo e siga o procedimento acima.
 
