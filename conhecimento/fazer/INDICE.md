@@ -36,6 +36,7 @@
 - [Semear um teste E2E/R1 para dado que nasce de EFEITO, não de rota](semear-e2e-para-dado-que-nasce-de-efeito-nao-de-rota.md)
 - [Smoke de fluxo de cartão Pagar.me em PROD sem browser/OTP](smoke-pagarme-card-sem-browser.md)
 - [Fechar subagent-driven-development num worktree nativo do harness (`EnterWorktree`)](subagent-driven-worktree-nativo.md)
+- [Suíte que herda estado: repare na ENTRADA e acuse na SAÍDA](suite-que-herda-estado-repare-na-entrada-e-acuse-na-saida.md)
 - [Sincronizar código para um diretório de deploy que NÃO é repositório git](sync-para-diretorio-de-deploy-que-nao-e-repo-git.md)
 - [Rodar `uv sync`/alembic/pytest num Postgres efêmero quando `uv` não está no PATH do host](uv-nao-esta-no-path-extrair-binario-estatico-do-ghcr.md)
 - [Deixar o cliente ACRESCENTAR item num site de export estático, sem build: vagas + manifesto](vaga-para-acrescentar-conteudo-em-export-estatico.md)
