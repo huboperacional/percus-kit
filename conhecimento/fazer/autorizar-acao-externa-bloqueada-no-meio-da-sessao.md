@@ -80,6 +80,21 @@ recurso, fora de qualquer inventário.
 confirme o cwd na raiz do projeto (em chamada separada) E regrave o timestamp** — nunca confie
 na autorização que abriu a janela para fechá-la.
 
+**Causa 3 — o timestamp está no FUTURO, e ninguém procura por isso.** O guard exige
+`idade >= 0 AND idade < 3600`. A causa 2 é a metade de cima; a de baixo recusa uma autorização
+**recém-gravada**, com `consumido: false`, id e escopo corretos — porque o `timestamp_unix` ficou
+alguns segundos **à frente** do relógio. Medido em 2026-09-05: arredondar o horário para cima ao
+gravar deixou o valor **203 s no futuro**, e a recusa foi lida como "o arquivo não está sendo lido".
+
+⚠️ **E medir o epoch tem sua própria armadilha:** `powershell -UFormat %s` devolveu um valor
+**4 horas deslocado** (trata a hora local como se fosse UTC), enquanto o hook usa
+`[DateTimeOffset]::new((Get-Date)).ToUnixTimeSeconds()`, que está correto. Meça com **`date +%s`**
+no bash e grave esse número — já no passado, nunca arredondado para cima.
+
+🔑 **As três causas produzem a MESMA mensagem genérica**, que não menciona nem cwd nem frescor. O
+que discrimina, em duas medições baratas: `pwd` sozinho (causa 1) e
+`date +%s` menos o `timestamp_unix` gravado — negativo é causa 3, maior que 3600 é causa 2.
+
 **Não assuma que "já passou antes nesta sessão" significa que vai passar de novo** — se bloquear,
 trate como um bloqueio novo e siga o procedimento acima.
 

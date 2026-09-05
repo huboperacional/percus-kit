@@ -62,4 +62,36 @@ for textual, exclua comentário e string de exemplo.**
 — procurar ou editar o padrão que ele bloqueia dispara o próprio guard. Ali a saída é o inverso:
 mover o texto para um arquivo em vez da linha de comando.
 
-Relacionado: [[a-sabotagem-prova-o-que-voce-imaginou]].
+🔑 **A MESMA doença tem uma segunda direção, e o remédio dela é outro (2026-09-05).** Acima, o
+comentário faz a guarda **isentar** quem não devia. Na direção oposta ele faz a guarda **reprovar
+quem está certo** — e essa é a que mata a guarda, porque um falso positivo é caro para quem tem
+pressa e a saída fácil é desligar o teste.
+
+Caso medido: uma guarda varria `app/` procurando quem importa a porta única de escrita
+cross-empresa, para exigir declaração. Ela usava `"escrita_cross_empresa" in arquivo.read_text()`
+e **reprovou dois arquivos que apenas CITAM a porta em comentário** — um deles explicando
+justamente que a escrita passa por ela. Uma segunda guarda, procurando quem chama
+`aplicarContextoDaEmpresa`, reprovou um arquivo cujo único uso do nome era uma menção em
+comentário.
+
+**O remédio aqui não é "excluir comentário do regex" — é parar de ler texto.** Em Python, `ast`
+separa o que a linguagem entende do que é prosa:
+
+```python
+importa = any(
+    (isinstance(no, ast.ImportFrom) and "escrita_cross_empresa" in (no.module or ""))
+    or (isinstance(no, ast.Import) and any("escrita_cross_empresa" in a.name for a in no.names))
+    for no in ast.walk(ast.parse(arquivo.read_text(encoding="utf-8"))))
+```
+
+O mesmo vale para chamada (`ast.Call` com `ast.Name`/`ast.Attribute`). **Regra prática: se a
+guarda pergunta "este arquivo IMPORTA/CHAMA X?", a resposta está na árvore, não no texto.** Texto
+serve quando a pergunta é mesmo sobre texto — copy de interface, marcador de isenção.
+
+⚠️ E a sabotagem por `sed` precisa de **controle positivo próprio**: uma delas deixou o `)` de
+fechamento dentro do comentário, o arquivo virou inválido, o pytest não coletou, e a linha do
+relatório saiu **vazia** — que ao lado de outras com números se lê como "rodou e não falhou".
+Rode `ast.parse` na mesma chamada da sabotagem.
+
+Relacionado: [[a-sabotagem-prova-o-que-voce-imaginou]],
+[[quem-restaura-o-estado-nao-pode-ser-o-teste]].
