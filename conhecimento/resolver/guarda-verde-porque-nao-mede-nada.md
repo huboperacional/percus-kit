@@ -28,6 +28,30 @@ não ter guarda: fica no repositório dando impressão de proteção e desencora
    commit, copy digitada às pressas e migrações de encoding produzem a grafia crua o tempo todo. A
    guarda pegava só a grafia bonita e deixava passar a descuidada, que é a mais provável de vazar.
 
+**Quarta causa, medida em 2026-09-05 (Empresa Milionária, FR-194) — o ALVO é excluído por um
+filtro ANTES da comparação, e a sabotagem sai VERDE.** Não é o texto nem o tempo: é o cenário
+do teste que nunca alcança a linha protegida.
+
+O caso: `ResolverContaPorDestino` casa o destino que o pagador informou com uma conta da
+empresa par. A guarda `if not agencia or not conta: return None` existe porque, sem ela,
+`"" == ""` casaria uma conta cadastrada sem dígito nenhum. O teste semeava uma conta com
+`agencia=None` e um destino em branco — e **a consulta já exclui essa conta**, por
+`ContaFinanceira.agencia.isnot(None)`, **antes** de qualquer comparação. Removida a guarda,
+os 13 testes seguiram verdes: a linha protegida nunca era alcançada pelo cenário.
+
+O alvo certo era o cadastro **preenchido sem dígitos** — a conta com `"N/A"` no campo, que é
+o que gente escreve em campo obrigatório de tela. Com esse alvo, a sabotagem derruba.
+
+⚠️ Duas outras sabotagens no mesmo arquivo morderam de primeira, o que torna a terceira ainda
+mais fácil de dispensar como ruído (*"as outras funcionaram, essa deve estar certa"*). Guarda
+por guarda: **uma sabotagem verde é achado, nunca confirmação.**
+
+🔑 A face gêmea, medida no mesmo dia por uma sessão vizinha no mesmo repositório: um teste
+parametrizado **pulava** parâmetros com um motivo escrito (`"não há etapa da vizinha no
+cenário"`) — e a etapa estava lá o tempo todo, criada anônima dentro de um `add_all`, a três
+linhas de distância. **Motivo escrito não é motivo medido**, e o motivo desatualizado é um
+filtro que exclui o alvo com aparência de decisão deliberada.
+
 **Correção:**
 
 ```ts
@@ -65,6 +89,10 @@ await page.addStyleTag({ content:
 
 - Depois de escrever a guarda, **sabote a guarda** pelo defeito que ela declara pegar, e confirme que
   ela fica vermelha **nomeando** rota e termo. Guarda que nunca ficou vermelha não é guarda.
+- Sabotagem que sai **verde** é achado sobre o TESTE, não absolvição do código: pergunte por qual
+  filtro o cenário passa antes de chegar à linha protegida (`isnot(None)`, `skip` com motivo,
+  `if` anterior na cadeia). Ver [#guarda-inalcancavel-meca-o-alcance], que é a mesma pergunta um
+  nível acima: lá o turno desvia num elo anterior; aqui o cenário é excluído por um `where`.
 - Guarda de conteúdo mede o **objeto renderizado**, nunca o arquivo-fonte: comentário que explica um
   conserto é indistinguível do defeito.
 - Guarda de aparência mede o **resultado computado** (luminância do primeiro ancestral opaco), nunca
