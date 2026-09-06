@@ -598,6 +598,7 @@
 - [Rótulo curto casa DENTRO de outra palavra e escolhe a coisa errada (no caminho do dinheiro)](rotulo-casa-dentro-de-palavra.md)
 - [RUNBOOK_DEPLOY.md documenta um fluxo GHCR desativado — build real é local na VPS](runbook-deploy-ghcr-documenta-ci-desativado.md)
 - [Runner de teste que sai 0 sem rodar nada — o gate é a PRESENÇA do veredito](runner-de-teste-sai-zero-sem-rodar-nada.md)
+- [Sabotagem prova a PRIMEIRA asserção, não o teste](sabotagem-prova-a-primeira-assercao-nao-o-teste.md)
 - [Saída de comando morto no timeout não é resultado — cabeçalho sem conteúdo embaixo parece exatamente igual a "não há nada"](saida-de-comando-morto-no-timeout-nao-e-resultado.md)
 - [Scanner que compara contra o valor de PROVENANCE reprova correção legítima](scanner-contra-provenance-nao-contra-saida-final.md)
 - [Scheduler novo sobre tabela velha: dedup por MARCADOR, senão a linha fóssil engole o 1º disparo](scheduler-dedup-por-marcador.md)
