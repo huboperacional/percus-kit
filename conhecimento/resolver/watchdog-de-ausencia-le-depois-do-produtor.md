@@ -30,6 +30,22 @@ com o log do produtor): ela custa uma consulta, dá sensação de proteção e *
 casos que importam, porque o status "zero linhas sem exceção" cobre tanto "o sujeito parou" quanto
 "nós cegamos". Ver [[mudanca-de-semantica-de-status-faz-o-historico-mentir]].
 
+> 🔴 **CORREÇÃO (2026-09-06, quando o guard foi de fato implementado): a fração NÃO foi o que
+> subiu, e o parágrafo acima está superado.** Ao escrever o código, dois furos apareceram. (1)
+> **Ruído**: numa carteira de 10, um fim de semana com metade dos sujeitos legitimamente parados dá
+> fração alta legítima — suspensão semanal e alerta que ninguém fecha. (2) **Pior, ela é cega para
+> a cegueira PARCIAL**: com um coletor no chão e o outro de pé, os sujeitos do coletor são
+> classificados `ok`, a fração global fica baixa, o gate passa — e a metade cega é contada errado.
+> A fração só enxerga o apagão total, que é o caso fácil. O que subiu foi **CONTROLE POSITIVO no
+> domínio de falha do medidor** (aqui: por plataforma), que pega os três casos e ficou calado em
+> 12 de 12 dias de histórico. Desenho completo, incluindo o teste que prova que o guard não vira
+> anistia, em [[controle-positivo-por-dominio-de-falha-do-medidor]].
+>
+> ✅ **O que deste verbete continua valendo integralmente:** as duas perguntas do "Como aplicar"
+> (quem produz o dado e com que folga; quantos sujeitos ficam ruins se o produtor falhar), a
+> consequência operacional (nunca invocar o job à mão sem fixar `now` na janela pós-produção) e a
+> nota de método (dry-run em DOIS instantes, não um).
+
 **Como aplicar.** Antes de revisar qualquer regra de um vigia que leia ausência como sinal ruim,
 responda duas perguntas — nesta ordem, antes de olhar o resto do código:
 
