@@ -20,4 +20,18 @@ recusa com segurança se o destino estiver em uso).
 rodou no working tree COMPARTILHADO em vez de um worktree isolado — o próprio plano já mandava usar
 worktree isolado desde o início. Criar o worktree ANTES da primeira task evita o problema inteiro.
 
-**Ref:** Paid Media Automation, cont.157 (2026-08-07).
+**Variante mais leve (sem trabalho staged de ninguém em risco):** se o branch errado só tinha
+commits JÁ FEITOS (não staging alheio) e nunca foi pushado, `git branch -f <branch> <sha-antes>`
+sozinho já resolve — não precisa da dança de ref-nova+reset-misto, porque não há working tree pra
+preservar. Confirme com `git ls-remote origin <branch>` que ele nunca saiu daqui (senão o force
+reescreve histórico que outra máquina já tem) e com `git log --oneline <branch>` antes e depois.
+Sintoma que revela o erro ANTES de publicar algo errado: um `git push origin master` que devolve
+"Everything up-to-date" logo depois de um merge que deveria ter mudanças — significa que o commit
+não caiu no branch `master` local nenhuma (`git push origin master` publica o branch LOCAL chamado
+`master`, não o HEAD atual). **Prevenção:** rode `git branch --show-current` (ou `git status`, que
+já mostra) IMEDIATAMENTE antes de qualquer `git merge`/`git commit` num repositório com múltiplas
+sessões — nunca assuma que o checkout principal está no branch que você espera; outra sessão pode
+ter trocado o HEAD do working tree compartilhado a qualquer momento.
+
+**Ref:** Paid Media Automation, cont.157 (2026-08-07); variante leve, 2026-09-05 (merge de
+`feat/client-account-watch` caiu em `feat/anuncios-resumo` de outra sessão).
