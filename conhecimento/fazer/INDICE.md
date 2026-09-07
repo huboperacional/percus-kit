@@ -6,6 +6,7 @@
 
 - [Achatar a base antes da cadeia de delta build estourar 125 camadas](achatar-a-base-antes-da-cadeia-de-delta-build-estourar-125-camadas.md)
 - [Agente dispatchado com `isolation:"worktree"` não vê a autorização R20 do projeto](agente-isolado-em-worktree-nao-ve-autorizacao-r20-do-projeto.md)
+- [Arquive toda janela R20 ao consumi-la — o registro vive em `.percus/`, que é git-ignored](arquivar-a-janela-r20-porque-o-registro-e-git-ignored.md)
 - [Artifact que declara `db` NÃO pode ser compartilhado por link público](artifact-com-db-nao-aceita-link-publico.md)
 - [Deploy do auth-service com migration nova (`auth-service-deploy.sh`)](auth-service-deploy-migration-nova.md)
 - [Autorizar uma ação externa (git push, vps_exec) bloqueada pelo R20 no MEIO da sessão](autorizar-acao-externa-bloqueada-no-meio-da-sessao.md)
