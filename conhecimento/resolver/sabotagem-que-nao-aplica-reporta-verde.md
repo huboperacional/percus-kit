@@ -24,6 +24,17 @@ E, ao restaurar, prove também: `grep -c SABOTADO` tem de voltar a **0**.
 
 A regra que sai daí: **sabote a FONTE — a migration ou o helper que emite o DDL — nunca o banco.** Aí a remigração produz o estado quebrado de verdade, e o teste cai pelo motivo certo. E não presuma ponto único de emissão: `FORCE` pode vir do helper central **e** de SQL literal dentro de uma migration; `rg` a fonte antes de escolher onde sabotar.
 
-**Como reconhecer na hora:** "verde depois de sabotar" tem **três** hipóteses, não uma — *a guarda não morde*, *a sabotagem não chegou ao arquivo*, ou *a sabotagem foi revertida antes do teste*. Descarte as duas últimas antes de acusar a primeira. Sinal barato: o mesmo `N passed` **idêntico** ao da execução limpa, incluindo o tempo. Sabotagem que aplica e sobrevive quase sempre muda alguma coisa no placar — e o **vermelho no teste esperado** é, ele mesmo, a prova de que ela chegou viva até a execução.
+**🔑 A evidência é ASSIMÉTRICA, e é isso que diz quando conferir:**
+
+| Resultado | Vale o quê | O que fazer |
+|---|---|---|
+| **Vermelho no teste esperado** | **Prova forte.** Sabotagem revertida ou não-aplicada **não consegue** produzir vermelho — logo ela chegou viva até a execução | nada; pode seguir |
+| **Verde** | **Não é evidência de nada.** É onde as três hipóteses moram | **medir o estado**: `sed -n` na linha, ou pós-check no catálogo |
+
+A regra operacional cabe numa frase: **verde depois de sabotar obriga a medir; vermelho no alvo certo dispensa.** Isso poupa o pós-check nas vezes em que ele não mudaria nada — a maioria — e o torna obrigatório exatamente onde ele decide.
+
+Repare que a verificação por **consequência** (o vermelho) é mais barata e mais robusta que a verificação por **mecanismo** (provar que o arquivo mudou): ela não exige saber *como* a sabotagem poderia ter falhado, e por isso cobre inclusive as causas que ninguém previu.
+
+**Como reconhecer na hora:** "verde depois de sabotar" tem **três** hipóteses, não uma — *a guarda não morde*, *a sabotagem não chegou ao arquivo*, ou *a sabotagem foi revertida antes do teste*. Descarte as duas últimas antes de acusar a primeira. Sinal barato: o mesmo `N passed` **idêntico** ao da execução limpa, incluindo o tempo.
 
 **Ref:** 2026-09-07, Empresa Milionária — Task 18 do intercompany, janela R20. A 1ª sabotagem devolveu `10 passed` e quase virou "guarda cega" no ledger; `cat -A` mostrou `^M$` e a troca por número de linha produziu o `1 failed / 9 passed` esperado, no teste certo. Irmão de [[sabotagem-prova-a-primeira-assercao-nao-o-teste]]: lá a sabotagem aplica e prova menos do que parece; aqui ela não aplica e parece provar o contrário.
