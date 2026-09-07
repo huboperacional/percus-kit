@@ -40,6 +40,19 @@ Com aspas simples o `rg` recebe `R\$ ?[0-9]`, com `$` literal, e acha **10** oco
 | que o `rg` roda e o arquivo é legível | o `\$` atravessando o shell | `"R\$ ?[0-9]"` em aspas duplas: busca impossível, `exit 1` lido como ausência |
 | que o padrão casa **em outro arquivo** | se o padrão casa **no lugar certo** | `rg RegistrarEvento registrar_titulo.py` → vazio, com 3 ocorrências em `aprovar_titulo.py` de controle. Conclusão: *"criação não grava evento"*. **Falso** — quem emite é a **rota**, não o caso de uso |
 | que o comando roda | se o **argumento** chegou inteiro | `rg -rn`, onde `-r` é *replacement* e não *recursivo*: o padrão vira substituição e o resultado não significa nada |
+| que a consulta roda e a tabela existe | **nada** — o controle está **debaixo da mesma cegueira** | `SELECT count(*) FROM papeis_grupo` sob **RLS** devolve `0`, e o "controle" (contar o total) devolve `0` **pelo mesmo motivo**: a política esconde todas as linhas igualmente |
+
+🔴 **A última linha é a pior de todas, e merece nome próprio: CONTROLE QUE COMPARTILHA A CEGUEIRA
+DO ALVO.** Sob `ROW LEVEL SECURITY`, "quantas linhas existem no total" **não** é controle positivo
+para "esta linha existe?" — os dois passam pelo mesmo filtro, então concordam **sempre**, e a
+concordância é lida como confirmação. O controle que discrimina tem de **sair da política**:
+consultar como `postgres` (superusuário ignora RLS), ou setar o contexto e comparar **com e sem**.
+A mesma forma aparece fora de banco: medir cache com o cache ligado nos dois lados, medir permissão
+com o mesmo token nas duas pontas, medir feature flag sem alternar a flag.
+
+⚠️ **E o custo não é só medir errado — é reportar defeito inexistente.** No caso medido, a leitura
+`0` quase virou *"o `PapelGrupo` não está sendo criado"*, que é um defeito de produto que não
+existia. Só a consulta como `postgres` mostrou as 18 linhas lá.
 
 A segunda linha é a mais traiçoeira porque o controle **passa com folga** e valida a dimensão errada: confirma que a *ferramenta* e o *padrão* funcionam, e nada diz sobre o **escopo**. Prova de ausência num arquivo só responde por aquele arquivo — se a pergunta é *"o sistema faz X?"*, o escopo do controle tem de ser o do **sistema**, não o do arquivo que você abriu primeiro. O que derrubou aquela conclusão não foi outro `grep`: foi a **tela** dizendo `"Título criado"` com todas as letras, num artefato de falha que ninguém tinha aberto.
 
