@@ -313,7 +313,7 @@ if [ -n "$_lista" ]; then
         proprio = FILENAME; sub(/.*\//, "", proprio); sub(/\.md$/, "", proprio)
         if (alvo == proprio) continue
         d = FILENAME; sub(/\/[^\/]*$/, "", d)
-        print FILENAME "\t" d "/" alvo ".md" "\t[[" alvo "]]"
+        print FILENAME "\tWIKI" "\t" d "/" alvo ".md" "\t[[" alvo "]]"
       }
     }
   ' 2>/dev/null)
@@ -335,6 +335,34 @@ if [ -n "$_lista" ]; then
       _cam=${_rest%%	*}; _alvo=${_rest#*	}
       if [ -f "$_cam" ]; then
         violacao "$_arq -- ](#$_alvo) aponta pra um verbete que existe; com um arquivo por verbete a ancora nao resolve. Use ](${_alvo}.md). Se for MESMO ancora de secao interna, renomeie a secao: o gate nao consegue distinguir quando existe um verbete com o mesmo slug"
+      fi
+    elif [ "$_tipo" = "WIKI" ]; then
+      # [[slug]] nao carrega caminho -- e a notacao DOMINANTE da base: 287 dos 288 cross-refs
+      # medidos em 2026-09-07. Resolver o alvo so no diretorio da ORIGEM fazia todo link
+      # cross-area (fazer/ <-> resolver/) virar falso positivo que acusa "link morto" sobre um
+      # arquivo que EXISTE -- barra o commit e manda investigar o lugar errado. Mordeu duas
+      # sessoes no mesmo dia. Ver conhecimento/resolver/wikilink-so-resolve-dentro-da-mesma-area.md.
+      #
+      # PRECEDENCIA: a area da propria ORIGEM vence, e por isso o teste de existencia vem
+      # primeiro. So quando o slug NAO esta la e que as demais areas sao varridas -- assim
+      # passar a resolver cross-area nao muda o destino de nenhum link que ja resolvia.
+      _rest=${_rest#*	}
+      _cam=${_rest%%	*}; _alvo=${_rest#*	}
+      if [ ! -f "$_cam" ]; then
+        _slug=${_cam##*/}; _slug=${_slug%.md}
+        _achados=""; _n=0
+        for _a in $_AREAS_CONHECIMENTO; do
+          [ -f "$_a/$_slug.md" ] || continue
+          _achados="$_achados $_a"
+          _n=$((_n + 1))
+        done
+        if [ "$_n" = "0" ]; then
+          violacao "$_arq -- link para '$_alvo' nao resolve num arquivo existente (link morto nasce calado)"
+        elif [ "$_n" -gt 1 ]; then
+          # Escolher uma area no escuro seria mentir que sabe. O gate diz que NAO sabe, e a
+          # saida honesta e o caminho explicito -- que nenhuma das leituras deixa ambiguo.
+          violacao "$_arq -- '$_alvo' e ambiguo: o slug existe em$_achados. [[slug]] nao diz qual -- cite por caminho: ](../<area>/$_slug.md)"
+        fi
       fi
     else
       _cam=${_rest%%	*}; _alvo=${_rest#*	}

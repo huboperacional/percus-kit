@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 
 Describe "external-action-guard.ps1 hook" {
     BeforeAll {

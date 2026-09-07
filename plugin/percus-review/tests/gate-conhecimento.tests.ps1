@@ -450,6 +450,55 @@ Describe "percus-gate.sh — integridade de link entre verbetes" {
         ))
         $r.Exit | Should -Be 0 -Because "Saida do gate: $($r.Saida)"
     }
+    It "NEGATIVO: link WIKI [[slug]] para verbete em OUTRA area passa" {
+        # [[slug]] nao carrega caminho -- e a notacao de 287 dos 288 cross-refs da base. Resolver
+        # so dentro da area do arquivo de ORIGEM transformava todo cross-area num falso positivo
+        # que barra o commit e manda investigar um arquivo que EXISTE.
+        #
+        # CUIDADO ao ler a historia deste teste: o caso concreto que motivou o fix NAO reproduzia
+        # -- o wikilink dele estava numa linha de citacao, que o gate exclui de proposito, e o
+        # gate anterior devolvia exit 0 nele. Medida com o gate na base inteira em 2026-09-07, a
+        # contagem de cross-area REAIS era ZERO. A classe de defeito e real e este teste a
+        # reproduz; a frequencia alegada na primeira versao do verbete e que era falsa. Ver
+        # conhecimento/resolver/wikilink-so-resolve-dentro-da-mesma-area.md, ja corrigido.
+        #
+        # Aqui: origem vive em conhecimento/resolver/, 'receita' vive em conhecimento/fazer/.
+        $r = Invoke-Gate3 -Repo (New-LinkRepo @(
+            '## Origem {#origem}', '', '`tags: a`', '', 'ver [[receita]].'
+        ))
+        $r.Exit | Should -Be 0 -Because "Saida do gate: $($r.Saida)"
+    }
+
+    It "POSITIVO: link WIKI para slug que existe em DUAS areas fora da origem barra por ambiguidade" {
+        # O preco de resolver cross-area e que [[slug]] passa a ser ambiguo quando o mesmo slug
+        # existe em mais de uma area. Ficar calado aqui seria escolher uma no escuro -- o gate
+        # diz que nao sabe, em vez de mentir que sabe.
+        $repo = New-LinkRepo @(
+            '## Origem {#origem}', '', '`tags: a`', '', 'ver [[duplicado]].'
+        )
+        $enc = New-Object System.Text.UTF8Encoding($false)
+        foreach ($a in @("conhecimento\fazer", "referencia\conhecimento\fazer")) {
+            $d = Join-Path $repo $a
+            New-Item -ItemType Directory -Path $d -Force | Out-Null
+            [IO.File]::WriteAllLines((Join-Path $d "duplicado.md"), @(
+                '## Duplicado {#duplicado}', '', '`tags: a`', '', 'corpo.'
+            ), $enc)
+        }
+        $r = Invoke-Gate3 -Repo $repo
+        $r.Exit | Should -Be 1 -Because "Saida do gate: $($r.Saida)"
+        $r.Saida | Should -Match 'ambigu'
+    }
+
+    It "POSITIVO: link por CAMINHO ](outra-area.md) NAO ganha busca por area -- caminho errado continua morto" {
+        # A busca por area vale so pra [[slug]], que nao tem caminho. ](x.md) DIZ onde o alvo
+        # esta; se nao esta la, o link esta errado mesmo que o slug exista noutra area --
+        # afrouxar isso trocaria um falso positivo por um falso negativo.
+        $r = Invoke-Gate3 -Repo (New-LinkRepo @(
+            '## Origem {#origem}', '', '`tags: a`', '', 'ver [receita](receita.md).'
+        ))
+        $r.Exit | Should -Be 1 -Because "Saida do gate: $($r.Saida)"
+        $r.Saida | Should -Match 'receita'
+    }
 
     It "POSITIVO: link ](arquivo.md#secao) valida a parte ANTES do '#'" {
         $r = Invoke-Gate3 -Repo (New-LinkRepo @(

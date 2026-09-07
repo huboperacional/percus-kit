@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.44.2`
+**Versão canônica em `huboperacional/percus-kit`:** `6.44.3`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,36 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.44.3 — 2026-09-07
+
+**`[[wikilink]]` entre áreas (`fazer/`↔`resolver/`) passa a resolver no gate de conhecimento;
+antes acusava "link morto" sobre arquivo que EXISTE. Decisão do operador entre as duas correções
+possíveis que o verbete do diagnóstico deixara em aberto.**
+
+`v2/gates/percus-gate.sh` resolvia o alvo de `[[slug]]` sempre relativo ao diretório do arquivo
+de ORIGEM, então um link de `fazer/` para `resolver/` era impossível de resolver por construção.
+O ramo do wikilink agora varre `$_AREAS_CONHECIMENTO`, com duas regras: **precedência da própria
+área** (o teste no diretório da origem vem primeiro, então nenhum dos 287 links que já resolviam
+mudou de destino) e **ambiguidade é violação** (slug em mais de uma área fora da origem: o gate
+diz que não sabe qual, em vez de escolher no escuro). Link por caminho `](x.md)` NÃO ganhou a
+busca — ele diz onde o alvo está, e afrouxar isso trocaria um falso positivo por um falso
+negativo; o teste que fixa essa fronteira nasceu junto.
+
+**Medição que contradiz o verbete original, registrada em vez de silenciada:** o exemplo citado
+como evidência de que o bug "já mordeu duas vezes" nunca foi barrado — a linha começa com `>`, e
+citação é excluída de propósito pelo bloco de links. Rodando o gate ANTERIOR contra a base
+inteira (~830 verbetes, inclusive os não commitados), o total de wikilinks acusados é **1**, um
+link genuinamente morto que o gate novo continua barrando; casos cross-área reais hoje: **zero**.
+A classe de defeito é real e está no código (os testes de unidade a reproduzem), mas a frequência
+alegada não era. `conhecimento/resolver/wikilink-so-resolve-dentro-da-mesma-area.md` foi reescrito
+com essa correção e com o controle negativo que faltou: antes de creditar um bug a um arquivo
+concreto, rodar a versão ANTERIOR da guarda contra ele e vê-la falhar.
+
+**Também nesta versão:** `plugin/percus-review/tests/external-action-guard.tests.ps1` ganhou o BOM
+que lhe faltava desde 2026-08-21. `ps51-compat` acusava o arquivo (não-ASCII sem BOM é lido como
+ANSI pelo PowerShell 5.1) — é a reincidência da mesma classe que já deixou a suíte vermelha por
+duas versões do canon. Suíte: 485/485.
 
 ## Changelog v6.44.2 — 2026-09-07
 
