@@ -20,6 +20,7 @@
 - [Diff só da rodada de fix quando o implementador não commita: tree temporária com `write-tree`](diff-so-da-rodada-de-fix-quando-o-implementador-nao-commita.md)
 - [`docker exec <container> python scripts/foo.py` numa imagem FastAPI dá `ModuleNotFoundError: app` sem `PYTHONPATH` explícito](docker-exec-script-python-precisa-pythonpath-app.md)
 - [Preencher os gatilhos S/N no dia 1 de projeto novo](gatilhos-dia-1.md)
+- [Gerar migration do Prisma diffando o banco vivo, sem shadow database](gerar-migration-prisma-diffando-o-banco-vivo.md)
 - [Guarda que acusa texto correto não é guarda rigorosa — é guarda que ensina a equipe a afrouxar guardas](guarda-que-acusa-texto-correto-e-desligada.md)
 - [Antes de construir andaime de login, veja se o MCP de browser já está logado](mcp-browser-perfil-persistente.md)
 - [Medir a superfície da API antes e depois de um refactor que "não muda comportamento"](medir-a-superficie-da-api-antes-e-depois.md)
