@@ -14,11 +14,11 @@ do meio: a feature só vira `[0]` no `PLANO.md` depois de passar aqui sem CRITIC
 > auto-checklist (`templates/spec-checklist.template.md`), e depois do `/clarify`. Só para feature
 > **não-trivial** — feature trivial usa mini-spec e pula (ver `feature-flow`).
 
-## Passo 1 — Decidir providers (custo proporcional)
+## Passo 1 — Providers: sempre 3
 
-- **Default = 2 providers** (`deepseek,groq-llama`) — ~$0.002, ~2-6s. Mesmo tiering do `council:consult`.
-- **3 providers** (`deepseek,groq-llama,cross-claude`) **se**: a spec toca **pasta/domínio sensível**
-  (auth, pagamento, identidade, migrations) **OU** o usuário passou `--deep`.
+Decisão do operador, 2026-09-07: `deepseek,groq-llama,cross-claude` em **toda** spec, não só
+nas que tocam pasta/domínio sensível (auth, pagamento, identidade, migrations) ou com `--deep`.
+`--deep` continua aceito por compatibilidade, mas não muda mais nada — 3 já é o piso.
 
 ## Passo 2 — Rodar o orchestrator em modo analyze
 
@@ -27,21 +27,22 @@ Arquivo temp **único** por invocação (anti-stale, padrão v6.16.1 — **nunca
 
 - **Windows (PowerShell):**
   ```bash
-  pwsh -NoProfile -ExecutionPolicy Bypass -Command "$Q = Join-Path $env:TEMP ('spec-analyze-' + [guid]::NewGuid().ToString('N') + '.txt'); Copy-Item -LiteralPath '<caminho/da/spec.md>' -Destination $Q; & '${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.ps1' -PromptFile $Q -Mode analyze -Providers 'deepseek,groq-llama'; Remove-Item -LiteralPath $Q -Force -ErrorAction SilentlyContinue"
+  pwsh -NoProfile -ExecutionPolicy Bypass -Command "$Q = Join-Path $env:TEMP ('spec-analyze-' + [guid]::NewGuid().ToString('N') + '.txt'); Copy-Item -LiteralPath '<caminho/da/spec.md>' -Destination $Q; & '${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.ps1' -PromptFile $Q -Mode analyze -Providers 'deepseek,groq-llama,cross-claude'; Remove-Item -LiteralPath $Q -Force -ErrorAction SilentlyContinue"
   ```
 - **Unix (bash):**
   ```bash
-  Q=$(mktemp); cat "<caminho/da/spec.md>" > "$Q"; bash "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.sh" --prompt-file "$Q" --mode analyze --providers "deepseek,groq-llama"; rm -f "$Q"
+  Q=$(mktemp); cat "<caminho/da/spec.md>" > "$Q"; bash "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.sh" --prompt-file "$Q" --mode analyze --providers "deepseek,groq-llama,cross-claude"; rm -f "$Q"
   ```
 
-(Troque `deepseek,groq-llama` por `deepseek,groq-llama,cross-claude` no caso sensível/`--deep`.)
+## Passo 3 — Cross-Claude (roda sempre; mecanismo depende da chave)
 
-## Passo 3 — Cross-Claude (só no caso de 3 providers)
+Com `ANTHROPIC_API_KEY` presente (caso normal), o orchestrator chama Cross-Claude **direto** via
+`providers/cross-claude.ps1` — sem subagente, sem passo extra aqui.
 
-Se o stderr emitir `__PERCUS_NEEDS_CROSS_CLAUDE__`: dispatch subagent via Agent tool com o prompt
-mostrado (modelo no `---MODEL-HINT---`), salve a resposta num temp **único**
-(`spec-analyze-cc-<guid>.txt`) e re-invoque o orchestrator com `-CrossClaudeFile $CC`. Nunca reuse
-nome fixo.
+**Fallback** (só se a chave estiver ausente): o stderr emite `__PERCUS_NEEDS_CROSS_CLAUDE__`;
+dispatch subagent via Agent tool com o prompt mostrado (modelo no `---MODEL-HINT---`), salve a
+resposta num temp **único** (`spec-analyze-cc-<guid>.txt`) e re-invoque o orchestrator com
+`-CrossClaudeFile $CC`. Nunca reuse nome fixo.
 
 ## Passo 4 — Fact-check dos CRITICAL (guardrail R20)
 
@@ -64,7 +65,7 @@ linha `VEREDITO:`. Agrupe por severidade e consolide:
 
 ```
 [spec-analyze] {feature}
-Providers: {2 ou 3} · log: .deepseek/council-log/<ts>-analyze.jsonl
+Providers: 3 · log: .deepseek/council-log/<ts>-analyze.jsonl
 
 CRITICAL (consenso / fact-checked):
 - {ref} — {defeito} — {correção}
@@ -85,6 +86,8 @@ Regra de avanço (espelha o gate `[S]` do `feature-flow`):
 ## Notas
 
 - `analyze` ≠ `review`: review olha **diff de código** (R11, pré-commit); analyze olha **spec** (pré-`[0]`).
-- Custo/latência: 2 providers ~$0.002/~2-6s; +cross-claude ~$0.005/~30s.
+- Custo/latência (sempre 3): deepseek+groq-llama ~$0.002/~2-6s; +cross-claude ~$0.005, latência de
+  uma resposta substantiva do Sonnet 5 (ordem de dezenas de segundos) — chamada direta via
+  `providers/cross-claude.ps1` quando `ANTHROPIC_API_KEY` está presente.
 - Ref: `06_CONSELHO_PERCUS.md` (modos do conselho), `05_FEATURE_TRACKING.md` (mapeamento spec-kit↔Percus),
   `templates/spec.template.md`, skill `percus-review:feature-flow` (gate `[S]`).

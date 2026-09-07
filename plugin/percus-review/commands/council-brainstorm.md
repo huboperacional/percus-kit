@@ -1,6 +1,6 @@
 ---
 name: council:brainstorm
-description: Enriquece sessao superpowers:brainstorming com 3 perspectivas (DeepSeek + Llama + Cross-Claude opcional). Conselho responde COMO SE FOSSE CONSULTOR INDEPENDENTE revisando a opcao que Claude trouxe. Operador ainda decide.
+description: Enriquece sessao superpowers:brainstorming com 3 perspectivas (DeepSeek + Llama + Cross-Claude, sempre os 3). Conselho responde COMO SE FOSSE CONSULTOR INDEPENDENTE revisando a opcao que Claude trouxe. Operador ainda decide.
 ---
 
 # /council:brainstorm
@@ -17,13 +17,15 @@ Diferenca pra `/council:consult`:
   ```
   Quero brainstormar com conselho ativo. Use /council:brainstorm em cada decisao.
   ```
-- Brainstorm de decisao de produto / stack / arquitetura grande (justifica latencia +2s por pergunta).
+- Brainstorm de decisao de produto / stack / arquitetura grande (justifica a latencia do
+  Cross-Claude por pergunta — ver "Custo / latencia").
 - Quando operador quer evitar vies do Claude sozinho.
 
 ## NAO ativar
 
 - Brainstorm de decisao trivial / mecanica → so atrasa.
-- Brainstorm de decisao com prazo curto (deploy hoje) → +2s por pergunta vira atrito.
+- Brainstorm de decisao com prazo curto (deploy hoje) → a latencia do Cross-Claude por
+  pergunta vira atrito.
 
 ## Fluxo (passo a passo do agente)
 
@@ -66,13 +68,21 @@ b. Rode orchestrator em mode consult — arquivo temp **unico** por invocacao (n
    @'
    <conteudo do passo a>
    '@ | Set-Content -LiteralPath $Q -Encoding utf8
-   pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.ps1" -PromptFile $Q -Mode consult -Providers "deepseek,groq-llama"
+   pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/council-orchestrator.ps1" -PromptFile $Q -Mode consult -Providers "deepseek,groq-llama,cross-claude"
    Remove-Item -LiteralPath $Q -Force -ErrorAction SilentlyContinue
    ```
 
-   (Cross-claude opcional aqui — latencia +30s por pergunta vira atrito. So adicionar se decisao grande.)
+   Sempre os 3 (decisão do operador, 2026-09-07: aceita a latência da terceira perspectiva
+   em toda decisão de brainstorm, não só nas grandes). Com `ANTHROPIC_API_KEY` presente
+   (caso normal), o orchestrator chama Cross-Claude **direto** via `providers/cross-claude.ps1`
+   — sem subagente. **Fallback** (só se a chave estiver ausente): o stderr emite
+   `__PERCUS_NEEDS_CROSS_CLAUDE__`; dispatch subagent via Agent tool com o prompt mostrado,
+   salve a resposta num temp **único** (`council-brainstorm-cc-<guid>.txt`) e re-invoque o
+   orchestrator com `-CrossClaudeFile $CC` (mesmo mecanismo do `spec-analyze` Passo 3).
 
-c. Leia ultimo `.deepseek/council-log/<ts>-consult.jsonl`. Extraia resposta por provider.
+c. Leia ultimo `.deepseek/council-log/<ts>-consult.jsonl`. Extraia resposta por provider. Se
+   algum dos 3 nao retornou (timeout/erro), reporte a assimetria no sumario da pergunta (ex:
+   "conselho 2/3 — Cross-Claude falhou") em vez de so mostrar 2 perspectivas caladas.
 
 ### 3. Anexar perspectivas a pergunta
 
@@ -85,6 +95,7 @@ PERSPECTIVAS DO CONSELHO:
 
 DeepSeek (latencia Xms): <escolha> | <razao em 1 linha>
 Llama (latencia Xms): <escolha> | <razao em 1 linha>
+Cross-Claude (latencia Xms): <escolha> | <razao em 1 linha>
 
 OPCAO ADICIONAL SUGERIDA (se algum provider sugeriu D-F): <opcao + qual provider>
 RISCO INVISIVEL DESTACADO: <maior risco apontado por consenso, se houver>
@@ -92,26 +103,31 @@ RISCO INVISIVEL DESTACADO: <maior risco apontado por consenso, se houver>
 
 Operador responde com contexto completo, nao so com a opcao do Claude isolada.
 
-### 4. Se 2/2 ou 3/3 concordam numa opcao NAO mencionada por Claude
+### 4. Se o conselho concorda numa opcao NAO mencionada por Claude
 
-Adicione DESTAQUE na pergunta:
+Adicione DESTAQUE na pergunta (N normalmente 3; menos que isso so se algum provider falhou):
 
 ```
-[council:brainstorm] ATENCAO: conselho consenso N/N sugere opcao <X> que eu nao havia considerado.
+[council:brainstorm] ATENCAO: conselho consenso N/3 sugere opcao <X> que eu nao havia considerado.
 Quer que eu adicione como opcao na pergunta?
 ```
 
 ## Custo / latencia
 
-- 2 providers (DS + Llama): ~$0.002 por pergunta, +~2s latencia.
-- 3 providers (+ CC subagent): +~30s — desencorajar em brainstorm.
+Sempre 3 providers (DeepSeek + Llama + Cross-Claude) — decisao do operador, 2026-09-07: a
+terceira perspectiva vale o custo em toda decisao de brainstorm, nao so nas grandes.
 
-Brainstorm tipico tem 5-10 perguntas → custo total ~$0.01-0.02, latencia +20s spread.
+- DeepSeek + Llama: ~$0.002 por pergunta, +~2s latencia.
+- Cross-Claude: chamada direta via `providers/cross-claude.ps1` quando `ANTHROPIC_API_KEY`
+  esta presente (caso normal) — sem subagente. Adiciona ~$0.005 e a latencia de uma resposta
+  substantiva do Sonnet 5 (ordem de dezenas de segundos).
+
+Brainstorm tipico tem 5-10 perguntas → custo total ~$0.03-0.06, latencia com spread dominado
+pelo Cross-Claude por pergunta.
 
 ## Anti-padroes
 
 - ❌ Rodar conselho em brainstorm SEM autorizacao do operador — atrasa decisoes triviais.
-- ❌ Brainstorm com Cross-Claude em cada pergunta — 30s/pergunta vira insuportavel.
 - ❌ Ignorar opcao D sugerida pelo conselho — perde valor do enrich.
 - ❌ Conselho discorda do Claude, e Claude "convence" o operador da opcao original — vies de
   ancoragem. Apresente as 3 perspectivas honestamente.

@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.44.1`
+**Versão canônica em `huboperacional/percus-kit`:** `6.44.2`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,35 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.44.2 — 2026-09-07
+
+**Cross-Claude deixa de ser opcional em `/council:brainstorm` e condicional em `/spec-analyze`
+— decisão do operador. Os dois agora rodam com os 3 providers (DeepSeek + Llama + Cross-Claude)
+sempre, sem escala por "domínio sensível" nem opt-in por decisão grande.**
+
+Motivado por uma pergunta do operador sobre um spec que mostrava "conselho 2/2 (DeepSeek,
+Llama)" — investigado e confirmado que **não era falha**: `/council:brainstorm` já vinha
+documentado para omitir Cross-Claude por padrão (latência por pergunta), e `/spec-analyze`
+escalava pra 3 só quando a spec tocava domínio sensível ou com `--deep`. Ambos os mecanismos
+estavam corretos e bem documentados — só não eram o que o operador queria.
+
+**Mudança:** `council-brainstorm.md` e `spec-analyze.md` agora chamam o orchestrator com
+`-Providers "deepseek,groq-llama,cross-claude"` incondicionalmente. `--deep` continua aceito
+em `spec-analyze` por compatibilidade, mas não muda mais nada (3 já é o piso).
+
+**Achado no caminho:** a documentação em ambos os comandos descrevia o Cross-Claude como
+"subagent, +30s" — mas `providers/cross-claude.ps1` já substitui esse dispatch por **chamada
+direta** à API Anthropic quando `ANTHROPIC_API_KEY` está presente (o caso normal). O texto foi
+corrigido nos dois comandos: o dispatch por subagente/marker `__PERCUS_NEEDS_CROSS_CLAUDE__`
+é o **fallback** (só sem a chave), não o caminho principal. O número de latência (~dezenas de
+segundos) não foi alterado — é a ordem de grandeza real de uma resposta substantiva do Sonnet 5,
+via chamada direta ou via subagente; o que mudou foi qual caminho é o normal.
+
+Nenhum código executável foi tocado (`council-orchestrator.ps1`/`.sh` mantêm o próprio default
+de 2 providers, usado por outros chamadores que não passam `-Providers` explicitamente — fora
+do escopo deste pedido). Só os dois arquivos de comando, que já passavam `-Providers` de forma
+explícita.
 
 ## Changelog v6.44.1 — 2026-09-04
 
