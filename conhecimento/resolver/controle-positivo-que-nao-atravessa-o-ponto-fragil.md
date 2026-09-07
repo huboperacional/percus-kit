@@ -33,6 +33,18 @@ Com aspas simples o `rg` recebe `R\$ ?[0-9]`, com `$` literal, e acha **10** oco
 
 **Como reconhecer na hora.** Pergunte do controle: *"se o defeito que eu temo existisse, este controle falharia?"* Se a resposta é não, ele não é controle — é decoração cara, e pior que nenhum, porque **entrega a sensação de rigor sem o rigor** e encerra a investigação.
 
+🔑 **O ponto frágil nem sempre é a SINTAXE do padrão. Três variantes medidas no mesmo dia:**
+
+| O que o controle validou | O que ficou de fora | Como apareceu |
+|---|---|---|
+| que o `rg` roda e o arquivo é legível | o `\$` atravessando o shell | `"R\$ ?[0-9]"` em aspas duplas: busca impossível, `exit 1` lido como ausência |
+| que o padrão casa **em outro arquivo** | se o padrão casa **no lugar certo** | `rg RegistrarEvento registrar_titulo.py` → vazio, com 3 ocorrências em `aprovar_titulo.py` de controle. Conclusão: *"criação não grava evento"*. **Falso** — quem emite é a **rota**, não o caso de uso |
+| que o comando roda | se o **argumento** chegou inteiro | `rg -rn`, onde `-r` é *replacement* e não *recursivo*: o padrão vira substituição e o resultado não significa nada |
+
+A segunda linha é a mais traiçoeira porque o controle **passa com folga** e valida a dimensão errada: confirma que a *ferramenta* e o *padrão* funcionam, e nada diz sobre o **escopo**. Prova de ausência num arquivo só responde por aquele arquivo — se a pergunta é *"o sistema faz X?"*, o escopo do controle tem de ser o do **sistema**, não o do arquivo que você abriu primeiro. O que derrubou aquela conclusão não foi outro `grep`: foi a **tela** dizendo `"Título criado"` com todas as letras, num artefato de falha que ninguém tinha aberto.
+
+⚠️ **E cuidado com o código de saída, que é o terceiro jeito de o controle mentir:** `$?` depois de um **pipe** é do ÚLTIMO comando (o `head`, o `cut`), não do seu `rg`; e `exit 2` é **erro** (regex inválido, arquivo ausente, caminho convertido pelo MSYS), não "não achou". Rotular `exit=$?` como *"1 = não existe"* transforma falha de ferramenta em medição — aconteceu **cinco vezes num dia** para a mesma pessoa que escreveu este verbete.
+
 **Onde mais morde.** Qualquer instrumento cuja expressão passa por uma camada que a reescreve: `$` e `!` em aspas duplas; `\d` que o `grep` BRE não conhece; glob expandido pelo shell antes de chegar ao programa; regex em YAML de CI onde `\` é escape do YAML; padrão vindo de variável de ambiente. Em todos, um controle "simples" — sem metacaractere — passa alegremente enquanto o padrão real está morto.
 
 ⚠️ **Assimetria que vale lembrar:** o mesmo defeito de guarda por texto erra nos **dois** sentidos. Aqui a busca não pode casar nada e **some com o defeito** (falso negativo). No irmão [[trava-que-varre-texto-le-comentario-como-codigo]] a busca casa o comentário que **explica** o conserto e **inventa** defeito (falso positivo). O desempate é o mesmo nos dois: **ler as ocorrências, nunca contar.**

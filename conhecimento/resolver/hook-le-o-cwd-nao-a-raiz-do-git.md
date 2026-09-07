@@ -38,3 +38,46 @@ arquivo que o `wc -l` acabou de contar. Use caminho absoluto.
 projeto". Quando os dois divergem, a mensagem descreve a **política** (*"requer aprovação"*) e nunca a
 **localização** — e é a localização que está errada. Ao ver um gate recusar algo que você acabou de
 satisfazer, **confira de onde ele está lendo antes de refazer o que já fez**.
+
+**🔴 O cwd é só o FALLBACK: a fonte primária é o TEXTO DO COMANDO** (medido 2026-09-07, Empresa
+Milionária, `pre-commit-check.ps1` **6.44.3**). O título deste verbete conta metade da história.
+As linhas que decidem:
+
+```powershell
+$targetDir = ConvertTo-WindowsPath (Get-CommitTargetDir -cmd $command -fallback $cwd)   # :81
+$repoRoot  = & git -C "$targetDir" rev-parse --show-toplevel 2>$null                    # :82
+if ($LASTEXITCODE -ne 0 -or -not $repoRoot) { $repoRoot = $targetDir }                   # :83  ← calado
+$reviewDir = Join-Path $repoRoot ".deepseek/reviews"                                     # :85
+```
+
+O hook **lê o `cd` que está escrito no seu comando**. Se esse `cd` usa uma variável que o seu
+shell expandiria mas que o hook vê **literal** — `cd "$PERCUS_CANON_DIR"`, `cd "$REPO"` —, o
+`git -C` falha, e a **linha 83 converte a falha de parse num caminho literal, sem avisar**. O
+resultado é um bloqueio cujo diagnóstico nomeia um diretório que nunca existiu:
+
+```
+searched: $PERCUS_CANON_DIR\.deepseek\reviews
+```
+
+🔑 **O sinal que identifica em segundos:** se o `searched:` mostra um **`$NOME` não expandido**, o
+problema não é review ausente nem versão defasada — é o argumento do `cd` chegando cru ao hook.
+**Correção: caminho absoluto literal no comando** (`Set-Location "D:\...\repo"`), nunca a variável.
+Medido nas duas direções no mesmo dia: a sessão que usou `$env:PERCUS_CANON_DIR` foi bloqueada;
+a que usou o caminho literal commitou sem obstáculo.
+
+⚠️ **E a lição de método, que custou mais que o bug:** a causa que circulou primeiro foi
+*"o plugin subiu para 6.44.3 e os hooks continuam em 6.44.1"* — plausível, herdada num prompt de
+retomada, e **falsa**. Um `rg` de dez segundos derrubou: `PERCUS_CANON_DIR` aparece **zero** vezes
+no `pre-commit-check.ps1` (controle positivo: `reviewDir` dá **9** no mesmo arquivo). Enquanto a
+hipótese da versão ficou de pé, o conserto certo nem foi tentado. **"Causa provável" herdada é
+hipótese, não achado — mesmo vindo no prompt de retomada, mesmo plausível, e ainda mais quando é
+plausível.** Ver `relato-de-subagente-pode-ter-justificativa-inventada`.
+
+**Variante mais enganosa (2026-08-31, Empresa Milionária):** o cwd errado não precisa achar "nada" —
+pode achar um `.percus/acao-externa-autorizada.json` **de verdade, só que velho e de outro assunto**
+(subpasta com resquício de uma sessão de dias atrás). O guard então recusa por conteúdo — "ação
+externa requer aprovação" — e não por ausência, o que é mais enganoso ainda: a hipótese óbvia
+("a autorização que acabei de gravar sumiu — outra sessão sobrescreveu?", ver
+`autorizacao-r20-e-arquivo-unico-compartilhado` na memória do projeto) está bem mais à mão do que
+"tem um SEGUNDO `.percus/` num lugar que eu nem sabia que existia". `find . -name acao-externa-autorizada.json`
+a partir da raiz do repo desambigua os dois cenários num passo.
