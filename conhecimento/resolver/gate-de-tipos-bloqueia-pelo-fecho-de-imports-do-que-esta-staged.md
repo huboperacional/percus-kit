@@ -56,3 +56,24 @@ exato** — lá o gate vê de MENOS (índice vazio, análise não roda, verde fa
 Vale ler os dois juntos: as duas falhas nascem da mesma escolha de coletar por índice.
 [[debito-de-linter-medido-de-um-ponto-de-entrada-so-e-piso]] descreve a outra face do "segue
 imports": lá o fecho faz o baseline ser **piso**; aqui faz o gate ser **teto** que ninguém alcança.
+
+**Atualização — o hook em si foi corrigido (canon v6.44.4, 2026-09-09):** as duas causas listadas
+acima deixaram de exigir workaround. `types-check-pre-commit.ps1` passou a rodar `mypy` com
+`--follow-imports=silent` (mypy só type-checa os arquivos passados, para de seguir o fecho
+transitivo de import) **e** a filtrar a saída por linha realmente alterada — um novo helper
+`Get-PercusChangedLines` (`hooks/_helpers.ps1`) faz `git diff --cached --unified=0`, parseia os
+hunks (`@@ -a,b +c,d @@`) num `HashSet[int]` de linhas adicionadas/mudadas por arquivo, e o
+parsing de erro do mypy (regex gulosa `'^(.+):(\d+): error:'`, path normalizado `/`→`\`) só bloqueia
+o commit se a linha do erro está nesse conjunto. Resultado: erro em arquivo importado mas não
+staged nunca aparece; erro em LINHA não tocada do próprio arquivo staged (o "arquivo legado
+inteiro") também para de bloquear. As duas limitações residuais (staged vs. working-tree podem
+divergir; um erro pode nascer de mudança em OUTRA linha do mesmo arquivo mas ser reportado numa
+linha não tocada) ficaram documentadas como comentário no próprio hook, não resolvidas — casos
+raros o bastante pra não valer o custo de resolver agora.
+
+**Isso NÃO substitui o "como medir antes de decidir" acima** — em projeto rodando canon anterior a
+6.44.4 (ou com o hook local desatualizado) o sintoma original ainda se aplica. Ver
+[[plugin-cache-nao-recebe-fix]] pra esse desalinhamento entre cópia de trabalho e o que roda de
+fato: aqui havia o agravante de que o `.cmd` do hook redireciona pra `%PERCUS_CANON_DIR%` quando o
+arquivo existe lá, então o fix precisou ser aplicado nas DUAS cópias (cache do plugin e canon) pra
+valer.
