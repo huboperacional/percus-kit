@@ -111,6 +111,49 @@ function Get-PercusStagedContent {
     }
 }
 
+function Get-PercusChangedLines {
+    <#
+    .SYNOPSIS
+        Numeros de linha ADICIONADOS/MODIFICADOS (lado NOVO/staged) de um arquivo.
+    .DESCRIPTION
+        Achado real (Familia Milionaria, 2026-09-08): um gate de tipo/lint que roda
+        sobre o ARQUIVO staged inteiro (mypy --strict, tsc) reporta TODA linha do
+        arquivo -- inclusive debito legado que o commit nem tocou. Num arquivo de
+        anos sem type-check (comum neste canon: "tipos encorajados", nao
+        obrigatorios desde sempre), isso bloqueia qualquer commit que toque o
+        arquivo, pra sempre, por erro que a mudanca nao introduziu. A trava certa
+        e "nao introduza erro NOVO", nao "o arquivo inteiro tem de estar limpo" --
+        mesma filosofia do R11 (revisao do DIFF, nunca do arquivo inteiro).
+    .PARAMETER ProjectRoot
+        Raiz do projeto.
+    .PARAMETER RelPath
+        Path do arquivo, relativo a ProjectRoot, com '/' (formato de
+        `git diff --name-only`).
+    .OUTPUTS
+        HashSet[int] com os numeros de linha (no arquivo NOVO) que o diff
+        adiciona ou modifica. Vazio se o arquivo for novo por inteiro tratamos
+        via hunk normal (`+` conta todas as linhas do arquivo).
+    #>
+    param([string]$ProjectRoot, [string]$RelPath)
+    $linhas = New-Object 'System.Collections.Generic.HashSet[int]'
+    $diff = & git -C $ProjectRoot diff --cached --unified=0 -- $RelPath 2>$null
+    if (-not $diff) { return $linhas }
+    $atual = 0
+    foreach ($l in $diff) {
+        if ($l -match '^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@') {
+            $atual = [int]$matches[1]
+            continue
+        }
+        if ($l.StartsWith('+++') -or $l.StartsWith('---')) { continue }
+        if ($l.StartsWith('+')) {
+            [void]$linhas.Add($atual)
+            $atual++
+        }
+        # linha removida ('-'): nao existe no lado NOVO, nao avanca $atual.
+    }
+    return $linhas
+}
+
 function Write-PercusBlock {
     <#
     .SYNOPSIS

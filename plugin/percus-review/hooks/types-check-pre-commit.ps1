@@ -67,13 +67,71 @@ try {
             $pyExisting = @($pyGrouped.Groups[$venvDir] | Where-Object { Test-Path (Join-Path $projectRoot $_) })
             if ($pyExisting.Count -eq 0) { continue }
 
+            # Linhas REALMENTE adicionadas/mudadas por arquivo (ver
+            # Get-PercusChangedLines): a trava é sobre o DIFF, não sobre o arquivo
+            # staged inteiro -- legado sem type-check não pode bloquear um commit
+            # que nem tocou a linha do erro. Chave normalizada com '\' pra bater
+            # com o separador que mypy usa no Windows.
+            #
+            # ⚠️ `Get-PercusChangedLines` lê `git diff --cached` (staged), mas o
+            # mypy abaixo roda sobre o ARQUIVO NO DISCO (working tree). Se houver
+            # mudança NÃO staged no mesmo arquivo além do que foi indexado, os
+            # números de linha podem divergir e um erro novo staged pode cair
+            # fora do filtro por engano (achado do R11/DeepSeek). Mitigação
+            # aceita por agora: o fluxo normal desta sessão sempre stagea antes
+            # de checar, então a divergência é rara — documentado, não
+            # resolvido; resolver de verdade exigiria rodar o mypy contra o
+            # conteúdo do ÍNDICE (`git show :arquivo` em diretório temporário
+            # espelhando a árvore, pra imports relativos resolverem).
+            #
+            # ⚠️ Limitação aceita, não resolvida (achado do R11/DeepSeek): o
+            # filtro por linha só vê o erro cujo `.py:linha:` cai numa linha
+            # ADICIONADA/MODIFICADA. Um erro real causado pela mudança mas que
+            # aparece numa linha NÃO tocada do MESMO arquivo (ex.: mudar a
+            # assinatura de uma função derruba tipagem num call-site antigo,
+            # sem tocá-lo) passa em silêncio. Resolver de verdade exigiria
+            # comparar contra o mypy rodado no HEAD anterior (baseline) e
+            # bloquear só o que é NOVO na comparação -- mais caro (2 rodadas de
+            # mypy) e fora do escopo desta correção, que já fecha o buraco
+            # maior (758 erros do repo inteiro reportados por um diff de 6
+            # arquivos). Prefira o veredito de `pytest`/review humana pra essa
+            # classe de regressão até este ponto ser endereçado.
+            $changedByFile = @{}
+            foreach ($f in $pyExisting) {
+                $changedByFile[$f.Replace('/', '\')] = Get-PercusChangedLines -ProjectRoot $projectRoot -RelPath $f
+            }
+
             Push-Location $projectRoot
             try {
-                $mypyOut = & $mypyCmd --strict --no-error-summary --show-error-codes @pyExisting 2>&1
+                # --follow-imports=silent: sem isto o mypy segue import e reporta
+                # QUALQUER módulo do grafo de dependência (achado real: 758 erros
+                # espalhados pelo repo inteiro a partir de meia dúzia de arquivos
+                # staged) -- o gate vira impossível de satisfazer e nem é o que a
+                # mensagem "erros em arquivos staged" promete.
+                $mypyOut = & $mypyCmd --strict --follow-imports=silent --no-error-summary --show-error-codes @pyExisting 2>&1
                 if ($LASTEXITCODE -ne 0) {
-                    $take = 10 - $errors.Count
-                    $errLines = @($mypyOut | Where-Object { $_ -match ': error:' } | Select-Object -First $take)
-                    foreach ($l in $errLines) { $errors += "mypy :: $l" }
+                    foreach ($l in ($mypyOut | Where-Object { $_ -match ': error:' })) {
+                        if ($errors.Count -ge 10) { break }
+                        # `.+` GANANCIOSO, não `.+?` (achado do R11/DeepSeek): um
+                        # path absoluto com drive (`C:\proj\file.py:42: error:`)
+                        # com quantificador PREGUIÇOSO ainda funciona por
+                        # backtracking na prática, mas depender disso é frágil —
+                        # ganancioso captura até o ÚLTIMO `:num:`, que é sempre o
+                        # separador real de linha, goste o path do formato que for.
+                        if ($l -match '^(.+):(\d+): error:') {
+                            # Normaliza pro MESMO separador da chave acima --
+                            # achado do R11/DeepSeek: sem isto, um mypy que
+                            # devolvesse path com '/' faria TODO erro cair fora
+                            # do filtro em silêncio (gate verde por engano, o
+                            # pior tipo de falha pra um guard-rail).
+                            $ef = $matches[1].Replace('/', '\')
+                            $eln = [int]$matches[2]
+                            $set = $changedByFile[$ef]
+                            if ($set -and $set.Contains($eln)) {
+                                $errors += "mypy :: $l"
+                            }
+                        }
+                    }
                 }
             } finally { Pop-Location }
         }

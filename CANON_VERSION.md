@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.44.3`
+**Versão canônica em `huboperacional/percus-kit`:** `6.44.4`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,37 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.44.4 — 2026-09-08
+
+**`types-check` (R5) para de reportar o grafo de import inteiro e o arquivo legado inteiro —
+achado real na Familia Milionária: mypy --strict, mesmo recebendo só os arquivos STAGED como
+argumento, segue import por padrão e reporta erro em QUALQUER módulo do grafo de dependência.
+6 arquivos staged levaram a **758 erros** espalhados pelo repo inteiro, nenhum relacionado ao
+diff em questão — o gate nunca tinha sido exercitado de verdade nesse projeto porque `mypy` só
+ficou disponível globalmente naquela máquina havia pouco.**
+
+Dois fixes no par `.ps1` (Windows — o par `.sh`/Unix tem a mesma causa raiz e não foi tocado,
+fora do escopo desta versão):
+
+- `--follow-imports=silent` no mypy: erros só nos arquivos passados como argumento, nunca no
+  que eles importam.
+- `Get-PercusChangedLines` (`_helpers.ps1`) + filtro por linha em `types-check-pre-commit.ps1`:
+  um erro só conta se a linha dele for uma das ADICIONADAS/MODIFICADAS pelo diff cached daquele
+  arquivo — mesma filosofia do R11 (revisa o DIFF, nunca o arquivo inteiro). Sem isto, um
+  arquivo com décadas de débito de tipo nunca antes checado bloquearia qualquer commit que o
+  tocasse, para sempre, por erro que a mudança não introduziu.
+
+R11 (DeepSeek, várias rodadas) endureceu a implementação: separador de path normalizado nos
+DOIS lados antes do lookup (path do erro E a chave do dicionário — sem isso, um erro cai fora
+do filtro em silêncio, o pior tipo de falha pra um guard-rail), regex GANANCIOSO na extração
+do path (não preguiçoso, pra sobreviver a path absoluto com drive letter). Dois limites
+aceitos e documentados no próprio código, não resolvidos: (1) `Get-PercusChangedLines` lê o
+ÍNDICE (staged), mas o mypy roda sobre o arquivo no disco — diverge se houver mudança não
+staged no mesmo arquivo; (2) o filtro por linha não pega erro que aparece numa linha NÃO
+tocada mas foi causado pela mudança (ex.: mudar assinatura de função derruba tipagem num
+call-site antigo) — resolver isso de verdade exige mypy contra o HEAD anterior como baseline,
+mais caro e fora do escopo desta correção.
 
 ## Changelog v6.44.3 — 2026-09-07
 
