@@ -4,6 +4,7 @@
 > Para achar por CLASSE de sintoma, prefira:
 > `grep -l "tags:.*<termo>" conhecimento/resolver/*.md`
 
+- [401 de API externa pode ser PLACEHOLDER não expandido virando Bearer — e `${VAR-COM-HÍFEN}` nunca expande](401-de-api-externa-pode-ser-placeholder-nao-expandido.md)
 - [`401` num wrapper que herda ambiente NÃO prova nada sobre a chave — teste a credencial direto antes de reemitir](401-em-wrapper-que-herda-env-nao-prova-nada-sobre-a-chave.md)
 - [`401` com chave IDÊNTICA entre `.env` e variável de ambiente não é o padrão de env-var-velha — pode ser a chave morta de verdade](401-identico-nao-e-env-stale-pode-ser-chave-morta.md)
 - [404 "por design" transforma erro de tenancy em bug invisível](404-por-design-esconde-tenancy.md)
@@ -52,6 +53,7 @@
 - [Auditar SPA em produção de fora: bata na ROTA INTERNA, nunca em `/`](auditar-spa-rota-interna.md)
 - [Auditoria cross-repo que lê o CHECKOUT LOCAL vira evidência circular](auditoria-cross-repo-working-tree.md)
 - [Auditoria de conta de anuncios: validar a PROPRIA proposta nao acha erro de ausencia](auditoria-validar-propria-proposta-nao-acha-ausencia.md)
+- [Ausência de medição envenenando número medido](ausencia-de-medicao-envenena-numero-medido.md)
 - [Ausência numa tabela só é prova se o PRODUTOR escreve nela — abra o produtor, não o consumidor](ausencia-numa-tabela-so-e-prova-se-o-produtor-escreve-nela.md)
 - [Ausência por design não é falha — e o teste sintético não distingue as duas](ausencia-por-design-vs-falha.md)
 - [Autenticou no provedor central, e não existe no produto](autenticou-mas-nao-existe-aqui.md)
@@ -262,6 +264,7 @@
 - [Filtro de busca com o nome de propriedade ERRADO devolve 200 com quase NADA, não 400 nem a base inteira](filtro-com-propriedade-errada-devolve-200-com-quase-nada.md)
 - [Filtro de tenant falta no branch EXPLICITO enquanto o implicito, no mesmo metodo, ja o tinha](filtro-de-tenant-falta-no-branch-explicito.md)
 - [Filtro `pytest -k <palavra>` não pega guarda de conjunto fechado quando o nome do arquivo não contém a palavra](filtro-k-de-teste-nao-pega-guarda-de-conjunto-fechado-em-arquivo-de-nome-nao-obvio.md)
+- [Filtro novo em tela de totais tem quatro deveres](filtro-novo-em-tela-de-totais-tem-quatro-deveres.md)
 - [Um fix commit que não re-roda a suíte de regressão enterra um RED sob "\[5-T\] local verde"](fix-commit-sem-re-rodar-suite.md)
 - [Fix commitado depois do teardown herda um verde que nunca teve](fix-depois-do-teardown-herda-o-verde.md)
 - [O fix vira o defeito seguinte: 3 CRITICALs em 5 rodadas, cada um filho da correção anterior](fix-vira-defeito-seguinte.md)
@@ -625,6 +628,7 @@
 - [Review que LÊ o diff acha uma fração do que review que EXECUTA o código acha — e a suíte verde não cobre a diferença](review-que-le-acha-menos-que-review-que-executa.md)
 - [Reviewer cross-provider (R11/conselho) acusa "migration ausente"/"campo morto" que JÁ existe — ele só vê o diff staged](reviewer-so-ve-diff-staged.md)
 - [Review volta vazia parecendo limpa: o revisor ABORTOU por causa de um binário no diff](revisor-aborta-com-binario.md)
+- [REVOKE UPDATE numa filha bloqueia o RESTRICT check de DELETE no pai, mesmo sem linha nenhuma referenciando](revoke-update-bloqueia-restrict-check-do-postgres.md)
 - [RLS ligada, política escrita, e o app continua vendo tudo: faltou `FORCE`, ou o role é superusuário](rls-sem-force-dono-ignora-politica.md)
 - [`WITH CHECK` não existe para `DELETE` — política `FOR ALL` com `USING` mais largo que `WITH CHECK` abre exclusão, não só leitura](rls-with-check-nao-existe-para-delete.md)
 - [`rm -rf` de "limpeza" no dir de deploy do VPS apaga segredos reais nunca commitados](rm-rf-deploy-dir-apaga-env.md)
