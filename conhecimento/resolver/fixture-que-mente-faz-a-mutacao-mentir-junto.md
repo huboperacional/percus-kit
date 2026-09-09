@@ -37,3 +37,41 @@ pegou foi a mutação. E a mutação só não pegou o caso `city`/`uf` porque a 
 duas.
 
 Ver [[golden-de-regressao-que-guarda-caminho-morto]].
+
+---
+
+### Variante MAIS PERIGOSA: o fake que **COMPENSA** o defeito (tiatendo, 06/09)
+
+Nas ocorrências acima a fixture **mente** sobre o dado. Nesta, ela **supre o que o código deveria
+fazer** — e aí não há texto errado em lugar nenhum: a prova em si é oca, e passa em verde para
+sempre. Duas sessões acharam a mesma forma no mesmo dia, com uma hora de diferença, em fakes
+escritos independentemente:
+
+- **Fake aplicando o predicado por conta própria.** O teste guardava o SQL
+  `WHERE id > $2`, e o `_fetchFalso` filtrava com `r["id"] > afterId` **fixo em Python**, ignorando
+  a query capturada. Mutar o SQL para `id >= $2` não mudava o resultado: só o `assert "id > $2" in
+  query` matava o mutante, enquanto o comentário ao lado anunciava a asserção de comportamento como
+  prova do predicado. **Duas provas prometidas, uma entregue.**
+- **Fake normalizando a entrada por conta própria.** O corpus falso aplicava `afterId or 0`
+  sozinho, então mutar o `or 0` do código de produção **sobrevivia a tudo**. E o alvo não era
+  cosmético: `closeEpisode` passa `None` exatamente quando a conversa ainda **não tem episódio**, e
+  em SQL `id > NULL` não é falso — é NULL, zero linhas. Sem o `or 0`, **nenhuma conversa ganharia
+  jamais o primeiro episódio**, sem erro e sem log.
+
+🔑 **Como procurar, e é uma pergunta só:** para cada operação que o CÓDIGO faz (filtrar, ordenar,
+normalizar, defaultar), pergunte *o meu fake faz essa mesma operação por conta própria?* Se faz, ele
+**não pode** provar aquela operação — no máximo prova o texto dela. O fake tem que **honrar a
+entrada** (ler a query capturada, respeitar o parâmetro recebido) em vez de reimplementar a regra.
+
+🪤 **O sinal de alerta barato:** um fake que honra UMA dimensão e não a outra. No caso medido, o
+mesmo `_fetchFalso` já honrava a ordenação (`reverse=` lido da query) e **não** honrava o predicado
+— a inconsistência estava visível o tempo todo e ninguém a leu como defeito.
+
+**Conserto aplicado:** o fake passou a derivar o operador da query (`operator.ge` quando
+`id >= $2` aparece, senão `gt`); a mutação que antes sobrevivia passou a falhar por
+**comportamento** (`[25,26,…] != [26,…]`), não mais só por texto. Do outro lado, o alvo do `or 0`
+entrou no runner de mutação contra Postgres real (7/7 → 8/8) e ganhou teste passando `None`.
+
+**Corolário que se soma ao de cima:** o produtor testa a fixture, mas **quem denuncia o fake que
+compensa é a mutação do alvo que o fake supre** — e ela só existe se alguém listar aquele alvo.
+Alvo não listado é buraco que nenhuma das três camadas vê.

@@ -48,6 +48,23 @@ original e o script o marcou **PODRE** em vez de contar como morto — que é o 
 e é o que separa `6/6 mortos` real de falso verde. Ver
 [#alvo-de-mutacao-pode-nascer-podre].
 
+⚠️ **CONTRA-CASO MEDIDO (tiatendo, N23/`074`, 2026-08-31) — a heurística acima foi aplicada e
+estava ERRADA, e o custo foi um defeito visível pro cliente.** Dois alvos sobreviveram, eu li
+"código morto" e removi três guardas de um ramo (`reconfirm`, `composto is None`, `not
+_matchPaymentMethod`), **deixando os comentários afirmando que elas existiam**. A passada seguinte
+de review mediu o caso que faltava: a intent de negação era ancorada **só à esquerda**
+(`^(nao|cancela|esquece|deixa)\b`), então `"cancela"` passou a receber *"Sem problema, como você
+vai pagar?"* — o bot respondendo forma de pagamento a quem pediu **cancelamento**.
+
+**O que separa os dois desfechos, e não é o número de sobrevivências:** *construa a entrada que
+distingue os dois ramos e RODE*. Se ela existe e é alcançável, o desfecho é **teste novo**; só
+depois de falhar em construí-la é que "código morto" é a leitura. No N33 a entrada não existia
+(a condição interna era logicamente inalcançável); no N23 ela existia e ninguém tinha escrito.
+
+🚩 **E o assert que faltava era sobre a FALA.** O mutante sobrevivia porque os asserts olhavam
+`add == 0` e `intent == 0` — ambos **já verdadeiros antes da frente**. Guarda cujo efeito é só a
+RESPOSTA precisa de assert na resposta; senão o teste é verde por construção.
+
 **Ref:** tiatendo, N33, 2026-08-22. Commit `9048175`. Irmãos:
-[#alvo-de-mutacao-pode-nascer-podre], [#mutacao-so-mata-o-que-o-call-site-observa],
+[#alvo-de-mutacao-pode-nascer-podre], [#guarda-que-vira-ultimo-recurso-abre-o-que-vinha-depois],
 [#guarda-redundante-tesoura-ou-morta]. R23.

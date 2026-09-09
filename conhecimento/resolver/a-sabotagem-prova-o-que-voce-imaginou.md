@@ -83,3 +83,30 @@ na sequência.
 
 Relacionado: [[comentario-sobre-a-regra-desliga-a-regra]], [[o-screenshot-pega-o-que-a-guarda-nao-ve]],
 [[assert-sobre-conteiner-maior-que-o-alvo-passa-vazio]].
+
+---
+
+### Corolário de 2026-09-03: um `except Exception` genérico esconde a guarda específica que ele embrulha
+
+**Caso medido:** um leitor de arquivo tinha `if not conteudo.strip(): raise ErroNomeado("arquivo
+vazio")` — guarda explícita, com teste dedicado (`pytest.raises(ErroNomeado)`). Sabotagem
+(`if False:` no lugar da condição): **os 8 testes da suíte continuaram todos verdes.**
+
+A causa: a MESMA função tinha um `except Exception as e: raise ErroNomeado(...)` mais abaixo,
+envolvendo a chamada à biblioteca de parsing — e a biblioteca já detectava arquivo vazio sozinha,
+lançando sua própria exceção. O `except` genérico embrulhava ela também. A guarda explícita não
+estava fazendo nada de errado (a mensagem em português era melhor que a da biblioteca), mas o
+teste só provava `pytest.raises(ErroNomeado)` — o TIPO da exceção —, e o tipo era o mesmo com ou
+sem a guarda específica, porque o catch-all genérico produz a mesma classe de erro por um motivo
+totalmente diferente.
+
+**A regra:** quando uma guarda específica convive com um `except` genérico no mesmo caminho,
+`pytest.raises(TipoDoErro)` sozinho não discrimina "minha guarda pegou" de "o catch-all pegou
+por baixo". É preciso afirmar sobre o **conteúdo** do erro (`match="arquivo vazio"`, ou checar
+`str(erro)`) — só a mensagem específica sobrevive à sabotagem da guarda específica e morre com
+ela.
+
+**Sinal de alerta, generalizável:** toda vez que uma função tem uma guarda `if condição_estreita:
+raise X` seguida, mais abaixo, de um `except Exception: raise X` (mesmo tipo de exceção,
+propósito mais amplo), a guarda estreita é candidata a nunca ser exercida de fato pelos testes —
+sabote-a especificamente, não confie no verde do tipo de exceção.
