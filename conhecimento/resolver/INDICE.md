@@ -800,6 +800,7 @@
 - [Sem `relationship()`, o unit of work NÃO ordena INSERTs entre tabelas pela FK — flush explícito do pai antes do filho](unit-of-work-sem-relationship-nao-ordena-insert-por-fk.md)
 - [Última página do path terminar em dígito é assinatura estrutural de "página de detalhe de catálogo" — genérico, não depende do CMS](url-trailing-digit-catalog-detail-page.md)
 - [`valueInputOption=USER_ENTERED` transforma qualquer formulário público num sink de injeção de fórmula no Google Sheets](user-entered-no-sheets-e-sink-de-injecao-de-formula.md)
+- [`useSortable` sem `SortableContext` roda liso — mas a LINHA vira droppable, e o handler que lia `over.id` como enum de zona classifica errado](usesortable-sem-context-linha-vira-droppable-fantasma.md)
 - [UUID sentinela só com dígitos vira inteiro na volta, e quebra o `TypeDecorator`](uuid-sentinela-so-digitos-vira-inteiro-no-sqlite.md)
 - [Log de diagnóstico "no ar" que nunca emitiu: sob uvicorn o root logger é mudo](uvicorn-root-logger-mudo.md)
 - [Validador que confirma a STRING não confirma o SISTEMA](validador-confirma-string-nao-o-sistema.md)
