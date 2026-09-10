@@ -339,6 +339,7 @@
 - [Guarda de ação externa barra o COMMIT porque a MENSAGEM cita a ação](guarda-casa-a-mensagem-nao-a-acao.md)
 - [Guarda que parseia código-fonte com regex lê o FORMATO, não o código — e a formatação nova cega a guarda](guarda-com-parser-de-fonte-le-o-formato-nao-o-codigo.md)
 - [Guarda no ponto da ESCRITA não protege fluxo de DOIS turnos](guarda-de-escrita-nao-cobre-dois-turnos.md)
+- [Guarda de escrita por link: POSSE decide 404, ESTADO decide 409 — juntar as duas troca o status](guarda-de-escrita-por-link-posse-404-estado-409.md)
 - [Guarda escrita a partir da forma que VOCÊ acabou de usar nasce cega à forma majoritária](guarda-de-link-escrita-da-forma-que-voce-acabou-de-usar.md)
 - [Guarda de ordem sobre um PAR fica verde quando o defeito é um terceiro participante](guarda-de-ordem-sobre-par-nao-ve-o-terceiro.md)
 - [Guarda de "system path protegido" tokeniza por espaço e bloqueia por um FRAGMENTO do comando, não o alvo real](guarda-de-path-protegido-tokeniza-por-espaco-e-corta-o-alvo.md)
