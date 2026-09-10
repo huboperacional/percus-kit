@@ -178,6 +178,7 @@
 - [Limpeza de fixture sob RLS não apaga nada — e o erro estoura no INSERT seguinte, culpando o lugar errado](delete-sob-rls-nao-apaga-erro-no-insert.md)
 - [Dependência que passa em produção e quebra no dev — o inverso do "SQLite mente", e ninguém testa nessa direção](dependencia-que-passa-em-producao-e-quebra-no-dev.md)
 - [Deploy delta com base defasada REVERTE feature entregue — e o smoke de feature não pega](deploy-delta-base-defasada.md)
+- [Deploy do HEAD destrava um bloqueio "precisa de deploy" de carona, sem avisar](deploy-do-head-destrava-bloqueio-de-carona-sem-avisar.md)
 - [Deploy de sessão paralela sobrescreve o seu sem aviso](deploy-paralelo-sobrescreve-sem-aviso.md)
 - [Deploy: `docker build ... | tail && service update` mascara build falho → outage](deploy-pipe-mascara-exit.md)
 - [Deploy `--quick` pula o SCP INTEIRO, não só "arquivo novo" — código antigo compila e roda sem erro](deploy-quick-pula-scp-inteiro-nao-so-arquivo-novo.md)
