@@ -598,6 +598,7 @@
 - [Commit passa sem review R11 e ninguém percebe: hook novo não registrado nesta máquina](r11-hook-nao-registrado-maquina.md)
 - [Review R11 escopada ao WORKING TREE INTEIRO mistura o diff de 2 subagentes rodando em paralelo no mesmo worktree](r11-mistura-diff-subagentes-paralelos.md)
 - [R20: os padrões NÃO-ancorados (`git push`, `gh pr comment`, `slack-cli`, `mailto:`) casam prosa que NEGA a ação, não só quem a executa](r20-padroes-nao-ancorados-casam-prosa-que-nega-a-acao.md)
+- [Popover/Dropdown Radix portalado escapa de override CSS scoped a um ancestral](radix-portal-escapa-override-css-de-ancestral.md)
 - [`pytest.raises(X)` sem asserir o MOTIVO passa pelo erro errado](raises-sem-motivo-passa-pelo-erro-errado.md)
 - [O ramo que CEDE esconde qual irmão sequestra a mensagem](ramo-que-cede-esconde-qual-irmao-sequestra.md)
 - [`ReactNode` (JSX) numa dependência de `useEffect` arrisca loop de render](reactnode-em-dependencia-de-effect-arrisca-loop-de-render.md)
