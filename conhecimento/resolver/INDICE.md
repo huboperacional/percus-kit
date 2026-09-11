@@ -492,6 +492,7 @@
 - [n8n workflow já ATIVO não recarrega código de node só com update via API — precisa desativar→reativar (vale pra QUALQUER trigger, não só webhook)](n8n-webhook-ativo-nao-recarrega-sem-reativar.md)
 - [Pesquisa externa: "não achei" ≠ "não existe", e quase nunca é o layout mobile](nao-achei-nao-e-nao-existe-em-pesquisa-web.md)
 - [Não confie em invariante de outro módulo sem CHECK constraint — conte pela condição real, não pelo proxy](nao-confie-em-invariante-de-outro-modulo-sem-check-constraint.md)
+- [`navigator.clipboard` virou getter-only no jsdom 25 — `Object.assign`/atribuição direta quebra o mock](navigator-clipboard-getter-only-jsdom25.md)
 - [Next `next build` quebra ("Failed to collect page data") com client instanciado no top-level](next-build-eager-client.md)
 - [Canonical absoluto no layout do Next desindexa TODAS as rotas filhas](next-canonical-layout-herdado.md)
 - [`res.cookies.set()` do Next indexa por NOME — emitir o mesmo cookie em vários `path` num laço sobrescreve e sai UM `Set-Cookie`; use `headers.append`](next-cookies-set-indexa-por-nome-varios-paths-exigem-headers-append.md)
