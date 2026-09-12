@@ -58,6 +58,7 @@
 - [Ausência por design não é falha — e o teste sintético não distingue as duas](ausencia-por-design-vs-falha.md)
 - [Autenticou no provedor central, e não existe no produto](autenticou-mas-nao-existe-aqui.md)
 - [Autorização R20 válida fica INVISÍVEL quando o cwd da sessão entra num subdiretório](autorizacao-r20-invisivel-quando-o-cwd-da-sessao-entra-em-subdiretorio.md)
+- [Autorização R20 sem `timestamp_unix` bloqueia em silêncio](autorizacao-r20-sem-timestamp-unix-bloqueia-em-silencio.md)
 - [Avançar cursor pelo "maior valor visto" numa página truncada sem ordenação explícita perde dado em silêncio](avancar-cursor-por-maior-valor-visto-sem-ordenacao-explicita-perde-dado-em-silencio.md)
 - [Aviso no topo NÃO neutraliza tabela acionável abaixo — corrigir recomendação errada é editar o número](aviso-no-topo-nao-neutraliza-tabela-acionavel-abaixo.md)
 - [Gate de 120s: o custo não era o `awk`, era um `basename` por arquivo](basename-por-arquivo-e-o-custo-real-do-loop-em-shell.md)
