@@ -58,6 +58,16 @@ depende de alguém lembrar já falhou.
   em toda spec com acento — ruído que faz desligar o hook. Mesmo cuidado do `crud-evidence-warn`.
 - 13 testes novos; manifesto passa a 15 hooks vivos (10 guarda / 5 observador).
 
+**Limite conhecido, registrado em vez de escondido — e a capacidade existe, só não é compartilhada.**
+A raiz do projeto sai do `cd` do comando (três formas cobertas). A forma `git -C <dir>` cai no `cwd`,
+e o hook checaria o repo errado em silêncio. O review apontou como divergência `.ps1`/`.sh`; ao
+conferir, o `Resolve-PercusProjectRoot` do `_helpers.ps1` tem **a mesma lacuna** — não é paridade
+quebrada, é buraco comum aos **8 hooks de comando** que usam o helper. Mas o `pre-commit-check`
+**resolve** essa forma, com lógica própria (Proposta F, v6.7.x) que nunca foi promovida ao helper —
+medido nesta sessão quando ele leu um `git -C` de dentro de um texto e apontou para lá. O conserto
+é portar a lógica da Proposta F para `Resolve-PercusProjectRoot`: cobre os oito de uma vez, e pede
+teste próprio. Fica na fila, declarado — não como cobertura que este hook não tem.
+
 **Contexto da auditoria que originou isto:** das 25 regras do canon, 9 tinham enforcement mecânico.
 Sete das restantes são de arquitetura (R14-R19, R21) e o R11 as cobre no review de código — não
 precisam de hook próprio. Sobram **6 comportamentais descobertas**: R10, R12, R13, R22, R24, R25 —
