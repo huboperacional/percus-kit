@@ -555,6 +555,7 @@
 - [`/percus-review:review` e `/spec-analyze` recusam invocação do agente via Skill tool — reservados pro operador](percus-review-recusa-skill-tool.md)
 - [Perguntar o que não se pode honrar é o mesmo defeito com outra roupa](perguntar-o-que-nao-se-pode-honrar.md)
 - [Perna do conselho volta 429 ou vazio — declarei "N de 3" sem re-disparar](perna-conselho-nao-e-perna-morta.md)
+- [Perna do conselho emite veredito sobre a spec que ela NÃO leu inteira — o orquestrador trunca e o log não registra quanto cada uma viu](perna-do-conselho-reprova-spec-que-nao-leu-inteira.md)
 - [Pester expande `<algo>` no nome do teste: um `<->` no título mata o bloco inteiro antes de rodar](pester-placeholder-no-nome-do-teste.md)
 - [`pg_dump` falha e `DELETE` é recusado num banco com `FORCE ROW LEVEL SECURITY`](pg-dump-falha-com-force-rls.md)
 - [Rodar testes que dropam tabelas contra Postgres efêmero isolado (sem Docker/PG local, nunca prod)](pg-efemero-testes-destrutivos.md)

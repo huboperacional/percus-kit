@@ -49,3 +49,23 @@ venv/
 # Node (caso projetos auxiliares apareçam aqui)
 node_modules/
 .pnpm-store/
+
+# Espelho do plugin percus-review para o Cline. Sao 24 arquivos, e eles NAO tem o mesmo estatuto:
+#
+#   23 sao copia byte-a-byte de plugin/percus-review/{commands,skills} -- medido em 2026-09-12,
+#   22 identicos e 1 (checkpoint.md) JA divergente em menos de 24h. Versionar esses seria a
+#   duplicacao sem dono que a R25 proibe, e reprovaria no teste de RF22 que a spec de enforcement
+#   esta criando. Se o Cline virar caminho oficial, a forma certa e um gerador
+#   (scripts/gerar-clinerules.ps1) mais um teste de paridade -- nao 23 copias congeladas.
+#
+#   1 -- rules/global.md -- NAO e copia de nada: e conteudo original, sem gemeo no repo. Ignorar
+#   a pasta inteira deixaria a UNICA copia dele fora de versionamento, que e o oposto do problema
+#   que esta regra resolve. Fica versionado pela excecao abaixo. (Achado do review cross-provider,
+#   que tambem corrigiu a contagem: 24 arquivos, nao 23.)
+# A forma abaixo e feia de proposito: `.clinerules/` seguido de `!...` NAO funciona -- git nao
+# desce em diretorio excluido, entao a excecao nunca e avaliada. Precisa excluir o CONTEUDO e
+# reabrir o caminho nivel a nivel. Verificado com `git check-ignore -v` nos dois sentidos.
+.clinerules/*
+!.clinerules/rules/
+.clinerules/rules/*
+!.clinerules/rules/global.md

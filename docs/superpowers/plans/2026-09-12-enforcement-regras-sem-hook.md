@@ -32,7 +32,7 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
 2. ~~**Hook `spec-analyze-check`**~~ — 6.47.0 ✅. Warn-only, três estados, paridade `.ps1`/`.sh`.
 3. **As comportamentais** — R4, R5, R6, R10, R12, R13, R22, R24, R25 (**9**, não 7: ver dívida
    abaixo). Spec escrita
-   (`specs/2026-09-12-enforcement-7-regras-comportamentais.md`): decide a **forma** de cada uma.
+   (`specs/2026-09-12-enforcement-regras-comportamentais.md`): decide a **forma** de cada uma.
 4. **Consolidação da cadeia de hooks** — spec escrita
    (`specs/2026-09-12-consolidacao-cadeia-de-hooks-design.md`). **Virou pré-requisito da 3** por
    medição, não por preferência. ← PRÓXIMO (implementar)
@@ -54,17 +54,32 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
 
 ### ✅ Tarefa 3 fechada (2026-09-12)
 
-Spec: `docs/superpowers/specs/2026-09-12-enforcement-7-regras-comportamentais.md`.
+Spec: `docs/superpowers/specs/2026-09-12-enforcement-regras-comportamentais.md`.
 Triagem por **shape do observável** (guarda de comando / guarda de caminho / observador de transcript
 / teste do canon). Resultados que mudam o plano:
 
 - **R12 e R25 não viram hook** — o observável delas é o canon, e o canon tem suíte: viram teste.
 - **R24 não vira gate** — a exceção legítima da própria regra é o caso mais comum; vira medidor.
-- **R13 racha**: só o trailer é mecânico, e está bloqueado por duas dívidas do wrapper.
+- **R13 racha**: só o trailer é mecânico, e está bloqueado por **três** dívidas do wrapper.
 - **CRITICAL do conselho:** R5 e R6 **não tinham hook** — `types-check` e `migration-check` citam
   numeração stale. A auditoria inteira foi feita por varredor de número citado (mede rótulo, não
   gate). Tabela dona corrigida 11/7/7 → **9/7/9**; verbete novo
   `conhecimento/resolver/auditoria-de-enforcement-por-numero-citado-conta-gate-que-nao-existe.md`.
+
+**Rodada 2 do `spec-analyze` (2026-09-12 18:02) — veredito `AJUSTAR`, sem CRITICAL.** Saiu de
+`BLOQUEADA`. Tratamento integral dos findings na §7 da spec. Três resultados mudam o plano:
+
+1. **A Proposta F (`git -C`) virou pré-requisito do medidor de R24**, não mais dívida paralela. A
+   cadência de deploy é métrica *por projeto*, e `Resolve-PercusProjectRoot` resolve raiz errada — o
+   que não degrada o número, inverte. Achado da perna Cross-Claude.
+2. **Terceira dívida do wrapper `deepseek-impl`:** o `ts` é gravado sem offset de fuso, e a
+   comparação de RF12a precisa dele. Sem conserto, o detector de trailer erra pelo tamanho do fuso
+   (4h aqui). Soma-se a `apply` (RF13) e raiz do projeto (RF14).
+3. **O conselho não cabe mais na spec.** O orquestrador truncou 9329 → ~8000 tokens e a perna Llama
+   tem teto próprio de 5000 — ela emitiu `BLOQUEADA` sobre um documento que **não leu inteiro**, e
+   o CRITICAL dela foi refutado por medição (0 blocos duplicados envolvendo a spec, de 1051 docs
+   varridos). Mitigação usada: dar à perna Cross-Claude o **caminho do arquivo**, não o texto.
+   Registrado como risco §6.9 da spec — é defeito do kit, não da spec.
 
 ### ⏳ Próximo passo imediato
 
@@ -81,7 +96,7 @@ abordagem do dispatcher. Com ele, **3 357 ms → 61 ms** e o custo marginal de u
 próprio tempo de execução — que é o que devolve a decisão das 7 para o mérito.
 
 **A decisão de *quais merecem* já está tomada**, em
-`specs/2026-09-12-enforcement-7-regras-comportamentais.md` (triagem por shape do observável: R12 e
+`specs/2026-09-12-enforcement-regras-comportamentais.md` (triagem por shape do observável: R12 e
 R25 viram teste de suíte; R22, R13, R4, R10 viram hook warn-only; R24 vira **medidor**, não gate). A
 tabela abaixo é a versão rascunho que originou aquela spec — mantida por registro histórico; **o que
 vale é a spec**.
@@ -101,15 +116,24 @@ vale é a spec**.
 - **`git -C <dir>` não resolve a raiz** em `Resolve-PercusProjectRoot` (`_helpers.ps1`) — buraco
   comum aos **8 hooks de comando**. O `pre-commit-check` resolve, com lógica própria (Proposta F,
   v6.7.x) que nunca foi promovida ao helper. Portar cobre os oito de uma vez; pede teste próprio.
+  ⚠️ **Deixou de ser só dívida:** virou **pré-requisito** do medidor de R24 (RF26b) — ver rodada 2.
+- **O wrapper `deepseek-impl` tem TRÊS dívidas**, todas pré-requisito do hook de trailer do R13:
+  não grava `apply` no log (RF13); grava em `(Get-Location)` em vez da raiz (RF14); e grava `ts`
+  **sem offset de fuso** (RF12a1), o que torna impossível a comparação com `%cI` do git.
+- **O `spec-analyze` trunca specs grandes** e o log não registra quanto cada perna viu. Uma perna
+  emitiu `BLOQUEADA` sobre documento incompleto nesta sessão. Conserto plausível: passar arquivo em
+  vez de texto quando o alvo é arquivo, **ou** marcar no log o tamanho visto por perna. Enquanto não
+  houver, a mitigação é dar à perna Cross-Claude o caminho do arquivo.
 - **`spec-analyze-check` é warn-only** por desenho. Promover a bloqueio é decisão separada, depois
   de medir quanto a frota reclama.
 - **`pre-commit-check` casa `git`…`commit` como texto** — barrou dois comandos de *teste* nesta
   sessão. Guarda conservadora funcionando; o falso positivo é o lado seguro.
-- **A spec das comportamentais está desatualizada na contagem.** O arquivo se chama
-  `...-enforcement-7-regras-comportamentais.md` e trata 7; a auditoria foi corrigida no mesmo dia
-  para **9/7/9** — R5 e R6 não tinham gate, os hooks que citam `(R5)`/`(R6)` cobram tipos e
-  migration (renumeração antiga). Falta acrescentar R5 e R6 à triagem daquela spec e renomear o
-  arquivo. Dono do número: `conhecimento/resolver/regra-declarada-automatica-sem-hook-e-decoracao.md`.
+- ~~**A spec das comportamentais está desatualizada na contagem.**~~ **Quitada (2026-09-12).** O
+  arquivo foi renomeado para `...-enforcement-regras-comportamentais.md` — **sem número**, que era a
+  fonte do defeito: contagem no título é uma segunda cópia do número que só o verbete dono deveria
+  ter. R5 e R6 entraram na triagem como descobertas (RF20a) e o que falta delas — **o shape de cada
+  uma** — está declarado em aberto na §6.8 da spec, não escondido. Dono do número:
+  `conhecimento/resolver/regra-declarada-automatica-sem-hook-e-decoracao.md`.
 - **Pacote B**: `AJUSTAR` com 10 findings (6 DeepSeek, 2 Llama, 2 Cross-Claude), incluindo uma
   afirmação minha no spec que citava `153 linhas` como prova de que um teto de `150` funciona.
 

@@ -1,14 +1,13 @@
 # Consolidação da cadeia de hooks — dispatcher de duas camadas — Design
 
 **Data:** 2026-09-12 · Brainstorm com o operador + conselho 3/3 · **Pré-requisito** da spec
-`docs/superpowers/specs/2026-09-12-enforcement-7-regras-comportamentais.md`, que decide a forma de
+`docs/superpowers/specs/2026-09-12-enforcement-regras-comportamentais.md`, que decide a forma de
 enforcement das regras comportamentais. Esta spec não redecide nenhuma delas — decide **quanto custa** adicioná-las.
 
-> **Contagem:** o nome daquele arquivo diz "7", mas a tabela de auditoria foi corrigida no mesmo
-> dia para **9** comportamentais (R5 e R6 saíram do balde "com enforcement": os hooks que se
-> autodeclaram `(R5)`/`(R6)` cobram outra coisa, resto de uma renumeração do canon). O número que
-> vale é o do dono: `conhecimento/resolver/regra-declarada-automatica-sem-hook-e-decoracao.md`.
-> Renomear/ajustar aquela spec é tarefa dela, declarada como dívida no plano.
+> **Contagem:** esta spec não carrega o número. O dono é
+> `conhecimento/resolver/regra-declarada-automatica-sem-hook-e-decoracao.md`, e a spec das
+> comportamentais foi renomeada justamente para tirar a contagem do título — que é onde ela
+> envelhecia.
 
 ## O que este documento decide
 
@@ -109,7 +108,7 @@ entrada, e isolar as cadeias reduz o raio de explosão, como o Cross-Claude apon
 ## Não-objetivos
 
 - **Redecidir a forma de enforcement das regras comportamentais.** Tem dono:
-  `2026-09-12-enforcement-7-regras-comportamentais.md`. Esta spec só remove a restrição de custo.
+  `2026-09-12-enforcement-regras-comportamentais.md`. Esta spec só remove a restrição de custo.
 - **Reescrever os hooks como funções de um módulo** (opção B do brainstorm). Converteria `exit` →
   `return` em 8 arquivos, quebraria os testes que invocam hook isolado e impediria depurar um hook
   sozinho. Ganho marginal sobre o dispatcher, custo alto. Descartada.
