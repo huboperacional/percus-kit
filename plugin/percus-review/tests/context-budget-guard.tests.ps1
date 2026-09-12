@@ -26,7 +26,8 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
             param(
                 [int]$Tokens,
                 [double]$HorasAtras = 0.5,
-                [int]$PaddingKB = 4
+                [int]$PaddingKB = 4,
+                [string]$Model = "claude-opus-5"
             )
             $dir = Join-Path ([IO.Path]::GetTempPath()) "ctxbudget-test-$(Get-Random)"
             New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -42,7 +43,7 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
             # a ultima chamada: a soma dos 3 campos e o contexto vivo
             $cacheRead = [int]($Tokens * 0.9)
             $inp = $Tokens - $cacheRead
-            [void]$sb.AppendLine('{"type":"assistant","timestamp":"' + $agora + '","message":{"role":"assistant","model":"claude-opus-5","usage":{"input_tokens":' + $inp + ',"cache_read_input_tokens":' + $cacheRead + ',"cache_creation_input_tokens":0,"output_tokens":12},"content":[{"type":"text","text":"ok"}]}}')
+            [void]$sb.AppendLine('{"type":"assistant","timestamp":"' + $agora + '","message":{"role":"assistant","model":"' + $Model + '","usage":{"input_tokens":' + $inp + ',"cache_read_input_tokens":' + $cacheRead + ',"cache_creation_input_tokens":0,"output_tokens":12},"content":[{"type":"text","text":"ok"}]}}')
             $enc = New-Object System.Text.UTF8Encoding($false)
             [System.IO.File]::WriteAllText($path, $sb.ToString(), $enc)
             return $path
@@ -96,7 +97,7 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
         }
     }
 
-    Context "acima do limiar de aviso (150k): fala com o agente E com o operador" {
+    Context "acima do limiar de aviso (150k): fala com o AGENTE; o operador so se pedir" {
         It "160k -> additionalContext dirigido ao agente, com a assinatura e o valor medido" {
             $t = New-Transcript -Tokens 160000
             $r = Invoke-Guard -Transcript $t
@@ -108,9 +109,21 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
             $r.Json.hookSpecificOutput.additionalContext | Should -Match 'checkpoint'
         }
 
-        It "160k -> systemMessage pro operador, com a assinatura do hook" {
+        # O operador ve o contexto no painel do proprio VSCode e dispara o checkpoint na mao
+        # (decisao dele, 2026-09-12). O aviso a ele era ruido duplicado; o aviso ao AGENTE nao e,
+        # porque o agente nao ve painel nenhum -- foi um agente que NAO SABIA que produziu a
+        # sessao de 610k que originou este hook.
+        It "160k -> NAO emite systemMessage por padrao (o operador tem o painel)" {
             $t = New-Transcript -Tokens 160000
             $r = Invoke-Guard -Transcript $t
+            $r.Json.hookSpecificOutput.additionalContext | Should -Not -BeNullOrEmpty
+            $r.Json.PSObject.Properties.Name | Should -Not -Contain 'systemMessage'
+        }
+
+        It "PERCUS_CTX_OPERADOR=1 devolve o aviso ao operador" {
+            $t = New-Transcript -Tokens 160000
+            $env:PERCUS_CTX_OPERADOR = "1"
+            try { $r = Invoke-Guard -Transcript $t } finally { Remove-Item Env:PERCUS_CTX_OPERADOR -ErrorAction SilentlyContinue }
             $r.Json.systemMessage | Should -Match '\[percus:hook context-budget-guard\]'
         }
 
@@ -206,6 +219,279 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
         }
     }
 
+    # O bug que estes testes fecham (medido 2026-09-12): os limiares 150k/180k eram absolutos e
+    # supunham janela de 200k. Numa sessao claude-opus-5[1m] (janela de 1M) o hook mandou RESET
+    # com 777k livres -- 18% de uso. Ele media certo e errava o DENOMINADOR. O conserto nao
+    # inventa numero: mantem 75%/90%, que reproduz 150k/180k exatos numa janela de 200k, e passa
+    # a descobrir a janela em vez de supo-la.
+    Context "janela do modelo: o denominador deixa de ser suposto" {
+        It "PERCUS_CTX_WINDOW=1000000 -> 160k fica em silencio (limiar vira 750k)" {
+            $t = New-Transcript -Tokens 160000
+            $env:PERCUS_CTX_WINDOW = "1000000"
+            try { $r = Invoke-Guard -Transcript $t } finally { Remove-Item Env:PERCUS_CTX_WINDOW -ErrorAction SilentlyContinue }
+            $r.Code | Should -Be 0
+            $r.Out  | Should -BeNullOrEmpty
+        }
+
+        It "PERCUS_CTX_WINDOW=1000000 -> 800k avisa (750k e 75% de 1M)" {
+            $t = New-Transcript -Tokens 800000
+            $env:PERCUS_CTX_WINDOW = "1000000"
+            try { $r = Invoke-Guard -Transcript $t } finally { Remove-Item Env:PERCUS_CTX_WINDOW -ErrorAction SilentlyContinue }
+            $r.Json.hookSpecificOutput.additionalContext | Should -Match '800k'
+        }
+
+        It "modelo com marcador [1m] no transcript -> 160k fica em silencio" {
+            $t = New-Transcript -Tokens 160000 -Model 'claude-opus-5[1m]'
+            $r = Invoke-Guard -Transcript $t
+            $r.Code | Should -Be 0
+            $r.Out  | Should -BeNullOrEmpty
+        }
+
+        It "sem marcador nenhum -> piso de 200k, comportamento de hoje preservado (160k avisa)" {
+            $t = New-Transcript -Tokens 160000 -Model 'claude-opus-4-7'
+            $r = Invoke-Guard -Transcript $t
+            $r.Json.hookSpecificOutput.additionalContext | Should -Match '160k'
+        }
+
+        # A perna que teria pego o caso de hoje SOZINHA, sem depender de o transcript trazer o
+        # marcador -- que e justamente o que nao consegui verificar que ele traz.
+        It "medicao falsifica a suposicao: 210k com piso de 200k nao e LIMITE DURO" {
+            $t = New-Transcript -Tokens 210000 -Model 'claude-opus-4-7'
+            $r = Invoke-Guard -Transcript $t
+            $r.Json.hookSpecificOutput.additionalContext | Should -Not -Match 'LIMITE DURO'
+        }
+
+        # Achado da 3a rodada do review: falsificar promovendo pra 1M era trocar uma suposicao
+        # invisivel por outra. Se a janela real fosse 400k o hook ficaria mudo do mesmo jeito.
+        It "falsificar NAO inventa 1M: declara a janela INDETERMINADA e diz que nao sabe" {
+            $t = New-Transcript -Tokens 210000 -Model 'claude-opus-4-7'
+            $r = Invoke-Guard -Transcript $t
+            $msg = $r.Json.hookSpecificOutput.additionalContext
+            $msg | Should -Match 'INDETERMINADA'
+            $msg | Should -Match 'nao sei quanto'
+            $msg | Should -Match 'PERCUS_CTX_WINDOW'
+            $msg | Should -Not -Match '1000k|~1000k' -Because "promover pra 1M seria a suposicao invisivel de volta"
+        }
+
+        It "janela indeterminada nao emite percentual (nao ha denominador pra calcular)" {
+            $t = New-Transcript -Tokens 210000 -Model 'claude-opus-4-7'
+            $r = Invoke-Guard -Transcript $t
+            $r.Json.hookSpecificOutput.additionalContext | Should -Not -Match '\d+% de uma janela'
+        }
+
+        # Achados da 4a rodada. O primeiro e o que os testes de paridade anteriores nao pegavam
+        # porque so usavam janelas redondas: [int]() no PowerShell e banker's rounding, NAO
+        # truncamento, entao trocar Round por [int] tinha sido um no-op.
+        It "janela NAO-redonda e tokens com fracao: mensagem identica entre .ps1 e .sh" {
+            $bashPath = (Get-Command bash -ErrorAction SilentlyContinue).Source
+            if (-not $bashPath) {
+                $bashPath = @("$env:ProgramFiles\Git\bin\bash.exe", "$env:ProgramFiles\Git\usr\bin\bash.exe") |
+                            Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            }
+            if (-not $bashPath) { Set-ItResult -Skipped -Because "sem bash"; return }
+            # 161500/200000 = 80,75% -> banker's da 81, truncamento da 80. E o caso exato do finding.
+            $t = New-Transcript -Tokens 161500
+            $cwd = Split-Path $t -Parent
+            $env:PERCUS_CTX_WINDOW = "200002"   # nao-redonda: 200002*0,75 = 150001,5
+            try {
+                $rPs = Invoke-Guard -Transcript $t -SessionId "fr-ps" -Cwd $cwd
+                $shPath = Join-Path $PSScriptRoot ".." "hooks" "context-budget-guard.sh"
+                $payload = @{ session_id = "fr-sh"; transcript_path = $t; cwd = $cwd; hook_event_name = "PostToolUse" } | ConvertTo-Json -Compress
+                Push-Location $cwd
+                try { $outSh = ($payload | & $bashPath $shPath 2>$null) -join "" } finally { Pop-Location }
+            } finally { Remove-Item Env:PERCUS_CTX_WINDOW -ErrorAction SilentlyContinue }
+            $msgPs = $rPs.Json.hookSpecificOutput.additionalContext
+            $msgSh = ($outSh | ConvertFrom-Json).hookSpecificOutput.additionalContext
+            $msgSh | Should -Be $msgPs -Because "ps: $msgPs`nsh: $msgSh"
+            $msgPs | Should -Match '80% de uma janela' -Because "truncamento da 80; banker's daria 81"
+        }
+
+        # Achados da 5a rodada: a certeza falsa voltava por tres portas que eu nao tinha limpado.
+        It "janela indeterminada: NENHUMA parte da mensagem reafirma um denominador" {
+            $t = New-Transcript -Tokens 210000 -Model 'claude-opus-4-7'
+            $r = Invoke-Guard -Transcript $t
+            $msg = $r.Json.hookSpecificOutput.additionalContext
+            # a linha de acao dizia "resume em janela ~200k falha" logo depois de "nao sei quanto"
+            $msg | Should -Not -Match 'janela ~\d+k falha'
+            $msg | Should -Not -Match '\d+% de uma janela'
+        }
+
+        It "janela indeterminada: o aviso ao OPERADOR tambem nao inventa percentual" {
+            # o pct sairia contra a janela recem-declarada desconhecida ("105% da janela"), e
+            # nenhum teste do agente pegava porque e outra mensagem
+            $t = New-Transcript -Tokens 210000 -Model 'claude-opus-4-7'
+            $env:PERCUS_CTX_OPERADOR = "1"
+            try { $r = Invoke-Guard -Transcript $t } finally { Remove-Item Env:PERCUS_CTX_OPERADOR -ErrorAction SilentlyContinue }
+            $r.Json.systemMessage | Should -Match 'janela indeterminada'
+            $r.Json.systemMessage | Should -Not -Match '\d+% da janela'
+        }
+
+        It "se a janela veio do MARCADOR e foi ultrapassada, nao chama de 'piso'" {
+            # 1,1M num modelo que declara [1m]: a suposicao veio do modelo, nao de um piso
+            $t = New-Transcript -Tokens 1100000 -Model 'claude-opus-5[1m]'
+            $r = Invoke-Guard -Transcript $t
+            $msg = $r.Json.hookSpecificOutput.additionalContext
+            $msg | Should -Match 'INDETERMINADA'
+            $msg | Should -Not -Match 'piso que eu supunha'
+            $msg | Should -Match 'marcador do modelo'
+        }
+
+        It "PERCUS_CTX_HARD explicito vence a janela indeterminada (env explicito sempre vence)" {
+            # 210k passa do piso de 200k -> indeterminada. Mas o operador declarou o teto dele;
+            # rebaixar para warn silenciaria o limite que ele mesmo configurou.
+            $t = New-Transcript -Tokens 210000 -Model 'claude-opus-4-7'
+            $env:PERCUS_CTX_HARD = "180000"
+            try { $r = Invoke-Guard -Transcript $t } finally { Remove-Item Env:PERCUS_CTX_HARD -ErrorAction SilentlyContinue }
+            $r.Json.hookSpecificOutput.additionalContext | Should -Match 'LIMITE DURO'
+        }
+
+        # 6a rodada: era a combinacao que nenhum teste fazia -- HARD explicito COM janela
+        # indeterminada. O nivel 2 sobrevivia (correto) mas a mensagem voltava a cravar ~200k.
+        It "HARD explicito + janela indeterminada: avisa duro SEM reafirmar a janela" {
+            $t = New-Transcript -Tokens 210000 -Model 'claude-opus-4-7'
+            $env:PERCUS_CTX_HARD = "180000"
+            try { $r = Invoke-Guard -Transcript $t } finally { Remove-Item Env:PERCUS_CTX_HARD -ErrorAction SilentlyContinue }
+            $msg = $r.Json.hookSpecificOutput.additionalContext
+            $msg | Should -Match 'LIMITE DURO'
+            $msg | Should -Match 'PERCUS_CTX_HARD'
+            $msg | Should -Not -Match 'janela ~\d+k e impossivel'
+        }
+
+        It "HARD explicito + janela indeterminada: mesma mensagem no .sh" {
+            $bashPath = (Get-Command bash -ErrorAction SilentlyContinue).Source
+            if (-not $bashPath) {
+                $bashPath = @("$env:ProgramFiles\Git\bin\bash.exe", "$env:ProgramFiles\Git\usr\bin\bash.exe") |
+                            Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            }
+            if (-not $bashPath) { Set-ItResult -Skipped -Because "sem bash"; return }
+            $t = New-Transcript -Tokens 210000 -Model 'claude-opus-4-7'
+            $cwd = Split-Path $t -Parent
+            $env:PERCUS_CTX_HARD = "180000"
+            try {
+                $rPs = Invoke-Guard -Transcript $t -SessionId "hi-ps" -Cwd $cwd
+                $shPath = Join-Path $PSScriptRoot ".." "hooks" "context-budget-guard.sh"
+                $payload = @{ session_id = "hi-sh"; transcript_path = $t; cwd = $cwd; hook_event_name = "PostToolUse" } | ConvertTo-Json -Compress
+                Push-Location $cwd
+                try { $outSh = ($payload | & $bashPath $shPath 2>$null) -join "" } finally { Pop-Location }
+            } finally { Remove-Item Env:PERCUS_CTX_HARD -ErrorAction SilentlyContinue }
+            $msgSh = ($outSh | ConvertFrom-Json).hookSpecificOutput.additionalContext
+            $msgSh | Should -Be $rPs.Json.hookSpecificOutput.additionalContext
+        }
+
+        It "PERCUS_CTX_OPERADOR=0 DESLIGA (presenca da env ligava, ao contrario dos outros PERCUS_CTX_*)" {
+            $t = New-Transcript -Tokens 160000
+            $env:PERCUS_CTX_OPERADOR = "0"
+            try { $r = Invoke-Guard -Transcript $t } finally { Remove-Item Env:PERCUS_CTX_OPERADOR -ErrorAction SilentlyContinue }
+            $r.Json.PSObject.Properties.Name | Should -Not -Contain 'systemMessage'
+        }
+
+        It "a mensagem declara a janela E de onde a tirou (suposicao invisivel foi o que criou o bug)" {
+            $t = New-Transcript -Tokens 160000 -Model 'claude-opus-4-7'
+            $r = Invoke-Guard -Transcript $t
+            # tem que dizer o VALOR da janela e a FONTE, nao so a palavra "janela"
+            $r.Json.hookSpecificOutput.additionalContext | Should -Match 'janela ~?200k'
+            $r.Json.hookSpecificOutput.additionalContext | Should -Match 'piso|modelo|PERCUS_CTX_WINDOW|falsificad'
+        }
+
+        # Os tres achados do review R11 desta versao. Sem teste, voltam.
+        It "no LIMITE DURO sobre um PISO adivinhado, avisa que a propria janela pode estar errada" {
+            # 185k de uma janela SUPOSTA de 200k: acima do duro (180k) e abaixo da falsificacao
+            # (190k). E a faixa exata em que o hook mandou RESET com 78% do contexto livre.
+            $t = New-Transcript -Tokens 185000 -Model 'claude-opus-4-7'
+            $r = Invoke-Guard -Transcript $t
+            $r.Json.hookSpecificOutput.additionalContext | Should -Match 'LIMITE DURO'
+            $r.Json.hookSpecificOutput.additionalContext | Should -Match 'PISO adivinhado'
+            $r.Json.hookSpecificOutput.additionalContext | Should -Match 'PERCUS_CTX_WINDOW'
+        }
+
+        It "com janela DECLARADA, o limite duro nao carrega a ressalva do piso" {
+            $t = New-Transcript -Tokens 185000 -Model 'claude-opus-4-7'
+            $env:PERCUS_CTX_WINDOW = "200000"
+            try { $r = Invoke-Guard -Transcript $t } finally { Remove-Item Env:PERCUS_CTX_WINDOW -ErrorAction SilentlyContinue }
+            $r.Json.hookSpecificOutput.additionalContext | Should -Match 'LIMITE DURO'
+            $r.Json.hookSpecificOutput.additionalContext | Should -Not -Match 'PISO adivinhado'
+        }
+
+        It "o marcador de janela casa igual nos dois runtimes (fronteira m/_)" {
+            # '\b' do .NET nao ve fronteira entre 'm' e '_'; o .sh usa [^a-z0-9], que ve.
+            # O nome deste teste prometia comparar os DOIS runtimes e so rodava o .ps1 --
+            # a mesma classe que o changelog critica (finding R11, 4a rodada). Agora roda os dois.
+            $t = New-Transcript -Tokens 160000 -Model 'claude-opus-5-1m_preview'
+            $r = Invoke-Guard -Transcript $t
+            $r.Out | Should -BeNullOrEmpty -Because "o marcador -1m_ tem que ser reconhecido como janela de 1M no .ps1"
+
+            $bashPath = (Get-Command bash -ErrorAction SilentlyContinue).Source
+            if (-not $bashPath) {
+                $bashPath = @("$env:ProgramFiles\Git\bin\bash.exe", "$env:ProgramFiles\Git\usr\bin\bash.exe") |
+                            Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            }
+            if (-not $bashPath) { Set-ItResult -Skipped -Because "sem bash"; return }
+            $cwd = Split-Path $t -Parent
+            $shPath = Join-Path $PSScriptRoot ".." "hooks" "context-budget-guard.sh"
+            $payload = @{ session_id = "mu-sh"; transcript_path = $t; cwd = $cwd; hook_event_name = "PostToolUse" } | ConvertTo-Json -Compress
+            Push-Location $cwd
+            try { $outSh = ($payload | & $bashPath $shPath 2>$null) -join "" } finally { Pop-Location }
+            $outSh.Trim() | Should -BeNullOrEmpty -Because "e no .sh tambem -- era so aqui que a divergencia de fronteira apareceria"
+        }
+
+        # Achados da 2a rodada do review R11. Os dois primeiros sao regressoes que EU introduzi
+        # tentando consertar o bug original -- e nenhum teste meu os cobria.
+        It "sessao de 200k GENUINA a 190k continua no LIMITE DURO (falsificar em 95% silenciava ela)" {
+            # Foi a regressao: falsificar a 95% saltava a janela pra 1M, limHard ia pra 900k, e o
+            # hook ficava mudo justamente na faixa em que ele existe pra gritar mais alto.
+            $t = New-Transcript -Tokens 190000 -Model 'claude-opus-4-7'
+            $r = Invoke-Guard -Transcript $t
+            $r.Json.hookSpecificOutput.additionalContext | Should -Match 'LIMITE DURO'
+        }
+
+        It "janela nao-redonda: os k derivados batem entre .ps1 e .sh (Round divergia de truncamento)" {
+            $bashPath = (Get-Command bash -ErrorAction SilentlyContinue).Source
+            if (-not $bashPath) {
+                $bashPath = @("$env:ProgramFiles\Git\bin\bash.exe", "$env:ProgramFiles\Git\usr\bin\bash.exe") |
+                            Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            }
+            if (-not $bashPath) { Set-ItResult -Skipped -Because "sem bash"; return }
+            # 750000 * 0.75 = 562500 -> Round da 563k, divisao inteira da 562k
+            $t = New-Transcript -Tokens 600000
+            $cwd = Split-Path $t -Parent
+            $env:PERCUS_CTX_WINDOW = "750000"
+            try {
+                $rPs = Invoke-Guard -Transcript $t -SessionId "nr-ps" -Cwd $cwd
+                $sh = Join-Path $PSScriptRoot ".." "hooks" "context-budget-guard.sh"
+                $payload = @{ session_id = "nr-sh"; transcript_path = $t; cwd = $cwd; hook_event_name = "PostToolUse" } | ConvertTo-Json -Compress
+                Push-Location $cwd
+                try { $outSh = ($payload | & $bashPath $sh 2>$null) -join "" } finally { Pop-Location }
+            } finally { Remove-Item Env:PERCUS_CTX_WINDOW -ErrorAction SilentlyContinue }
+            $msgSh = ($outSh | ConvertFrom-Json).hookSpecificOutput.additionalContext
+            $msgSh | Should -Be $rPs.Json.hookSpecificOutput.additionalContext
+        }
+
+        It "o .sh reconhece o marcador [1m] de verdade (o sed dele estava quebrado e falhava calado)" {
+            $bashPath = (Get-Command bash -ErrorAction SilentlyContinue).Source
+            if (-not $bashPath) {
+                $bashPath = @("$env:ProgramFiles\Git\bin\bash.exe", "$env:ProgramFiles\Git\usr\bin\bash.exe") |
+                            Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            }
+            if (-not $bashPath) { Set-ItResult -Skipped -Because "sem bash"; return }
+            # O teste de paridade usava o modelo default e por isso nao via o sed corrompido
+            # (o \1 virou \x01): MODELO saia vazio e o marcador nunca casava.
+            $t = New-Transcript -Tokens 160000 -Model 'claude-opus-5[1m]'
+            $cwd = Split-Path $t -Parent
+            $shPath = Join-Path $PSScriptRoot ".." "hooks" "context-budget-guard.sh"
+            $payload = @{ session_id = "m1m-sh"; transcript_path = $t; cwd = $cwd; hook_event_name = "PostToolUse" } | ConvertTo-Json -Compress
+            Push-Location $cwd
+            try { $outSh = ($payload | & $bashPath $shPath 2>$null) -join "" } finally { Pop-Location }
+            $outSh.Trim() | Should -BeNullOrEmpty -Because "160k numa janela de 1M esta muito abaixo do limiar; se falar, o marcador nao foi reconhecido"
+        }
+
+        It "nao ha mais '200k' cravado no texto quando a janela nao e 200k" {
+            $t = New-Transcript -Tokens 800000
+            $env:PERCUS_CTX_WINDOW = "1000000"
+            try { $r = Invoke-Guard -Transcript $t } finally { Remove-Item Env:PERCUS_CTX_WINDOW -ErrorAction SilentlyContinue }
+            $r.Json.hookSpecificOutput.additionalContext | Should -Not -Match '200k'
+        }
+    }
+
     Context "limiares sao configuraveis por env (o hook mede o que o operador mandar)" {
         It "PERCUS_CTX_WARN=50000 faz 90k avisar" {
             $t = New-Transcript -Tokens 90000
@@ -272,8 +558,20 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
         }
 
         It "via .sh (bash): mesmo valor em k que o .ps1 para o mesmo transcript (paridade)" {
-            $bash = Get-Command bash -ErrorAction SilentlyContinue
-            if (-not $bash) { Set-ItResult -Skipped -Because "sem bash nesta maquina; paridade do .sh nao verificavel aqui" ; return }
+            # Get-Command sozinho NAO acha o bash do Git (o pwsh nao tem o bin do Git no PATH), e
+            # o skip silencioso fazia a paridade do .sh nunca ser verificada nesta maquina --
+            # justamente o buraco calado que o kit existe pra evitar. Procura nos caminhos padrao.
+            $bashPath = (Get-Command bash -ErrorAction SilentlyContinue).Source
+            if (-not $bashPath) {
+                $bashPath = @(
+                    "$env:ProgramFiles\Git\bin\bash.exe",
+                    "$env:ProgramFiles\Git\usr\bin\bash.exe",
+                    "${env:ProgramFiles(x86)}\Git\bin\bash.exe",
+                    "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe"
+                ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+            }
+            if (-not $bashPath) { Set-ItResult -Skipped -Because "sem bash nesta maquina; paridade do .sh nao verificavel aqui" ; return }
+            $bash = [pscustomobject]@{ Source = $bashPath }
             # 160.500: banker's rounding daria 160k e half-up daria 161k -- e exatamente o caso que divergia
             $t = New-Transcript -Tokens 160500
             $cwd = Split-Path $t -Parent
@@ -286,6 +584,11 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
             $kSh = [regex]::Match($outSh, '~(\d+)k').Groups[1].Value
             $kSh | Should -Be $kPs -Because "as duas implementacoes tem que medir a mesma coisa (ps=$kPs sh=$kSh)"
             $kPs | Should -Be "161"
+            # Comparar so o k deixou o % divergir calado (Round no .ps1 vs truncamento no .sh:
+            # 80,75 -> 81 contra 80). Paridade e da MENSAGEM inteira, nao de um campo escolhido.
+            $msgPs = $rPs.Json.hookSpecificOutput.additionalContext
+            $msgSh = ($outSh | ConvertFrom-Json).hookSpecificOutput.additionalContext
+            $msgSh | Should -Be $msgPs -Because "as duas implementacoes tem que dizer a MESMA coisa`nps: $msgPs`nsh: $msgSh"
         }
     }
 }

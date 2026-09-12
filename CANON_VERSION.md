@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.47.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.48.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,105 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.48.0 — 2026-09-12
+
+**O hook que media o contexto certo e errava o denominador.** O `context-budget-guard` tinha
+limiares **absolutos** (150k aviso / 180k duro) que supunham uma janela de 200k — e nunca dizia que
+estava supondo. Numa sessão `claude-opus-5[1m]` (janela de 1M) ele mandou fazer RESET com **777k
+livres**: 18% de uso. O painel do VSCode mostrava `189,6k / 1,0M`; o hook, "limite duro cruzado". Os
+dois concordavam no valor absoluto e divergiam no **denominador**. Multiplicado pela frota, isso é
+toda sessão de 1M sendo encerrada a ~18% da capacidade.
+
+- **A janela agora é descoberta, não suposta.** Quatro pernas, da mais confiável pra menos:
+  (1) `PERCUS_CTX_WINDOW` explícito; (2) marcador `[1m]`/`-1m` no campo `model` da **mesma linha**
+  do `usage` — custo zero de I/O, já estava lá; (3) **falsificação pela medição**: se a sessão está
+  viva acima da janela suposta, a suposição está provada errada, então escala em vez de gritar;
+  (4) piso de 200k.
+- **A perna 3 existe porque a 2 não é verificável.** Nenhum transcript desta máquina traz o
+  marcador de janela no nome do modelo. Um conserto que dependesse só do marcador reproduziria o
+  bug **calado** — que é a classe que o kit existe pra evitar.
+- **Limiares passam a ser 75% (aviso) e 90% (duro) da janela** — reproduz 150k/180k **exatos** numa
+  janela de 200k. A calibração que já existia fica de pé e nenhum número novo foi inventado.
+- **A mensagem declara a janela e a fonte dela.** A suposição invisível foi o que deixou o bug
+  sobreviver; agora ela é a primeira coisa que o aviso diz.
+- **O operador deixa de ser avisado por padrão** (`PERCUS_CTX_OPERADOR=1` devolve). Ele vê o
+  contexto no painel do próprio VSCode e dispara o checkpoint na mão — o aviso era ruído duplicado.
+  **O aviso ao agente fica**, e a assimetria é deliberada: o agente não vê painel nenhum, e foi um
+  agente que NÃO SABIA que produziu a sessão de 610k que originou este hook.
+- **Paridade `.sh` completa** — e, no caminho, um buraco calado: o teste de paridade pulava porque
+  `Get-Command bash` não acha o bash do Git (não está no PATH do pwsh). **A paridade do `.sh` nunca
+  tinha sido verificada nesta máquina.** O teste agora procura nos caminhos padrão do Git.
+  Restam **8 testes pulando** pelo mesmo motivo em `council-fallback`, `router-sensitive-paths` e
+  `spec-analyze-check` — dívida declarada, não consertada aqui.
+
+**O review R11 rodou duas vezes e a segunda pegou uma regressão que o próprio conserto criou.**
+Vale registrar porque é o tipo de coisa que um review de forma não pega:
+
+- **A falsificação disparava em 95% da janela — e o limite duro é 90%.** Numa sessão de 200k
+  **genuína**, a 190k o hook saltava para janela de 1M, `limHard` ia para 900k e ele **ficava mudo**
+  exatamente na faixa em que existe para gritar mais alto. Pior que o bug original. Agora só
+  falsifica **estritamente acima** da janela suposta, onde a suposição está de fato provada errada.
+- **O `sed` que extrai o `model` no `.sh` estava corrompido:** o `\1` virou o byte de controle
+  `\x01` (escape octal do Python no heredoc que gerou o arquivo). `MODELO` saía sempre vazio, o
+  marcador nunca casava e a detecção de janela **falhava calada** no `.sh`. O teste de paridade não
+  via porque usava o modelo default — comparar o caso fácil é como o buraco passou.
+- **`kWarn`/`kHard`/`kJanela` ainda usavam `Round` no `.ps1` contra divisão inteira no `.sh`.** Com
+  janela não-múltipla de 1000 (`750000*0.75 = 562500` → 563 contra 562) a mensagem divergia,
+  contrariando o teste de paridade novo — que só cobria 200k, redondo.
+
+**A terceira rodada pegou o melhor achado de todos:** a falsificação *promovia a janela para 1M* —
+ou seja, **trocava uma suposição invisível por outra**. Se a janela real fosse 400k, o hook ficaria
+mudo do mesmo jeito: a mesma classe do bug original, só com outra constante.
+
+Correção conceitual: **falsificar remove certeza falsa, não cria certeza nova.** Passar do piso
+prova que a janela **não é** a suposta; não prova **qual é**. Então o estado honesto passou a ser
+`INDETERMINADA` — o hook reporta a medição, diz que não sabe o denominador, pede
+`PERCUS_CTX_WINDOW`, e **para de afirmar LIMITE DURO**, que é uma afirmação que só faz sentido com
+a janela conhecida. Sem denominador, também não emite percentual.
+
+Mais um da mesma rodada: `PERCUS_CTX_OPERADOR` testava **presença** da variável, então
+`PERCUS_CTX_OPERADOR=0` **ligava** o aviso — o oposto da intenção, e inconsistente com todos os
+outros `PERCUS_CTX_*`, que usam inteiro positivo. Agora usa `Get-Limiar`/`limiar` como os demais.
+
+**A quarta rodada mostrou que dois "consertos" anteriores não consertavam nada:**
+
+- **`[int]($x)` no PowerShell é banker's rounding, não truncamento.** Trocar `[Math]::Round` por
+  `[int]` foi **no-op** — o `.ps1` continuava dando 81 onde o bash dá 80. Agora é
+  `[Math]::Floor`, e o teste de paridade usa janela **não-redonda** (`200002`) com tokens de fração
+  (`161500` → 80,75%), que é onde a divergência aparece. Os testes anteriores só usavam 200000.
+- **A janela indeterminada silenciava um `PERCUS_CTX_HARD` explícito** — contrariando o princípio
+  declarado duas seções acima, "env explícito sempre vence a descoberta". Se o operador declarou o
+  teto, o teto é dele.
+- Mais dois menores: a mensagem dizia *"Sete PERCUS_CTX_WINDOW"*, que lê como o número sete (agora
+  "Defina"); e o teste chamado *"casa igual nos dois runtimes"* só rodava o `.ps1` — o nome
+  prometia uma comparação que o teste não fazia.
+
+**A quinta rodada achou a certeza falsa voltando por três portas dos fundos** — todas na construção
+da mensagem, todas a mesma classe do bug original:
+
+- o aviso ao **operador** continuava imprimindo `(105% da janela)` — percentual calculado contra a
+  janela que o hook acabara de declarar desconhecida. Nenhum teste pegava porque é *outra*
+  mensagem, que o agente não vê;
+- a **linha de ação** dizia *"resume em janela ~200k falha"* logo depois de *"eu não sei quanto"* —
+  a segunda frase reafirmando o denominador que a primeira negava;
+- o texto cravava *"o piso que eu supunha"* mesmo quando a janela tinha vindo do **marcador do
+  modelo**, que é declaração, não piso.
+
+**A sexta rodada fechou a última contradição**, e ela só aparecia numa combinação que nenhum teste
+fazia: `PERCUS_CTX_HARD` declarado **junto com** janela indeterminada. O nível 2 sobrevivia (certo —
+o teto é do operador), mas a linha do LIMITE DURO voltava a cravar `~200k`. E a ressalva do piso não
+salvava, porque `$janelaFonte` já era `INDETERMINADA...` e o `-like 'piso*'` não casava: a
+contradição ficava **calada**.
+
+Os **quinze** findings das seis rodadas ganharam teste, e a sétima passou limpa. A lição de método
+que fica: **paridade testada só no caso fácil não é paridade.** Cinco buracos diferentes
+sobreviveram exatamente por isso — o teste usava o modelo default (e não via o `sed` corrompido), a
+janela redonda (e não via o banker's rounding), um runtime só (e não via nada do outro), só a
+mensagem do agente (e não via a do operador), e nunca duas envs ao mesmo tempo (e não via a
+combinação).
+
+Suíte: 575 testes, 567 passando, 0 falhas, 8 pulados.
 
 ## Changelog v6.47.0 — 2026-09-12
 
