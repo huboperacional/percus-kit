@@ -33,3 +33,15 @@ no primeiro `POST`, nunca num `GET`.
 pra corrigir `url_tags` (ver [[meta-ad-creative-so-nome-status-rotulo-sao-editaveis]]),
 copiar `degrees_of_freedom_spec` verbatim do original recusou o `POST` até a
 chave ser removida.
+
+🔑 **Achado adicional, mesma sessão (continuação): OMITIR o objeto inteiro
+também funciona, e é mais simples que remover só a chave.** Em 2 recriações
+seguintes (criativos Advantage+ dinâmicos, `asset_feed_spec` por posicionamento)
+o payload do `POST /adcreatives` simplesmente não incluiu `degrees_of_freedom_spec`
+nenhum — só `name`, `object_story_spec`, `asset_feed_spec`, `url_tags`. Funcionou
+de primeira, sem erro. O `GET` de releitura mostra um `degrees_of_freedom_spec`
+completo mesmo assim (dezenas de chaves, muito mais que o original tinha) —
+confirma que a Meta SEMPRE devolve a lista cheia com os defaults da conta no
+`GET`, independente do que foi mandado no `POST`. Ou seja: **não precisa
+diffar/editar o objeto original** pra achar e tirar só `standard_enhancements`
+— basta não mandar `degrees_of_freedom_spec` nenhum ao recriar.

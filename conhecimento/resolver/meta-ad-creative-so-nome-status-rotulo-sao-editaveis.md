@@ -37,3 +37,17 @@ só grava `url_tags` no caminho de CRIAÇÃO de criativo, nunca em reuso. Result
 anúncio ativo, gastando, sem etiqueta de rastreio nenhuma. Tentei `PATCH` direto,
 recusado; recriei com o mesmo `asset_feed_spec` (texto, imagens, formulário de
 lead idênticos) + `url_tags` nova, repontei o anúncio, relido da API — confirmado.
+
+🔑 **Achado adicional, mesma sessão (continuação): compartilhar de propósito é
+seguro quando o `url_tags` usa macro.** Se o `url_tags` do criativo novo usa
+`{{ad.id}}`/`{{adset.id}}`/`{{campaign.id}}` (não um id fixo), a macro resolve
+**por anúncio no momento do clique** — então um SEGUNDO anúncio que precisava do
+mesmo conserto pode simplesmente ser repontado pro mesmo `creative_id` já
+corrigido (`POST /{ad_id}` com `creative={"creative_id":"<ja-existente>"}`), **sem
+recriar nada**. Prova de que é seguro: era exatamente assim (criativo com macro,
+compartilhado por 2 anúncios MX+CO) que os dois ficavam SEM `url_tags` ao mesmo
+tempo antes do fix — o compartilhamento já era a topologia real da conta, não
+uma introduzida agora. Isso inverte o aviso ⚠️ acima: compartilhar continua
+exigindo decisão consciente, mas quando os dois anúncios DEVERIAM ter o mesmo
+conteúdo (é o caso comum de "mesmo criativo, praças diferentes"), reaproveitar é
+mais barato e mais seguro que recriar duas vezes.

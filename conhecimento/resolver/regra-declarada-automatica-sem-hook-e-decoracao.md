@@ -24,9 +24,17 @@ medida exata do custo de recopiar, e a razao de existir um dono.
 
 | | Quantas | Leitura |
 |---|---|---|
-| Com enforcement mecânico | 11 | R1, R2, R3, R5, R6, R7, R8, R9, R11, R20, R23 |
+| Com enforcement mecânico | 9 | R1, R2, R3, R7, R8, R9, R11, R20, R23 |
 | Arquiteturais (R14-R19, R21) | 7 | o R11 cobre no review de código — hook próprio seria custo sem ganho |
-| **Comportamentais descobertas** | **7** | R4, R10, R12, R13, R22, R24, R25 |
+| **Comportamentais descobertas** | **9** | R4, **R5**, **R6**, R10, R12, R13, R22, R24, R25 |
+
+**Segunda correção (mesmo dia, 11/7/7 → 9/7/9).** R5 e R6 estavam no balde "com enforcement" porque
+`types-check-pre-commit` e `migration-check-pre-commit` se autodeclaram `(R5)` e `(R6)` na linha 2.
+Falso: R5 hoje é *confirmação antes de operação irreversível* e R6 é *banco novo por projeto* — os
+hooks cobram tipos e migration, disciplinas que eram R5/R6 num canon anterior à renumeração. Quem
+pegou foi a perna Cross-Claude do conselho, com veredito `BLOQUEADA`. Detalhe e discriminante em
+[[auditoria-de-enforcement-por-numero-citado-conta-gate-que-nao-existe]] — **e a lição de método é
+que a tabela acima nasceu de um varredor por número de regra citado, que mede rótulo, não gate.**
 
 **Erre a conta e você perde o argumento:** a primeira versão desta auditoria dizia 9 / 7 / 6 — que
 soma **22**, não 25, e omitia duas regras. Foi o review cross-provider que pegou, revisando o
@@ -41,6 +49,12 @@ decoração pelo critério que ela própria define.
 equivalente `Get-ChildItem hooks\*.ps1 | Select-String "R$n"`):** para cada regra `R<N>`, veja se algum
 hook ou gate a cita —
 
+> ⚠️ **O comando abaixo levanta CANDIDATOS, não veredito.** Ele casa o número que o hook escreveu
+> sobre si mesmo num comentário, e comentário não é vínculo: foi assim que R5 e R6 entraram como
+> "enforçadas" sem ter gate nenhum. Todo hit tem que ser confirmado lendo **o que o hook bloqueia**
+> contra **o corpo da regra**. Ver
+> [[auditoria-de-enforcement-por-numero-citado-conta-gate-que-nao-existe]].
+
 ```bash
 for n in $(seq 1 25); do
   hits=$(grep -rl "R$n\b" hooks/*.ps1 gates/*.sh 2>/dev/null | xargs -r -n1 basename | tr '\n' ' ')
@@ -51,7 +65,7 @@ done
 E, no sentido inverso, procure as **promessas de automatismo** que ninguém cumpre:
 `grep -rnE "autom[áa]tic|sem pedir permiss|SEMPRE" <arquivos do canon>`.
 
-**O que NÃO fazer com o resultado:** sair criando hook para as 14 sem enforcement. Regra de arquitetura
+**O que NÃO fazer com o resultado:** sair criando hook para as 16 sem enforcement. Regra de arquitetura
 (*"rate limit canônico"*, *"magic link centralizado"*) é verificada por review de diff, e hook
 próprio ali é custo sem ganho. E gate novo que dispara em massa no primeiro dia **vira escape
 declarado** — foi o que o teto do `CONTEXT.md` ensinou. Hook novo nasce **warn-only**, e a promoção
