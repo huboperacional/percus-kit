@@ -281,7 +281,7 @@ Describe "wrapper .cmd tem a forma do seu evento" {
         }
     }
 
-    It "TODOS os 14 wrappers .cmd tem a forma do SEU evento no manifesto (9 guarda / 5 observador)" {
+    It "TODOS os 15 wrappers .cmd tem a forma do SEU evento no manifesto (10 guarda / 5 observador)" {
         # Os It anteriores provam o comportamento em UM wrapper de cada forma. Sem este, a
         # correcao poderia acertar so alguns dos 11 e a suite ficaria verde -- exatamente o tipo
         # de meia-correcao que deixou 3 guardas mortas sem ninguem ver.
@@ -320,7 +320,7 @@ Describe "wrapper .cmd tem a forma do seu evento" {
 
         # Piso de contagem: sem ele, uma pasta VAZIA faz este It passar sem verificar nada --
         # e a migracao dos hooks pro settings.json (spec sec. 9) esvazia exatamente esta pasta.
-        $cmds.Count | Should -Be 14 -Because "piso de contagem: It que passa vazio nao guarda nada"
+        $cmds.Count | Should -Be 15 -Because "piso de contagem: It que passa vazio nao guarda nada"
 
         # .cmd nao declarado no manifesto nao tem evento -- e a forma dele seria ADIVINHADA.
         # Adivinhar e o erro que este It existe pra impedir, entao aqui e falha, nao default.
@@ -404,7 +404,7 @@ Describe "wrapper .cmd tem a forma do seu evento" {
         # Contagem por forma: sem ela, trocar o evento de um hook em hooks.json reclassificaria o
         # wrapper em silencio e este It seguiria verde medindo a coisa errada. Contagem errada e
         # a forma mais provavel deste teste apodrecer, entao os dois numeros sao afirmados.
-        $nGuarda     | Should -Be 9 -Because "9 wrappers de PreToolUse tem que estar na forma GUARDA"
+        $nGuarda     | Should -Be 10 -Because "10 wrappers de PreToolUse tem que estar na forma GUARDA"
         $nObservador | Should -Be 5 -Because "on-stop-check + state-drift-check (Stop), pre-compact-checkpoint (PreCompact), enforcement-health (SessionStart) e context-budget-guard (PostToolUse, 6.45.0)"
 
         @($formaMentida) | Should -BeNullOrEmpty -Because "manifesto com forma divergente do evento propaga classificacao errada pro registro, pro canario e pro health check:`n$($formaMentida -join "`n")"

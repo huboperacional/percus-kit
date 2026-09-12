@@ -26,12 +26,13 @@ Describe "hooks-manifest.json" {
         $script:todos.Count | Should -BeGreaterThan 0
     }
 
-    It "declara 14 hooks registrados (9 guarda / 5 observador) + o orfao" {
+    It "declara 15 hooks registrados (10 guarda / 5 observador) + o orfao" {
         # Piso de contagem, mesma razao do hook-wrapper-fail-loud: manifesto esvaziado faria
         # todos os It abaixo iterarem sobre lista vazia e passarem sem verificar nada.
-        # 6.45.0: +1 observador (context-budget-guard, PostToolUse em todas as tools).
-        $script:vivos.Count | Should -Be 14 -Because "piso: manifesto vazio nao guarda nada"
-        @($script:vivos | Where-Object { $_.forma -ceq 'guarda' }).Count     | Should -Be 9
+        # 6.45.0: +1 observador (context-budget-guard, PostToolUse). 6.47.0: +1 guarda de comando
+        # (spec-analyze-check, o gate [S] que faltava).
+        $script:vivos.Count | Should -Be 15 -Because "piso: manifesto vazio nao guarda nada"
+        @($script:vivos | Where-Object { $_.forma -ceq 'guarda' }).Count     | Should -Be 10
         @($script:vivos | Where-Object { $_.forma -ceq 'observador' }).Count | Should -Be 5
         @($script:todos | Where-Object { -not $_.registrado }).Count | Should -Be 1 -Because "canon-version-check e orfao conhecido; orfao novo aparecendo sem ninguem decidir e drift"
     }
@@ -224,7 +225,7 @@ Describe "hooks-manifest.json" {
         # construcao a guarda nova, que e correta. Lista de excecao que cresce e cheiro de
         # criterio faltando: o criterio e o alvo.
         $deComando = @($script:vivos | Where-Object { $_.evento -ceq 'PreToolUse' -and $_.alvo -ceq 'comando' })
-        $deComando.Count | Should -Be 7 -Because "piso: sao 7 guardas de COMANDO (pre-plan-exit olha plano, knowledge-write-guard olha caminho)"
+        $deComando.Count | Should -Be 8 -Because "piso: sao 8 guardas de COMANDO (pre-plan-exit olha plano, knowledge-write-guard olha caminho)"
         foreach ($h in $deComando) {
             $h.matcher | Should -BeExactly 'Bash|PowerShell' -Because "$($h.nome) precisa cobrir as duas tools de shell, com a caixa exata"
         }

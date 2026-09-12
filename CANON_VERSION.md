@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.46.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.47.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,53 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.47.0 — 2026-09-12
+
+**A promessa do canon que não tinha hook ganhou um.** `01_REGRAS_INEGOCIAVEIS.md:316` diz, numa
+frase só, que o agente roda **sozinho, sem pedir permissão**, duas coisas: `council-pre-mortem` ao
+fechar um plano, e `spec-analyze` ao fechar uma spec. A primeira tinha hook desde sempre
+(`pre-plan-exit`); a segunda **não tinha nenhum**. Metade do par ficou dependendo de alguém lembrar
+— e em 2026-09-12 o próprio agente escreveu, publicou e apresentou uma spec sem rodar o analyze. Só
+o operador perguntando *"já revisou a spec com o conselho?"* revelou. Constituição §6: regra que
+depende de alguém lembrar já falhou.
+
+- **Hook `spec-analyze-check`** (`PreToolUse: Bash|PowerShell`, **warn-only**, exit 0 sempre): quando
+  um commit leva uma spec de `docs/superpowers/specs/`, casa o texto **staged** com o campo
+  `prompt` dos logs `*-analyze.jsonl` (50 mais recentes) e avisa se o conselho nunca a analisou.
+- **Três estados, não dois** — *coberto* (silêncio), *analyze de versão anterior* e *nenhum analyze*.
+  "Analisei a v1 e publiquei a v2" é o jeito mais provável de furar o gate sem querer, e pede ação
+  diferente de "nunca analisei": dizer só "sem analyze" mandaria rodar do zero sem saber que já
+  houve um.
+- **Warn-only de propósito.** A frota tem specs antigas sem analyze; bloqueio que dispara em massa
+  no primeiro dia vira escape declarado — foi o que o teto do `CONTEXT.md` ensinou. Promover a
+  bloqueio é decisão separada, depois de medir quanto a frota reclama. Escape:
+  `PERCUS_SKIP_SPEC_ANALYZE=1`.
+- **Paridade `.ps1`/`.sh`** com **teste que roda o `.sh` de verdade** nos três estados. A primeira
+  versão desta entrada dizia "provada por execução real" tendo só testes `.ps1` — o mesmo erro que a
+  perna Cross-Claude pegou na 6.46.0, repetido uma versão depois. Prova manual existe, mas prova que
+  não está na suíte não sobrevive ao próximo refactor.
+- **Escape segue a convenção do kit**: qualquer valor **não-vazio** em `PERCUS_SKIP_SPEC_ANALYZE`
+  desliga o hook — inclusive `0`. É como os 14 `.ps1` irmãos já tratam seus escapes
+  (`PERCUS_SKIP_HANDOFF`, `PERCUS_SKIP_PRECOMPACT`, `PERCUS_SKIP_CONTEXT_BUDGET`); só o `.cmd` usa
+  `=="1"`, porque batch não tem "vazio vs definido". Um review sugeriu alinhar ao `.cmd` — recusado
+  para não criar a única exceção entre quinze, que é como convenção morre.
+- **Encoding**: a saída de `git show` passa pelo decodificador do console. Sem forçar UTF-8, um
+  travessão na spec volta corrompido, o texto nunca casa com o log e o hook avisaria "sem analyze"
+  em toda spec com acento — ruído que faz desligar o hook. Mesmo cuidado do `crud-evidence-warn`.
+- 13 testes novos; manifesto passa a 15 hooks vivos (10 guarda / 5 observador).
+
+**Contexto da auditoria que originou isto:** das 25 regras do canon, 9 tinham enforcement mecânico.
+Sete das restantes são de arquitetura (R14-R19, R21) e o R11 as cobre no review de código — não
+precisam de hook próprio. Sobram **6 comportamentais descobertas**: R10, R12, R13, R22, R24, R25 —
+**incluindo a R12, que exige que toda regra tenha verificação verificável e não tem nenhuma**. São o
+próximo passo, na ordem acertada com o operador: conselho (6.46.0) → hook do spec (esta) → as 6.
+
+**Nota de campo, medida nesta sessão:** o `pre-commit-check` (R11) casa a sequência `git`…`commit`
+no texto do comando, sem distinguir "vou publicar" de "estou passando um texto que a contém". Dois
+comandos de *teste* desta versão foram barrados por isso. É guarda conservadora funcionando — o
+falso positivo é o lado seguro —, mas vale saber ao escrever payload de teste ou changelog pelo
+terminal.
 
 ## Changelog v6.46.0 — 2026-09-12
 

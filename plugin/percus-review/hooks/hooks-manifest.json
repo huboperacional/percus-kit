@@ -133,6 +133,17 @@
       "_nota": "Diz no inicio de cada sessao se o enforcement esta ligado e DE ONDE o codigo vem. Absorve a intencao do orfao canon-version-check (versao instalada x versao do kit). Sempre exit 0: health check que tranca a sessao troca um problema por outro pior. Fala por STDOUT, nao stderr -- unico hook do manifesto que quebra a convencao, porque medido: stderr de SessionStart que sai 0 nao aparece (achado 2026-07-31, apos a Task 7 ter sido dada como fechada com o hook falando em stderr e nunca aparecendo)."
     },
     {
+      "nome": "spec-analyze-check",
+      "evento": "PreToolUse",
+      "matcher": "Bash|PowerShell",
+      "forma": "guarda",
+      "assinatura": "[percus:hook spec-analyze]",
+      "escape": "PERCUS_SKIP_SPEC_ANALYZE",
+      "registrado": true,
+      "alvo": "comando",
+      "_nota": "Gate [S] mecanico: avisa quando um `git commit` leva uma spec (docs/superpowers/specs/*.md) que o conselho nunca analisou. WARN-ONLY (exit 0 sempre), como o crud-evidence-warn -- a frota tem specs antigas sem analyze e bloqueio em massa no primeiro dia vira escape declarado. Tres estados: coberto (silencio) / analyze de versao anterior / nenhum analyze -- 'analisei a v1 e commitei a v2' pede acao diferente de 'nunca analisei'. Casa o texto STAGED com o campo `prompt` dos logs *-analyze.jsonl (teto de 50, do mais recente). Existe porque o canon manda rodar spec-analyze sozinho em TRES lugares (01_REGRAS_INEGOCIAVEIS.md:316, v2/CONSTITUICAO.md:35, v2/loops/spec.md) e a promessa IRMA da mesma frase (plano -> council-pre-mortem) tinha hook desde sempre (pre-plan-exit) enquanto a da spec nao tinha nenhum: em 2026-09-12 o proprio agente escreveu, commitou e apresentou uma spec sem analyze, e so o operador perguntando revelou."
+    },
+    {
       "nome": "context-budget-guard",
       "evento": "PostToolUse",
       "matcher": "",

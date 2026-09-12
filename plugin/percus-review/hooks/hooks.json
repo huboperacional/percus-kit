@@ -48,6 +48,11 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/crud-evidence-warn.cmd\"",
             "async": false
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/spec-analyze-check.cmd\"",
+            "async": false
           }
         ]
       },

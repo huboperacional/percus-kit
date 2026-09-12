@@ -203,20 +203,20 @@ Describe "registrar-hooks-settings.ps1" {
         @(Get-ChildItem $dir -Filter "settings.json.bak-*").Count | Should -Be 0 -Because "primeiro uso: nao existe settings.json anterior pra fazer backup"
     }
 
-    It "contra o manifesto REAL do kit: Guardas=9, Observadores=5, Todos=14 -- todos com wrapper em disco" {
+    It "contra o manifesto REAL do kit: Guardas=10, Observadores=5, Todos=15 -- todos com wrapper em disco" {
         # Regressao de verdade: usa o hooks-manifest.json e os .cmd reais do proprio repo,
         # nao o kit falso. Prova que o script bate com o que hooks-manifest.tests.ps1 ja
-        # afirma sobre o mundo real (9 guarda / 5 observador / 14 total -- 6.45.0 somou o
+        # afirma sobre o mundo real (10 guarda / 5 observador / 15 total -- 6.45.0 somou o
         # context-budget-guard, PostToolUse).
         $settings = New-SettingsFalso -Conteudo @{}
 
         $saidaGuardas = & $script:script -Escopo Guardas -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
-        $saidaGuardas | Should -Match "\b9 hook\(s\)"
+        $saidaGuardas | Should -Match "\b10 hook\(s\)"
 
         $saidaObs = & $script:script -Escopo Observadores -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
         $saidaObs | Should -Match "\b5 hook\(s\)"
 
         $saidaTodos = & $script:script -Escopo Todos -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
-        $saidaTodos | Should -Match "\b14 hook\(s\)"
+        $saidaTodos | Should -Match "\b15 hook\(s\)"
     }
 }
