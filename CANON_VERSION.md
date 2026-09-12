@@ -68,11 +68,18 @@ medido nesta sessão quando ele leu um `git -C` de dentro de um texto e apontou 
 é portar a lógica da Proposta F para `Resolve-PercusProjectRoot`: cobre os oito de uma vez, e pede
 teste próprio. Fica na fila, declarado — não como cobertura que este hook não tem.
 
-**Contexto da auditoria que originou isto:** das 25 regras do canon, 9 tinham enforcement mecânico.
-Sete das restantes são de arquitetura (R14-R19, R21) e o R11 as cobre no review de código — não
-precisam de hook próprio. Sobram **6 comportamentais descobertas**: R10, R12, R13, R22, R24, R25 —
-**incluindo a R12, que exige que toda regra tenha verificação verificável e não tem nenhuma**. São o
-próximo passo, na ordem acertada com o operador: conselho (6.46.0) → hook do spec (esta) → as 6.
+**Contexto da auditoria que originou isto:** das 25 regras do canon, **11** têm enforcement mecânico
+(R1, R2, R3, R5, R6, R7, R8, R9, R11, R20, R23). Sete das restantes são de arquitetura (R14-R19,
+R21) e o R11 as cobre no review de código — não precisam de hook próprio. Sobram **7 comportamentais
+descobertas**: R4, R10, R12, R13, R22, R24, R25 — **incluindo a R12, que exige que toda regra tenha
+verificação verificável e não tem nenhuma**. São o próximo passo, na ordem acertada com o operador:
+conselho (6.46.0) → hook do spec (esta) → as 7.
+
+> **Fonte viva (R25):** `conhecimento/resolver/regra-declarada-automatica-sem-hook-e-decoracao.md`.
+> O changelog é histórico e congela o que era verdade na data; quem recontar atualiza o verbete.
+> A primeira redação desta entrada, e a do 6.46.0, diziam "9 com enforcement" e "6 descobertas" —
+> soma 22, não 25, omitindo R4 e R9. O R11 pegou ao revisar o plano da própria auditoria: um
+> documento que cobra rigor de contagem e não fecha a soma desarma sozinho o argumento.
 
 **Nota de campo, medida nesta sessão:** o `pre-commit-check` (R11) casa a sequência `git`…`commit`
 no texto do comando, sem distinguir "vou publicar" de "estou passando um texto que a contém". Dois
