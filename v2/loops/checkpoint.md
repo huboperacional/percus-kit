@@ -25,12 +25,10 @@
 
 **5. Review + commit** dos artefatos.
 
-## O que NÃO fazer
+**6. Encerre em reset quando o hook mandar.** O `context-budget-guard` avisa quando o contexto vivo passa de ~150k, ou a sessão passa de 8h, ou o transcript retomado tem dias. Aí o checkpoint termina em **sessão nova**, não no commit: o bloco de retomada (≤15 linhas, ponteiro + próximo passo — os arquivos continuam sendo a fonte) é o que a sessão nova cola.
 
-**Não gere "texto pra colar".** Bloco de retomada é foto: envelhece no instante em que é tirada e obriga o operador a carregar estado na mão. Os arquivos são a fonte viva — a sessão nova lê `HANDOFF` → `PLANO` → `CONTEXT` → ADRs recentes.
+## Duas armadilhas que já custaram caro
 
-## Armadilha que já custou caro
+**Checkpoint escreve arquivo; só o reset salva contexto.** Uma sessão de 14h foi de 69k a **610k tokens** com "checkpoint" dito 11 vezes — arquivos em dia, contexto morrendo. Retomada dois dias depois, a compactação falhou: "Prompt is too long" (Empresa-Milionaria, 2026-09-12).
 
-Um hook que pergunta "o HANDOFF mudou?" premia **acrescentar linha no fim** — a forma mais barata de satisfazê-lo. Foi assim que um HANDOFF real chegou a **6.185 linhas** e passou a custar ~90k tokens por boot, com o agente lendo estado truncado.
-
-**Meça tamanho, não delta.**
+**Meça tamanho, não delta.** Um hook que pergunta "o HANDOFF mudou?" premia **acrescentar linha no fim**. Foi assim que um HANDOFF real chegou a **6.185 linhas** e ~90k tokens por boot, com o agente lendo estado truncado.

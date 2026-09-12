@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.44.4`
+**Versão canônica em `huboperacional/percus-kit`:** `6.45.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,60 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.45.0 — 2026-09-12
+
+**Hook `context-budget-guard` (PostToolUse, TODAS as tools, observador) — o kit passa a MEDIR o
+contexto vivo da sessão.** Motivo, medido no transcript de Empresa-Milionaria: uma sessão de ~14h e
+337 tool calls foi de 69k a **610k tokens** sem nenhum reset, com a palavra "checkpoint" aparecendo
+11 vezes. Checkpoint escreve arquivo; não reseta contexto. Retomada dois dias depois, a compactação
+gerou resumo de 4k mas a 1ª chamada já marcava 188k (custo fixo); a compactação seguinte caiu em
+rate-limit e a sessão morreu com "Prompt is too long". O HANDOFF lido tinha 149 linhas — a primeira
+hipótese (doc inchado) estava errada, e o `usage` do próprio transcript é que desmentiu.
+
+- `hooks/context-budget-guard.{ps1,cmd,sh}`: lê a última `usage` da **cauda** do transcript
+  (FileStream, 256 KB — roda a cada tool call, transcript real tem 5-8 MB), soma
+  input + cache_read + cache_creation e avisa agente (`additionalContext`) e operador
+  (`systemMessage`) acima de `PERCUS_CTX_WARN=150k` / `PERCUS_CTX_HARD=180k`, após
+  `PERCUS_CTX_HOURS=8` de parede ou transcript retomado com `PERCUS_CTX_RESUME_DAYS=2`+. Um aviso
+  por nível por sessão (`.deepseek/context-budget/`). Sempre exit 0: bloquear contexto vivo viraria
+  escape rotineiro, como o teto do CONTEXT.md. **Matcher vazio de propósito** — contexto cresce com
+  Edit/Write/Read tanto quanto com Bash; guarda só de shell é a classe de furo que já reincidiu.
+  Escape: `PERCUS_SKIP_CONTEXT_BUDGET=1`. Provado em pwsh 7, powershell.exe 5.1, `.cmd` e `.sh`.
+  **Custo declarado (finding R11):** roda a cada tool call de toda sessão e paga o spawn frio do
+  `powershell.exe` (~0,3-0,5 s; medido 250-570 ms por invocação nos testes). Numa sessão de 337
+  tool calls são ~2 min somados. Não foi amortizado nesta versão: cadência no `.cmd` colide com o
+  invariante de forma dos wrappers (`hook-wrapper-fail-loud`), e no `.ps1` o spawn já foi pago.
+  Decisão aberta para o operador; o opt-out é o escape acima.
+  **Canais confirmados na doc oficial** (`code.claude.com/docs/en/hooks.md`, tabela *PostToolUse
+  decision control*): `hookSpecificOutput.additionalContext` = "String added to Claude's context
+  alongside the tool result"; `systemMessage` = "Warning message shown to the user". A doc também
+  avisa que o transcript "is written asynchronously and may lag" — a medição pode estar uma chamada
+  atrás; a seguinte corrige.
+- Skill `checkpoint`: deixa de se chamar "caminho primário de gestão de contexto" (é persistência);
+  ganha o passo **5. Reset** — quando o hook avisou, o checkpoint termina em sessão nova com o bloco
+  de retomada, não no commit. `v2/loops/checkpoint.md` dizia "não gere texto pra colar" enquanto a
+  skill mandava gerar: resolvido a favor do bloco (≤15 linhas, ponteiro + próximo passo).
+- `scripts/medir-baseline-boot.ps1` (read-only): custo da 1ª chamada por sessão. Medido na frota:
+  **65-73k tokens em todo projeto** antes da primeira palavra (system prompt + ~110 tool defs de MCP
+  + hooks + skills) — ⅓ de uma janela de 200k. O kit não decompõe por conector; o script é o medidor
+  do experimento "desliga um, compara". Decisão de desligar é do operador.
+- Manifesto: 14 hooks vivos (9 guarda / 5 observador); campo `evento` ganha `PostToolUse`, `alvo`
+  ganha `transcript`. Testes de contagem atualizados (`hooks-manifest`, `hook-wrapper-fail-loud`,
+  `registrar-hooks-settings`).
+- **Invariante D (hardening 2026-05-19) refinado, não afrouxado.** `D1` dizia "hooks.json NÃO
+  declara PostToolUse" — proxy do invariante real, *"canon não registra hooks de mutação"*
+  (incidente 2: um `PostToolUse:Edit` que renomeava arquivos). Agora `D1` afirma o que importa:
+  todo PostToolUse registrado tem matcher que não é só Edit/Write, está no manifesto como
+  `observador` com `alvo: transcript`, e o `.ps1` não lê `tool_input`/`file_path` nem chama
+  `Rename-Item`/`Move-Item`/`git mv|add|commit`. O hook do incidente 2 falha em três lugares;
+  o `context-budget-guard` passa porque só lê o transcript.
+- Conhecimento: `checkpoint-persiste-arquivos-nao-reseta-contexto` (o incidente e a armadilha de
+  diagnóstico) e `cross-claude-nativo-401-sem-disparar-fallback` (PENDENTE: a perna Cross-Claude do
+  conselho devolve `401 invalid x-api-key` sem acionar o fallback por subagent).
+- Fica para o próximo plano (Pacote B): `docs/PLANO.md` sem teto (6-11 mil linhas em 4 projetos,
+  34% em blocos narrativos datados), boot que lê o PLANO inteiro, template com seção Histórico.
+  É problema real e separado — não a causa deste incidente.
 
 ## Changelog v6.44.4 — 2026-09-08
 

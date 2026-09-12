@@ -3,13 +3,13 @@
   "versao_manifesto": 1,
   "campos": {
     "nome": "nome base; o wrapper e <nome>.cmd e o script e <nome>.ps1, irmaos no mesmo diretorio",
-    "evento": "evento do harness: PreToolUse | Stop | PreCompact | SessionStart",
+    "evento": "evento do harness: PreToolUse | PostToolUse | Stop | PreCompact | SessionStart. PostToolUse entrou em 6.45.0 com o context-budget-guard: e o unico evento que dispara em TODAS as tools (matcher vazio), porque o que ele mede -- o contexto vivo -- cresce com qualquer tool, nao so com shell",
     "matcher": "matcher do registro vivo; null quando o evento nao usa matcher. Medido em 2026-07-31: matcher e case-sensitive e aceita alternancia (Bash|PowerShell)",
     "forma": "guarda = wrapper traduz nao-zero em exit 2 (fail-closed). observador = wrapper repassa o codigo cru",
     "assinatura": "string que o hook imprime quando age -- em stderr pras guardas (PreToolUse), em stdout pro enforcement-health (excecao medida: stderr num SessionStart que sai 0 e invisivel, mesmo silencio do item 10 so que noutro evento). E o que permite ao canario CONTAR execucoes em vez de so observar bloqueio -- comando bloqueado e comando bloqueado, nao se ve 'duas vezes'. Nao ha convencao unica: registrado como e, nao como deveria ser",
     "escape": "env var que desliga so este hook; null quando so o escape geral PERCUS_HOOKS_DISABLED vale",
     "registrado": "false = existe em disco e nao esta em nenhum registro vivo. Nao e erro: e visibilidade",
-    "alvo": "o que a guarda inspeciona: comando = le tool_input.command (shells); caminho = le tool_input.file_path (Edit/Write); plano = ExitPlanMode. Existe porque 'guarda de PreToolUse' deixou de ser sinonimo de 'guarda de comando' quando entrou a primeira guarda de CAMINHO -- e o teste que exigia matcher Bash|PowerShell de toda guarda de PreToolUse teria proibido a guarda nova por construcao."
+    "alvo": "o que a guarda inspeciona: comando = le tool_input.command (shells); caminho = le tool_input.file_path (Edit/Write); plano = ExitPlanMode; transcript = le transcript_path (observador de PostToolUse que mede a sessao, nao a acao). Existe porque 'guarda de PreToolUse' deixou de ser sinonimo de 'guarda de comando' quando entrou a primeira guarda de CAMINHO -- e o teste que exigia matcher Bash|PowerShell de toda guarda de PreToolUse teria proibido a guarda nova por construcao."
   },
   "escape_geral": "PERCUS_HOOKS_DISABLED",
   "hooks": [
@@ -131,6 +131,17 @@
       "escape": null,
       "registrado": true,
       "_nota": "Diz no inicio de cada sessao se o enforcement esta ligado e DE ONDE o codigo vem. Absorve a intencao do orfao canon-version-check (versao instalada x versao do kit). Sempre exit 0: health check que tranca a sessao troca um problema por outro pior. Fala por STDOUT, nao stderr -- unico hook do manifesto que quebra a convencao, porque medido: stderr de SessionStart que sai 0 nao aparece (achado 2026-07-31, apos a Task 7 ter sido dada como fechada com o hook falando em stderr e nunca aparecendo)."
+    },
+    {
+      "nome": "context-budget-guard",
+      "evento": "PostToolUse",
+      "matcher": "",
+      "forma": "observador",
+      "assinatura": "[percus:hook context-budget-guard]",
+      "escape": "PERCUS_SKIP_CONTEXT_BUDGET",
+      "registrado": true,
+      "alvo": "transcript",
+      "_nota": "Mede o contexto VIVO da sessao (ultima `usage` da CAUDA do transcript: input + cache_read + cache_creation) a cada tool call e avisa agente (additionalContext) e operador (systemMessage) acima de PERCUS_CTX_WARN=150k / PERCUS_CTX_HARD=180k, ou apos PERCUS_CTX_HOURS=8h / PERCUS_CTX_RESUME_DAYS=2d de sessao. Um aviso por nivel por sessao (.deepseek/context-budget/). Matcher VAZIO de proposito: contexto cresce com Edit/Write/Read tanto quanto com Bash -- guarda que so ve shell e a classe de furo ja registrada (hooks-percus-so-cobrem-tool-bash). Sempre exit 0: bloquear contexto vivo viraria escape rotineiro, como o teto do CONTEXT.md. Existe porque uma sessao de 14h chegou a 610k tokens com 11 mencoes a checkpoint -- checkpoint escreve arquivo, nao reseta contexto (2026-09-12). CUSTO: roda a CADA tool call, ~0,3-0,5 s por chamada (spawn frio do powershell.exe; medido 2026-09-12 nos testes, 250-570 ms por invocacao) -- investigacao de lentidao do harness deve contar com isso antes de culpar MCP. LIMITE CONHECIDO: le a cauda em duas janelas (256 KB, depois 2 MB); tool_result maior que 2 MB gravado depois da ultima usage esconde a medicao daquela chamada -- a seguinte recupera. EXCECOES ao 'sempre exit 0' (findings R11 2026-09-12): (1) o wrapper .cmd sai 1 se o .ps1 estiver ausente/truncado -- e o fail-loud comum a todos os observadores do kit (hook-wrapper-fail-loud: grita 1, nao tranca 2), nao regra deste hook; (2) o debounce mora em <cwd>/.deepseek/context-budget/ usando o cwd do PAYLOAD, que e o da sessao do harness (nao muda com cd dentro do Bash) -- se o harness reportar cwd diferente entre chamadas, o hook volta a falar uma vez por cwd."
     },
     {
       "nome": "canon-version-check",

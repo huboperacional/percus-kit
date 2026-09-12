@@ -110,11 +110,37 @@ Describe "Hardening 2026-05-19 — incidentes 2 (wrapper auto-edit) + 3 (hook cr
     # =========================================================================
     Context "Invariante D — plugin nao registra hook que aplique Edit/Write" {
 
-        It "D1. hooks.json NAO declara PostToolUse" {
+        It "D1. todo PostToolUse registrado e OBSERVADOR puro: nao mira Edit/Write, nao le tool_input, nao move/renomeia arquivo" {
+            # Ate 6.44.x este It dizia "hooks.json NAO declara PostToolUse" -- proxy barato do
+            # invariante real ("canon nao registra hooks de MUTACAO"), porque nao havia PostToolUse
+            # legitimo. Em 6.45.0 entrou o context-budget-guard: PostToolUse em TODAS as tools,
+            # que le o TRANSCRIPT (usage) e nunca o alvo da tool. O invariante continua o mesmo;
+            # o que muda e que agora ele e afirmado pelo que importa, nao pelo nome do evento.
+            # Um hook como o do incidente 2 (PostToolUse:Edit que renomeava) FALHA aqui em 3 lugares.
             Test-Path $script:hooksJson | Should -Be $true
             $json = Get-Content $script:hooksJson -Raw | ConvertFrom-Json
-            $json.hooks.PSObject.Properties.Name | Should -Not -Contain "PostToolUse" `
-                -Because "incidente 2 atribuiu auto-rename a PostToolUse:Edit; canon nao registra hooks de mutacao"
+            if (-not $json.hooks.PostToolUse) { return }
+
+            $manifesto = Get-Content (Join-Path (Split-Path $script:hooksJson -Parent) "hooks-manifest.json") -Raw | ConvertFrom-Json
+            foreach ($entry in @($json.hooks.PostToolUse)) {
+                "$($entry.matcher)" | Should -Not -Match '^(Edit|Write|MultiEdit|NotebookEdit)$' `
+                    -Because "incidente 2 atribuiu auto-rename a PostToolUse:Edit; PostToolUse que existe SO para edits e hook de mutacao"
+                foreach ($hk in @($entry.hooks)) {
+                    $hk.command -match '([^/\\"]+)\.cmd' | Should -Be $true
+                    $nome = $matches[1]
+                    $decl = @($manifesto.hooks | Where-Object { $_.nome -ceq $nome -and $_.registrado })
+                    $decl.Count | Should -Be 1 -Because "PostToolUse fora do manifesto nao tem forma nem alvo declarados: $nome"
+                    $decl[0].forma | Should -Be 'observador' -Because "PostToolUse so pode observar (exit 0), nunca decidir"
+                    $decl[0].alvo  | Should -Be 'transcript' -Because "PostToolUse que mira comando/caminho e o que o incidente 2 era"
+
+                    $ps1 = Join-Path (Split-Path $script:hooksJson -Parent) "$nome.ps1"
+                    $vivas = @(Get-Content $ps1 -ErrorAction Stop | Where-Object { -not "$_".TrimStart().StartsWith('#') })
+                    @($vivas | Where-Object { $_ -match 'tool_input|file_path|tool_response' }) | Should -BeNullOrEmpty `
+                        -Because "observador de transcript nao tem por que ler o alvo da tool ($nome)"
+                    @($vivas | Where-Object { $_ -match 'Rename-Item|Move-Item|\bgit\s+(mv|add|commit|checkout|switch)\b' }) | Should -BeNullOrEmpty `
+                        -Because "hook que move/renomeia/commita e hook de mutacao -- invariante D ($nome)"
+                }
+            }
         }
 
         It "D2. nenhum hook PreToolUse com matcher Edit/Write/MultiEdit/NotebookEdit" {

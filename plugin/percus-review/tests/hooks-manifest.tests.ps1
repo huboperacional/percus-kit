@@ -26,12 +26,13 @@ Describe "hooks-manifest.json" {
         $script:todos.Count | Should -BeGreaterThan 0
     }
 
-    It "declara 13 hooks registrados (9 guarda / 4 observador) + o orfao" {
+    It "declara 14 hooks registrados (9 guarda / 5 observador) + o orfao" {
         # Piso de contagem, mesma razao do hook-wrapper-fail-loud: manifesto esvaziado faria
         # todos os It abaixo iterarem sobre lista vazia e passarem sem verificar nada.
-        $script:vivos.Count | Should -Be 13 -Because "piso: manifesto vazio nao guarda nada"
+        # 6.45.0: +1 observador (context-budget-guard, PostToolUse em todas as tools).
+        $script:vivos.Count | Should -Be 14 -Because "piso: manifesto vazio nao guarda nada"
         @($script:vivos | Where-Object { $_.forma -ceq 'guarda' }).Count     | Should -Be 9
-        @($script:vivos | Where-Object { $_.forma -ceq 'observador' }).Count | Should -Be 4
+        @($script:vivos | Where-Object { $_.forma -ceq 'observador' }).Count | Should -Be 5
         @($script:todos | Where-Object { -not $_.registrado }).Count | Should -Be 1 -Because "canon-version-check e orfao conhecido; orfao novo aparecendo sem ninguem decidir e drift"
     }
 
