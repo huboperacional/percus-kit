@@ -114,8 +114,19 @@ function Invoke-FactCheck {
         $fcOut = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $factCheckScript -FindingsFile $tmpFindings 2>&1
         $fcJson = $fcOut | ConvertFrom-Json -ErrorAction SilentlyContinue
         if ($fcJson -and $fcJson.filtered_output -ne $null) {
-            $stats = "total=$($fcJson.findings_total) confirmado=$($fcJson.findings_confirmed) infundado=$($fcJson.findings_infundado) parcial=$($fcJson.findings_parcial)"
+            # `unverified` entra no resumo desde 2026-09-12. Sem ele, uma rodada em que a API do
+            # fact-check falhou inteira saia como "total=4 confirmado=0 infundado=0 parcial=0" --
+            # que se le como "review limpo" quando na verdade NADA foi verificado. Duas sessoes
+            # diferentes leram errado no mesmo dia. Ausencia de refutacao nao e confirmacao.
+            $naoVerificados = [int]$fcJson.findings_unverified
+            $totalFindings  = [int]$fcJson.findings_total
+            $stats = "total=$($fcJson.findings_total) confirmado=$($fcJson.findings_confirmed) infundado=$($fcJson.findings_infundado) parcial=$($fcJson.findings_parcial) nao-verificado=$naoVerificados"
             [Console]::Error.WriteLine("[percus-review-auto] fact-check: $stats")
+            if ($naoVerificados -gt 0 -and $totalFindings -gt 0 -and $naoVerificados -eq $totalFindings) {
+                [Console]::Error.WriteLine("[percus-review-auto] ATENCAO: NENHUM finding foi verificado ($naoVerificados de $totalFindings) -- o fact-check nao rodou de verdade (chave/credito/rede). Isto NAO e 'review limpo': trate cada finding a mao.")
+            } elseif ($naoVerificados -gt 0 -and $totalFindings -gt 0) {
+                [Console]::Error.WriteLine("[percus-review-auto] WARN: $naoVerificados de $totalFindings finding(s) ficaram SEM verificacao -- confira a mao antes de descartar.")
+            }
             if ($fcJson.findings_infundado -gt 0) {
                 [Console]::Error.WriteLine("[percus-review-auto] WARN: $($fcJson.findings_infundado) finding(s) INFUNDADO(s) filtrado(s) do output principal — ver bloco Audit")
             }

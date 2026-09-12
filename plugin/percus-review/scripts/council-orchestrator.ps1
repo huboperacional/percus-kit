@@ -248,6 +248,25 @@ function Get-PremiseValidity([string]$content) {
 # Regra: >=1 invalid -> "invalid"; >=1 unverified (sem invalid) -> "unverified"; else "ok"
 # Se nenhum provider retornou tag -> "unverified" (seguro por default)
 # ---------------------------------------------------------------------------
+# Marcador que manda o agente principal completar a perna Cross-Claude com um subagente.
+# Extraido pra funcao em 2026-09-12: passou a ter DOIS pontos de emissao -- antes (chave ausente)
+# e depois da coleta (chave presente mas quebrada). Duplicar o bloco faria as duas saidas
+# divergirem no primeiro conserto, e o agente depende do formato exato pra achar o prompt.
+function Write-CrossClaudeMarker {
+    param([string]$Model, [string]$Sistema, [string]$Usuario, [string]$Motivo = "")
+    [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__")
+    $cabecalho = "[council-orchestrator] dispatch Cross-Claude subagent com prompt:"
+    if ($Motivo) { $cabecalho = "[council-orchestrator] $Motivo -- dispatch Cross-Claude subagent com prompt:" }
+    [Console]::Error.WriteLine($cabecalho)
+    [Console]::Error.WriteLine("---MODEL-HINT---")
+    [Console]::Error.WriteLine($Model)
+    [Console]::Error.WriteLine("---END-MODEL-HINT---")
+    [Console]::Error.WriteLine("---PROMPT---")
+    [Console]::Error.WriteLine("$Sistema`n`n$Usuario")
+    [Console]::Error.WriteLine("---END-PROMPT---")
+    [Console]::Error.WriteLine("Salve resposta em arquivo e re-invoque orchestrator com -CrossClaudeFile <path>.")
+}
+
 function Get-PremiseValidityConsensus([array]$responses) {
     $hasInvalid    = $false
     $hasUnverified = $false
@@ -323,7 +342,12 @@ $wanted = $Providers.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { 
 
 # Detect if direct wrapper can be used for cross-claude (avoids marker, enables cache_control)
 $crossClaudeWrapper = Join-Path $providersDir "cross-claude.ps1"
-$useDirectClaude = ($wanted -contains "cross-claude") -and (Test-Path $crossClaudeWrapper) -and $env:ANTHROPIC_API_KEY -and (-not $CrossClaudeFile)
+# PERCUS_CROSS_CLAUDE=subagent: usar a ASSINATURA (subagente) em vez da API, mesmo com chave
+# presente e boa. Existe porque o operador paga credito mensal do login e nao API -- sem esta
+# alavanca, a unica forma de nao gastar API seria apagar ANTHROPIC_API_KEY do ambiente, que
+# outros componentes usam. 'auto' (default) tenta a API e cai no subagente se ela falhar.
+$preferSubagente = ("$($env:PERCUS_CROSS_CLAUDE)".Trim().ToLowerInvariant() -eq 'subagent')
+$useDirectClaude = ($wanted -contains "cross-claude") -and (Test-Path $crossClaudeWrapper) -and $env:ANTHROPIC_API_KEY -and (-not $CrossClaudeFile) -and (-not $preferSubagente)
 
 # Separate cross-claude (handled differently unless direct wrapper available)
 if ($useDirectClaude) {
@@ -480,16 +504,7 @@ if ($wantsCrossClaude) {
             latency_ms = 0
         }
     } else {
-        # Emit marker pro agente
-        [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__")
-        [Console]::Error.WriteLine("[council-orchestrator] dispatch Cross-Claude subagent com prompt:")
-        [Console]::Error.WriteLine("---MODEL-HINT---")
-        [Console]::Error.WriteLine($CrossClaudeModel)
-        [Console]::Error.WriteLine("---END-MODEL-HINT---")
-        [Console]::Error.WriteLine("---PROMPT---")
-        [Console]::Error.WriteLine("$SystemPrompt`n`n$userPrompt")
-        [Console]::Error.WriteLine("---END-PROMPT---")
-        [Console]::Error.WriteLine("Salve resposta em arquivo e re-invoque orchestrator com -CrossClaudeFile <path>.")
+        Write-CrossClaudeMarker -Model $CrossClaudeModel -Sistema $SystemPrompt -Usuario $userPrompt
     }
 }
 
@@ -525,6 +540,26 @@ if ($crossClaude) {
     $ccPV = if ($hasCodeContext) { Get-PremiseValidity ($crossClaude.content) } else { "" }
     $crossClaude["premise_validity"] = $ccPV
     $responses += $crossClaude
+}
+
+# A perna que tentou a API e FALHOU ainda pode ser completada pelo subagente -- e este e o unico
+# ponto onde se sabe disso. Medido 2026-09-12 (duas vezes na mesma sessao): com a chave presente
+# mas sem credito, a decisao la em cima ja tinha zerado $wantsCrossClaude, o bloco do marcador
+# ficava inalcancavel e o conselho de 3 virava 2 em silencio. Decidir pela PRESENCA da chave em
+# vez do RESULTADO da chamada e o mesmo erro de medir delta em vez de tamanho.
+$crossClaudePendente = ($wantsCrossClaude -and (-not $crossClaude))
+if ($useDirectClaude) {
+    $ccDireto = @($responses | Where-Object { "$($_.provider)" -ceq "cross-claude" })
+    if ($ccDireto.Count -eq 0 -or "$($ccDireto[0].status)" -cne "ok") {
+        $motivo = if ($ccDireto.Count -gt 0) { "perna direta falhou (status=$($ccDireto[0].status))" } else { "perna direta nao respondeu" }
+        Write-CrossClaudeMarker -Model $CrossClaudeModel -Sistema $SystemPrompt -Usuario $userPrompt -Motivo $motivo
+        # O campo do log tem que concordar com o marcador. Calcula-lo so a partir de
+        # $wantsCrossClaude (zerado la em cima quando a chave existe) deixava o log gravado em
+        # .deepseek/council-log/ dizendo pending=false EXATAMENTE no cenario que esta versao
+        # conserta -- a mesma classe de bug sobrevivendo num campo colateral, e o log e o que
+        # alguem le depois pra saber se a perna ficou faltando.
+        $crossClaudePendente = $true
+    }
 }
 
 Remove-Item $tmpPrompt -Force -ErrorAction SilentlyContinue
@@ -585,7 +620,7 @@ $result = @{
     respostas_usaveis = $usaveis.Count
     respostas_degradadas = $degradados
     total_latency_ms = $totalLatency
-    cross_claude_pending = ($wantsCrossClaude -and (-not $crossClaude))
+    cross_claude_pending = $crossClaudePendente
     truncated        = $trunc.truncated
     original_token_count = $trunc.original_tokens
     # F2 — code context injection metadata

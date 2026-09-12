@@ -30,7 +30,35 @@ infundado=0` com todo finding `unverified` — e *"quem lê rápido lê `total=0
 Perna Sonnet completada à mão, escopada nos arquivos da sessão, salva em
 `.deepseek/reviews/2026-09-12-1345-cross-claude.jsonl` — convenção de nome a seguir.
 
-**PENDENTE (não corrigido):** decidir se `cross-claude.ps1` e o F3 devem (a) emitir o marcador de
-fallback quando a chave falhar (401/400), ou (b) deixar de usar chave e sempre pedir subagent — que
-roda na assinatura. O operador declarou: *"não é para usar API, é para usar meu crédito mensal"* —
-aponta para (b). Registrado aqui para não ser reinvestigado do zero.
+**Causa raiz (achada 2026-09-12, `council-orchestrator.ps1` linha ~326):** a decisão de usar a API
+em vez do subagente é tomada **antes de tentar**, olhando apenas se `ANTHROPIC_API_KEY` *existe* —
+nunca se a chave *funciona*. Quando existe, o orchestrator zera `$wantsCrossClaude` e o bloco que
+emite `__PERCUS_NEEDS_CROSS_CLAUDE__` fica **inalcançável**. Chave presente e quebrada = perna morta
+em silêncio. É o mesmo erro de classe que o canon combate noutro lugar: decidir pela **presença** do
+insumo em vez do **resultado** da operação — medir delta em vez de tamanho.
+
+**Corrigido em 6.46.0**, em três partes:
+
+1. **Fallback pelo resultado.** O marcador passou a ter dois pontos de emissão: o antigo (chave
+   ausente) e um novo, **depois da coleta** — se a resposta de `cross-claude` voltou com
+   `status != ok`, o marcador sai com o prompt. Extraído para `Write-CrossClaudeMarker` /
+   `emitir_marcador_cross_claude`, porque bloco duplicado divergiria no primeiro conserto e o
+   agente depende do formato exato para achar o prompt.
+2. **`PERCUS_CROSS_CLAUDE=subagent`** força o caminho do subagente mesmo com chave boa — é a
+   alavanca para quem paga assinatura e não API. Sem ela, a única forma seria apagar a variável do
+   ambiente, que outros componentes usam. `auto` (default) tenta a API e cai no subagente se falhar.
+3. **Resumo do F3 honesto:** `nao-verificado=N` entrou na linha de resumo, e quando todos os
+   findings ficam sem verificação a mensagem diz isso em voz alta. Antes saía
+   `total=4 confirmado=0 infundado=0 parcial=0` — lido como "review limpo" por duas sessões
+   diferentes no mesmo dia.
+
+**Prova:** `plugin/percus-review/tests/council-fallback-cross-claude.tests.ps1` (**11 casos**: 8 em
+PowerShell com provider falso devolvendo o erro real de crédito, mais 3 que rodam o `.sh` de verdade
+— a paridade entre as duas implementações é afirmada por artefato, não por texto) e
+`fact-check-resumo-honesto.tests.ps1` (6 casos, função recortada do script real por marcador). O RED
+do segundo foi provado rodando o teste contra a versão anterior via `git show HEAD:` — ela imprime a
+linha enganosa e nenhuma menção a não-verificado.
+
+**Discriminante que sobrevive:** guarda que escolhe caminho pela **presença** de um insumo nunca
+descobre que o insumo é ruim. Se há um plano B, a condição de cair nele tem que ser o **resultado**
+da tentativa, não a existência da configuração.

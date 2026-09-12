@@ -241,13 +241,43 @@ fi
 
 # Detect if direct wrapper can be used for cross-claude (avoids marker, enables cache_control)
 CROSS_CLAUDE_WRAPPER="$PROVIDERS_DIR/cross-claude.sh"
+# PERCUS_CROSS_CLAUDE=subagent: usar a ASSINATURA (subagente) em vez da API, mesmo com chave
+# presente e boa -- o operador paga credito mensal do login, nao API. Paridade com o .ps1.
+PREFER_SUBAGENTE=0
+# sed no lugar de xargs: o valor e livre por contrato e xargs erra parsing com aspas na string.
+_pcc=$(printf '%s' "${PERCUS_CROSS_CLAUDE:-}" | tr 'A-Z' 'a-z' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+# if/fi, e nao `[ ... ] && VAR=1`: medido 2026-09-12 -- a forma com && aborta sob `set -e`
+# quando e o ULTIMO comando de uma funcao (no corpo do script, com codigo depois, nao aborta).
+# A seguranca nao deve depender de a linha continuar onde esta.
+if [ "$_pcc" = "subagent" ]; then PREFER_SUBAGENTE=1; fi
 USE_DIRECT_CLAUDE=0
 for p in "${WANTED[@]}"; do
     p=$(echo "$p" | xargs)
-    if [[ "$p" == "cross-claude" && -f "$CROSS_CLAUDE_WRAPPER" && -n "$ANTHROPIC_API_KEY" && -z "$CROSS_CLAUDE_FILE" ]]; then
+    if [[ "$p" == "cross-claude" && -f "$CROSS_CLAUDE_WRAPPER" && -n "$ANTHROPIC_API_KEY" && -z "$CROSS_CLAUDE_FILE" && $PREFER_SUBAGENTE -eq 0 ]]; then
         USE_DIRECT_CLAUDE=1
     fi
 done
+
+# Marcador que manda o agente principal completar a perna com um subagente. Funcao (e nao bloco
+# inline) porque tem DOIS pontos de emissao: chave ausente, e chave presente mas quebrada.
+emitir_marcador_cross_claude() {
+    local motivo="${1:-}"
+    echo "__PERCUS_NEEDS_CROSS_CLAUDE__" >&2
+    if [ -n "$motivo" ]; then
+        echo "[council-orchestrator] $motivo -- dispatch Cross-Claude subagent com prompt:" >&2
+    else
+        echo "[council-orchestrator] dispatch Cross-Claude subagent com prompt:" >&2
+    fi
+    echo "---MODEL-HINT---" >&2
+    echo "${CROSS_CLAUDE_MODEL}" >&2
+    echo "---END-MODEL-HINT---" >&2
+    echo "---PROMPT---" >&2
+    echo "${SYSTEM_PROMPT}" >&2
+    echo "" >&2
+    echo "${USER_PROMPT}" >&2
+    echo "---END-PROMPT---" >&2
+    echo "Salve resposta em arquivo e re-invoque orchestrator com --cross-claude-file <path>." >&2
+}
 
 # Separate cross-claude (handled differently unless direct wrapper available)
 ASYNC_PROVIDERS=()
@@ -384,17 +414,7 @@ if [[ $WANTS_CROSS_CLAUDE -eq 1 ]]; then
         CC_CONTENT=$(cat "$CROSS_CLAUDE_FILE")
         CROSS_CLAUDE_JSON=$(jq -n --arg c "$CC_CONTENT" --arg m "$CROSS_CLAUDE_MODEL" '{provider:"cross-claude", model:$m, status:"ok", content:$c, latency_ms:0}')
     else
-        echo "__PERCUS_NEEDS_CROSS_CLAUDE__" >&2
-        echo "[council-orchestrator] dispatch Cross-Claude subagent com prompt:" >&2
-        echo "---MODEL-HINT---" >&2
-        echo "${CROSS_CLAUDE_MODEL}" >&2
-        echo "---END-MODEL-HINT---" >&2
-        echo "---PROMPT---" >&2
-        echo "${SYSTEM_PROMPT}" >&2
-        echo "" >&2
-        echo "${USER_PROMPT}" >&2
-        echo "---END-PROMPT---" >&2
-        echo "Salve resposta em arquivo e re-invoque orchestrator com --cross-claude-file <path>." >&2
+        emitir_marcador_cross_claude
     fi
 fi
 
@@ -431,6 +451,18 @@ if [[ -n "$CROSS_CLAUDE_JSON" ]]; then
         CROSS_CLAUDE_JSON=$(echo "$CROSS_CLAUDE_JSON" | jq --arg pv "$CC_PV" '. + {premise_validity: $pv}')
     fi
     RESPONSES_JSON=$(echo "$RESPONSES_JSON" | jq --argjson r "$CROSS_CLAUDE_JSON" '. + [$r]')
+fi
+
+# A perna que tentou a API e FALHOU ainda pode ser completada pelo subagente -- e este e o unico
+# ponto onde se sabe disso. Decidir pela PRESENCA da chave em vez do RESULTADO da chamada deixava
+# a perna morrer calada com chave sem credito (medido 2026-09-12). Paridade com o .ps1.
+if [[ $USE_DIRECT_CLAUDE -eq 1 ]]; then
+    CC_STATUS=$(echo "$RESPONSES_JSON" | jq -r '[.[] | select(.provider=="cross-claude")][0].status // "ausente"' 2>/dev/null || echo "ausente")
+    if [ "$CC_STATUS" != "ok" ]; then
+        emitir_marcador_cross_claude "perna direta falhou (status=$CC_STATUS)"
+        # o campo do log tem que concordar com o marcador (paridade com o .ps1)
+        CROSS_PENDING_FORCADO=1
+    fi
 fi
 
 # O RESULT (mais abaixo) precisa do prompt e do system prompt, e precisa recebe-los por
@@ -510,6 +542,7 @@ CROSS_PENDING="false"
 if [[ $WANTS_CROSS_CLAUDE -eq 1 && -z "$CROSS_CLAUDE_JSON" ]]; then
     CROSS_PENDING="true"
 fi
+if [ "${CROSS_PENDING_FORCADO:-0}" = "1" ]; then CROSS_PENDING="true"; fi
 
 # Build code_context_files JSON array
 CC_FILES_JSON=$(printf '%s\n' "${CODE_CONTEXT_FILES[@]:-}" | jq -R . | jq -s . 2>/dev/null || echo "[]")

@@ -180,6 +180,9 @@ run_fact_check() {
         return 0
     fi
     >&2 echo "[percus-review-auto] fact-check: iniciando pipeline F3..."
+    # temp UNICO por invocacao: nome fixo em /tmp colide entre sessoes no mesmo checkout e
+    # devolve o aviso da rodada anterior (mesma classe do stale de council-q.txt).
+    _FC_WARN="${TMPDIR:-/tmp}/percus-fc-warn-$$-$RANDOM"
     FC_OUT=$(printf '%s' "$REVIEW_OUTPUT" | bash "$FACT_CHECK" 2>/dev/null)
     if [ -n "$FC_OUT" ]; then
         # Extrair filtered_output do JSON via python3 (best-effort)
@@ -189,14 +192,26 @@ try:
     d = json.load(sys.stdin)
     inf = d.get('findings_infundado', 0)
     tot = d.get('findings_total', 0)
+    nv  = d.get('findings_unverified', 0)
+    conf = d.get('findings_confirmed', 0)
+    par = d.get('findings_parcial', 0)
+    import sys as s
+    print('[percus-review-auto] fact-check: total=%s confirmado=%s infundado=%s parcial=%s nao-verificado=%s' % (tot, conf, inf, par, nv), file=s.stderr)
+    # Ausencia de refutacao nao e confirmacao: sem esta linha, uma rodada em que a API caiu
+    # inteira sai como confirmado=0/infundado=0 e se le como review limpo (medido 2026-09-12).
+    if nv and tot and nv == tot:
+        print('[percus-review-auto] ATENCAO: NENHUM finding foi verificado (%s de %s) -- o fact-check nao rodou de verdade (chave/credito/rede). Isto NAO e review limpo: trate cada finding a mao.' % (nv, tot), file=s.stderr)
+    elif nv and tot and nv > 0:
+        print('[percus-review-auto] WARN: %s de %s finding(s) ficaram SEM verificacao -- confira a mao antes de descartar.' % (nv, tot), file=s.stderr)
     if inf and inf > 0:
         import sys as s
         print(f'[percus-review-auto] WARN: {inf} finding(s) INFUNDADO(s) filtrado(s) do output — ver bloco Audit', file=s.stderr)
     print(d.get('filtered_output', ''), end='')
 except Exception:
     pass
-" 2>/tmp/percus_fc_warn)
-        cat /tmp/percus_fc_warn >&2 2>/dev/null || true
+" 2>"$_FC_WARN")
+        cat "$_FC_WARN" >&2 2>/dev/null || true
+        rm -f "$_FC_WARN" 2>/dev/null || true
         if [ -n "$FILTERED" ]; then
             printf '%s' "$FILTERED"
             return 0

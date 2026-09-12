@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.45.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.46.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,72 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.46.0 — 2026-09-12
+
+**A perna Cross-Claude do conselho não morre mais calada — e o fact-check para de parecer limpo
+quando não verificou nada.** Medido duas vezes na mesma sessão (um `consult` e o `analyze` de uma
+spec): a perna devolvia `400 Bad Request: Your credit balance is too low to access the Anthropic
+API` e o marcador `__PERCUS_NEEDS_CROSS_CLAUDE__` — que existe justamente para o agente completar a
+perna com um subagente — **nunca era emitido**. O conselho de 3 virava 2 e seguia.
+
+**Causa raiz** (`council-orchestrator.ps1` ~326): a decisão de usar a API em vez do subagente era
+tomada **antes de tentar**, olhando apenas se `ANTHROPIC_API_KEY` *existe* — nunca se a chave
+*funciona*. Com a chave presente, `$wantsCrossClaude` era zerado e o bloco do marcador ficava
+inalcançável. É decidir pela **presença** do insumo em vez do **resultado** da operação — a mesma
+classe de erro que "medir delta em vez de tamanho".
+
+- **Fallback pelo resultado:** o marcador ganhou um segundo ponto de emissão, **depois da coleta** —
+  se `cross-claude` voltou com `status != ok`, ele sai com o prompt e o modelo sugerido. Extraído
+  para `Write-CrossClaudeMarker` (`.ps1`) / `emitir_marcador_cross_claude` (`.sh`): bloco duplicado
+  divergiria no primeiro conserto, e o agente depende do formato exato para achar o prompt.
+- **`PERCUS_CROSS_CLAUDE=subagent`** força o caminho do subagente mesmo com chave boa — a alavanca
+  para quem paga assinatura e não API. Sem ela, a única saída era apagar a variável do ambiente,
+  que outros componentes usam. `auto` (default) tenta a API e cai no subagente se ela falhar.
+- **Resumo do F3 honesto** (`scripts/percus-review-auto.ps1`): `nao-verificado=N` entrou na linha de
+  resumo; quando **todos** os findings ficam sem verificação, a mensagem diz isso em voz alta. Antes
+  saía `total=4 confirmado=0 infundado=0 parcial=0`, que **duas sessões diferentes leram como
+  "review limpo"** no mesmo dia. Ausência de refutação não é confirmação.
+- **`cross_claude_pending` passou a refletir o RESULTADO, não a decisão prévia** (achado da perna
+  Cross-Claude no R11 desta própria versão). O campo era calculado a partir de `$wantsCrossClaude`,
+  que o caminho da API zera lá em cima — então, no cenário exato que esta versão conserta, o log em
+  `.deepseek/council-log/` gravava `cross_claude_pending: false` **depois de emitir o marcador**. É a
+  mesma classe de bug ("decidir pela presença, não pelo resultado") sobrevivendo num campo colateral
+  — e o log é o que alguém lê depois para saber se a perna ficou faltando.
+- **Paridade `.ps1`/`.sh`** nas três mudanças, com **teste que roda o `.sh` de verdade** (3 casos:
+  chave quebrada → marcador + `pending=true`; flag forçando subagente; valor com aspas não derruba o
+  trim). A primeira versão do changelog dizia "provada com execução real" tendo só testes `.ps1` no
+  diff — a perna Cross-Claude pegou a afirmação sem artefato, e a correção foi escrever o teste, não
+  suavizar o texto. O aviso de
+  não-verificado também entrou em `scripts/percus-review-auto.sh` — o twin existia e o review
+  pegou a omissão. De quebra, o `/tmp/percus_fc_warn` de nome **fixo** virou temp único por
+  invocação: nome fixo em `/tmp` colide entre sessões no mesmo checkout e devolve o aviso da
+  rodada anterior (mesma classe do stale de `council-q.txt`).
+- Testes: `council-fallback-cross-claude.tests.ps1` (**11 casos**: 8 em PowerShell com provider falso
+  devolvendo o erro real de crédito — incluindo "chave boa → nada muda", "`-CrossClaudeFile`
+  continua funcionando" e `cross_claude_pending` — mais 3 rodando o `.sh` de verdade) e
+  `fact-check-resumo-honesto.tests.ps1` (6 casos, função recortada do script real por marcador, não
+  por número de linha). **O RED do segundo foi provado contra a versão anterior** via
+  `git show HEAD:` — ela imprime a linha enganosa e nenhuma menção a não-verificado.
+- Conhecimento novo: `set-e-com-and-aborta-so-no-ultimo-comando-da-funcao` — as duas pernas do
+  conselho deram respostas **opostas** sobre `[ cond ] && VAR=1` sob `set -e`, ambas com convicção, e
+  a medição mostrou que nenhuma errava: no corpo do script não aborta; como última linha de uma
+  função, aborta. As duas ocorrências no `.sh` viraram `if/fi` mesmo estando em posição segura —
+  segurança que depende de a linha continuar onde está não é segurança. O que o caso ensina além do
+  bash: divergência entre revisores não significa que um é ruim, significa que falta discriminante.
+- Conhecimento: `cross-claude-nativo-401-sem-disparar-fallback` sai de PENDENTE para corrigido, com
+  o discriminante que sobrevive: *guarda que escolhe caminho pela presença de um insumo nunca
+  descobre que o insumo é ruim; a condição de cair no plano B tem que ser o resultado da tentativa.*
+
+**Achado colateral registrado, ainda sem correção:** a regra do canon *"ao finalizar uma spec → o
+agente roda `spec-analyze` sozinho, sem pedir permissão"* (`01_REGRAS_INEGOCIAVEIS.md:316`,
+`v2/CONSTITUICAO.md:35`, `v2/loops/spec.md`) **não tem hook nenhum**. A promessa irmã da mesma frase
+("ao finalizar um plano → `council-pre-mortem`") tem: `pre-plan-exit`. Metade do par ficou sem
+enforcement, e por isso foi pulada nesta própria sessão. Auditoria completa: das 25 regras, 9 têm
+enforcement mecânico; 7 das restantes são de arquitetura e o R11 cobre no review de código; 6 são
+comportamentais e estão descobertas (R10, R12, R13, R22, R24, R25) — **incluindo a R12, que exige
+que toda regra tenha verificação verificável e não tem nenhuma**. Ordem acertada com o operador:
+conselho (esta versão) → hook do `spec-analyze` → as 6 comportamentais.
 
 ## Changelog v6.45.0 — 2026-09-12
 
