@@ -276,6 +276,7 @@
 - [Filtro de tenant falta no branch EXPLICITO enquanto o implicito, no mesmo metodo, ja o tinha](filtro-de-tenant-falta-no-branch-explicito.md)
 - [Filtro `pytest -k <palavra>` não pega guarda de conjunto fechado quando o nome do arquivo não contém a palavra](filtro-k-de-teste-nao-pega-guarda-de-conjunto-fechado-em-arquivo-de-nome-nao-obvio.md)
 - [Filtro novo em tela de totais tem quatro deveres](filtro-novo-em-tela-de-totais-tem-quatro-deveres.md)
+- [Filtro `campo == chave` cujo contrato é EXCLUIR vira SELEÇÃO TOTAL quando a chave buscada é `None`](filtro-por-igualdade-com-chave-none-vira-selecao-total.md)
 - [Um fix commit que não re-roda a suíte de regressão enterra um RED sob "\[5-T\] local verde"](fix-commit-sem-re-rodar-suite.md)
 - [Fix commitado depois do teardown herda um verde que nunca teve](fix-depois-do-teardown-herda-o-verde.md)
 - [O fix vira o defeito seguinte: 3 CRITICALs em 5 rodadas, cada um filho da correção anterior](fix-vira-defeito-seguinte.md)
