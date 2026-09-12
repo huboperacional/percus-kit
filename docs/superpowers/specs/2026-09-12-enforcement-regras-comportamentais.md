@@ -72,16 +72,18 @@ desta tabela **não é hook nenhum**, é a suíte:
 
 | Regra | Observável | Shape | Veredito | Tier |
 |---|---|---|---|---|
+| **R5** irreversível | texto do comando | guarda de comando | **hook BLOQUEANTE** (único) | 1 |
 | **R10** design | prompt do usuário | **UserPromptSubmit** (novo) | hook warn-only | 1 |
 | **R22** porta | arquivos staged | guarda de comando | hook warn-only | 1 |
 | **R13** trailer | msg do commit + `.deepseek/runs/` | guarda de comando | hook warn-only | 1 |
 | **R12** meta | o próprio canon | teste do canon | teste + allowlist | 1 |
-| **R25** ref efêmera | o próprio canon | teste do canon | teste | 1 |
+| **R25a** ref efêmera | o próprio canon | teste do canon | teste | 1 |
 | **R4** credencial | caminho + conteúdo escrito | guarda de caminho | hook warn-only | 2 |
 | **R24** cadência | comando de deploy | guarda de comando | **medidor, não gate** | 2 |
-| **R25** bloco duplicado | o próprio canon | teste do canon | teste | 2 |
+| **R25b** bloco duplicado | o próprio canon | teste do canon | teste | 2 |
+| **R6** banco por projeto | o **scaffolder**, não a sessão | teste do canon | **checklist + teste, não hook** | 2 |
 
-Três consequências da triagem, que são a resposta a *"quais merecem"*:
+Cinco consequências da triagem, que são a resposta a *"quais merecem"*:
 
 1. **R12 e R25 não são hook.** O observável delas é o documento do canon, e o canon tem suíte. Vira
    teste: **ruído zero em sessão** e a auditoria deixa de ser pontual e passa a ser permanente.
@@ -92,13 +94,23 @@ Três consequências da triagem, que são a resposta a *"quais merecem"*:
    contexto.
 3. **R13 racha em duas.** A metade mecânica (o trailer) é detectável; a metade de julgamento
    (*"devia ter delegado?"*) fica com a skill `delegate-impl`, que já existe e já pontua heurística.
+4. **R5 é a exceção ao "tudo nasce warn-only"** — e a que mais urge. É a única regra do balde cujo
+   dano é **irreversível por definição**, e a medição de 2026-09-12 mostrou que ela está descoberta
+   dos dois lados: nenhum dos 16 hooks registrados casa `DROP`/`DELETE FROM`/`--force`, e em sessão com
+   permissões em bypass o harness não pergunta. Ver RF28a.
+5. **R6 não tem observável em sessão nenhuma.** A violação acontece uma vez, no nascimento do
+   projeto; o observável é o **scaffolder**, não o commit. Vira checklist emitido + teste que afirma
+   a emissão — e a spec declara que o enforcement dela é o mais fraco do balde, em vez de inventar
+   um gate por commit para fingir cobertura. Ver RF29–RF31a.
 
 ## 3. Não-objetivos
 
 - Hook para as 7 arquiteturais (R14–R19, R21) — o R11 cobre no review de diff.
 - Julgar se uma task **devia** ter sido delegada (R13) ou se um deploy caiu no gatilho certo (R24).
-- **Promover qualquer coisa a bloqueio.** Todo hook novo nasce warn-only; promoção é decisão
-  separada, depois de medir quanto a frota reclama.
+- **Promover qualquer coisa a bloqueio — com UMA exceção nomeada.** Todo hook novo nasce
+  warn-only e a promoção é decisão separada, depois de medir quanto a frota reclama. A exceção é
+  **R5** (RF28a): destruição irreversível não admite warn, porque quando o aviso chega o dado já
+  foi. Exceção *nomeada* não é exceção *aberta* — qualquer outra promoção segue fora de escopo.
 - Consertar a dívida do `git -C` nos 8 hooks de comando (Proposta F) — é tarefa própria, declarada no
   plano. Os hooks novos nascem com ela.
 - Alocar `port_base` para projetos que não têm (R22 avisa, não aloca).
@@ -258,33 +270,57 @@ Três consequências da triagem, que são a resposta a *"quais merecem"*:
   RF16a, e o teste DEVE reprovar se ela **crescer**. O critério é não-crescimento, não um total
   literal. Conteúdo inicial:
 
-  | regra | motivo (por que não tem gate hoje) | dono (o que a tira daqui) |
-  |---|---|---|
-  | R7 | tem hook verificado por conteúdo; falta só a seção no canon | RF19 — documentar o hook |
-  | R9 | idem | RF19 — documentar o hook |
-  | R11 | idem | RF19 — documentar o hook |
-  | R20 | idem | RF19 — documentar o hook |
-  | R10 | sem hook; observável é o prompt | RF1–RF6 — hook `UserPromptSubmit` (tier 1) |
-  | R12 | sem gate; o observável é o próprio canon | RF16–RF17 — teste da suíte (tier 1) |
-  | R4 | sem hook; observável é caminho + conteúdo escrito | RF23–RF24 — guarda de caminho (tier 2) |
-  | R5 | **shape não decidido** — como um hook distingue "irreversível" de rotina | §6.8 — decisão pendente |
-  | R6 | **shape não decidido** — observável plausível, mas dispara em repo herdado | §6.8 — decisão pendente |
+  | regra | motivo (por que não tem gate hoje) | dono (o que a tira daqui) | força (RF19c) |
+  |---|---|---|---|
+  | R7 | tem hook verificado por conteúdo; falta só a seção no canon | RF19 — documentar o hook | bloqueante |
+  | R9 | idem | RF19 — documentar o hook | bloqueante |
+  | R11 | idem | RF19 — documentar o hook | bloqueante |
+  | R20 | idem | RF19 — documentar o hook | bloqueante |
+  | R10 | sem hook; observável é o prompt | RF1–RF6 — hook `UserPromptSubmit` (tier 1) | aviso |
+  | R12 | sem gate; o observável é o próprio canon | RF16–RF17 — teste da suíte (tier 1) | bloqueante |
+  | R4 | sem hook; observável é caminho + conteúdo escrito | RF23–RF24 — guarda de caminho (tier 2) | aviso |
+  | R5 | sem gate, e **sem nenhum hook casando `DROP`/`DELETE FROM`/`--force`** (medido) | RF28–RF28i — guarda de comando (tier 1). Sai da allowlist com gate **parcial declarado** por RF19b: 2 dos 4 gatilhos (RF28g) | **bloqueante** |
+  | R6 | sem gate; a violação é evento único no nascimento do projeto | RF29–RF31a — scaffolder + teste (tier 2) | **checklist** |
 
 - **RF18a.** **A aritmética do encolhimento, explícita** (o caminho de 9 a 0, que a versão anterior
   desta spec errava ao dizer "9 → 3"):
-  **9** → RF19 documenta R7/R9/R11/R20 → **5** (R4, R5, R6, R10, R12) → R10, R12 e R4 ganham o
-  enforcement desta spec → **2** (R5, R6) → §6.8 decide o shape das duas → **0**. Só ao chegar a 0 é
-  que RF20 vale: o teste passa a reprovar qualquer regra nova sem gate.
+  **9** → RF19 documenta R7/R9/R11/R20 → **5** (R4, R5, R6, R10, R12) → tier 1 entrega R5, R10 e R12
+  → **2** (R4, R6) → tier 2 entrega as duas → **0**. Só ao chegar a 0 é que RF20 vale: o teste passa
+  a reprovar qualquer regra nova sem gate. **As cinco têm shape decidido** — a fila é de execução,
+  não de decisão. **Ressalva que não pode se perder:** "allowlist a 0" não é "canon todo coberto".
+  R5 sai com gate parcial e R6 com o enforcement mais fraco do balde (RF31a); é RF19b que impede
+  essa diferença de virar silêncio, obrigando cada seção de gate a nomear o que não cobre.
 - **RF19.** As 4 regras que têm hook verificado por conteúdo e não têm gate escrito (R7, R9, R11,
   R20) DEVEM ganhar a seção apontando para o hook que já as verifica.
 - **RF19a.** Nenhuma regra DEVE ganhar seção de gate com base no número que um hook cita sobre si
   mesmo; o vínculo hook↔regra DEVE ser confirmado comparando **o que o hook bloqueia** com **o corpo
   da regra** — foi o que R5/R6 violaram (§1).
-- **RF20.** QUANDO R4, R5, R6, R10 e R12 ganharem enforcement, a allowlist DEVE ir a 0 — e o teste
-  passa a reprovar qualquer regra nova sem gate.
-- **RF20a.** R5 e R6 entram no escopo do pacote como **descobertas**, não como dívida documental: R5
-  (confirmação antes de irreversível) e R6 (banco novo por projeto) precisam de decisão própria de
-  shape, ainda não tomada.
+- **RF19b.** SE o gate cobre **parte** dos gatilhos da regra ENTÃO a seção `**Gate de verificação:**`
+  DEVE nomear **o que ele não cobre**, e o teste do R12 DEVE reprovar uma seção de gate que não
+  declare a parte descoberta quando ela existe. Sem isto, a allowlist chega a 0 e o canon passa a
+  afirmar cobertura total onde há cobertura parcial — trocando um problema visível (a regra está na
+  allowlist) por um invisível (a regra tem um gate que parece completo). **É o mesmo erro do
+  verbete de §1 numa camada acima**: lá o vínculo hook↔regra era um rótulo; aqui seria a
+  *completude* do vínculo. A R5 é o primeiro caso concreto (RF28g1).
+- **RF19c.** Toda entrada de gate DEVE declarar sua **força**, de um conjunto fechado —
+  `bloqueante` · `aviso` · `medidor` · `checklist` — tanto na allowlist quanto na seção
+  `**Gate de verificação:**` que a substitui. O teste do R12 DEVE reprovar seção de gate sem força
+  declarada.
+
+  **Por quê, e é a terceira camada do mesmo defeito.** O teste de RF16 verifica se existe uma seção
+  `**Gate de verificação:**` — *presença*, não *eficácia*. Assim que R6 ganhar a sua, descrevendo um
+  checklist que qualquer projeto pode ignorar (RF31a admite isso), a aritmética de RF18a vai contar
+  R6 como resolvida e a allowlist chega a 0. Um leitor futuro lê "0 regras sem gate" e entende
+  "canon enforced". Seria o mesmo erro que gerou o CRITICAL de §1 — lá o rótulo era o número da
+  regra citado pelo hook; em RF19b, a completude do vínculo; aqui, a **força** dele. Com o campo,
+  "allowlist a 0" passa a se ler como *"toda regra tem um gate, e está escrito de que tipo cada um
+  é"* — que é uma afirmação verdadeira, em vez de uma otimista. Achado do conselho, rodada 3.
+- **RF20.** QUANDO R4, R5, R6, R10 e R12 ganharem enforcement — as cinco agora com shape decidido
+  (R5 em RF28, R6 em RF29–RF31) — a allowlist DEVE ir a 0, e o teste passa a reprovar qualquer
+  regra nova sem gate.
+- **RF20a.** R5 e R6 entraram no escopo como **descobertas**, não como dívida documental. **O shape
+  das duas está decidido** (RF28–RF31a), o que fecha o último item em aberto da triagem: R5 vira a
+  única guarda bloqueante do pacote; R6 sai da sessão e vira checklist do scaffolder + teste.
 
 ### R25 — single-source-of-truth (teste, não hook)
 
@@ -388,6 +424,134 @@ Três consequências da triagem, que são a resposta a *"quais merecem"*:
   item tier 2 que fala em sessão), mas quem ler a medição de R4 tem de saber que ela é um **piso**,
   como a de R24. Declarar o buraco é o que separa cobertura parcial de cobertura imaginária.
 
+### R5 — confirmação antes do irreversível *(tier 1, guarda de comando — o único BLOQUEANTE)*
+
+> **⚠️ R5 não é coberta inteira, e a aritmética do R12 tem de saber disso.** A R5 tem **quatro**
+> gatilhos: API paga, `DELETE` em produção, force push em main/master, e re-run de operação cara.
+> A guarda abaixo cobre o 2º e o 3º. Os outros dois ficam sem gate mecânico por RF28g — e a primeira
+> versão desta seção **contava R5 como resolvida mesmo assim**, que é exatamente o defeito do
+> verbete de §1 (contar cobertura que não existe), agora na terceira ocorrência desta spec. Pego
+> pelo conselho, rodada 3, como CRITICAL.
+
+- **RF28.** QUANDO um comando, **em posição de comando** (início da linha ou após separador de shell
+  — a mesma ancoragem que o guard de ação externa já usa, pelo mesmo motivo medido lá: prosa que
+  *cita* `DROP DATABASE` não é um drop), casa a fronteira destrutiva da R5 — `DROP DATABASE`,
+  `DROP TABLE`, **`DELETE FROM`**, `TRUNCATE`, e a remoção de stack/serviço em produção — O SISTEMA
+  DEVE **bloquear** e devolver a pergunta binária que a R5 exige.
+- **RF28i.** **A lista OPERACIONALIZA a R5; não é cópia literal dela, e a diferença tem de estar
+  escrita.** Conferido item a item contra o canon: `DELETE`/`DROP`/hard-delete de dados de produção
+  e "drop de database com dados" estão na fronteira da R5; `stack` e `container` estão no gatilho
+  *"DELETE em produção (database, stack, container)"*, o que cobre a remoção de stack/serviço.
+  **`TRUNCATE` NÃO aparece em lugar nenhum da R5** — é **extensão declarada**, incluída porque apaga
+  dados de forma irreversível por qualquer leitura da intenção da regra. Uma versão anterior dizia
+  que a lista era "exatamente" a da R5: falso, e pego pelo conselho. Extensão declarada é legítima;
+  extensão silenciosa é o gate afirmando ter autoridade que a regra não deu.
+- **RF28g0.** **`DELETE FROM` entra inteiro, sem a ressalva de `WHERE`.** A versão anterior isentava
+  `DELETE ... WHERE` e declarava isso como ponto cego; o conselho apontou que a R5 diz *"DELETE em
+  produção"* sem qualificar cláusula, então a ressalva era **invenção minha, não da regra** — e um
+  `DELETE ... WHERE` cirúrgico em prod é tão irreversível quanto um `TRUNCATE`. E a isenção que ia
+  fazer esse trabalho de separação não existe mais (RF28c): quem responde pelo caso legítimo é o
+  operador, numa pergunta binária — que é o que a R5 pede desde sempre.
+- **RF28h.** **Force push:** bloqueia `git push` com `--force`/`-f`/`+<ref>` **quando o alvo é
+  `main`/`master`** — que é como a R5 escreve o gatilho. Force push em branch de trabalho **passa**:
+  a R5 não o proíbe, e gatear ali seria o mesmo erro de RF28b (gatear o que a regra autorizou).
+  Ponto cego declarado: a outra formulação da R5 — *"force-push que apaga história remota"* — é mais
+  ampla que "main/master" e **não é decidível pelo texto do comando** (se `+feature/x` reescreve
+  história remota depende do estado do remoto, que o hook não consulta). O gate usa o nome do
+  branch; o resto fica com o R11.
+- **RF28a.** **É o único hook do pacote que nasce bloqueante, e isso é exceção declarada ao
+  não-objetivo de §3.** O motivo não é preferência, é a R12: warn-only para destruição irreversível é
+  **decoração pelo critério da própria regra** — o aviso chega, o dado some, e o que sobra é o
+  registro do acidente, não um gate. E não há rede por baixo: medido em 2026-09-12, **nenhum dos 16
+  hooks registrados em `hooks-manifest.json` casa `DROP`, `DELETE FROM`, `TRUNCATE` ou `--force`**
+  (grep nos dois runtimes, `.ps1` e `.sh`), e em sessão com permissões em bypass o
+  harness também não pergunta. A fronteira mais grave do canon é hoje a mais descoberta.
+- **RF28b.** O escopo DEVE ser **exatamente** essa fronteira, não "operação perigosa" em geral.
+  Deploy, `--env-add`, restart/redeploy, rollback e migration com `downgrade` testado **seguem
+  autônomos** — a R5 os autorizou por escrito, e gatear ali **contradiria a regra em vez de cumpri-la**.
+  Um gate de R5 que pede confirmação de deploy é um gate que não leu a R5.
+- **RF28c.** **NÃO existe isenção de "alvo efêmero de teste".** Uma versão anterior desta spec tinha
+  uma, justificada pelo procedimento de suíte contra Postgres efêmero do próprio kit
+  (`conhecimento/resolver/pg-efemero-testes-destrutivos.md`). O conselho foi ler o verbete e a
+  justificativa caiu: **o `DROP TABLE ... CASCADE` de lá acontece dentro do fixture, em Python/
+  asyncpg**; o comando que o agente roda é `docker run ... pytest ...`, que **não contém `DROP`** e
+  portanto nunca dispararia RF28. A isenção protegia um caso que não existe — e isenção sem caso
+  vivo é o ramo vácuo de `gotcha_detector_de_trava_nasce_frouxo_e_vacuo_ao_mesmo_tempo`.
+- **RF28c1.** Os outros dois motivos para não ter isenção, que só ficaram visíveis depois que o
+  primeiro caiu:
+  1. **Qualquer sinal escrito no comando é auto-certificação.** Quem escreve o comando é o agente
+     gateado; uma isenção por nome de banco se satisfaz batizando o banco de `app_test`. Gate cuja
+     isenção o gateado controla não é gate.
+  2. **Para um gate bloqueante cujo propósito é *perguntar antes do irreversível*, parar num
+     `DROP TABLE` local é o comportamento correto, não um falso positivo.** O custo é o operador
+     responder uma pergunta binária — que é literalmente o que a R5 pede.
+- **RF28c2.** O caso raro que precisar passar sem pergunta usa o escape de RF28f, **não uma isenção
+  inferida**. E o escape é seguro por uma razão medida: `PERCUS_SKIP_DESTRUCTIVE_GATE=1` prefixado
+  no próprio comando **não chega ao PreToolUse** — o hook roda em outro processo e lê o ambiente da
+  sessão (`gotcha_env_var_no_comando_nao_chega_ao_pretooluse_hook`). O agente não consegue se
+  auto-isentar inline; quem liga o escape é quem lança a sessão.
+- **RF28e.** **Ponto cego central, e o maior desta spec: o guard de comando não vê destruição que
+  acontece DENTRO de um programa.** Três exemplos reais, não hipotéticos:
+  1. `docker run ... pytest ...` cujo fixture dropa tabelas (RF28c);
+  2. **`alembic downgrade <rev>` cuja migration faz `DROP TABLE`/`TRUNCATE`** — e este é o pior,
+     porque escapa **duas vezes**: é invisível por forma (o texto não tem `DROP`) *e* isento por
+     RF28b (migration com `downgrade` testado é autônoma pela R5). Achado do conselho, rodada 3;
+  3. qualquer `python script.py` que apague dados via ORM.
+
+  **O gate cobre destruição escrita como comando, não destruição executada por programa.** Isto não
+  é conserto pendente: um guard de `tool_input.command` não tem como ler o interior de um script —
+  é o mesmo limite que RF27 mantém declarado para deploy.
+- **RF28e1.** Consequência prática do caso 2, que a spec DEVE registrar em vez de deixar implícita:
+  **`downgrade` destrutivo não tem gate nenhum.** A autorização durável da R5 o libera supondo que
+  ele foi *testado*; nada verifica que foi. Fica com o R11 (o review vê a migration no diff) — e
+  esse é o vínculo que a seção `**Gate de verificação:**` da R5 tem de nomear por RF19b.
+- **RF28f.** Escape: `PERCUS_SKIP_DESTRUCTIVE_GATE=1`. Por ser o único bloqueante, **o uso do escape
+  DEVE ser registrado**: uma linha JSONL em `.deepseek/destructive-gate/escapes.jsonl` na raiz do
+  projeto, com `ts` (RFC3339 com offset), `comando` (truncado em 500) e `projeto`. Escape silencioso
+  num gate de destruição é o gate desligado sem rastro — e o registro é o que permite responder
+  *"quantas vezes isto foi contornado?"* sem depender de memória.
+- **RF28g.** **Os dois gatilhos da R5 que NÃO viram gate, e por quê** — declarados aqui porque
+  omiti-los foi o CRITICAL da rodada 3:
+  - **API paga** (OpenAI, Veo, Imagen, Kling): sem observável confiável. A chamada sai de dentro de
+    um script arbitrário (`python gerar.py`), e o texto do comando não a denuncia — é o mesmo buraco
+    que o RF27 mantém aberto de propósito para deploy. Um gate por nome de script seria a heurística
+    frouxa-e-vácua de sempre. Fica com o R11 e com o julgamento em sessão.
+  - **Re-run de operação cara que já rodou:** exige saber que *já rodou*, o que é estado de história,
+    não de comando. O `.deepseek/runs/` e o medidor de R24 são os embriões desse observável; enquanto
+    não houver um registro de operações caras, não há o que casar.
+- **RF28g1.** **Consequência para o R12, que é o ponto:** R5 recebe um gate **parcial**, e a seção
+  `**Gate de verificação:**` dela DEVE dizer isso — ver RF19b. Marcar R5 como coberta sem essa
+  ressalva seria repetir, dentro da spec que combate o defeito, o defeito que ela combate.
+
+### R6 — banco novo por projeto *(tier 2 — checklist do scaffolder + teste, NÃO hook)*
+
+- **RF29.** **R6 não vira hook de sessão**, e o motivo é de razão-de-ser: a violação dela é um evento
+  **único, no nascimento do projeto**. Um gate por commit dispararia para sempre para pegar uma
+  decisão que se toma uma vez — a pior razão custo/benefício do balde inteiro. Pior: num repo
+  herdado, cuja string de conexão legada não vai mudar, ele dispararia em **todo** commit sem nunca
+  ter conserto possível. Escape declarado no primeiro dia.
+- **RF30.** O observável certo é o **momento da criação**, e o kit já tem o artefato:
+  `tools/scaffold-percus-project.{ps1,sh}`, que hoje encerra emitindo "Proximos passos manuais" e
+  gera um `CHECKLIST_AUTH.md`. **Verificado em 2026-09-12: o scaffolder não menciona banco, role nem
+  Redis em lugar nenhum** — é só auth/audience. R6 DEVE entrar ali: os três itens de nomeação
+  (`{slug}_v{N}`, role `{slug}_user` com senha em Docker secret, prefixo Redis `{slug}:*`) passam a
+  ser emitidos no fim do scaffold e a constar do checklist gerado.
+- **RF30a.** Os três itens DEVEM sair com **forma fixa**, senão o teste de RF31 não tem o que
+  afirmar. Cada um é uma linha do checklist gerado contendo o token estável + o slug resolvido:
+  `[R6] database: <slug>_v<N>`, `[R6] role: <slug>_user (senha em Docker secret)`,
+  `[R6] redis prefix: <slug>:*`. O teste casa pelo prefixo `[R6] ` e pelo slug, não pela frase
+  inteira — copy muda, contrato não.
+- **RF31.** O gate de verificação de R6 é um **teste do canon** que **roda o scaffolder de verdade**
+  contra um diretório temporário e lê a saída, nos **dois runtimes** (`.ps1` e `.sh`) — o padrão do
+  `spec-analyze-check`, e a razão está em §5b.9: afirmar por leitura do fonte que "o texto está lá"
+  é a inspeção de código que §5b.1 proíbe. Sem esse teste, RF30 é uma promessa de que alguém lembrou
+  de escrever texto: a classe de gate-por-boa-vontade que o verbete de §1 descreve.
+- **RF31a.** Isto **não** fecha R6 contra um projeto que ignore o checklist — e a spec não finge que
+  fecha. O que fecha é a combinação de RF31 (o kit sempre oferece o caminho certo) com o R11, que vê
+  a primeira migration/`docker-compose` no review. R6 é a regra do balde cujo enforcement é
+  **mais fraco por natureza**, e declarar isso é melhor que inventar um gate que dispara em massa
+  para fingir cobertura.
+
 ### R24 — cadência de deploy *(tier 2, medidor)*
 
 - **RF25.** QUANDO um comando de deploy conhecido é interceptado, O SISTEMA DEVE registrar o evento
@@ -461,6 +625,16 @@ entrega desta spec não exige código rodando:
 6. **R10:** uma semana warn-only antes de qualquer conversa sobre promoção, com contagem de disparos
    (quantos avisos, quantos foram bug fix mal classificado).
 7. Todo hook novo responde ao escape geral `PERCUS_HOOKS_DISABLED` além do escape próprio.
+8. **R5**, por ser o único bloqueante, tem dois critérios que os warn-only não têm:
+   (a) prova comportamental dos **dois lados** — bloqueia `DROP DATABASE`/`DELETE FROM`/`TRUNCATE`
+   em posição de comando **e** deixa passar o que não é destruição (um `DROP` citado dentro de
+   prosa, um update de serviço, um push sem force, um `pytest` cujo fixture dropa por dentro —
+   RF28e); um gate de destruição provado só pelo lado que bloqueia não se distingue de um que
+   bloqueia tudo;
+   (b) prova de que **deploy segue passando** (RF28b) — o modo de falha mais provável deste hook não
+   é deixar destruir, é gatear o que a R5 já autorizou.
+9. **R6:** o teste de RF31 tem de rodar o scaffolder de verdade e ler a saída, **nos dois runtimes**.
+   Afirmar por leitura do fonte que "o texto está lá" é a inspeção de código que o item 1 proíbe.
 
 ## 6. Riscos e decisões em aberto
 
@@ -479,10 +653,16 @@ entrega desta spec não exige código rodando:
    promovida ao helper. **Deixou de ser dívida paralela para R24:** por RF26b, a cadência de deploy é
    uma métrica *por projeto*, e raiz errada não degrada o número — inverte. Para o medidor, a
    Proposta F é **pré-requisito**; para R22 e R13, segue sendo dívida herdada.
-5. **Cinco itens no tier 1 é muito?** Mitigação: três são teste de suíte (ruído zero em sessão). Dos
-   três que falam em sessão, R22 e R13 disparam raramente por construção. Sobra R10 como única fonte
-   de ruído — e é por isso que ele vai **sozinho** na primeira publicação, para que o ruído medido
-   seja atribuível.
+5. **Seis itens no tier 1 é muito?** (Era cinco; R5 entrou.) Mitigação: dois são teste de suíte
+   (ruído zero em sessão), e dos que falam em sessão, R22 e R13 disparam raramente por construção.
+   Sobram **R10 e R5** — e eles não podem ir juntos, por razões opostas:
+   - **R5 vai primeiro e sozinho**, por ser o único **bloqueante**. Falso positivo ali não é ruído,
+     é trabalho travado, e ele precisa de uma janela em que qualquer bloqueio seja atribuível a ele
+     sem ambiguidade. É também o que mais urge (RF28a).
+   - **R10 vai depois e sozinho**, por ser a única fonte de ruído *recorrente* (RF4b, §6.2), e a
+     medição de uma semana só significa alguma coisa se o ruído for atribuível a ele.
+
+   Publicar os dois na mesma versão torna as duas medições inúteis de uma vez.
 6. ~~**Em aberto:** o RF22 (bloco duplicado) vale o custo?~~ **Fechado.** Vale, e o contra foi
    resolvido pela forma, não por aposta: RF22c troca similaridade por **igualdade após normalização
    fechada** (RF22b), que não é heurística. O preço é cegueira a paráfrase — declarada em RF22c, com
@@ -490,22 +670,36 @@ entrega desta spec não exige código rodando:
    arquivos por uma tabela recopiada.
 7. **Em aberto:** publicar R10 sozinho atrasa R22/R13/testes em um ciclo de auto-update (≤10 min +
    novo launch). Aceitável, ou publica tudo e aceita ruído não-atribuível?
-8. **Em aberto (fora do escopo desta spec):** R5 e R6 entraram no balde das descobertas por RF20a e
-   **seguem sem shape**. Não é esquecimento: cada uma pede decisão própria — R5 (confirmação antes de
-   irreversível) esbarra em como um hook distingue "irreversível" de "rotina", e R6 (banco novo por
-   projeto) tem observável plausível (nome de banco em migration/compose) mas dispara em repo
-   herdado. Enquanto não decidido, as duas ficam na allowlist do R12 com `dono = decisão pendente` —
-   o que as torna visíveis na suíte em vez de esquecidas num balde.
+8. ~~**Em aberto:** R5 e R6 seguem sem shape.~~ **Fechado (2026-09-12).** As duas objeções que
+   travavam a decisão caíram por medição, não por argumento:
+   - *"como um hook distingue irreversível de rotina"* — **não precisa distinguir**. A própria R5 já
+     traçou a linha por escrito, ao dizer o que a autorização durável **não** dispensa. O gate copia
+     essa linha (RF28b) em vez de inventar uma. E a urgência apareceu ao medir: **nenhum dos 16
+     hooks registrados casa `DROP`, `DELETE FROM` ou `--force`**, e em bypass o harness não pergunta.
+   - *"R6 dispara em repo herdado"* — verdade, e é por isso que **R6 não é hook de sessão** (RF29).
+     A violação é evento único no nascimento do projeto, e o kit já tem o artefato do nascimento: o
+     scaffolder, que hoje **não menciona banco, role nem Redis** (verificado). Vira checklist +
+     teste de emissão, com ruído zero em sessão.
+
+   Sobra, honestamente declarado, que o enforcement de R6 é o **mais fraco do balde** (RF31a) — o que
+   é melhor que um gate por commit fingindo cobertura.
 9. **Risco novo, descoberto na rodada 2 do conselho: a spec não cabe mais no conselho.** O
    orquestrador truncou 9329 → ~8000 tokens, e a perna Llama tem teto próprio de 5000 (viu ~4794).
    Duas consequências, ambas ruins: findings que pedem o que já está escrito na parte cortada (três
    nesta rodada), e — pior — **um veredito `BLOQUEADA` emitido sobre um documento que a perna não
    leu inteiro**. O veredito de uma perna truncada não é comparável ao de uma perna completa, e hoje
-   o log não distingue os dois. Mitigação usada aqui: a perna Cross-Claude recebeu o **caminho do
-   arquivo** e leu do disco, sem truncamento. Mitigação de verdade, para o kit: ou o orquestrador
-   passa arquivo em vez de texto quando o alvo é um arquivo, ou o log marca cada perna com quanto
-   ela viu — senão a spec-analyze fica menos confiável à medida que a spec fica mais completa, que é
-   o incentivo exatamente invertido.
+   o log não distingue os dois. Mitigação usada na rodada 2: a perna Cross-Claude recebeu o
+   **caminho do arquivo** e leu do disco, sem truncamento.
+
+   **Na rodada 3 a mitigação virou método, e a prova veio junto.** Em vez do documento inteiro,
+   montei um **delta de 2243 tokens** com só a decisão nova e as medições que a sustentam.
+   `truncated: false`, zero corte — e as mesmas duas pernas que vinham devolvendo findings sobre a
+   metade que liam acharam **2 CRITICAL reais** de primeira, incluindo o melhor achado da spec
+   (RF28g). Não é que as pernas fossem fracas: **estavam sendo avaliadas sobre um texto que não
+   recebiam**. O conserto no kit segue pendente (passar arquivo, ou registrar no log quanto cada
+   perna viu), mas o procedimento de contorno está estabelecido: **analyze de spec grande vai por
+   delta, não por documento inteiro** — e o delta tem de trazer as medições, senão a perna revisa
+   uma afirmação sem poder conferi-la.
 
 ## 7. Tratamento dos findings do conselho — rodada de 2026-09-12 17:44
 
@@ -583,3 +777,49 @@ no guard, todos ancorados em `$cmdIni`.
 da perna Llama refutado **por medição** (RF22g) e não por argumento. O HIGH que sobra (RF26b) é de
 **ordem de execução**, não de conteúdo: ele diz que a Proposta F tem de vir antes do medidor de R24 —
 e essa reordenação já está escrita.
+
+### Rodada 3 — 2026-09-12 18:48 (`20260912-184849-analyze.jsonl`), escopo R5/R6
+
+> **Método diferente, e a diferença produziu os dois melhores findings da spec.** Em vez de mandar
+> as ~14k tokens do documento e deixar o orquestrador truncar (§6.9), montei um **delta de 2243
+> tokens** — só a decisão de R5/R6 mais as medições que a sustentam — e rodei DeepSeek e Llama nele.
+> `truncated: false`, zero aviso de corte. A perna Cross-Claude recebeu o arquivo inteiro, como na
+> rodada 2. **As duas pernas que liam metade do documento nas rodadas anteriores devolveram 2
+> CRITICAL assim que puderam ler o que estavam avaliando.**
+
+| Severidade / origem | Finding | Disposição |
+|---|---|---|
+| **CRITICAL (deepseek)** | RF28e isentava `DELETE ... WHERE`, mas a R5 diz *"DELETE em produção"* sem qualificar cláusula — a spec reconhecia não cumprir a R5 | **Aceito integralmente.** A ressalva do `WHERE` era **invenção minha, não da regra** (RF28g0). `DELETE FROM` entra inteiro; quem separa legítimo de perigoso é a **pergunta binária ao operador** (RF28c1/RF28c2), não a forma da cláusula — a isenção que ocuparia esse papel foi abolida na mesma rodada (RF28c) |
+| **CRITICAL (deepseek)** | A R5 tem 4 gatilhos (API paga, DELETE em prod, force push, re-run caro); o gate cobria 2 e a spec contava R5 como resolvida | **Aceito, e é o achado da spec.** É a **terceira ocorrência** do defeito que esta spec combate — contar cobertura que não existe. RF28g declara os 2 gatilhos sem observável e por quê; RF28g1 liga isso ao R12; e **RF19b** generaliza: seção de gate parcial DEVE nomear o que não cobre, ou o teste reprova |
+| HIGH (ambos) | RF28d — "host local" e "marcador de teste" vagos, isenção não testável | **Aceito, e depois superado na mesma rodada.** Primeiro enumerei a conjunção (host literal + marcador ancorado no nome do banco); então a perna Cross-Claude mostrou que a isenção inteira era gameável e sem caso vivo, e ela **deixou de existir** (RF28c). O RF28d citado aqui é o rótulo do finding, não um requisito vigente |
+| HIGH (deepseek) | RF30/RF31 — teste sem literais para afirmar | **Aceito.** RF30a fixa a forma das 3 linhas (`[R6] database:` etc.) e manda o teste casar prefixo + slug, não a frase |
+| MÉDIO (deepseek) | RF28 bloqueava **todo** force push; a R5 diz "em main/master" | **Aceito.** RF28h restringe a main/master e declara o buraco: *"apaga história remota"* não é decidível pelo texto do comando |
+| MÉDIO (ambos) | `$cmdIni` é vazamento WHAT→HOW | **Aceito parcialmente.** Tirei o nome da variável interna; ficou "em posição de comando", que **é** o requisito (a §4 já explica por que ancoragem é decisão, não implementação) |
+| MÉDIO (ambos) | RF28f — "registrado" sem canal, formato nem como testar | **Aceito.** RF28f fixa caminho, formato JSONL e os 3 campos |
+| MÉDIO (llama) | RF31 não diz quais runtimes | **Aceito.** RF31 agora exige rodar o scaffolder de verdade nos dois (`.ps1` e `.sh`) |
+| MÉDIO (deepseek) | R6 sem FR que detecte o anti-padrão (reuso de banco de outro projeto) | **Rejeitado, com motivo já escrito.** RF31a admite que o enforcement de R6 é o mais fraco do balde; um detector de reuso precisaria saber o inventário de bancos de todos os projetos, que o hook não tem. Admitir e declarar é melhor que um gate que não pode funcionar |
+| LOW (llama) | RF28a "introduz bloqueio sem justificativa formal", citar R12 | **Já estava escrito** — RF28a justifica exatamente pela R12 ("warn-only para irreversível é decoração pelo critério da própria regra") |
+| LOW (llama) | Terminologia gate/hook | **Rejeitado — terceira vez.** Já disposto nas rodadas 1 e 2 |
+
+**Perna Cross-Claude da rodada 3** (recebeu o arquivo inteiro e conferiu as medições 1:1):
+
+| Severidade | Finding | Disposição |
+|---|---|---|
+| **HIGH** | RF31a/RF18a — o teste do R12 verifica **presença** de seção de gate, não eficácia; assim que R6 ganhar a sua (checklist admitidamente furável), a allowlist chega a 0 e passa a ler como "canon enforced" | **Aceito, e é a terceira camada do mesmo defeito.** `RF19c` cria o campo **força** (`bloqueante`/`aviso`/`medidor`/`checklist`), obrigatório na allowlist e na seção de gate, com o teste reprovando quem não declarar |
+| **HIGH** | RF28b — `downgrade` destrutivo escapa **duas vezes**: isento pela autorização durável da R5 *e* invisível por forma (`alembic downgrade <rev>` não contém `DROP`) | **Aceito.** RF28e1 declara que downgrade destrutivo **não tem gate nenhum** — a R5 o libera supondo que foi testado, e nada verifica que foi. Fica com o R11, e RF19b obriga a seção de gate da R5 a dizer isso |
+| **HIGH** | RF28 — "exatamente a fronteira da R5" não se sustenta: `TRUNCATE` não aparece na R5 | **Aceito em parte.** `TRUNCATE` é mesmo extensão minha e virou **extensão declarada** (RF28i). Mas a perna errou na outra metade: `docker stack rm`/`docker service rm` **estão** na R5 — gatilho *"DELETE em produção (database, stack, container)"*, que ela não considerou por ter lido só o parágrafo da fronteira |
+| **HIGH** | RF28d — "host local" e "marcador de teste" não enumerados | **Já corrigido antes da perna voltar** (ela leu a versão anterior) — e depois **removido junto com a isenção inteira**, ver abaixo |
+| MEDIUM | RF28c/RF28d — a isenção é **gameável por nomeação**: um banco de dev de meses chamado `myapp_test` fica isento | **Aceito, e levou mais longe que a sugestão.** A perna propôs um terceiro sinal; eu **removi a isenção inteira** (RF28c). Motivo: qualquer sinal escrito no comando é auto-certificação de quem está sendo gateado, e para um gate cujo propósito é *perguntar antes do irreversível*, parar num `DROP TABLE` local **é o comportamento correto** |
+| MEDIUM | RF28c — o verbete citado como prova dropa tabelas **dentro do pytest** (asyncpg); o comando é `docker run … pytest …`, que nunca contém `DROP` e nunca dispararia RF28 | **Aceito, e derrubou a justificativa da isenção.** Ela protegia um caso que não existe. Virou o ponto cego central da spec: **RF28e** — o guard de comando não vê destruição executada por programa (fixture, migration, ORM) |
+| LOW | "17 hooks" três vezes; o real é 16 | **Já corrigido antes da perna voltar** — recontei pelo `hooks-manifest.json` (`_helpers.ps1` é biblioteca, não hook) |
+
+**Verificado 1:1 e correto:** o grep de `DROP`/`DELETE FROM`/`--force` nos 16 hooks (`.ps1` e `.sh`,
+únicos hits são `-Force` de `New-Item`); RF28b bate literalmente com a autorização durável da R5;
+RF30 (scaffolder sem menção a banco/role/redis nos dois arquivos); RF28c (o verbete existe e
+descreve o procedimento); a tabela de shapes da §2 bate 1:1 com o manifesto; e as 9 regras sem
+`**Gate de verificação:**` conferem.
+
+**Trajetória:** `BLOQUEADA` → `AJUSTAR` → **`AJUSTAR` nas duas pernas que leram tudo**, com os
+achados migrando de *forma* (termo vago, N indefinido) para *substância* (cobertura contada a mais,
+isenção auto-certificável, ponto cego estrutural). É o sinal de que a spec ficou revisável — não de
+que ficou pronta.

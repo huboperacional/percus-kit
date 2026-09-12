@@ -42,6 +42,24 @@ commit sem review é caro; barrar um comando inocente custa uma reescrita. O com
 máquina de quem tem o enforcement ligado — e passa na de quem não tem. Teste que só roda em ambiente
 sem guarda é teste que não protege ninguém.
 
+**O irmão: `external-action-guard` faz o mesmo, e com alcance maior (2026-09-12).** Um `python -
+<<'PY'` que reescrevia trechos de uma spec **sobre gates de comando destrutivo** foi bloqueado com
+`BLOCK (R20)`, porque a prosa citava a ação vigiada. A diferença em relação ao `pre-commit-check`
+está no desenho e é deliberada: o guard **ancora** os padrões de deploy em posição de comando
+(início de linha ou após `;` `&` `|` `(`), justamente para que prosa que os cite não dispare — mas
+deixa a família `gh`/`git`/`slack-cli`/`mailto:` **sem ancoragem**, com o comentário dizendo por quê:
+são específicos o bastante para prosa raramente casar, e afrouxá-los custaria detecção real.
+
+O caso acima é a conta dessa escolha chegando: documento **sobre** enforcement cita a ação vigiada
+o tempo todo, e o custo cai inteiro no não-ancorado. Não é defeito — é o preço declarado.
+
+**Regra prática que sai dos dois casos:** editar arquivo cujo conteúdo *fala sobre* ação vigiada
+(deploy, push, commit, destruição de dados) **usa ferramenta de edição, nunca heredoc no shell**.
+Não é contorno: o próprio guard diz isso no comentário dele — *"editar este arquivo exige ferramenta
+de edição, não shell"*. Vale para o arquivo do guard e vale para qualquer doc que o descreva.
+
 **Discriminante:** a guarda examina o **texto** do comando, não a intenção nem o efeito. Se a string
 que ela procura aparece por qualquer motivo — dado, documentação, payload — ela dispara. Ao escrever
-qualquer comando que *fale sobre* a ação vigiada, monte a string em runtime.
+qualquer comando que *fale sobre* a ação vigiada, monte a string em runtime **ou saia do shell**.
+Pergunta que resolve na hora: *o que estou rodando PUBLICA algo, ou apenas CONTÉM as palavras?* Se é
+a segunda, o shell é a ferramenta errada.

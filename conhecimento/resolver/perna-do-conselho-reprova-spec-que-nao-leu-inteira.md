@@ -41,11 +41,25 @@ aparentemente comparáveis. Não são: um deles foi emitido sobre metade do docu
 cobertos, mais disposição de findings anteriores registrada), mais ela estoura o teto e **menos
 confiável** fica o analyze dela. A spec que mais precisa de revisão é a que menos a recebe.
 
-**Mitigação imediata (usada aqui):** a perna Cross-Claude roda como subagente e tem ferramentas de
-leitura — dê a ela o **caminho do arquivo**, não o texto. Ela lê do disco, sem truncagem, e ainda
+**Mitigação 1 — a perna que lê disco:** a Cross-Claude roda como subagente e tem ferramentas de
+leitura. Dê a ela o **caminho do arquivo**, não o texto. Ela lê do disco, sem truncagem, e ainda
 verifica as afirmações da spec contra o repositório. Foi a única das três a produzir findings de
-fato novos nesta rodada, incluindo um HIGH de ordem de execução que as outras duas não tinham como
-ver.
+fato novos naquela rodada.
+
+**Mitigação 2 — analyze por DELTA, e esta é a que resolve de verdade.** Na rodada seguinte, em vez
+do documento inteiro (~14k tokens), montei um **delta de 2243 tokens**: só a decisão nova, mais as
+**medições que a sustentam**. `truncated: false`, zero aviso de corte. Resultado imediato:
+
+> as mesmas duas pernas que vinham devolvendo findings sobre a metade que liam acharam **2 CRITICAL
+> reais de primeira** — incluindo o melhor achado da spec inteira.
+
+A lição não é "as pernas baratas são fracas". É que **estavam sendo avaliadas sobre um texto que não
+recebiam**. Duas regras para o delta funcionar:
+
+1. **Traga as medições junto.** Perna que lê "o scaffolder não menciona banco" sem poder conferir só
+   pode acreditar ou ignorar. Com o número/medição no delta, ela revisa o raciocínio.
+2. **Diga explicitamente o que NÃO reanalisar.** Sem isso a perna relitiga premissa já fechada em
+   rodadas anteriores, e você paga findings repetidos.
 
 **Conserto de verdade (pendente, no kit):** uma das duas —
 1. o orquestrador passa **arquivo** em vez de texto quando o alvo é um arquivo e a perna sabe ler; ou
