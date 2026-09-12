@@ -17,8 +17,10 @@ alguém lembrar. Não é filosofia: é metade de um par que ficou pela metade, e
 exatamente a que falhou.
 
 **A auditoria completa (2026-09-12), cruzando as 25 regras contra os hooks e o gate.** Esta tabela
-e a FONTE (R25): o plano e o changelog apontam para ela em vez de recopiar os numeros -- a correcao
-de hoje precisou de tres edicoes em tres arquivos, que e exatamente como copia diverge.
+e a FONTE (R25). O plano (`docs/superpowers/plans/2026-09-12-...`) e o changelog trazem uma copia
+para leitura corrida, e **cada uma declara que o numero que vale e o daqui** -- copia sem dono e o
+que diverge. A correcao de hoje (9/7/6 -> 11/7/7) precisou de tres edicoes em tres arquivos: e a
+medida exata do custo de recopiar, e a razao de existir um dono.
 
 | | Quantas | Leitura |
 |---|---|---|
