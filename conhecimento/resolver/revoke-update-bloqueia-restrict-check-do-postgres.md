@@ -46,9 +46,47 @@ só mexe na tabela pai:
    nunca faz (padrão comum: soft-lifecycle por coluna de status, nunca hard-delete), é achado
    **dormente** — registre e siga, sem consertar nada.
 2. Se algum dia um `DELETE` real precisar acontecer na tabela pai, a saída **não** é devolver
-   `UPDATE` para o role na tabela filha (isso quebraria o motivo do `REVOKE` original) — é rodar
-   aquele `DELETE` específico por um role/conexão com privilégio elevado, isolado do caminho
-   normal da aplicação.
+   `UPDATE` para o role na tabela filha (isso quebraria o motivo do `REVOKE` original).
+   ~~É rodar aquele `DELETE` específico por um role/conexão com privilégio elevado, isolado do
+   caminho normal da aplicação.~~ 🔴 **Este conselho estava ERRADO — ver §Superusuário abaixo.**
+
+### 🔴 Superusuário NÃO escapa — o check roda como o DONO da tabela
+
+**Medido em 2026-09-13** (Empresa Milionária, sessão `-3e`), e corrige o item 2 acima, que
+recomendava "privilégio elevado" como saída. Não é saída: **não funciona**.
+
+A parede reapareceu noutro par de tabelas (`usuarios` ← `eventos_titulo`, append-only por FR-034)
+num teste cuja limpeza rodava por `psql -U postgres` — superusuário. Falhou igual:
+
+```
+ERROR:  permission denied for table eventos_titulo
+CONTEXT:  SQL statement "SELECT 1 FROM ONLY "public"."eventos_titulo" x
+           WHERE $1 OPERATOR(pg_catalog.=) "autor_id" FOR KEY SHARE OF x"
+```
+
+A conexão **era** superusuária, medido na hora e não suposto:
+
+```sql
+SELECT current_user, (SELECT usesuper FROM pg_user WHERE usename = current_user);
+-- postgres | t
+```
+
+**Por quê.** O gatilho de integridade referencial não roda com o privilégio de quem emitiu o
+`DELETE`; ele roda com o privilégio do **dono da tabela** envolvida na constraint. Se o dono é o
+role da aplicação e foi ele quem perdeu `UPDATE` pelo `REVOKE`, o check falha **para todo mundo**,
+superusuário inclusive. Elevar o privilégio da sessão não toca no privilégio do dono.
+
+🔑 **A inferência que isto derruba, e ela é sedutora:** *"superusuário ignora ACL, logo se deu
+permission denied a conexão não era superusuária"*. A primeira metade é verdadeira para DML
+direto e falsa para o check de RI — e um projeto passou dias com um achado aberto perseguindo
+"então quem está conectado?" em vez de olhar o dono da tabela. Se aparecer `permission denied`
+num `DELETE` de pai, **meça o dono da filha antes de suspeitar da sessão**:
+
+```sql
+SELECT tableowner FROM pg_tables WHERE tablename = '<filha>';
+SELECT grantee, privilege_type FROM information_schema.table_privileges
+ WHERE table_name = '<filha>' AND grantee = '<dono>';
+```
 3. Em teste que monta cenário descartável e bate nessa parede: não tente `DELETE` da cadeia —
    deixe-a órfã de propósito (documentado), mesmo padrão de deixar `empresas`/`grupos` fora da
    limpeza quando o RESTRICT em cadeia torna a limpeza impossível pelo role normal.
