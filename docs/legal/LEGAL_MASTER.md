@@ -7,8 +7,8 @@
 **E-mail Geral:** comercial@ads4pros.com  
 **WhatsApp:** +55 (67) 93300-9440  
 
-**Última atualização / Last updated:** 2026-06-11  
-**Versão / Version:** 1.0  
+**Última atualização / Last updated:** 2026-09-13  
+**Versão / Version:** 1.1  
 
 > **Nota de canonicidade / Canonicity note:**  
 > A versão em Português (PT-BR) é o texto canônico e juridicamente vinculante.  
@@ -58,6 +58,7 @@ Os serviços da Hub Operacional abrangem as seguintes plataformas (descrição d
 - **Familia Milionária** — Plataforma de gestão financeira pessoal e familiar
 - **Micro Investors** — Portal de gestão de portfólio para grupo fechado de investimento em imóveis (EUA)
 - **Paid Mídia Automation** — SaaS de automação de campanhas de mídia paga (Meta Ads)
+- **LiliCalc** — SaaS de cálculo de custo e precificação para confeitaria, por licença anual
 - **Social Mídia IA** — SaaS de criação e publicação de conteúdo para redes sociais com IA
 
 Cada serviço pode possuir condições específicas adicionais publicadas em sua própria página de termos. Em caso de conflito, as condições específicas do serviço prevalecem sobre este documento geral.
@@ -104,7 +105,7 @@ Cada serviço pode possuir condições específicas adicionais publicadas em sua
 ### 7. PCI-DSS e Dados de Pagamento
 
 - A Hub Operacional **não armazena, processa nem transmite dados de cartão de crédito ou débito** em seus próprios servidores.
-- Todo o processamento de pagamentos é realizado por gateways certificados **PCI-DSS**: Stripe (para produtos internacionais) e Pagar.me (para Familia Milionária).
+- Todo o processamento de pagamentos é realizado por gateways certificados **PCI-DSS**: Stripe (para produtos internacionais), Pagar.me (para Familia Milionária) e Asaas (para LiliCalc).
 - Em caso de suspeita de vazamento de dados de pagamento, a Hub Operacional notificará os usuários afetados e a ANPD em até **72 horas** após a confirmação do incidente, conforme exigido pelo Art. 48 da LGPD.
 
 ---
@@ -742,6 +743,7 @@ This policy may be updated periodically. Material changes will be communicated a
 | **Micro Investors** | Investimentos (grupo fechado) | Nome, e-mail (sócios), dados de portfólio (propriedades, preços de compra, distribuições, ROI), dados de sessão do portal | Execução de contrato (sócios) | A confirmar | **Grupo fechado de sócios** — ver Apêndice C; não é oferta pública; sujeito à revisão CVM; ativos nos EUA (risco de câmbio) |
 | **Paid Mídia Automation** | B2B SaaS | Credenciais de contas Meta Ads (OAuth), dados de campanhas, métricas de performance, dados de sessão | Execução de contrato | A confirmar | Usuário é responsável pela conformidade com políticas Meta; plataforma opera dentro dos limites da API Meta |
 | **Social Mídia IA** | B2B SaaS | Credenciais de redes sociais (OAuth), conteúdo gerado por IA, agendamentos, métricas de publicação, dados de sessão | Execução de contrato | A confirmar | Multi-app com workers IA; usuário responsável pela conformidade com as plataformas conectadas |
+| **LiliCalc** | B2C SaaS (confeitaria) | Nome, e-mail, nome do ateliê, chave Pix, fichas técnicas e preços de insumos, orçamentos, nome e WhatsApp de clientes finais digitados pela usuária, IP de tentativas de login (24h) | Execução de contrato | Asaas (Pix e cartão) | Sem dado sensível e sem dado de cartão no nosso servidor; usuária é **controladora** dos dados de clientes finais que cadastra, e nós operadores; link público de orçamento tem slug aleatório e `noindex`, mas quem tem o link abre; login sem senha — ver ADR 0001 do projeto |
 | **Plexco Tickets** | Módulo arquivado (merged em Plexco Tasks) | — | — | — | Descontinuado em 2026-05-24; funcionalidade incorporada ao Plexco Tasks |
 
 ---
@@ -760,10 +762,11 @@ This policy may be updated periodically. Material changes will be communicated a
 | **GoHighLevel** | EUA | CRM, automação de marketing, landing pages | ADS4PROS, tiatendo | Termos GDPR/CCPA disponíveis em gohighlevel.com |
 | **Meta (CAPI + WhatsApp Business)** | EUA | Eventos de conversão, entrega de mensagens WA | ADS4PROS, Paid Mídia Automation | Termos Meta Business disponíveis |
 | **Google (Drive API, OAuth)** | EUA/Global | Armazenamento de áudios no Drive do usuário, OAuth | Plexco Coach, Social Mídia IA | ✅ DPA disponível em cloud.google.com/terms/data-processing-addendum |
+| **Asaas** | Brasil | Processamento de pagamentos (PCI-DSS) — Pix, boleto e cartão | LiliCalc | ⚠️ DPA em formalização; termos LGPD em asaas.com |
 | **Resend** | EUA | E-mail transacional | Plexco Coach, Plexco Tasks | Termos disponíveis em resend.com |
 | **Contabo VPS** | Alemanha (UE) | Hospedagem de infraestrutura (Postgres, Redis, MinIO, aplicações) | Plexco Coach, Plexco Tasks | ⚠️ DPA em formalização (GDPR Art. 28) |
 
-> **⚠️ DPA em formalização:** Para Evolution API e Contabo VPS, os acordos de processamento de dados (DPAs) conforme GDPR Art. 28 estão em processo de formalização. Até a conclusão, a transferência internacional para Contabo é coberta por cláusulas contratuais padrão (Standard Contractual Clauses). Usuários da UE que precisem de cópia podem solicitar em **legal@huboperacional.com.br**.
+> **⚠️ DPA em formalização:** Para Evolution API, Asaas e Contabo VPS, os acordos de processamento de dados (DPAs) conforme GDPR Art. 28 estão em processo de formalização. Até a conclusão, a transferência internacional para Contabo é coberta por cláusulas contratuais padrão (Standard Contractual Clauses). Usuários da UE que precisem de cópia podem solicitar em **legal@huboperacional.com.br**.
 
 ---
 
