@@ -33,22 +33,30 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
 3. **As comportamentais** — R4, R5, R6, R10, R12, R13, R22, R24, R25 (**9**, não 7: ver dívida
    abaixo). Spec escrita
    (`specs/2026-09-12-enforcement-regras-comportamentais.md`): decide a **forma** de cada uma.
-4. **Consolidação da cadeia de hooks** — spec escrita
+4. **Consolidação da cadeia de hooks** — spec
    (`specs/2026-09-12-consolidacao-cadeia-de-hooks-design.md`). **Virou pré-requisito da 3** por
-   medição, não por preferência. ← PRÓXIMO (implementar)
+   medição. **Item 2 (dispatcher `PreToolUse`) ENTREGUE e PUBLICADO em 6.49.0.**
+   ← falta o item 3 (dispatcher `PostToolUse`) e a paridade `.sh`.
 5. **Pacote B** — ajustar o spec pelos findings do conselho e implementar `plano-sync`.
 
 ## ESTADO DA EXECUÇÃO
 
-### ✅ Feito (3 versões, 5 commits locais, nenhum empurrado ainda)
+### ✅ Feito (tudo PUBLICADO até 6.49.0 — nada pendente de push)
 
 - **6.45.0** `context-budget-guard` — PostToolUse em todas as tools, mede o contexto vivo pela cauda
   do transcript. Nasceu de uma sessão que foi a 610k tokens com "checkpoint" dito 11 vezes.
   **Publicado** (o cache já tem 6.45.0).
 - **6.46.0** conselho — fallback pelo resultado (não pela presença da chave), flag
   `PERCUS_CROSS_CLAUDE=subagent`, `cross_claude_pending` honesto, resumo do F3 com
-  `nao-verificado=N`. **Não publicado.**
-- **6.47.0** `spec-analyze-check` — o gate `[S]` mecânico. **Não publicado.**
+  `nao-verificado=N`. **Publicado.**
+- **6.47.0** `spec-analyze-check` — o gate `[S]` mecânico. **Publicado.**
+- **6.48.0** `context-budget-guard` com janela descoberta em vez de suposta (outra sessão).
+- **6.49.0** **dispatcher de hooks de duas camadas** — `3 716 ms → 62 ms` em todo comando Bash;
+  80,5% dos comandos reais dormem na camada 1 (4 582 s → 164 s, 28x sobre 1 233 comandos de
+  transcript). Os 8 checks **não mudaram uma linha** (`[Console]::SetIn`). Campo `registro` novo no
+  manifesto. O review cross-provider achou **3 bugs de perda silenciosa de enforcement** (EAP
+  herdado, payload não-gravável saindo 0, colisão de `%RANDOM%`), todos consertados e provados por
+  mutação. **Publicado** (`ec0d798`).
 - **Spec do Pacote B** commitada (`e18abf8`), com veredito `AJUSTAR` do conselho — 10 findings a
   tratar antes de implementar.
 
@@ -81,12 +89,27 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
    varridos). Mitigação usada: dar à perna Cross-Claude o **caminho do arquivo**, não o texto.
    Registrado como risco §6.9 da spec — é defeito do kit, não da spec.
 
-### ⏳ Próximo passo imediato
+### ⏳ Próximo passo imediato (checkpoint de 2026-09-12 ~22h)
 
-**Implementar a consolidação da cadeia de hooks**, seguindo
-`specs/2026-09-12-consolidacao-cadeia-de-hooks-design.md`. A ordem de entrega está na spec: (1)
-estreitar o matcher do `PostToolUse` — grátis, isolada; (2) dispatcher `PreToolUse` + as 3 defesas +
-paridade `.sh`; (3) dispatcher `PostToolUse` com porta por timestamp. Só então os checks das 7.
+**FILA, na ordem, autorizada pelo operador para execução autônoma:**
+
+1. **Dispatcher `PostToolUse`** com porta por timestamp — item 3 da spec de consolidação. É ele que
+   entrega o ganho do `context-budget-guard` (477 ms em **toda** tool call) **sem** a cegueira que
+   fez a "opção D" ser descartada.
+2. **Paridade `.sh`** do dispatcher `PreToolUse` — único critério de pronto do item 2 ainda aberto.
+3. **Pacote B** — `AJUSTAR` com 10 findings do conselho a tratar antes de implementar `plano-sync`.
+4. **Os hooks das comportamentais**, na ordem que a spec manda: **R5 primeiro e sozinho** (único
+   bloqueante; operador autorizou publicar em vigor), depois medir, depois R10 sozinho, depois o
+   resto.
+5. **Proposta F** (`git -C` em `Resolve-PercusProjectRoot`) — pré-requisito do medidor de R24.
+6. **As três dívidas do wrapper `deepseek-impl`** — pré-requisito do hook de trailer da R13.
+
+> **A ordem 1→2 inverte o que a spec de consolidação diz**, e de propósito: a "opção D" (item 1 de
+> lá) foi **descartada por medição** — economizava 19% dos spawns ao preço de até **130 chamadas
+> consecutivas** sem medir contexto. Ver a seção própria naquela spec.
+
+**Estado da árvore:** limpa e sincronizada com `origin/main` em `ec0d798`. Cache do plugin em
+6.48.0; kit em 6.49.0 — o dispatcher só vale na frota depois de auto-update + relaunch.
 
 **Por que isto entrou na frente.** A tarefa 3 ia adicionar 4 hooks; medi a cadeia antes e ela já
 custa **3 357 ms em todo comando Bash** (8 hooks × ~420 ms de startup do PowerShell, mesmo em
