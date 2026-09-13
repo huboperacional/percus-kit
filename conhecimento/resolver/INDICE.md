@@ -512,6 +512,7 @@
 - [Rota Next.js (Node runtime) atrás de Traefik redireciona pra `0.0.0.0:PORT` em vez do host público](nextjs-node-route-handler-req-url-bind-address.md)
 - [Nome de campo de API montado por concatenação devolve ZERO em vez de erro — e zero é plausível](nome-de-campo-de-api-concatenado-devolve-zero-em-vez-de-erro.md)
 - [O NOME do modo promete o que o código não faz — e quem lê o painel é o cliente, não você](nome-de-flag-promete-o-que-o-codigo-nao-faz.md)
+- [Nome de sessão MUDA a cada reconexão — e "anunciar" o arquivo não basta: espere a RESPOSTA antes de escrever na árvore compartilhada](nome-de-sessao-muda-a-cada-reconexao-e-anunciar-nao-basta.md)
 - [Nome de tabela/coluna CHUTADO vira "schema ausente" fantasma](nome-de-tabela-chutado-vira-defeito-de-schema-fantasma.md)
 - [Nome fixo de container efêmero faz uma rodada DESTRUIR a outra em pleno voo](nome-fixo-de-container-faz-uma-rodada-destruir-a-outra.md)
 - [Nome universal do teste esconde uma lista enumerada, e só é verdadeiro até a próxima coluna](nome-universal-do-teste-esconde-lista-enumerada.md)
