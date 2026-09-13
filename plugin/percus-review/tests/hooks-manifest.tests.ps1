@@ -26,14 +26,19 @@ Describe "hooks-manifest.json" {
         $script:todos.Count | Should -BeGreaterThan 0
     }
 
-    It "declara 15 hooks registrados (10 guarda / 5 observador) + o orfao" {
+    It "declara 16 hooks registrados (10 guarda / 5 observador / 1 dispatcher) + o orfao" {
         # Piso de contagem, mesma razao do hook-wrapper-fail-loud: manifesto esvaziado faria
         # todos os It abaixo iterarem sobre lista vazia e passarem sem verificar nada.
         # 6.45.0: +1 observador (context-budget-guard, PostToolUse). 6.47.0: +1 guarda de comando
         # (spec-analyze-check, o gate [S] que faltava).
-        $script:vivos.Count | Should -Be 15 -Because "piso: manifesto vazio nao guarda nada"
+        # 6.49.0: +1 dispatcher (percus-dispatch-pre). Os 10 guarda continuam 10 -- oito deles
+        # apenas deixaram de ter entrada propria no hooks.json e passaram a ser rodados pela
+        # camada 2. Guarda dispatchada segue sendo guarda: e o campo `registro` que mudou, nao a
+        # forma. Confundir os dois faria "saiu do hooks.json" ler como "deixou de valer".
+        $script:vivos.Count | Should -Be 16 -Because "piso: manifesto vazio nao guarda nada"
         @($script:vivos | Where-Object { $_.forma -ceq 'guarda' }).Count     | Should -Be 10
         @($script:vivos | Where-Object { $_.forma -ceq 'observador' }).Count | Should -Be 5
+        @($script:vivos | Where-Object { $_.forma -ceq 'dispatcher' }).Count | Should -Be 1
         @($script:todos | Where-Object { -not $_.registrado }).Count | Should -Be 1 -Because "canon-version-check e orfao conhecido; orfao novo aparecendo sem ninguem decidir e drift"
     }
 
@@ -122,8 +127,26 @@ Describe "hooks-manifest.json" {
         # que TROCASSE a forma de dois hooks entre si manteria a soma 8/3 do It de contagem e
         # passaria limpo neste arquivo, so sendo pego por acaso porque o outro roda na mesma suite.
         # Promessa cumprida por vizinho e promessa nao cumprida.
+        # O dispatcher e a unica forma que NAO se deriva do evento: ele e PreToolUse e nao e
+        # guarda -- nao inspeciona nada, so roteia. A excecao nao pode ser uma lista de nomes
+        # (envelhece calada), entao ela e ESTRUTURAL e conferida logo abaixo: e dispatcher quem
+        # tem outros hooks apontando pra ele via registro='dispatcher'.
+        $ehDispatcher = @($script:vivos | Where-Object { $_.forma -ceq 'dispatcher' })
+        $ehDispatcher.Count | Should -Be 1 -Because "mais de um dispatcher e ambiguidade de roteamento"
+        $ehDispatcher[0].evento | Should -BeExactly 'PreToolUse'
+        $ehDispatcher[0].registro | Should -BeExactly 'hooks.json' -Because "o dispatcher precisa de entrada propria, senao nada o chama"
+        $dispatchados = @($script:vivos | Where-Object { $_.registro -ceq 'dispatcher' })
+        $dispatchados.Count | Should -BeGreaterThan 0 -Because "dispatcher sem ninguem atras dele e processo a toa"
+        foreach ($d in $dispatchados) {
+            # Se o evento/matcher do check nao bate com o do dispatcher, o harness nunca entrega
+            # aquela chamada -- o check some CALADO, que e a falha que este arquivo existe pra pegar.
+            $d.evento  | Should -BeExactly $ehDispatcher[0].evento  -Because "$($d.nome) so e alcancavel se compartilhar o evento do dispatcher"
+            $d.matcher | Should -BeExactly $ehDispatcher[0].matcher -Because "$($d.nome) so e alcancavel se compartilhar o matcher do dispatcher"
+        }
+
         $mentiras = @()
         foreach ($h in $script:vivos) {
+            if ($h.forma -ceq 'dispatcher') { continue }
             $derivada = if ($h.evento -ceq 'PreToolUse') { 'guarda' } else { 'observador' }
             if ($h.forma -cne $derivada) {
                 $mentiras += "$($h.nome): forma='$($h.forma)' mas evento='$($h.evento)' deriva '$derivada'"
@@ -143,15 +166,26 @@ Describe "hooks-manifest.json" {
         # PERCUS_SKIP_MOCK_SCAN que esteja no arquivo por outro motivo.
         $semEscape = @()
         foreach ($h in @($script:todos | Where-Object { $_.escape })) {
-            $ps1 = Join-Path $script:hooksDir ($h.nome + ".ps1")
+            # O escape do dispatcher e lido na CAMADA 1 (.cmd), e tem de ser: se so o .ps1 o
+            # lesse, o bypass custaria o startup do PowerShell que ele existe pra evitar.
+            $alvo = if ($h.forma -ceq 'dispatcher') { Join-Path $script:hooksDir ($h.nome + ".cmd") }
+                    else                            { Join-Path $script:hooksDir ($h.nome + ".ps1") }
+            $ps1 = $alvo
             if (-not (Test-Path $ps1)) {
-                $semEscape += "$($h.nome): .ps1 nao encontrado -- nao-verificado, nao 'ok'"
+                $semEscape += "$($h.nome): $(Split-Path $alvo -Leaf) nao encontrado -- nao-verificado, nao 'ok'"
                 continue
             }
-            $padrao = '\$env:' + [regex]::Escape($h.escape) + '\b'
+            # A sintaxe da leitura depende do runtime do arquivo: PowerShell le $env:NOME,
+            # cmd.exe le %NOME%. Exigir a forma do PowerShell num .cmd reprovaria o dispatcher
+            # por ele estar CERTO -- e falso positivo em trava e o que faz alguem afrouxa-la.
+            # O comentario tambem muda de marcador: '#' no PowerShell, 'REM' no cmd.
+            $ehCmd  = $ps1.EndsWith('.cmd')
+            $padrao = if ($ehCmd) { '%' + [regex]::Escape($h.escape) + '%' }
+                      else        { '\$env:' + [regex]::Escape($h.escape) + '\b' }
             $le = @(Get-Content $ps1 | Where-Object {
                 $t = "$_".TrimStart()
-                (-not $t.StartsWith('#')) -and ($t -match $padrao)
+                $morto = if ($ehCmd) { $t -match '^(?i)REM\b' -or $t.StartsWith('::') } else { $t.StartsWith('#') }
+                (-not $morto) -and ($t -match $padrao)
             })
             if ($le.Count -eq 0) {
                 $semEscape += "$($h.nome): declara escape '$($h.escape)' e nenhuma linha viva le `$env:$($h.escape)"
@@ -183,7 +217,23 @@ Describe "hooks-manifest.json" {
 
         $divergencias = @()
 
-        foreach ($h in $script:vivos) {
+        # 6.49.0: registro deixou de ser binario. `registro` diz por QUAL caminho o hook esta
+        # vivo, e cada caminho tem a sua obrigacao:
+        #   hooks.json  -> TEM de estar no hooks.json, com evento e matcher iguais
+        #   dispatcher  -> tem de estar FORA do hooks.json (entrada propria seria execucao dupla)
+        #                  e declarar gatilhos, senao a camada 1 nunca o acorda
+        # Sem essa separacao, mover os 8 pra tras do dispatcher reprovaria aqui, e a saida facil
+        # seria afrouxar o teste -- matando justamente a trava que impede o manifesto virar ficcao.
+        foreach ($h in @($script:vivos | Where-Object { $_.registro -ceq 'dispatcher' })) {
+            if ($registrado.ContainsKey($h.nome)) {
+                $divergencias += "$($h.nome): registro='dispatcher' mas tem entrada propria no hooks.json (rodaria DUAS vezes)"
+            }
+            if (-not $h.gatilhos -or @($h.gatilhos).Count -eq 0) {
+                $divergencias += "$($h.nome): registro='dispatcher' sem gatilhos declarados -- a camada 1 nunca o acordaria"
+            }
+        }
+
+        foreach ($h in @($script:vivos | Where-Object { $_.registro -cne 'dispatcher' })) {
             if (-not $registrado.ContainsKey($h.nome)) {
                 $divergencias += "$($h.nome): manifesto diz registrado, hooks.json nao tem"
                 continue
@@ -201,8 +251,11 @@ Describe "hooks-manifest.json" {
         }
 
         foreach ($nome in $registrado.Keys) {
-            if (-not ($script:vivos | Where-Object { $_.nome -ceq $nome })) {
+            $decl = @($script:vivos | Where-Object { $_.nome -ceq $nome })
+            if ($decl.Count -eq 0) {
                 $divergencias += "$nome : hooks.json registra, manifesto nao declara"
+            } elseif ($decl[0].registro -ceq 'dispatcher') {
+                $divergencias += "$nome : hooks.json registra, mas o manifesto diz registro='dispatcher'"
             }
         }
 
@@ -225,7 +278,7 @@ Describe "hooks-manifest.json" {
         # construcao a guarda nova, que e correta. Lista de excecao que cresce e cheiro de
         # criterio faltando: o criterio e o alvo.
         $deComando = @($script:vivos | Where-Object { $_.evento -ceq 'PreToolUse' -and $_.alvo -ceq 'comando' })
-        $deComando.Count | Should -Be 8 -Because "piso: sao 8 guardas de COMANDO (pre-plan-exit olha plano, knowledge-write-guard olha caminho)"
+        $deComando.Count | Should -Be 9 -Because "piso: 8 guardas de COMANDO + o dispatcher (pre-plan-exit olha plano, knowledge-write-guard olha caminho)"
         foreach ($h in $deComando) {
             $h.matcher | Should -BeExactly 'Bash|PowerShell' -Because "$($h.nome) precisa cobrir as duas tools de shell, com a caixa exata"
         }

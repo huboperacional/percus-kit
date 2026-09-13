@@ -16,42 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/pre-commit-check.cmd\"",
-            "async": false
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/mock-scan-pre-commit.cmd\"",
-            "async": false
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/auth-import-pre-commit.cmd\"",
-            "async": false
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/migration-check-pre-commit.cmd\"",
-            "async": false
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/types-check-pre-commit.cmd\"",
-            "async": false
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/external-action-guard.cmd\"",
-            "async": false
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/crud-evidence-warn.cmd\"",
-            "async": false
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/spec-analyze-check.cmd\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/percus-dispatch-pre.cmd\"",
             "async": false
           }
         ]

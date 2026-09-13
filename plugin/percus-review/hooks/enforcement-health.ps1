@@ -83,10 +83,46 @@ try {
                 }
             }
         }
-        $faltando = @($vivos | Where-Object { -not $registrados.ContainsKey($_.nome) } | ForEach-Object { $_.nome })
+        # 6.49.0: ha DOIS caminhos de registro. Hook com registro='dispatcher' e alcancado pela
+        # camada 2 do percus-dispatch-pre e NAO tem entrada propria -- cobrar entrada dele seria
+        # falso positivo permanente, e health check que grita sempre vira health check ignorado.
+        $comEntradaPropria = @($vivos | Where-Object { $_.registro -cne 'dispatcher' })
+        $faltando = @($comEntradaPropria | Where-Object { -not $registrados.ContainsKey($_.nome) } | ForEach-Object { $_.nome })
         if ($faltando.Count -gt 0) {
             $achados.Add("hook declarado no manifesto e AUSENTE do registro vivo: $($faltando -join ', ')")
         }
+
+        # Mas o caminho do dispatcher tem a SUA propria forma de sumir calado, e ela e pior:
+        # o check continua no manifesto, continua em disco, e simplesmente nunca e chamado.
+        $dispatchados = @($vivos | Where-Object { $_.registro -ceq 'dispatcher' })
+        if ($dispatchados.Count -gt 0) {
+            $disp = @($vivos | Where-Object { $_.forma -ceq 'dispatcher' })
+            if ($disp.Count -eq 0) {
+                $achados.Add("$($dispatchados.Count) hook(s) dependem de um dispatcher que o manifesto nao declara -- estao MUDOS")
+            } elseif (-not $registrados.ContainsKey($disp[0].nome)) {
+                $achados.Add("o dispatcher '$($disp[0].nome)' nao esta no registro vivo -- os $($dispatchados.Count) checks atras dele estao MUDOS")
+            }
+            # Gatilho ausente = a camada 1 nunca acorda aquele check. Some sem erro nenhum.
+            $semGatilho = @($dispatchados | Where-Object { -not $_.gatilhos -or @($_.gatilhos).Count -eq 0 } | ForEach-Object { $_.nome })
+            if ($semGatilho.Count -gt 0) {
+                $achados.Add("hook atras do dispatcher e SEM gatilho declarado (nunca sera acordado): $($semGatilho -join ', ')")
+            }
+        }
+    }
+
+    # ---- 2b. Registro x DISCO: .ps1 de hook que ninguem declara ---------------------------
+    # Defesa 3 da spec do dispatcher. A enumeracao so protege enquanto alguem a mantem; um .ps1
+    # que entra no disco e nao entra no manifesto e enforcement que existe e nunca roda -- a
+    # classe registrada em `categoria-nova-esquecida-em-lista-de-enumeracao`. Avisar alto e o
+    # que a transforma de buraco silencioso em pendencia visivel.
+    $declarados = @{}
+    foreach ($h in $man.hooks) { $declarados[$h.nome] = $true }
+    $naoDeclarados = @(Get-ChildItem $hooksDir -Filter *.ps1 -ErrorAction SilentlyContinue |
+        Where-Object { -not $_.Name.StartsWith('_') } |
+        ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name) } |
+        Where-Object { -not $declarados.ContainsKey($_) })
+    if ($naoDeclarados.Count -gt 0) {
+        $achados.Add(".ps1 em disco que o manifesto NAO declara (nunca sera chamado): $($naoDeclarados -join ', ')")
     }
 
     # ---- 3. O arquivo que o registro aponta existe? --------------------------------------

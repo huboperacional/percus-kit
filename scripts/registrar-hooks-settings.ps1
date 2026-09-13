@@ -49,15 +49,25 @@ $manifestPath = Join-Path $hooksDir "hooks-manifest.json"
 if (-not (Test-Path $manifestPath)) { throw "manifesto nao encontrado: $manifestPath" }
 
 $manifesto = Get-Content $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$vivos = @($manifesto.hooks | Where-Object { $_.registrado })
 
-$formaAlvo = switch ($Escopo) {
-    'Guardas'      { 'guarda' }
-    'Observadores' { 'observador' }
+# So entram hooks que PRECISAM de entrada propria. Hook com registro='dispatcher' e
+# alcancado pela camada 2 do percus-dispatch-pre; dar a ele uma entrada aqui faria o
+# check rodar DUAS vezes -- uma direto, outra pelo dispatcher. Para uma guarda isso
+# duplicaria a decisao (barulho), mas para qualquer check com efeito colateral seria
+# efeito duplicado de verdade, que e a razao de o escopo 'Observadores' ja existir.
+$vivos = @($manifesto.hooks | Where-Object { $_.registrado -and $_.registro -cne 'dispatcher' })
+
+$formasAlvo = switch ($Escopo) {
+    # O dispatcher entra em 'Guardas' porque e exatamente isso que ele entrega: sem a
+    # entrada dele, as 8 guardas de comando que vivem atras dele nao sao alcancadas por
+    # ninguem. Registrar 'Guardas' sem o dispatcher deixaria a maquina achando que esta
+    # protegida com 2 guardas registradas e 8 mudas.
+    'Guardas'      { @('guarda', 'dispatcher') }
+    'Observadores' { @('observador') }
     'Todos'        { $null }
 }
-if ($formaAlvo) {
-    $vivos = @($vivos | Where-Object { $_.forma -ceq $formaAlvo })
+if ($formasAlvo) {
+    $vivos = @($vivos | Where-Object { $formasAlvo -ccontains $_.forma })
 }
 
 # Fail-closed: confere TODOS antes de escrever qualquer coisa. Registro parcial mente sobre

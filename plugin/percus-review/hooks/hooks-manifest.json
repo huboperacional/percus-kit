@@ -9,7 +9,9 @@
     "assinatura": "string que o hook imprime quando age -- em stderr pras guardas (PreToolUse), em stdout pro enforcement-health (excecao medida: stderr num SessionStart que sai 0 e invisivel, mesmo silencio do item 10 so que noutro evento). E o que permite ao canario CONTAR execucoes em vez de so observar bloqueio -- comando bloqueado e comando bloqueado, nao se ve 'duas vezes'. Nao ha convencao unica: registrado como e, nao como deveria ser",
     "escape": "env var que desliga so este hook; null quando so o escape geral PERCUS_HOOKS_DISABLED vale",
     "registrado": "false = existe em disco e nao esta em nenhum registro vivo. Nao e erro: e visibilidade",
-    "alvo": "o que a guarda inspeciona: comando = le tool_input.command (shells); caminho = le tool_input.file_path (Edit/Write); plano = ExitPlanMode; transcript = le transcript_path (observador de PostToolUse que mede a sessao, nao a acao). Existe porque 'guarda de PreToolUse' deixou de ser sinonimo de 'guarda de comando' quando entrou a primeira guarda de CAMINHO -- e o teste que exigia matcher Bash|PowerShell de toda guarda de PreToolUse teria proibido a guarda nova por construcao."
+    "alvo": "o que a guarda inspeciona: comando = le tool_input.command (shells); caminho = le tool_input.file_path (Edit/Write); plano = ExitPlanMode; transcript = le transcript_path (observador de PostToolUse que mede a sessao, nao a acao). Existe porque 'guarda de PreToolUse' deixou de ser sinonimo de 'guarda de comando' quando entrou a primeira guarda de CAMINHO -- e o teste que exigia matcher Bash|PowerShell de toda guarda de PreToolUse teria proibido a guarda nova por construcao.",
+    "gatilhos": "substrings LITERAIS que o payload PRECISA conter para este check fazer qualquer coisa; ausentes todas, ele sairia cedo sem avisar nem bloquear. A camada 1 do dispatcher usa a UNIAO delas (gatilhos-pre.txt) num unico findstr /L /I. Regras: token unico sem espaco (o \\s+ dos regex casa TAB e espaco multiplo); na duvida INCLUA (falso positivo custa ~425ms, falso negativo custa enforcement calado). So para PreToolUse com matcher Bash|PowerShell.",
+    "registro": "ONDE este hook esta registrado: 'hooks.json' = entrada propria que o harness le; 'dispatcher' = rodado pela camada 2 do percus-dispatch-pre, sem entrada propria. Os dois sao enforcement VIVO -- 'registrado' continua significando 'esta valendo', e 'registro' diz por qual caminho. Hook com registro='dispatcher' DEVE declarar gatilhos."
   },
   "escape_geral": "PERCUS_HOOKS_DISABLED",
   "hooks": [
@@ -21,7 +23,8 @@
       "assinatura": "[percus:hook pre-plan-exit]",
       "escape": "PERCUS_PREMORTEM_OVERRIDE",
       "registrado": true,
-      "alvo": "plano"
+      "alvo": "plano",
+      "registro": "hooks.json"
     },
     {
       "nome": "pre-commit-check",
@@ -31,7 +34,11 @@
       "assinatura": "[percus:hook pre-commit]",
       "escape": null,
       "registrado": true,
-      "alvo": "comando"
+      "alvo": "comando",
+      "gatilhos": [
+        "commit"
+      ],
+      "registro": "dispatcher"
     },
     {
       "nome": "mock-scan-pre-commit",
@@ -41,7 +48,11 @@
       "assinatura": "[percus:hook mock-scan]",
       "escape": "PERCUS_SKIP_MOCK_SCAN",
       "registrado": true,
-      "alvo": "comando"
+      "alvo": "comando",
+      "gatilhos": [
+        "commit"
+      ],
+      "registro": "dispatcher"
     },
     {
       "nome": "auth-import-pre-commit",
@@ -51,7 +62,11 @@
       "assinatura": "[percus:hook auth-import]",
       "escape": "PERCUS_SKIP_AUTH_IMPORT",
       "registrado": true,
-      "alvo": "comando"
+      "alvo": "comando",
+      "gatilhos": [
+        "commit"
+      ],
+      "registro": "dispatcher"
     },
     {
       "nome": "migration-check-pre-commit",
@@ -61,7 +76,11 @@
       "assinatura": "[percus:hook migration-check]",
       "escape": "PERCUS_SKIP_MIGRATION_CHECK",
       "registrado": true,
-      "alvo": "comando"
+      "alvo": "comando",
+      "gatilhos": [
+        "commit"
+      ],
+      "registro": "dispatcher"
     },
     {
       "nome": "types-check-pre-commit",
@@ -71,7 +90,11 @@
       "assinatura": "[percus:hook types-check]",
       "escape": "PERCUS_SKIP_TYPES_CHECK",
       "registrado": true,
-      "alvo": "comando"
+      "alvo": "comando",
+      "gatilhos": [
+        "commit"
+      ],
+      "registro": "dispatcher"
     },
     {
       "nome": "external-action-guard",
@@ -81,7 +104,22 @@
       "assinatura": "[percus:hook external-action-guard]",
       "escape": "PERCUS_EXTERNAL_OVERRIDE",
       "registrado": true,
-      "alvo": "comando"
+      "alvo": "comando",
+      "gatilhos": [
+        "gh",
+        "slack",
+        "push",
+        "mailto",
+        "wrangler",
+        "docker",
+        "vercel",
+        "netlify",
+        "kubectl",
+        "ssh",
+        "vps",
+        "curl"
+      ],
+      "registro": "dispatcher"
     },
     {
       "nome": "crud-evidence-warn",
@@ -93,7 +131,11 @@
       "registrado": true,
       "warn_only": true,
       "_nota": "forma=guarda descreve o WRAPPER (fail-closed, derivado do evento PreToolUse), nao a politica do hook. Por logica propria ele NUNCA bloqueia: R2 diz warn-only e o .ps1 termina em catch { exit 0 }. So um PowerShell que falhasse ao nem iniciar acionaria o fail-closed do wrapper. Quem construir o canario (Task 5) e o health check (Task 7) sobre o campo forma nao pode inferir daqui que este hook esta autorizado a bloquear por regra de negocio.",
-      "alvo": "comando"
+      "alvo": "comando",
+      "gatilhos": [
+        "commit"
+      ],
+      "registro": "dispatcher"
     },
     {
       "nome": "on-stop-check",
@@ -102,7 +144,8 @@
       "forma": "observador",
       "assinatura": "[percus:hook on-stop]",
       "escape": "PERCUS_SKIP_HANDOFF",
-      "registrado": true
+      "registrado": true,
+      "registro": "hooks.json"
     },
     {
       "nome": "state-drift-check",
@@ -111,7 +154,8 @@
       "forma": "observador",
       "assinatura": "[percus:hook state-drift]",
       "escape": "PERCUS_SKIP_DRIFT_CHECK",
-      "registrado": true
+      "registrado": true,
+      "registro": "hooks.json"
     },
     {
       "nome": "pre-compact-checkpoint",
@@ -120,7 +164,8 @@
       "forma": "observador",
       "assinatura": "[percus:PreCompact]",
       "escape": "PERCUS_SKIP_PRECOMPACT",
-      "registrado": true
+      "registrado": true,
+      "registro": "hooks.json"
     },
     {
       "nome": "enforcement-health",
@@ -130,7 +175,8 @@
       "assinatura": "[percus:health]",
       "escape": null,
       "registrado": true,
-      "_nota": "Diz no inicio de cada sessao se o enforcement esta ligado e DE ONDE o codigo vem. Absorve a intencao do orfao canon-version-check (versao instalada x versao do kit). Sempre exit 0: health check que tranca a sessao troca um problema por outro pior. Fala por STDOUT, nao stderr -- unico hook do manifesto que quebra a convencao, porque medido: stderr de SessionStart que sai 0 nao aparece (achado 2026-07-31, apos a Task 7 ter sido dada como fechada com o hook falando em stderr e nunca aparecendo)."
+      "_nota": "Diz no inicio de cada sessao se o enforcement esta ligado e DE ONDE o codigo vem. Absorve a intencao do orfao canon-version-check (versao instalada x versao do kit). Sempre exit 0: health check que tranca a sessao troca um problema por outro pior. Fala por STDOUT, nao stderr -- unico hook do manifesto que quebra a convencao, porque medido: stderr de SessionStart que sai 0 nao aparece (achado 2026-07-31, apos a Task 7 ter sido dada como fechada com o hook falando em stderr e nunca aparecendo).",
+      "registro": "hooks.json"
     },
     {
       "nome": "spec-analyze-check",
@@ -141,7 +187,11 @@
       "escape": "PERCUS_SKIP_SPEC_ANALYZE",
       "registrado": true,
       "alvo": "comando",
-      "_nota": "Gate [S] mecanico: avisa quando um `git commit` leva uma spec (docs/superpowers/specs/*.md) que o conselho nunca analisou. WARN-ONLY (exit 0 sempre), como o crud-evidence-warn -- a frota tem specs antigas sem analyze e bloqueio em massa no primeiro dia vira escape declarado. Tres estados: coberto (silencio) / analyze de versao anterior / nenhum analyze -- 'analisei a v1 e commitei a v2' pede acao diferente de 'nunca analisei'. Casa o texto STAGED com o campo `prompt` dos logs *-analyze.jsonl (teto de 50, do mais recente). Existe porque o canon manda rodar spec-analyze sozinho em TRES lugares (01_REGRAS_INEGOCIAVEIS.md:316, v2/CONSTITUICAO.md:35, v2/loops/spec.md) e a promessa IRMA da mesma frase (plano -> council-pre-mortem) tinha hook desde sempre (pre-plan-exit) enquanto a da spec nao tinha nenhum: em 2026-09-12 o proprio agente escreveu, commitou e apresentou uma spec sem analyze, e so o operador perguntando revelou. LIMITE CONHECIDO (2026-09-12): a raiz sai do `cd` do comando (tres formas: aspas duplas, simples, sem aspas). A forma `git -C <dir>` cai no cwd e o hook checaria o repo errado, calado. NAO e divergencia .ps1/.sh -- o Resolve-PercusProjectRoot do _helpers.ps1 tem a MESMA lacuna, entao os 8 hooks de comando a compartilham. O pre-commit-check RESOLVE essa forma com logica propria (Proposta F, v6.7.x) que nunca foi promovida ao helper; portar essa logica cobre os oito de uma vez e e trabalho proprio, na fila."
+      "_nota": "Gate [S] mecanico: avisa quando um `git commit` leva uma spec (docs/superpowers/specs/*.md) que o conselho nunca analisou. WARN-ONLY (exit 0 sempre), como o crud-evidence-warn -- a frota tem specs antigas sem analyze e bloqueio em massa no primeiro dia vira escape declarado. Tres estados: coberto (silencio) / analyze de versao anterior / nenhum analyze -- 'analisei a v1 e commitei a v2' pede acao diferente de 'nunca analisei'. Casa o texto STAGED com o campo `prompt` dos logs *-analyze.jsonl (teto de 50, do mais recente). Existe porque o canon manda rodar spec-analyze sozinho em TRES lugares (01_REGRAS_INEGOCIAVEIS.md:316, v2/CONSTITUICAO.md:35, v2/loops/spec.md) e a promessa IRMA da mesma frase (plano -> council-pre-mortem) tinha hook desde sempre (pre-plan-exit) enquanto a da spec nao tinha nenhum: em 2026-09-12 o proprio agente escreveu, commitou e apresentou uma spec sem analyze, e so o operador perguntando revelou. LIMITE CONHECIDO (2026-09-12): a raiz sai do `cd` do comando (tres formas: aspas duplas, simples, sem aspas). A forma `git -C <dir>` cai no cwd e o hook checaria o repo errado, calado. NAO e divergencia .ps1/.sh -- o Resolve-PercusProjectRoot do _helpers.ps1 tem a MESMA lacuna, entao os 8 hooks de comando a compartilham. O pre-commit-check RESOLVE essa forma com logica propria (Proposta F, v6.7.x) que nunca foi promovida ao helper; portar essa logica cobre os oito de uma vez e e trabalho proprio, na fila.",
+      "gatilhos": [
+        "commit"
+      ],
+      "registro": "dispatcher"
     },
     {
       "nome": "context-budget-guard",
@@ -152,7 +202,8 @@
       "escape": "PERCUS_SKIP_CONTEXT_BUDGET",
       "registrado": true,
       "alvo": "transcript",
-      "_nota": "Mede o contexto VIVO da sessao (ultima `usage` da CAUDA do transcript: input + cache_read + cache_creation) a cada tool call e avisa agente (additionalContext) e operador (systemMessage) acima de PERCUS_CTX_WARN=150k / PERCUS_CTX_HARD=180k, ou apos PERCUS_CTX_HOURS=8h / PERCUS_CTX_RESUME_DAYS=2d de sessao. Um aviso por nivel por sessao (.deepseek/context-budget/). Matcher VAZIO de proposito: contexto cresce com Edit/Write/Read tanto quanto com Bash -- guarda que so ve shell e a classe de furo ja registrada (hooks-percus-so-cobrem-tool-bash). Sempre exit 0: bloquear contexto vivo viraria escape rotineiro, como o teto do CONTEXT.md. Existe porque uma sessao de 14h chegou a 610k tokens com 11 mencoes a checkpoint -- checkpoint escreve arquivo, nao reseta contexto (2026-09-12). CUSTO: roda a CADA tool call, ~0,3-0,5 s por chamada (spawn frio do powershell.exe; medido 2026-09-12 nos testes, 250-570 ms por invocacao) -- investigacao de lentidao do harness deve contar com isso antes de culpar MCP. LIMITE CONHECIDO: le a cauda em duas janelas (256 KB, depois 2 MB); tool_result maior que 2 MB gravado depois da ultima usage esconde a medicao daquela chamada -- a seguinte recupera. EXCECOES ao 'sempre exit 0' (findings R11 2026-09-12): (1) o wrapper .cmd sai 1 se o .ps1 estiver ausente/truncado -- e o fail-loud comum a todos os observadores do kit (hook-wrapper-fail-loud: grita 1, nao tranca 2), nao regra deste hook; (2) o debounce mora em <cwd>/.deepseek/context-budget/ usando o cwd do PAYLOAD, que e o da sessao do harness (nao muda com cd dentro do Bash) -- se o harness reportar cwd diferente entre chamadas, o hook volta a falar uma vez por cwd."
+      "_nota": "Mede o contexto VIVO da sessao (ultima `usage` da CAUDA do transcript: input + cache_read + cache_creation) a cada tool call e avisa agente (additionalContext) e operador (systemMessage) acima de PERCUS_CTX_WARN=150k / PERCUS_CTX_HARD=180k, ou apos PERCUS_CTX_HOURS=8h / PERCUS_CTX_RESUME_DAYS=2d de sessao. Um aviso por nivel por sessao (.deepseek/context-budget/). Matcher VAZIO de proposito: contexto cresce com Edit/Write/Read tanto quanto com Bash -- guarda que so ve shell e a classe de furo ja registrada (hooks-percus-so-cobrem-tool-bash). Sempre exit 0: bloquear contexto vivo viraria escape rotineiro, como o teto do CONTEXT.md. Existe porque uma sessao de 14h chegou a 610k tokens com 11 mencoes a checkpoint -- checkpoint escreve arquivo, nao reseta contexto (2026-09-12). CUSTO: roda a CADA tool call, ~0,3-0,5 s por chamada (spawn frio do powershell.exe; medido 2026-09-12 nos testes, 250-570 ms por invocacao) -- investigacao de lentidao do harness deve contar com isso antes de culpar MCP. LIMITE CONHECIDO: le a cauda em duas janelas (256 KB, depois 2 MB); tool_result maior que 2 MB gravado depois da ultima usage esconde a medicao daquela chamada -- a seguinte recupera. EXCECOES ao 'sempre exit 0' (findings R11 2026-09-12): (1) o wrapper .cmd sai 1 se o .ps1 estiver ausente/truncado -- e o fail-loud comum a todos os observadores do kit (hook-wrapper-fail-loud: grita 1, nao tranca 2), nao regra deste hook; (2) o debounce mora em <cwd>/.deepseek/context-budget/ usando o cwd do PAYLOAD, que e o da sessao do harness (nao muda com cd dentro do Bash) -- se o harness reportar cwd diferente entre chamadas, o hook volta a falar uma vez por cwd.",
+      "registro": "hooks.json"
     },
     {
       "nome": "canon-version-check",
@@ -172,7 +223,20 @@
       "forma": "guarda",
       "assinatura": "[percus:hook knowledge-write]",
       "escape": "PERCUS_SKIP_KNOWLEDGE_GUARD",
-      "registrado": true
+      "registrado": true,
+      "registro": "hooks.json"
+    },
+    {
+      "nome": "percus-dispatch-pre",
+      "evento": "PreToolUse",
+      "matcher": "Bash|PowerShell",
+      "forma": "dispatcher",
+      "assinatura": "[percus:dispatch-pre]",
+      "escape": "PERCUS_DISPATCHER_BYPASS",
+      "registrado": true,
+      "registro": "hooks.json",
+      "alvo": "comando",
+      "_nota": "Camada 1 (.cmd, ~62 ms) faz UM findstr /L /I sobre a uniao dos gatilhos (gatilhos-pre.txt) e so entao sobe UM PowerShell (camada 2, ~425 ms) que roda os 8 checks no MESMO processo. MEDIDO 2026-09-12: a cadeia de 8 .cmd custava 3716 ms em TODO comando Bash (startup do Windows PowerShell 5.1 x8, mesmo em no-op); o dispatcher faz 62 ms quando nada casa. Contra 1233 comandos reais de transcript, 80,5% dormem na camada 1 -- 4582 s -> 164 s (28x). A camada 1 so sabe dizer 'NINGUEM poderia disparar'; QUAL check roda e decidido na camada 2, que casa so contra tool_input.command (a camada 1 casa o JSON inteiro, incluindo cwd). Re-alimenta stdin com [Console]::SetIn antes de cada check, entao os 8 .ps1 ficaram INTOCADOS. DEFESAS: (1) fallback pros 8 .cmd em serie se o PowerShell nao subir ou com PERCUS_DISPATCHER_BYPASS=1; (2) check que explode vira linha no stderr, nunca engolido; (3) teste de contencao gatilho-a-gatilho. Roda TODOS os checks e so entao agrega o veredito -- parar no primeiro exit 2 apagaria o aviso dos warn-only, que sao quase todos. LIMITE CONHECIDO: a captura de stdin em cmd.exe trunca acima de ~80 KB (medido; o `more` ja corrompe em 80 KB, por isso a captura e `findstr \"^\"`). Payload truncado nao parseia, e a camada 2 FALHA ALTO (exit 2) em vez de sair 0 -- stdin ja foi consumido e e irrecuperavel, entao a escolha real e entre barrar avisando e passar calado. /I no findstr e OBRIGATORIO: o -match do PowerShell e case-insensitive e sem /I um payload em MAIUSCULA passaria batido. gatilhos-pre.txt NAO pode ter BOM: o BOM vira parte do 1o literal e o findstr devolve rc=1 num payload que contem o gatilho (medido)."
     }
   ]
 }

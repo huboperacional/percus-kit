@@ -43,16 +43,62 @@ que a escolha delas volte a ser por mérito.
 `$LASTEXITCODE` chega intacto. Provado nesta sessão. Logo um dispatcher roda os checks no **mesmo
 processo sem reescrever o fluxo de controle de nenhum**.
 
-O único obstáculo é stdin: só pode ser lido uma vez, e todo hook faz `[Console]::In.ReadToEnd()`. O
-dispatcher grava o payload num arquivo e cada hook passa a ler `PERCUS_HOOK_STDIN_FILE` se estiver
-setado, senão `Console.In` — **mudança de uma linha por hook**, e eles continuam rodáveis
-isoladamente, então a suíte de 556 testes não muda.
+O obstáculo aparente é stdin: só pode ser lido uma vez, e todo hook faz `[Console]::In.ReadToEnd()`.
+A proposta original resolvia com um contrato novo — o dispatcher grava o payload num arquivo e cada
+hook passa a ler `PERCUS_HOOK_STDIN_FILE` se estiver setado, senão `Console.In` — **uma linha por
+hook**, em 8 hooks.
+
+> **Substituído por algo mais simples, provado em 2026-09-12 antes de escrever qualquer código:**
+> **`[Console]::SetIn([IO.StringReader]$payload)`**. O dispatcher lê o payload uma vez e
+> **reposiciona `Console.In` antes de chamar cada check**. Os hooks seguem fazendo
+> `[Console]::In.ReadToEnd()` e recebem o payload inteiro, **sem uma linha de mudança em nenhum dos
+> 8**. Provado em três chamadas consecutivas, todas lendo o mesmo `tool_input.command`.
+>
+> Por que é melhor que o contrato de arquivo, e não só mais curto:
+> 1. **Zero mudança nos 8 hooks** — a suíte não muda porque não há o que mudar, em vez de não mudar
+>    porque tomamos cuidado.
+> 2. **Nenhum contrato novo para documentar, testar e alguém esquecer.** `PERCUS_HOOK_STDIN_FILE`
+>    seria mais uma convenção que um hook futuro pode não implementar — e o sintoma seria um hook
+>    lendo stdin vazio e saindo 0 **em silêncio**, que é a classe de falha que a defesa 3 existe
+>    para fechar. O contrato que não existe não pode ser esquecido.
+> 3. Dois dos oito (`pre-commit-check`, `external-action-guard`) **não carregam `_helpers.ps1`** —
+>    são auto-contidos de propósito. O contrato de arquivo os obrigaria a duplicar a leitura inline
+>    ou a ganhar uma dependência que hoje não têm.
+>
+> Medido junto, no mesmo experimento: um check que sai `2` **não mata o dispatcher**,
+> `$LASTEXITCODE` chega intacto, e **os checks seguintes continuam rodando** — que é exatamente a
+> agregação de veredito que a seção abaixo exige.
 
 ## Arquitetura — duas camadas, e a de baixo é burra de propósito
 
-**Camada 1 — `cmd.exe`, ~61 ms, paga sempre.** Despeja stdin num temp (`more > %TMPF%`) e roda **um**
+**Camada 1 — `cmd.exe`, ~61 ms, paga sempre.** Despeja stdin num temp e roda **um**
 `findstr /L /G:gatilhos.txt` — a **união** de todos os gatilhos de todos os checks. Não casou nada:
 `exit /b 0`, PowerShell nunca sobe.
+
+> **A captura de stdin não é `more`, e o motivo foi medido (2026-09-12).** O design dizia
+> `more > %TMPF%`. Medindo os dois idiomas de `cmd.exe` contra payloads reais:
+>
+> | payload | `more` | `findstr "^"` |
+> |---|---|---|
+> | 3 KB, linha única, acentos UTF-8 | exato | exato |
+> | 80 KB | **corrompe** (80 055 ≠ 80 053) | exato |
+> | 200 KB | — | **trunca para 73 781** |
+> | 1 MB | — | **trunca para 53** |
+>
+> **Os dois truncam, e o pior é que truncam saindo `0`.** Payload cortado é JSON inválido; cada
+> check cai no próprio `catch`, sai `0`, e a cadeia inteira **passa calada** — perda total de
+> enforcement, justamente no comando maior, que é o mais provável de estar fazendo algo sério. É a
+> classe de falha que a defesa 2 existe para impedir, entrando pela porta da defesa 1.
+>
+> **Decisões que saem daí:**
+> 1. A captura é **`findstr "^"`**, não `more` — exato até ~80 KB, enquanto `more` já corrompe lá.
+> 2. **A camada 2 DEVE validar que o payload capturado parseia como JSON.** Se não parseia, ela
+>    **falha alto** (`exit 2` nomeando a causa e o contorno `PERCUS_DISPATCHER_BYPASS=1`), nunca
+>    `exit 0`. Não há recuperação possível — stdin já foi consumido e é irreproduzível —, então a
+>    única escolha honesta é entre *barrar avisando* e *passar calado*.
+> 3. O limite de ~80 KB entra no `hooks-manifest.json` como limite conhecido, com o número medido.
+>    Comando de shell acima disso é raro a ponto de nunca ter aparecido; **raro e alto** é aceitável,
+>    **raro e mudo** não é.
 
 **Camada 2 — PowerShell, ~425 ms, paga só quando algo pode disparar.** Um processo. Lê o payload do
 temp, decide **com precisão** quais checks rodam, chama cada `.ps1` com `&`.
@@ -94,16 +140,43 @@ O conselho (3/3 na abordagem) apontou dois riscos invisíveis que a proposta ori
 A defesa 3 é a que fecha a classe registrada como **não fechada** em
 `categoria-nova-esquecida-em-lista-de-enumeracao`: enforcement que enumera e deixa buraco silencioso.
 
-## `PostToolUse` — a opção D primeiro, porque é grátis
+## ~~`PostToolUse` — a opção D primeiro, porque é grátis~~ — **DESCARTADA por medição (2026-09-12)**
 
-Sugestão do DeepSeek que não estava na proposta original: **estreitar o matcher do
-`context-budget-guard` de `""` para `Bash|Edit|Write`**, tirando-o do caminho de `Read`/`Grep`/`Glob`.
-É mudança **só de registro, zero código** — e ataca os 477 ms antes de o dispatcher existir. Vai
-primeiro, isolada.
+A proposta era: **estreitar o matcher do `context-budget-guard` de `""` para `Bash|Edit|Write`**,
+tirando-o do caminho de `Read`/`Grep`/`Glob`. Sugestão do DeepSeek, aceita no design como "mudança
+só de registro, zero código" — e chamada de **grátis**.
 
-Só então o dispatcher de `PostToolUse`, com porta por timestamp em `cmd.exe` (só sobe PowerShell a
-cada N segundos). **Duas entradas no `hooks.json`, não uma** — eventos diferentes não compartilham
-entrada, e isolar as cadeias reduz o raio de explosão, como o Cross-Claude apontou.
+**Não é grátis, e o preço foi medido antes de executar.** Varri 12 transcripts reais (2464 tool
+calls):
+
+| | |
+|---|---|
+| cobertas por `Bash\|Edit\|Write` | 1991 (**80,8 %**) |
+| puladas pela opção D | 473 (**19,2 %**) |
+| **maior rajada consecutiva de tools puladas** | **130 chamadas** |
+| rajadas ≥ 10 | 4 ocorrências (mediana das rajadas: 1) |
+
+Duas conclusões, e as duas contra:
+
+1. **A economia é pequena** — 19 % dos spawns, não os 477 ms por tool call que a motivação promete.
+2. **O custo é a cegueira, e ela cai onde mais dói.** A rajada de 130 veio de uma sessão pesada de
+   Playwright; as tools puladas são `Read` e snapshots de browser, que estão entre **as que mais
+   inflam contexto**. O guard não perde a medição — ele a **atrasa** —, mas atrasar em até 130
+   chamadas um aviso que existe para chegar *antes* de a janela estourar é perder o aviso.
+
+O manifesto já dizia isso, e eu ia contra ele sem notar: a nota da entrada registra *"matcher VAZIO
+de propósito: contexto cresce com Edit/Write/Read tanto quanto com Bash — guarda que só vê shell é a
+classe de furo já registrada (`hooks-percus-so-cobrem-tool-bash`)"*. Estreitar o matcher é reabrir,
+em menor escala, um furo que o kit já fechou uma vez.
+
+**E é redundante.** O dispatcher de `PostToolUse` com porta por timestamp em `cmd.exe` entrega a
+economia **inteira** (477 ms → ~61 ms em toda tool call) **sem perder cobertura nenhuma**: a porta
+limita quantas vezes o PowerShell sobe, e não *quais tools* são observadas. Fazer a opção D antes
+seria pagar uma cegueira permanente no registro por um ganho que o passo seguinte entrega de graça.
+
+**Decisão: pular a opção D. O `PostToolUse` vai direto para o dispatcher com porta por timestamp.**
+**Duas entradas no `hooks.json`, não uma** — eventos diferentes não compartilham entrada, e isolar as
+cadeias reduz o raio de explosão, como o Cross-Claude apontou.
 
 ## Não-objetivos
 
@@ -130,11 +203,36 @@ entrada, e isolar as cadeias reduz o raio de explosão, como o Cross-Claude apon
 5. `hooks-manifest.json` atualizado, e o `enforcement-health` comparando registro × disco.
 6. Suíte inteira verde — **a suíte toda, não só os testes do tema**.
 
+## ESTADO DA ENTREGA (2026-09-12, 6.49.0)
+
+**Item 2 ENTREGUE** — dispatcher `PreToolUse` com as 3 defesas, registrado no `hooks.json`.
+
+| critério de pronto | estado |
+|---|---|
+| 1. caminho comum < 100 ms | ✅ **62 ms** (era 3 716 ms; o design previa ~61) |
+| 2. fallback provado com `PERCUS_DISPATCHER_BYPASS=1` | ✅ teste comportamental |
+| 3. teste de alcance por check + contenção dos gatilhos | ✅ nos dois sentidos (falta e órfão) |
+| 4. paridade `.ps1`/`.sh` rodando o `.sh` de verdade | ⏳ **pendente** — item próprio |
+| 5. `hooks-manifest.json` + `enforcement-health` registro × disco | ✅ campo `registro` novo |
+| 6. suíte inteira verde | ✅ 580/0 |
+
+Validação contra tráfego real (1 233 comandos de transcript): **80,5% dormem** na camada 1;
+4 582 s → 164 s (**28x**).
+
+**Os 8 hooks não mudaram uma linha** — ver a nota do `[Console]::SetIn` acima. Os `.cmd` antigos
+continuam em disco: são a rota de fallback da defesa 1, não resíduo.
+
+**Item 3 (dispatcher `PostToolUse` com porta por timestamp) é o próximo.** Ele carrega sozinho o
+ganho que a opção D descartada prometia — sem a cegueira de 130 chamadas.
+
 ## Ordem de entrega
 
-1. Opção D: estreitar o matcher do `PostToolUse` — grátis, isolada
-2. Dispatcher `PreToolUse` + as 3 defesas + paridade `.sh`
-3. Dispatcher `PostToolUse` com porta por timestamp
+1. ~~Opção D: estreitar o matcher do `PostToolUse`~~ — **descartada por medição**, ver seção acima.
+   Economia de 19 % dos spawns ao preço de até 130 chamadas consecutivas sem medir, e redundante
+   com o item 3.
+2. Dispatcher `PreToolUse` + as 3 defesas + paridade `.sh` ← **primeiro passo real**
+3. Dispatcher `PostToolUse` com porta por timestamp (entrega o ganho do `context-budget-guard`
+   **sem** perder cobertura, que é o que a opção D não fazia)
 4. *(passa o bastão para a spec das regras comportamentais)*
 
 ## Riscos

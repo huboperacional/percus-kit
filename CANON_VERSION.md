@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.48.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.49.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,63 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.49.0 — 2026-09-12
+
+**A cadeia de hooks custava 3,7 segundos em todo comando Bash — inclusive `echo ola`.** Cada um dos
+8 hooks de `PreToolUse Bash|PowerShell` era um `.cmd` que subia um `powershell.exe` próprio. Medido
+nesta máquina, **com todos em no-op: 3 716 ms**. Não era custo de trabalho; era custo de *startup*,
+oito vezes, para na maioria das vezes ninguém ter nada a fazer.
+
+O conserto é um **dispatcher de duas camadas**:
+
+| | antes | depois |
+|---|---|---|
+| comando sem gatilho (o caso comum) | 3 716 ms | **62 ms** |
+| comando com gatilho | 3 716 ms | ~425 ms (um processo, não oito) |
+
+Contra **1 233 comandos reais** extraídos de transcripts: **80,5% dormem** na camada 1 —
+**4 582 s → 164 s (28x)**.
+
+**Camada 1** (`percus-dispatch-pre.cmd`, ~62 ms) despeja stdin e roda **um** `findstr /L /I` sobre a
+união dos gatilhos de todos os checks. Não casou nada, o PowerShell nunca sobe. **Camada 2**
+(`.ps1`, um processo) decide com precisão — casando só contra `tool_input.command`, enquanto a
+camada 1 casa o JSON inteiro — e roda os checks que sobraram.
+
+**Os 8 hooks não mudaram uma linha.** `[Console]::SetIn([IO.StringReader])` re-alimenta stdin antes
+de cada check, então eles seguem fazendo `[Console]::In.ReadToEnd()`. O desenho original criava um
+contrato novo (`PERCUS_HOOK_STDIN_FILE`) em 8 arquivos; contrato que não existe não pode ser
+esquecido por um hook futuro.
+
+**Quatro coisas foram medidas antes de virar código, e três derrubaram a proposta original:**
+
+- **`more` corrompe payload de 80 KB** (80 055 ≠ 80 053) — a captura é `findstr "^"`. Acima de
+  ~80 KB os dois truncam **saindo 0**: payload cortado não parseia, todo check cairia no próprio
+  `catch` e a cadeia passaria **calada** no comando maior. Por isso a camada 2 **falha alto**
+  (`exit 2`) quando o JSON não parseia — stdin já foi consumido, não há recuperação, e a escolha
+  real é entre barrar avisando e passar calado.
+- **`/I` no findstr é obrigatório**: o `-match` do PowerShell é case-insensitive, então `GIT COMMIT`
+  dispara os checks mas não casaria a triagem sem `/I`. Buraco silencioso.
+- **BOM no `gatilhos-pre.txt` mata o primeiro literal** — o findstr devolve `rc=1` num payload que
+  contém o gatilho.
+- **A "opção D" (estreitar o matcher do `PostToolUse`) foi descartada**: economizava 19% dos spawns
+  ao preço de até **130 chamadas consecutivas** sem medir contexto, justo nas sessões de Playwright
+  e `Read` que mais o inflam — e o dispatcher de `PostToolUse` entrega o ganho inteiro sem cegueira.
+
+**`registro` é campo novo no manifesto** e diz por qual caminho o hook está vivo: `hooks.json`
+(entrada própria) ou `dispatcher`. Sem ele, mover os 8 faria a trava "manifesto concorda com o
+registro vivo" reprovar, e a saída fácil seria afrouxá-la. Com ele a trava ficou **mais forte**:
+quem diz `dispatcher` tem de estar **fora** do `hooks.json` (entrada dupla = execução dupla) e ter
+gatilhos declarados. `registrar-hooks-settings.ps1` foi corrigido junto — ele registraria os 8 e
+cada commit passaria pela cadeia duas vezes.
+
+**Defesas:** (1) fallback para os 8 `.cmd` em série se o PowerShell não subir ou com
+`PERCUS_DISPATCHER_BYPASS=1` — lento e correto > rápido e mudo; (2) check que explode vira linha no
+stderr, nunca engolido; (3) teste de contenção gatilho-a-gatilho, e o `enforcement-health` passou a
+comparar **registro × disco** — `.ps1` em disco que o manifesto não declara vira aviso alto.
+
+O dispatcher **roda todos os checks e só então agrega** o veredito: parar no primeiro `exit 2`
+apagaria o aviso dos warn-only, que são quase todos.
 
 ## Changelog v6.48.0 — 2026-09-12
 

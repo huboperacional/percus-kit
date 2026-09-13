@@ -1,0 +1,13 @@
+commit
+push
+gh
+slack
+mailto
+wrangler
+docker
+vercel
+netlify
+kubectl
+ssh
+vps
+curl

@@ -203,20 +203,44 @@ Describe "registrar-hooks-settings.ps1" {
         @(Get-ChildItem $dir -Filter "settings.json.bak-*").Count | Should -Be 0 -Because "primeiro uso: nao existe settings.json anterior pra fazer backup"
     }
 
-    It "contra o manifesto REAL do kit: Guardas=10, Observadores=5, Todos=15 -- todos com wrapper em disco" {
+    It "contra o manifesto REAL do kit: Guardas=3, Observadores=5, Todos=8 -- so quem precisa de entrada propria" {
         # Regressao de verdade: usa o hooks-manifest.json e os .cmd reais do proprio repo,
-        # nao o kit falso. Prova que o script bate com o que hooks-manifest.tests.ps1 ja
-        # afirma sobre o mundo real (10 guarda / 5 observador / 15 total -- 6.45.0 somou o
-        # context-budget-guard, PostToolUse).
+        # nao o kit falso.
+        #
+        # 6.49.0 mudou os numeros, e a causa importa: o registro deixou de ser "todo hook vivo"
+        # e passou a ser "todo hook que PRECISA de entrada propria". Os 8 checks de comando
+        # vivem atras do percus-dispatch-pre (registro='dispatcher'); dar entrada propria a eles
+        # aqui faria rodarem DUAS vezes. Guardas = pre-plan-exit + knowledge-write-guard + o
+        # dispatcher = 3.
         $settings = New-SettingsFalso -Conteudo @{}
 
         $saidaGuardas = & $script:script -Escopo Guardas -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
-        $saidaGuardas | Should -Match "\b10 hook\(s\)"
+        $saidaGuardas | Should -Match "\b3 hook\(s\)"
+        $saidaGuardas | Should -Match "percus-dispatch-pre" -Because "sem o dispatcher, as 8 guardas de comando ficam mudas e a maquina parece protegida"
 
         $saidaObs = & $script:script -Escopo Observadores -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
         $saidaObs | Should -Match "\b5 hook\(s\)"
 
         $saidaTodos = & $script:script -Escopo Todos -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
-        $saidaTodos | Should -Match "\b15 hook\(s\)"
+        $saidaTodos | Should -Match "\b8 hook\(s\)"
+    }
+
+    It "NENHUM hook dispatchado ganha entrada propria -- entrada dupla = execucao dupla" {
+        # A trava que impede a regressao mais cara desta mudanca. Se alguem voltar a registrar
+        # os 8 por engano, cada commit passaria pela cadeia duas vezes: uma pela entrada propria,
+        # outra pelo dispatcher. Guarda duplicada so duplica a decisao, mas check com efeito
+        # colateral duplicaria o efeito -- e o sintoma (aviso repetido) e facil de atribuir a
+        # "bug do hook" em vez de a registro duplicado.
+        $manifesto = Get-Content (Join-Path $script:kitRoot 'plugin\percus-review\hooks\hooks-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        $dispatchados = @($manifesto.hooks | Where-Object { $_.registro -ceq 'dispatcher' } | ForEach-Object { $_.nome })
+        $dispatchados.Count | Should -BeGreaterThan 0 -Because "piso: sem dispatchados este It passaria vazio"
+
+        foreach ($escopo in 'Guardas', 'Observadores', 'Todos') {
+            $settings = New-SettingsFalso -Conteudo @{}
+            $saida = & $script:script -Escopo $escopo -KitRoot $script:kitRoot -SettingsPath $settings -DryRun *>&1 | Out-String
+            foreach ($nome in $dispatchados) {
+                $saida | Should -Not -Match ([regex]::Escape($nome)) -Because "escopo '$escopo' nao pode registrar '$nome': ele ja e rodado pelo dispatcher"
+            }
+        }
     }
 }

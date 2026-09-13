@@ -320,7 +320,24 @@ Describe "wrapper .cmd tem a forma do seu evento" {
 
         # Piso de contagem: sem ele, uma pasta VAZIA faz este It passar sem verificar nada --
         # e a migracao dos hooks pro settings.json (spec sec. 9) esvazia exatamente esta pasta.
-        $cmds.Count | Should -Be 15 -Because "piso de contagem: It que passa vazio nao guarda nada"
+        $cmds.Count | Should -Be 16 -Because "piso de contagem: It que passa vazio nao guarda nada"
+
+        # 6.49.0: o percus-dispatch-pre.cmd nao e um wrapper -- nao envolve UM .ps1, ele tria e
+        # roteia. A forma dele nao se compara com as duas de baixo, e forcar a comparacao so
+        # produziria um vermelho permanente que alguem acabaria silenciando.
+        #
+        # Mas isencao sem prova nova E afrouxar a trava. Entao o dispatcher paga tres:
+        #   (a) e o UNICO isento, e isso e afirmado aqui (nao uma lista que cresce calada);
+        #   (b) tem .ps1 e escape proprios, conferidos aqui;
+        #   (c) a forma dele e provada por COMPORTAMENTO em dispatch-pre.tests.ps1 -- roda o
+        #       .cmd de verdade e confere triagem, agregacao, fallback e fail-loud.
+        # A regra que fica: .cmd novo sem forma declarada continua reprovando, como antes.
+        $dispatchers = @($vivos | Where-Object { $_.forma -ceq 'dispatcher' })
+        $dispatchers.Count | Should -Be 1 -Because "isencao de forma vale para UM arquivo; duas ja seria uma lista crescendo"
+        $nomeDisp = $dispatchers[0].nome
+        Test-Path (Join-Path $script:hooksDir ($nomeDisp + '.ps1')) | Should -BeTrue -Because "a camada 2 do dispatcher tem de existir em disco"
+        (Get-Content (Join-Path $script:hooksDir ($nomeDisp + '.cmd')) -Raw) | Should -Match ([regex]::Escape($dispatchers[0].escape)) -Because "o escape do dispatcher e lido na camada 1"
+        $cmds = @($cmds | Where-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name) -cne $nomeDisp })
 
         # .cmd nao declarado no manifesto nao tem evento -- e a forma dele seria ADIVINHADA.
         # Adivinhar e o erro que este It existe pra impedir, entao aqui e falha, nao default.
