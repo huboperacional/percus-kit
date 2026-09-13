@@ -212,7 +212,7 @@ cadeias reduz o raio de explosão, como o Cross-Claude apontou.
 | 1. caminho comum < 100 ms | ✅ **62 ms** (era 3 716 ms; o design previa ~61) |
 | 2. fallback provado com `PERCUS_DISPATCHER_BYPASS=1` | ✅ teste comportamental |
 | 3. teste de alcance por check + contenção dos gatilhos | ✅ nos dois sentidos (falta e órfão) |
-| 4. paridade `.ps1`/`.sh` rodando o `.sh` de verdade | ⏳ **pendente** — item próprio |
+| 4. paridade `.ps1`/`.sh` rodando o `.sh` de verdade | ✅ **6.53.0** — ver a seção de estado da paridade `.sh` abaixo |
 | 5. `hooks-manifest.json` + `enforcement-health` registro × disco | ✅ campo `registro` novo |
 | 6. suíte inteira verde | ✅ 580/0 |
 
@@ -232,7 +232,7 @@ continuam em disco: são a rota de fallback da defesa 1, não resíduo.
 | 1. caminho comum medido | ✅ **50 ms** com a porta fechada (era 458–684 ms *sempre*) |
 | 2. fallback provado com `PERCUS_DISPATCHER_BYPASS=1` | ✅ teste duplo: camada 2 não sobe **e** o aviso continua saindo |
 | 3. teste de alcance + contenção | ✅ 14 testes, incluindo o par porta-fechada / porta-0 |
-| 4. paridade `.ps1`/`.sh` | ⏳ **pendente** — entra no item da paridade `.sh`, junto com a do `pre` |
+| 4. paridade `.ps1`/`.sh` | ✅ **6.53.0**, junto com a do `pre` — ver a seção de estado da paridade `.sh` abaixo |
 | 5. `hooks-manifest.json` + `enforcement-health` | ✅ campo `triagem` novo; health confere por dispatcher |
 | 6. suíte inteira verde | ✅ **625/625** |
 
@@ -299,6 +299,57 @@ janela é maior. Abaixo disso ele afirma o piso. A medição do item 2 acima mos
 normal. Dívida declarada, dono do número no próprio hook — não entra neste pacote.
 
 **Item 4: o bastão passa para a spec das regras comportamentais.**
+
+## ESTADO DA ENTREGA — paridade `.sh` dos dois dispatchers (2026-09-13, 6.53.0)
+
+**O critério 4 está fechado nos itens 2 e 3.** Entregues `percus-dispatch-pre.sh` e
+`percus-dispatch-post.sh`, com `dispatch-pre-paridade-sh.tests.ps1` (23 testes) e
+`dispatch-post-paridade-sh.tests.ps1` (35), contando os 6 que o R11 Cross-Claude pediu em duas
+rodadas (entrada malformada: `command: false`, `registrado` e gatilhos não booleanos, array de 1
+elemento, porta de 10 dígitos).
+
+**O molde do teste** segue os verbetes `regra-duplicada-ps1-sh` e
+`paridade-testada-no-caso-facil-nao-e-paridade`. Cada cenário roda o `.cmd` real **e** o `.sh` contra
+o mesmo payload, num fixture isolado (cópias dos dispatchers, manifesto e checks sintéticos nos dois
+runtimes), e exige exit code, stderr e stdout iguais. Exige também o valor esperado do lado Windows:
+sem isso, os dois runtimes quebrando do mesmo jeito passariam como "paridade". Cada peça do fixture
+existe para tornar visível uma divergência: gatilho em CRLF, caixa mista, gatilho vazio, entradas que
+o filtro tem de excluir, payload de 256 bytes no empate do arredondamento bancário.
+
+**Um arquivo, e não duas camadas.** No Windows as camadas existem por causa do custo de startup do
+PowerShell, que o bash não paga. O que precisa ser igual é o que o harness observa. A porta do `post`
+**existe também no bash**, porque ela muda *quando* o aviso sai, e isso é comportamento. O carimbo lá é
+em epoch, num arquivo próprio (`percus-post-gate-sh-<sessão>`).
+
+**Cinco coisas que o teste pegou e que um teste de um lado só não pegaria:**
+1. O `jq.exe` nativo escreve `\r\n`. O `\r` caía no último campo do `@tsv` e zerava a seleção de
+   checks (`0 de 5`, exit 0, sem aviso). É reincidência de `crlf-mata-regex-git-bash`, agora com a
+   faceta `-j` (que também converte) e `-b` (que conserta).
+2. `set /p` de arquivo com BOM é **válido em 65001 e lixo em 850**. Rodado com `-NoNewWindow`, o
+   `.cmd` herdava a codepage do pwsh e honrava uma porta que em produção ignora. O helper passou a
+   rodar o `.cmd` em console novo, que nasce na OEM, e um teste **prova** a codepage.
+3. O `chcp` lê stdin: a primeira tentativa de forçar a codepage calou o `.cmd` inteiro.
+4. O lançador `Git\bin\bash.exe` re-adiciona `%HOME%\bin` ao PATH, então o cenário "sem jq" nunca
+   ficou sem jq. O teste agora prova a pré-condição.
+5. O escape unicode do separador (`U+001F`) chegou ao disco como **byte 0x1F literal**. Os testes
+   passavam (o `jq` aceita o caractere cru), mas o byte é invisível: no diff, a linha parece um
+   separador vazio, e o `file` passava a classificar o `.sh` como binário. O mesmo aconteceu com a
+   citação do escape nesta spec e no plano, pega pela mesma varredura de bytes. Verbete:
+   `conhecimento/resolver/escape-unicode-escrito-pelo-agente-chega-ao-disco-como-o-caractere.md`.
+
+Os itens 2 a 4 estão no verbete
+`conhecimento/resolver/teste-de-hook-no-windows-mede-o-ambiente-do-runner-e-nao-o-do-harness.md`.
+
+**Diferenças declaradas, não escondidas** (cada uma com comentário no próprio `.sh`):
+- **Tamanho do payload inválido no `pre`:** o `.cmd` reporta o que a captura produziu (+CRLF) e o
+  bash reporta o que leu. Perto de uma fronteira de 0,1 KB, os números podem diferir por isso e só
+  por isso. O empate bancário é comparado entre runtimes no `post`, onde não há captura.
+- **"Check que lança exceção"** (defesa 2 do `.ps1`) não tem análogo: um `.sh` que morre sai com
+  código diferente de zero e entra no veredito.
+- **Sem `jq`** não há manifesto: o `.sh` avisa e roda a cadeia antiga, que é o análogo do "manifesto
+  ilegível".
+- **SID fora de `[A-Za-z0-9_-]`** fica sem porta. No `.cmd`, um nome de arquivo inválido faz a
+  gravação falhar e a porta nunca fechar, com o mesmo efeito.
 
 ## Ordem de entrega
 

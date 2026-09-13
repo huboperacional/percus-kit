@@ -33,6 +33,15 @@ pergunte *"que bug este valor torna invisível?"*:
 - **Um caminho de saída** esconde os outros. Se o código emite duas mensagens, compare as duas.
 - **Uma variável de ambiente por vez** esconde a interação. Os ramos `A` e `B` podem estar certos
   sozinhos e se contradizer juntos.
+- **Só valores do tipo "certo"** escondem que *verdadeiro* e *ausente* mudam de linguagem para
+  linguagem. No jq só `null` e `false` são falsos, e o `//` troca **os dois**; no PowerShell `0`,
+  `""` e `@()` também são falsos, e `[string]$false` vira `"False"`. Medido em 2026-09-13, na paridade
+  `.sh` dos dispatchers, pelo R11 Cross-Claude: um `command: false` fazia o `.sh` sair calado enquanto
+  o `.ps1` seguia, e `registrado: 0` entrava na cadeia do `.sh` e ficava fora da do `.ps1`. Coloque no
+  fixture pelo menos um `false`, um `0`, um `""` e um `[]` onde o código decide por verdade, **e um
+  array de um elemento falso** (`[0]`). No PowerShell esse array vale o que o elemento vale, e só com 2
+  ou mais elementos ele é sempre verdadeiro. A 2ª rodada do mesmo review pegou isso na própria função
+  `verdade` que tinha consertado o resto, que só excluía o `[]` vazio.
 
 **Compare o artefato inteiro, não um campo escolhido.** O teste original extraía só o `~Nk` da
 mensagem com regex e comparava. Trocar isso por comparar a **string inteira** das duas

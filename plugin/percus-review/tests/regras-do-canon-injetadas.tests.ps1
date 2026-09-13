@@ -26,7 +26,20 @@
 
 Describe "regras do canon injetadas no system prompt" {
 
+    AfterAll {
+        [Console]::OutputEncoding = $script:encodingAnterior
+    }
+
     BeforeAll {
+        # O pwsh decodifica o STDOUT de comando nativo (& bash, powershell.exe) com
+        # [Console]::OutputEncoding -- que e 850 quando a suite roda pelo Bash ou em janela oculta
+        # (o rodar-suite), e 65001 no terminal do agente. Os titulos tem travessao e acento: sem
+        # fixar UTF-8 aqui, os dois testes que comparam a saida de um filho ficavam VERDES no
+        # terminal e VERMELHOS na suite, com o produto certo. Medido 2026-09-13: um travessao
+        # capturado do bash tem comprimento 3 sob 850 e 1 sob UTF-8.
+        $script:encodingAnterior = [Console]::OutputEncoding
+        [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+
         $script:kitRoot      = (Resolve-Path (Join-Path $PSScriptRoot ".." ".." "..")).Path
         $script:scriptsDir   = Join-Path (Split-Path $PSScriptRoot -Parent) "scripts"
         $script:providersDir = Join-Path (Split-Path $PSScriptRoot -Parent) "providers"
@@ -208,8 +221,10 @@ Describe "regras do canon injetadas no system prompt" {
 
             $esperado = Get-PercusRegrasDoCanon -CanonDir $script:kitRoot
 
-            # -OutputEncoding/-Console em UTF-8 dos dois lados: o que se quer medir e a
-            # DECODIFICACAO DO FONTE .ps1, nao o encoding do pipe de saida.
+            # UTF-8 nos DOIS lados do pipe: o filho forca na escrita (abaixo) e o pai na leitura
+            # (BeforeAll deste arquivo). O que se quer medir e a DECODIFICACAO DO FONTE .ps1, nao o
+            # encoding do pipe. Ate 2026-09-13 este comentario ja dizia "dos dois lados" com so o
+            # filho forcando, e o teste ficava vermelho em console 850.
             $prog = '[Console]::OutputEncoding=[Text.Encoding]::UTF8; . "' + $script:helperPs1 + '"; ' +
                     '[Console]::Out.Write((Get-PercusRegrasDoCanon -CanonDir "' + $script:kitRoot + '"))'
             $tmp = Join-Path ([IO.Path]::GetTempPath()) ("r51-" + [Guid]::NewGuid().ToString("N").Substring(0,8) + ".ps1")

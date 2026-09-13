@@ -36,7 +36,7 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
 4. **Consolidação da cadeia de hooks** — spec
    (`specs/2026-09-12-consolidacao-cadeia-de-hooks-design.md`). **Virou pré-requisito da 3** por
    medição. **Item 2 (dispatcher `PreToolUse`) ENTREGUE e PUBLICADO em 6.49.0.**
-   **Item 3 (dispatcher `PostToolUse`) ENTREGUE em 6.50.0** — e um emoji num comentário dele derrubava toda tool call, consertado na 6.51.0. ← falta só a **paridade `.sh`** dos dois dispatchers.
+   **Item 3 (dispatcher `PostToolUse`) ENTREGUE em 6.50.0** — e um emoji num comentário dele derrubava toda tool call, consertado na 6.51.0. **Paridade `.sh` dos dois dispatchers ENTREGUE em 6.53.0**: o item 4 fechou por inteiro.
 5. ~~**Faixa de regras do revisor**~~ — **ENTREGUE** (`0d8a0d0`, 2026-09-12). Não eram 8 sítios:
    eram **36 ocorrências em 17 arquivos**, em três tetos que discordavam entre si, com o canon em
    R25. O verbete tinha varrido só `plugin/percus-review/scripts/` e relatado o número como se
@@ -88,7 +88,7 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
 
 ## ESTADO DA EXECUÇÃO
 
-### ✅ Feito (PUBLICADO até 6.51.0; a 6.52.0 está commitada, push pendente de R20)
+### ✅ Feito (PUBLICADO até 6.52.0; a 6.53.0 está commitada, push pendente de R20)
 
 - **6.45.0** `context-budget-guard` — PostToolUse em todas as tools, mede o contexto vivo pela cauda
   do transcript. Nasceu de uma sessão que foi a 610k tokens com "checkpoint" dito 11 vezes.
@@ -122,8 +122,14 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
   atual", e o limite do `/clear` dito na porta (`913668c`, publicado junto da 6.51.0).
 - **6.52.0** **hora de parede deixa de ser gatilho do `context-budget-guard`.** Decisão do operador:
   *"o contexto não enche por horas, enche por trabalho"*. Saem o gatilho de 8h, `PERCUS_CTX_HOURS` e
-  toda menção a horas nas mensagens; ficam tokens e idade do transcript. **Commitado (`6e2b4bd`),
-  push pendente de R20.**
+  toda menção a horas nas mensagens; ficam tokens e idade do transcript. **Publicado** (`29ce534`,
+  2026-09-13; janela R20 arquivada em `docs/historico/2026-09-13-r20-publicacao-6.52.0-consumida.json`).
+- **6.53.0** **paridade `.sh` dos dois dispatchers.** São `percus-dispatch-pre.sh` e
+  `percus-dispatch-post.sh`, com 58 testes que rodam o `.cmd` real e o `.sh` lado a lado, contra o
+  mesmo payload, exigindo saídas iguais. O teste achou cinco armadilhas que um lado só não veria: o
+  `\r` do `jq.exe` nativo zerando a seleção de checks; o `set /p` com BOM válido em 65001 e lixo em
+  850; o `chcp` que come stdin; o lançador do Git que devolve `%HOME%\bin` ao PATH; e um `U+001F` que
+  chegou ao disco como byte. **Commitado, push pendente de R20.**
 
 ### ✅ Tarefa 3 fechada (2026-09-12)
 
@@ -158,10 +164,9 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
 
 **A sessão de 12→13/09 fechou os itens 5 e 8 da "Ordem acertada" e destravou o 9.** Antes da fila:
 
-0. **Push da 6.52.0** — 3 commits locais (`6e2b4bd` + dois de conhecimento de outras sessões).
-   Precisa de autorização R20 explícita do operador. Enquanto não sobe, nem esta máquina (cache
-   6.49.0) nem a frota têm nada de 6.50 a 6.52 — inclusive o conserto do emoji que derruba o
-   dispatcher `PostToolUse`.
+0. ~~**Push da 6.52.0**~~ — **FEITO em 2026-09-13** (`246fd4d..29ce534`), com autorização R20 do
+   operador na conversa; janela arquivada em `docs/historico/`. **O passo 0 agora é o push da 6.53.0**,
+   e ele pede R20 de novo: a autorização anterior cobria aqueles 4 commits, não commit novo.
 1. **Poda do canon (item 9) — DESTRAVADA.** O revisor enxerga as 25 regras, e com o texto certo.
    Decisão do operador: entra antes ou depois da fila abaixo. Descarte só com aprovação um a um.
 
@@ -182,8 +187,9 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
    excede o maior crescimento não observado sob qualquer porta testada. Medições e os dois
    achados fora de escopo (`registro` nomeando o dispatcher; escopo do `registrar-hooks`) estão
    na seção de estado da spec de consolidação.
-2. **Paridade `.sh`** — dos **dois** dispatchers agora, não só do `pre`. Único critério de pronto
-   aberto nos itens 2 e 3.
+2. ~~**Paridade `.sh`**~~ — **ENTREGUE em 6.53.0**: `percus-dispatch-{pre,post}.sh` e 58 testes que
+   rodam o `.cmd` e o `.sh` lado a lado. As cinco armadilhas que ela achou estão na seção de estado da
+   paridade `.sh`, na spec de consolidação. **O próximo da fila é o item 3, Pacote B.**
 3. **Pacote B** — `AJUSTAR` com 10 findings do conselho a tratar antes de implementar `plano-sync`.
 4. **Os hooks das comportamentais**, na ordem que a spec manda: **R5 primeiro e sozinho** (único
    bloqueante; operador autorizou publicar em vigor), depois medir, depois R10 sozinho, depois o
@@ -195,8 +201,10 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
 > lá) foi **descartada por medição** — economizava 19% dos spawns ao preço de até **130 chamadas
 > consecutivas** sem medir contexto. Ver a seção própria naquela spec.
 
-**Estado da árvore:** kit em **6.52.0**, limpa, com 3 commits aguardando push. O cache desta máquina está em **6.49.0** — nada de 6.50 a 6.52 vale aqui nem na frota antes de push +
-auto-update + relaunch.
+**Estado da árvore:** kit em **6.53.0**, com o commit da paridade `.sh` aguardando push (R20). O
+cache desta máquina está em **6.51.0**: o `installed_plugins.json` foi relido em 13/09, e o "6.49.0"
+que este parágrafo dizia já estava vencido. A 6.52.0 está publicada e chega por auto-update. A 6.53.0
+não muda registro (`hooks.json` intocado); ela só acrescenta os `.sh` e os testes.
 
 **Por que isto entrou na frente.** A tarefa 3 ia adicionar 4 hooks; medi a cadeia antes e ela já
 custa **3 357 ms em todo comando Bash** (8 hooks × ~420 ms de startup do PowerShell, mesmo em
@@ -245,6 +253,22 @@ vale é a spec**.
   condição de DIAS continua sendo `(agora − 1º timestamp) / 24` — não distingue "retomou um
   transcript de 2 dias atrás" (o incidente real) de "trabalhou 48h seguidas". O sinal certo para
   resume velho é o **intervalo desde a última entrada** do transcript, não a idade da primeira.
+- **8 `It` de paridade `.sh` viram `Skipped` quando a suíte roda de um pwsh sem `bash` no PATH.** São
+  3 em `council-fallback-cross-claude.tests.ps1` e 5 em `spec-analyze-check.tests.ps1`, que resolvem o
+  bash só por `Get-Command`. E o `rodar-suite` só sai ≠ 0 com falha: o skip aparece apenas como um
+  `passou/total` menor. O conserto é barato: o fallback `Git\bin\bash.exe` que
+  `context-budget-guard.tests.ps1` já usa, e o `rodar-suite` passar a imprimir `Skipped`. Verbete:
+  `conhecimento/resolver/teste-de-hook-no-windows-mede-o-ambiente-do-runner-e-nao-o-do-harness.md`.
+- **`dispatch-pre.tests.ps1` e `dispatch-post.tests.ps1` rodam o `.cmd` com `-NoNewWindow`**, isto é, na
+  codepage do console que os chamou (65001 no terminal do agente, OEM pela suíte). Nenhum caso deles
+  depende disso hoje, mas é a mesma armadilha que a paridade `.sh` pegou com o BOM do `porta-post.txt`.
+- **`.sh` do kit sem garantia de LF.** Medido em 2026-09-13: `core.autocrlf=true` nesta máquina e
+  nenhum `.gitattributes` no repo; o `git add` dos dois dispatchers `.sh` avisou "LF will be replaced
+  by CRLF the next time Git touches it". A cópia de trabalho está em LF (os testes rodam), mas um
+  checkout que o git reescreva pode entregar `.sh` com CRLF, e bash com CRLF quebra. Vale para
+  **todos** os `.sh` do kit, não só os novos, e o verbete `health-check-versao-vence-autoupdate` já
+  mediu CRLF no cache do plugin. Não medido ainda: se algum `.sh` do cache roda de fato em algum
+  lugar. Conserto plausível: `.gitattributes` com `*.sh text eol=lf`, depois de medir.
 - **`spec-analyze-check` é warn-only** por desenho. Promover a bloqueio é decisão separada, depois
   de medir quanto a frota reclama.
 - **`pre-commit-check` casa `git`…`commit` como texto** — barrou dois comandos de *teste* nesta
@@ -262,5 +286,5 @@ vale é a spec**.
 
 `PERCUS_CANON_DIR` aponta para este repo, então **scripts** (`medir-baseline-boot`, `plano-sync`
 futuro) valem no instante em que são salvos. **Hooks e skills** só chegam aos projetos por
-publicação: push → auto-update (≤10 min) → novo launch. Cache desta máquina: **6.49.0**; kit em **6.52.0**.
-Três commits aguardam push (`6e2b4bd` e dois de conhecimento de outras sessões), pendente de autorização do operador (R20).
+publicação: push → auto-update (≤10 min) → novo launch. Cache desta máquina: **6.51.0**; kit em **6.53.0**; `origin/main` em `29ce534` (6.52.0).
+O commit da 6.53.0 aguarda push, pendente de autorização do operador (R20).

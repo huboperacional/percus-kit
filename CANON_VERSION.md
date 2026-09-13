@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.52.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.53.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,62 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.53.0 — 2026-09-13
+
+**Paridade `.sh` dos dois dispatchers.** Fecha o critério de pronto 4 da consolidação da cadeia de
+hooks.
+
+Entram `plugin/percus-review/hooks/percus-dispatch-pre.sh` e `percus-dispatch-post.sh`. Cada um toma
+a mesma decisão do par `.cmd` + `.ps1` (quais checks rodam, em que ordem e com que veredito; no `post`,
+também a fusão do stdout e a porta por sessão), num arquivo bash só. As duas camadas do Windows
+existem por causa do custo de startup do PowerShell, que o bash não paga. O que precisa ser igual é o
+que o harness observa.
+
+**O teste compara os dois lados, em vez de testar cada um.** `dispatch-pre-paridade-sh.tests.ps1` (23
+testes) e `dispatch-post-paridade-sh.tests.ps1` (35) rodam o `.cmd` real e o `.sh` contra o mesmo
+payload, num fixture isolado com checks sintéticos nos dois runtimes. Exigem exit code, stderr e
+stdout iguais, e também o valor esperado do lado Windows. Os utilitários ficam em
+`tests/_dispatch-paridade.ps1`.
+
+**Cinco armadilhas que só a comparação pegou:**
+1. O `jq.exe` nativo escreve `\r\n`. O `\r` no último campo do `@tsv` zerava a seleção de checks sem
+   aviso (`0 de 5`, exit 0). É reincidência de `crlf-mata-regex-git-bash`; o verbete ganhou as facetas
+   `-j` e `-b`.
+2. `set /p` de arquivo com BOM é válido em 65001 e lixo em 850. Com `-NoNewWindow`, o `.cmd` herdava a
+   codepage do pwsh. Agora ele roda em console novo (OEM), e um teste prova a codepage.
+3. O `chcp` lê stdin: forçar a codepage com `chcp & dispatcher` calava o dispatcher.
+4. O lançador `Git\bin\bash.exe` re-adiciona `%HOME%\bin` ao PATH, então o cenário "sem jq" nunca
+   ficou sem jq. A pré-condição agora é provada.
+5. O escape unicode do separador (U+001F) chegou ao disco como o byte, e não como texto. Os testes
+   passavam, mas o byte é invisível: no diff a linha parece um separador vazio.
+
+Verbetes novos: `conhecimento/resolver/teste-de-hook-no-windows-mede-o-ambiente-do-runner-e-nao-o-do-harness.md`
+e `conhecimento/resolver/escape-unicode-escrito-pelo-agente-chega-ao-disco-como-o-caractere.md`.
+
+**O R11 Cross-Claude achou mais quatro buracos de paridade, em entrada malformada:** `command: false`
+no payload, `registrado` com `0`/`""`/`[]`, gatilhos `0`/`false`, e porta de 10 dígitos. Os testes de
+string não viam nenhum deles, porque "verdadeiro" e "ausente" não são a mesma coisa no PowerShell e
+no jq, e porque o `set /a` vai até 32 bits. Foram corrigidos com teste antes do commit. Na 2ª rodada
+o mesmo revisor achou um buraco na própria função `verdade` do conserto: array de 1 elemento vale o
+que o elemento vale no PowerShell (`[0]` é falso) e só com 2+ elementos é sempre verdadeiro. A função
+passou a seguir essa regra, conferida contra 18 valores e com teste.
+
+**Dois testes da 6.51.0 dependiam da codepage do console.** `regras-do-canon-injetadas.tests.ps1`
+compara a saída de `bash`/`powershell.exe` com o valor calculado no próprio processo, e o pwsh
+decodifica stdout nativo com `[Console]::OutputEncoding`. Resultado: verde no terminal do agente
+(65001) e vermelho pela suíte (850). O produto estava certo; o teste passou a fixar UTF-8 na leitura.
+A suíte inteira desta versão achou isso (713/715), e a falha foi atribuída num worktree limpo em
+`HEAD` antes de qualquer conserto.
+
+**Registro:** não muda. O `hooks.json` está intocado, e os `.sh` não são registrados no Windows (a
+frota usa os `.cmd`).
+
+**Também nesta versão:** o push da 6.52.0 foi feito com autorização R20, e as duas janelas do dia
+ficaram arquivadas em `docs/historico/`, porque `.percus/` é git-ignored e a próxima janela
+sobrescreveria o registro. Uma dívida nova foi para o plano de enforcement: 8 `It` de paridade `.sh`,
+em dois arquivos antigos, viram `Skipped` num pwsh sem bash no PATH, e o `rodar-suite` não denuncia
+skip.
 
 ## Changelog v6.52.0 — 2026-09-13
 
@@ -823,7 +879,7 @@ estava **permitindo por uma autorização em lote ativa**, criada por outra sess
 suíte passou a rodar de um cwd sem `.percus/`, e isso está escrito no cabeçalho dela.
 
 E um oitavo que **só o teste comportamental pegou**: no irmão Unix, `([[:space:]]|$)` no lugar de
-`` (que ERE não tem) **consome** um caractere — o padrão passou a exigir dois espaços e
+`\b` (que ERE não tem) **consome** um caractere — o padrão passou a exigir dois espaços e
 `curl -X POST` deixou de casar. Falha silenciosa, para o lado errado. Os dois arquivos tinham o
 mesmo texto e comportamentos diferentes; leitura não pegaria.
 
