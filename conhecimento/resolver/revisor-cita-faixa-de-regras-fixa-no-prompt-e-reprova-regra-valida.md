@@ -64,7 +64,7 @@ morderam no mesmo repo **no mesmo dia** — hook se autodeclarando `(R5)`/`(R6)`
 renumeração, uma tabela de auditoria recopiada em três arquivos, e esta faixa em seis. Sempre um
 literal escrito à mão fazendo as vezes de fonte.
 
-## ✅ CONSERTADO em 2026-09-12 — e a contagem deste verbete estava errada por 28
+### ✅ CONSERTADO em 2026-09-12 — e a contagem deste verbete estava errada por 28
 
 O conserto foi feito: o helper `plugin/percus-review/scripts/_faixa-regras.{ps1,sh}` deriva o maior
 `^## R<N>.` do canon **em tempo de execução**, e uma guarda em
