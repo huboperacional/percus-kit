@@ -147,6 +147,7 @@
 - [Conversa longa com muitos screenshots: imagem nova passa a ser rejeitada mesmo pequena — é acúmulo, não tamanho do arquivo](conversa-longa-limite-imagem-cumulativo.md)
 - [Cópia local de um dict compartilhado não chega no segundo leitor que relê o container original](copia-local-de-dict-compartilhado-nao-chega-no-segundo-leitor.md)
 - [Corpus adversarial que VOCÊ escreve não substitui replay sobre tráfego real](corpus-escrito-nao-substitui-replay-real.md)
+- [A corrida do backlog não reproduz hoje porque a TOPOLOGIA a serializa — segurança incidental, não desenho](corrida-em-prod-mascarada-por-topologia-de-um-worker.md)
 - [Corrigir uma classe de defeito num método NÃO a corrige no vizinho — e o comentário da correção fica visível enquanto o gêmeo passa batido](corrigir-a-classe-num-metodo-nao-a-corrige-no-vizinho.md)
 - [Login diz "código inválido ou expirado" e o código está certo — quem recusou foi o CORS da SUA API](cors-derruba-login-e-a-tela-culpa-o-codigo.md)
 - [Decisão `"council"` do review-router não está nos passos do comando `/review` — e só `deepseek-review.ps1` escreve o marcador de frescor que o hook checa](council-decision-fora-do-review-doc.md)
