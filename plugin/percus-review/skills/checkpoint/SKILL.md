@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: Use ao fim de cada milestone, quando o hook context-budget-guard avisar que o contexto passou de ~150k, ou antes de um /clear ou /compact. Sincroniza PLANO + HANDOFF + mock-audit, registra conhecimento novo (R23), commita com review (R11), emite um prompt de retomada pronto pra colar e TERMINA EM RESET (sessão nova). Checkpoint é persistência — quem gere contexto é o reset; o hook PreCompact é só backstop.
+description: Use SEMPRE que o operador disser a palavra checkpoint, em qualquer forma (faz um checkpoint, checkpoint e clear, hora do checkpoint, bora checkpointar) — esse é o gatilho principal. Também ao fim de cada milestone, quando o hook context-budget-guard avisar que o contexto cresceu, ou antes de um /clear ou /compact. Ordem obrigatória — TERMINE a tarefa atual primeiro, depois sincronize PLANO + HANDOFF + mock-audit, registre conhecimento novo (R23), commite com review (R11) e emita o prompt de retomada pronto pra colar. O agente NÃO executa o /clear — não existe ferramenta pra isso e slash command não funciona no VSCode do operador; quem dá o reset é o operador, e a skill termina no bloco de retomada. Checkpoint é persistência — quem gere contexto é o reset; o hook PreCompact é só backstop.
 ---
 
 # Percus — Checkpoint de contexto
@@ -16,12 +16,38 @@ estourar. O hook `PreCompact` existe só como rede de segurança se você esquec
 
 ## Quando rodar
 
+- **O operador disse "checkpoint"** — em qualquer forma ("faz um checkpoint", "checkpoint e clear",
+  "hora do checkpoint"). Este é o gatilho principal e não precisa de mais nada: a palavra basta.
 - **Fim de um milestone / fase** do plano (momento natural de checkpoint).
 - **Contexto ficando grande** (resposta lenta, muita coisa acumulada) — antes de pedir `/clear`.
 - Antes de um `/compact` manual.
 - Quando o hook `PreCompact` avisar que a compactação vai acontecer (rode antes dela).
 
+## O que o agente NÃO faz
+
+**O `/clear` é do operador.** O agente não tem ferramenta para limpar contexto, e slash command não
+funciona no VSCode dele — então a skill vai **até o bloco de retomada** e para ali. Prometer o clear
+(ou ficar esperando que ele aconteça sozinho) deixa a sessão inteira pendurada. Diga o que ele
+precisa fazer, com o bloco pronto pra colar, e encerre.
+
 ## Passos
+
+### 0. Termine a tarefa atual
+
+Pedido literal do operador (2026-09-12): *"quando eu falar checkpoint: termine a tarefa atual,
+atualize todos os arquivos, e façamos o clear"*. A ordem importa — checkpoint que interrompe uma
+tarefa pela metade sincroniza `PLANO`/`HANDOFF` descrevendo um estado que **ainda vai mudar**, e a
+sessão nova retoma sobre um retrato falso.
+
+**"Terminar" aqui é o mínimo coerente, não o escopo inteiro:** o teste que faltava rodando, o
+arquivo que estava meio-escrito fechado, o commit da coisa que já está pronta. Não é hora de
+começar nada novo.
+
+**Se não dá pra terminar** — a tarefa é grande, depende de decisão do operador, ou está bloqueada —
+**não force e não finja**. Pare no ponto seguro mais próximo e declare, no `HANDOFF` e no bloco de
+retomada, três coisas: o que ficou pela metade, **onde exatamente** (arquivo:linha), e qual é o
+próximo passo literal. Tarefa interrompida e declarada é retomável; tarefa interrompida e silenciada
+vira o bug que a sessão nova vai caçar sem saber que existe.
 
 ### 1. Sincronizar os arquivos de estado
 - `docs/PLANO.md` — cada feature tocada reflete o status real (R2; não arredonde).
@@ -79,6 +105,7 @@ de milestone continua sendo a hora natural de fazê-lo.
 
 ```
 [checkpoint] {projeto} — {milestone}
+Tarefa atual: {terminada | PARADA em <arquivo:linha> — próximo passo: <literal>}
 Arquivos sincronizados: PLANO ✓ HANDOFF ✓ mock-audit {✓/N/A}
 Conhecimento novo: {slug do verbete escrito em conhecimento/resolver/, ou "nenhum"}
 Commit: {hash + msg curta, ou "sem mudança de código"}
@@ -91,6 +118,10 @@ Contexto: ~{N}k tokens / {H}h — {RESET OBRIGATÓRIO: abra sessão nova | reset
 
 ## Anti-padrões
 
+- ❌ **Largar a tarefa no meio ao ouvir "checkpoint"** — o passo 0 existe por isso. Fecha o que dá,
+  declara o que não deu.
+- ❌ **Dizer que vai dar o `/clear`, ou esperar por ele.** O agente não executa clear. Entregue o
+  bloco e encerre — o reset é do operador.
 - ❌ Esperar o contexto estourar pra fazer checkpoint — faça no milestone, proativo.
 - ❌ **Checkpoint sem reset em sessão avisada pelo hook** — o arquivo salva, o contexto continua
   morrendo (sessão de 610k tokens, Empresa-Milionaria, 2026-09-10).
