@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/context-budget-guard.cmd\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/percus-dispatch-post.cmd\"",
             "async": false
           }
         ]

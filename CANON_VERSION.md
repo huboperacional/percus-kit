@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.49.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.50.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,69 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.50.0 — 2026-09-12
+
+**O `context-budget-guard` custava 458 ms em TODA tool call — Read, Edit, Grep, tudo.** Ele é o
+único hook de `PostToolUse`, e o matcher é vazio de propósito: contexto cresce com `Read` tanto
+quanto com `Bash`, e guarda que só vê shell é furo já registrado. Então não há substring que o
+trie, e a triagem por gatilhos do dispatcher de `PreToolUse` não serve aqui.
+
+**A solução é uma PORTA POR TIMESTAMP: ela limita quantas VEZES o PowerShell sobe, não QUAIS tools
+são observadas.** Essa distinção é o pacote inteiro — foi por perder cobertura de tools que a
+"opção D" (estreitar o matcher para `Bash|Edit|Write`) tinha sido descartada por medição.
+
+Resultado, ponderado por tráfego real: **684 ms → 320 ms por tool call (2,1x)**. Com a porta
+fechada são **50 ms**; com ela aberta, 781 ms — ~100 ms *a mais* que antes, pela camada extra de
+`cmd.exe`. Menos que os 28x do `pre`, e a razão é estrutural: lá a triagem descarta trabalho que
+não precisava existir, aqui o trabalho precisa acontecer, só que menos vezes.
+
+**A porta não cria cegueira nova, e isso foi medido, não argumentado.** Contra 11 679 invocações
+reais de `PostToolUse` (40 transcripts), com porta de 30 s: 63,0% dormem, pior janela cega de 14
+chamadas, crescimento não observado máximo de 50 509 tokens. O número que decide é o **baseline**:
+rodando o guard em *toda* chamada, o maior salto de contexto de **um único passo** já é **104 664
+tokens**. O guard sempre mede depois do salto; a porta só espaça a medição. Atraso do aviso de
+limiar: mediana 0,9 chamada (1 235 tokens), p95 4 359.
+
+**A porta é fixa, e não adaptativa ao percentual de contexto, por medição.** A política adaptativa
+dependeria do denominador da janela — e dos 40 transcripts, **nenhum** declara o marcador
+`[1m]`/`-1m` no campo `model`. Simulada, ela dormia 8,8%: quase toda sessão *parece* estar acima de
+75% do piso de 200k.
+
+**A camada 1 do `post` NÃO captura stdin, e isso não é cópia preguiçosa do `pre`.** O payload de
+`PostToolUse` carrega `tool_response`: medido em 60 476 tool_results reais, mediana 344 B, p99
+26 KB, máximo 681 KB, com **0,59% acima de 80 KB** — exatamente onde o `findstr "^"` do `pre`
+trunca. Capturar aqui traria truncagem rotineira, e no `post` truncagem viraria erro espúrio a cada
+tool call grande. Como a porta não precisa ler o payload, stdin é repassado direto ao PowerShell.
+
+**Stdout virou canal de produto.** No `pre` só importavam exit code e stderr; o guard devolve o
+aviso em JSON no stdout. A camada 2 **funde** `additionalContext`/`systemMessage` num objeto só —
+dois checks emitindo dois objetos colados dariam stdout inválido e o harness descartaria **os
+dois**, calado. Há um check hoje; a fusão existe para o segundo, que é quando ninguém estaria
+olhando.
+
+**Dois defeitos achados fora do escopo previsto, os dois da classe "enumeração que envelhece":**
+
+- **`registro` deixou de ser binário e passou a NOMEAR o dispatcher.** Com dois, o literal
+  `'dispatcher'` não dizia qual, e todo sítio que decidia por negação (`-cne 'dispatcher'`) voltou a
+  casar todo mundo: os 8 checks de comando reapareceram no registro — a execução dupla que aquele
+  filtro existe para impedir. Os critérios viraram **positivos**.
+- **O `registrar-hooks-settings.ps1` classificava todo `forma: dispatcher` como Guarda**, por lista
+  literal. O dispatcher de `PostToolUse` caiu em `-Escopo Guardas` e sumiu de `-Escopo
+  Observadores`. Não era contagem errada: era hook no escopo errado, calado. A forma de escopo
+  passou a ser **derivada do evento**.
+
+**Um bug de `cmd.exe` que o teste pegou, e que teria sumido calado:** `echo %NOW% 2>nul` grava o
+número **com espaço à direita**, a validação do valor lido falhava, e a porta caía no fail-open —
+nunca fechava. O dispatcher seguiria correto, só caro, sem nenhum sinal. As duas redireções agora
+vêm antes do `echo`.
+
+**Dívida declarada:** paridade `.sh` dos **dois** dispatchers segue aberta. E o
+`context-budget-guard` erra o denominador na frota inteira (a perna do marcador `[1m]` nunca
+dispara) — observado ao vivo nesta sessão: com 181k numa janela de 1M, anunciou "LIMITE DURO
+cruzado". Tem dono no plano, não neste pacote.
+
+Suíte: **625/625**.
 
 ## Changelog v6.49.0 — 2026-09-12
 

@@ -130,15 +130,38 @@ Describe "Hardening 2026-05-19 — incidentes 2 (wrapper auto-edit) + 3 (hook cr
                     $nome = $matches[1]
                     $decl = @($manifesto.hooks | Where-Object { $_.nome -ceq $nome -and $_.registrado })
                     $decl.Count | Should -Be 1 -Because "PostToolUse fora do manifesto nao tem forma nem alvo declarados: $nome"
-                    $decl[0].forma | Should -Be 'observador' -Because "PostToolUse so pode observar (exit 0), nunca decidir"
-                    $decl[0].alvo  | Should -Be 'transcript' -Because "PostToolUse que mira comando/caminho e o que o incidente 2 era"
+                    # 6.50.0: a entrada de PostToolUse passou a ser um DISPATCHER. O invariante
+                    # nao mudou -- nada atras de PostToolUse pode mutar -- mas agora ele e afirmado
+                    # em DOIS niveis: o dispatcher nao observa nada sozinho, entao o que precisa ser
+                    # observador puro sao os checks que ele roda. Aceitar 'dispatcher' sem cobrar
+                    # isso seria abrir um buraco do tamanho da cadeia inteira.
+                    if ($decl[0].forma -ceq 'dispatcher') {
+                        $atras = @($manifesto.hooks | Where-Object { $_.registrado -and $_.registro -ceq $nome })
+                        $atras.Count | Should -BeGreaterThan 0 -Because "dispatcher de PostToolUse sem checks atras: a cadeia ficaria vazia e este It vacuo"
+                        foreach ($a in $atras) {
+                            $a.forma | Should -Be 'observador' -Because "o que roda atras de $nome tem de observar (exit 0), nunca decidir: $($a.nome)"
+                            $a.alvo  | Should -Be 'transcript' -Because "check de PostToolUse que mira comando/caminho e o que o incidente 2 era: $($a.nome)"
+                        }
+                    } else {
+                        $decl[0].forma | Should -Be 'observador' -Because "PostToolUse so pode observar (exit 0), nunca decidir"
+                        $decl[0].alvo  | Should -Be 'transcript' -Because "PostToolUse que mira comando/caminho e o que o incidente 2 era"
+                    }
 
-                    $ps1 = Join-Path (Split-Path $script:hooksJson -Parent) "$nome.ps1"
-                    $vivas = @(Get-Content $ps1 -ErrorAction Stop | Where-Object { -not "$_".TrimStart().StartsWith('#') })
-                    @($vivas | Where-Object { $_ -match 'tool_input|file_path|tool_response' }) | Should -BeNullOrEmpty `
-                        -Because "observador de transcript nao tem por que ler o alvo da tool ($nome)"
-                    @($vivas | Where-Object { $_ -match 'Rename-Item|Move-Item|\bgit\s+(mv|add|commit|checkout|switch)\b' }) | Should -BeNullOrEmpty `
-                        -Because "hook que move/renomeia/commita e hook de mutacao -- invariante D ($nome)"
+                    # A auditoria de FONTE segue os mesmos nomes: o proprio hook, ou -- se ele for
+                    # dispatcher -- ele E os checks que roda. Auditar so o dispatcher deixaria o
+                    # codigo que de fato toca a tool fora do invariante.
+                    $aAuditar = @($nome)
+                    if ($decl[0].forma -ceq 'dispatcher') {
+                        $aAuditar += @($manifesto.hooks | Where-Object { $_.registrado -and $_.registro -ceq $nome } | ForEach-Object { $_.nome })
+                    }
+                    foreach ($alvoPs1 in $aAuditar) {
+                        $ps1 = Join-Path (Split-Path $script:hooksJson -Parent) "$alvoPs1.ps1"
+                        $vivas = @(Get-Content $ps1 -ErrorAction Stop | Where-Object { -not "$_".TrimStart().StartsWith('#') })
+                        @($vivas | Where-Object { $_ -match 'tool_input|file_path|tool_response' }) | Should -BeNullOrEmpty `
+                            -Because "observador de transcript nao tem por que ler o alvo da tool ($alvoPs1)"
+                        @($vivas | Where-Object { $_ -match 'Rename-Item|Move-Item|\bgit\s+(mv|add|commit|checkout|switch)\b' }) | Should -BeNullOrEmpty `
+                            -Because "hook que move/renomeia/commita e hook de mutacao -- invariante D ($alvoPs1)"
+                    }
                 }
             }
         }

@@ -37,19 +37,27 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
    (`specs/2026-09-12-consolidacao-cadeia-de-hooks-design.md`). **Virou pré-requisito da 3** por
    medição. **Item 2 (dispatcher `PreToolUse`) ENTREGUE e PUBLICADO em 6.49.0.**
    ← falta o item 3 (dispatcher `PostToolUse`) e a paridade `.sh`.
-5. **Faixa de regras do revisor** — `R1-R13`/`R1-R19`/`R1-R23` escritos à mão em **8 sítios** de
-   `plugin/percus-review/scripts/`, enquanto o canon vai a **R25**. O revisor ignora até 12 regras e
-   diz que elas "não existem" com confiança de quem cita documentação. Verbete:
-   `conhecimento/resolver/revisor-cita-faixa-de-regras-fixa-no-prompt-e-reprova-regra-valida.md`.
-   **← PRÓXIMO.** Conserto: derivar do maior `^## R<N>.` em tempo de execução, não trocar o literal.
+5. ~~**Faixa de regras do revisor**~~ — **ENTREGUE** (`0d8a0d0`, 2026-09-12). Não eram 8 sítios:
+   eram **36 ocorrências em 17 arquivos**, em três tetos que discordavam entre si, com o canon em
+   R25. O verbete tinha varrido só `plugin/percus-review/scripts/` e relatado o número como se
+   fosse do repo — ficaram de fora os `commands/`, os três `system-prompt-*.md` dos providers, a
+   skill `delegate-impl` e o `percus-review-auto.{ps1,sh}`, que roda a CADA commit da frota.
+   Conserto: helper `_faixa-regras.{ps1,sh}` deriva o maior `^## R<N>.` em tempo de execução;
+   `.md` carregado por código usa `{{FAIXA_REGRAS}}` substituído no load; prosa estática parou de
+   citar faixa. Sem medir o canon, o prompt diz *"faixa não medida"* — nunca chuta teto. 19 testes,
+   incluindo prova ponta a ponta por socket local (o corpo HTTP que sai leva `R1-R25` e nenhum
+   placeholder cru) e guarda de regressão que impede faixa literal nova. Verbete atualizado.
 6. **Gate da R11** — spec escrita (`specs/2026-09-12-r11-gate-negativa-bem-sucedida-design.md`),
    veredito **`BLOQUEADA`** do conselho (2/3). O *diagnóstico* foi confirmado; o *desenho da solução*
    precisa ser refeito a partir da seção "Opções". Findings listados no topo da spec.
 7. **Pacote B** — ajustar o spec pelos findings do conselho e implementar `plano-sync`.
-8. **Skill `checkpoint`** — o operador pediu (12/09) o gatilho *"quando eu falar checkpoint: termine
-   a tarefa atual, atualize todos os arquivos, e façamos o clear"*. A skill existe; falta o gatilho.
-   **O agente não executa `/clear`** — não há ferramenta, e slash command não funciona no VSCode
-   dele. A skill vai até o bloco de retomada; o clear é do operador.
+8. ~~**Skill `checkpoint`**~~ — **ENTREGUE** (`913668c`, 2026-09-12). O gatilho pedido foi pra
+   `description` do frontmatter, que é o que de fato faz o Claude Code disparar a skill: a palavra
+   "checkpoint" dita pelo operador virou o gatilho principal. Passo 0 novo (**termine a tarefa
+   atual** antes de sincronizar, com saída declarada quando não dá pra terminar) e o limite do
+   `/clear` saiu do passo 5 pra porta de entrada. 7 testes. **Enforcement mecânico fica pendente:**
+   o certo pela R12 é um hook `UserPromptSubmit`, mas `hooks.json`/`hooks-manifest.json` estão
+   sendo reestruturados na outra janela — mexer agora é colisão garantida.
 9. **Poda do canon — o que ficou obsoleto e pode ser descartado.** Pedido do operador em 12/09,
    **depois** dos itens 5 e 8. Varrer as 25 regras e perguntar de cada uma *"isto ainda descreve
    como trabalhamos?"*, propondo descarte do que morreu. Três coisas medidas hoje que tornam isto
@@ -61,9 +69,15 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
    - **R12 é o critério de poda pronto**: *"regra que você não consegue verificar objetivamente que
      cumpriu é decoração"*. A poda é a aplicação da R12 ao próprio canon — e hoje 9 das 25 não têm
      seção de gate escrita.
-   - **O revisor só conhece até R13/R19/R23** (item 5). Regra que o revisor nunca avalia e nenhum
-     hook verifica é candidata natural: ninguém a cobra, ninguém a mede, e ela ocupa orçamento de
-     atenção. **Fazer o item 5 ANTES**, senão a poda decide com base num revisor cego.
+   - ~~**O revisor só conhece até R13/R19/R23**~~ — item 5 ENTREGUE: o revisor agora enxerga o
+     canon inteiro. **Mas apareceu um bloqueio novo, medido ao consertar a faixa:** os
+     `system-prompt-{review,consult}.md` carregam uma **cópia inline das 19 primeiras regras** numa
+     numeração pré-renumeração, e **7 delas (R1, R2, R4, R6, R8, R9, R12) têm o texto errado
+     debaixo do número certo**. Enquanto isso não for consertado, "ninguém cobra esta regra" é uma
+     conclusão inválida — o revisor cobra a regra ERRADA sob aquele número. Verbete:
+     `conhecimento/resolver/system-prompt-do-revisor-tem-copia-do-canon-com-texto-de-regra-errado.md`.
+     **Este é o novo pré-requisito da poda**, e o conserto é barato: estender a substituição que já
+     existe (`{{FAIXA_REGRAS}}`) do teto para os títulos das regras.
 
    ⚠️ **Não é exercício de contagem.** Regra descartada some do prompt do revisor e do critério de
    review de todos os projetos da frota. Cada descarte precisa dizer *o que passa a não ser mais
@@ -123,10 +137,14 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
 
 **FILA, na ordem, autorizada pelo operador para execução autônoma:**
 
-1. **Dispatcher `PostToolUse`** com porta por timestamp — item 3 da spec de consolidação. É ele que
-   entrega o ganho do `context-budget-guard` (477 ms em **toda** tool call) **sem** a cegueira que
-   fez a "opção D" ser descartada.
-2. **Paridade `.sh`** do dispatcher `PreToolUse` — único critério de pronto do item 2 ainda aberto.
+1. ~~**Dispatcher `PostToolUse`** com porta por timestamp~~ — **ENTREGUE em 6.50.0**, suíte
+   625/625. 684 ms → 320 ms ponderado por tráfego real (63% das chamadas nem sobem o PowerShell).
+   A porta não cria cegueira nova: o maior salto de contexto de um passo (104 664 tokens) já
+   excede o maior crescimento não observado sob qualquer porta testada. Medições e os dois
+   achados fora de escopo (`registro` nomeando o dispatcher; escopo do `registrar-hooks`) estão
+   na seção de estado da spec de consolidação.
+2. **Paridade `.sh`** — dos **dois** dispatchers agora, não só do `pre`. Único critério de pronto
+   aberto nos itens 2 e 3.
 3. **Pacote B** — `AJUSTAR` com 10 findings do conselho a tratar antes de implementar `plano-sync`.
 4. **Os hooks das comportamentais**, na ordem que a spec manda: **R5 primeiro e sozinho** (único
    bloqueante; operador autorizou publicar em vigor), depois medir, depois R10 sozinho, depois o
@@ -138,8 +156,8 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
 > lá) foi **descartada por medição** — economizava 19% dos spawns ao preço de até **130 chamadas
 > consecutivas** sem medir contexto. Ver a seção própria naquela spec.
 
-**Estado da árvore:** limpa e sincronizada com `origin/main` em `ec0d798`. Cache do plugin em
-6.48.0; kit em 6.49.0 — o dispatcher só vale na frota depois de auto-update + relaunch.
+**Estado da árvore:** kit em **6.50.0**. Os dois dispatchers só valem na frota depois de push +
+auto-update + relaunch.
 
 **Por que isto entrou na frente.** A tarefa 3 ia adicionar 4 hooks; medi a cadeia antes e ela já
 custa **3 357 ms em todo comando Bash** (8 hooks × ~420 ms de startup do PowerShell, mesmo em
@@ -177,6 +195,13 @@ vale é a spec**.
   emitiu `BLOQUEADA` sobre documento incompleto nesta sessão. Conserto plausível: passar arquivo em
   vez de texto quando o alvo é arquivo, **ou** marcar no log o tamanho visto por perna. Enquanto não
   houver, a mitigação é dar à perna Cross-Claude o caminho do arquivo.
+- **O `context-budget-guard` erra o DENOMINADOR na frota inteira, não em caso raro.** Medido em
+  2026-09-12: dos 40 transcripts, **nenhum** declara o marcador `[1m]`/`-1m` no campo `model`, então
+  a perna 2 da descoberta de janela nunca dispara e o hook cai no piso de 200k. Observado ao vivo
+  nesta sessão: com 181k numa janela de 1M ele anunciou "LIMITE DURO cruzado / resume impossível".
+  A perna 3 (falsificação) só cobre **acima** de 200k. Consertos plausíveis: ler a janela de uma
+  fonte que o harness declare, ou parar de afirmar limiar enquanto a janela for suposta. Este é
+  também o motivo de a porta do dispatcher `PostToolUse` ser fixa e não adaptativa.
 - **`spec-analyze-check` é warn-only** por desenho. Promover a bloqueio é decisão separada, depois
   de medir quanto a frota reclama.
 - **`pre-commit-check` casa `git`…`commit` como texto** — barrou dois comandos de *teste* nesta

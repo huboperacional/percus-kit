@@ -203,7 +203,10 @@ Describe "registrar-hooks-settings.ps1" {
         @(Get-ChildItem $dir -Filter "settings.json.bak-*").Count | Should -Be 0 -Because "primeiro uso: nao existe settings.json anterior pra fazer backup"
     }
 
-    It "contra o manifesto REAL do kit: Guardas=3, Observadores=5, Todos=8 -- so quem precisa de entrada propria" {
+    It "contra o manifesto REAL do kit: Guardas=3, Observadores=5, Todos=8 -- so quem precisa de entrada propria" {        #
+        # 6.50.0 NAO mexeu nos numeros, e vale dizer por que: o context-budget-guard saiu dos
+        # Observadores (virou dispatchado) e o percus-dispatch-post entrou no lugar dele. 5 - 1 + 1.
+        # Guardas segue 3 porque o dispatcher novo e PostToolUse, nao PreToolUse.
         # Regressao de verdade: usa o hooks-manifest.json e os .cmd reais do proprio repo,
         # nao o kit falso.
         #
@@ -232,7 +235,10 @@ Describe "registrar-hooks-settings.ps1" {
         # colateral duplicaria o efeito -- e o sintoma (aviso repetido) e facil de atribuir a
         # "bug do hook" em vez de a registro duplicado.
         $manifesto = Get-Content (Join-Path $script:kitRoot 'plugin\percus-review\hooks\hooks-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-        $dispatchados = @($manifesto.hooks | Where-Object { $_.registro -ceq 'dispatcher' } | ForEach-Object { $_.nome })
+        # 6.50.0: dispatchado = quem NAO tem registro='hooks.json'. Casar o literal
+        # 'dispatcher' deixaria de fora os checks do dispatcher de PostToolUse e o teste
+        # passaria sem cobri-los -- vacuidade parcial, que e pior que falha.
+        $dispatchados = @($manifesto.hooks | Where-Object { $_.registrado -and $_.registro -and $_.registro -cne 'hooks.json' } | ForEach-Object { $_.nome })
         $dispatchados.Count | Should -BeGreaterThan 0 -Because "piso: sem dispatchados este It passaria vazio"
 
         foreach ($escopo in 'Guardas', 'Observadores', 'Todos') {

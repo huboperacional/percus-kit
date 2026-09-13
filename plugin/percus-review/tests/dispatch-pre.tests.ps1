@@ -230,13 +230,13 @@ Describe 'dispatcher PreToolUse -- contencao dos gatilhos (defesa 3)' {
     }
 
     It 'a cadeia de FALLBACK lista exatamente os checks dispatchados do manifesto' {
-        # A lista do `:legado` no .cmd e hardcoded. Um 9o check com registro='dispatcher'
+        # A lista do `:legado` no .cmd e hardcoded. Um 9o check com registro='percus-dispatch-pre'
         # rodaria na camada 2 e sumiria CALADO do fallback -- que so e exercitado quando o
         # PowerShell nao sobe, ou seja, no pior momento possivel pra descobrir. E a mesma
         # classe `categoria-nova-esquecida-em-lista-de-enumeracao` que o design cita.
         # Achado do review cross-provider.
         $m = Get-Content $script:manifest -Raw | ConvertFrom-Json
-        $esperados = @($m.hooks | Where-Object { $_.registro -ceq 'dispatcher' } | ForEach-Object { $_.nome } | Sort-Object)
+        $esperados = @($m.hooks | Where-Object { $_.registro -ceq 'percus-dispatch-pre' } | ForEach-Object { $_.nome } | Sort-Object)
         $esperados.Count | Should -BeGreaterThan 0 -Because 'piso: sem dispatchados este It passaria vazio'
 
         $noFallback = @(Get-Content $script:dispCmd |
@@ -249,10 +249,10 @@ Describe 'dispatcher PreToolUse -- contencao dos gatilhos (defesa 3)' {
     It 'o denominador do debug conta so os checks, nao o proprio dispatcher' {
         # Observado ao vivo pelo review: "checks rodados: 7 de 9". O 9 incluia o proprio
         # dispatcher e um hook de outro matcher. Nao era so cosmetico: sem o filtro por
-        # registro='dispatcher', qualquer hook futuro com entrada propria no hooks.json
+        # registro='percus-dispatch-pre', qualquer hook futuro com entrada propria no hooks.json
         # rodaria DUAS vezes -- uma pelo harness, outra aqui.
         $m = Get-Content $script:manifest -Raw | ConvertFrom-Json
-        $n = @($m.hooks | Where-Object { $_.registro -ceq 'dispatcher' }).Count
+        $n = @($m.hooks | Where-Object { $_.registro -ceq 'percus-dispatch-pre' }).Count
         $r = Invoke-Dispatch -Payload (New-Payload -Comando ('git ' + $script:tokCommit + ' -m x')) `
                              -Env @{ PERCUS_DISPATCH_DEBUG = '1' }
         $r.Stderr | Should -Match "de $n\b" -Because "o denominador tem de ser os $n dispatchados"

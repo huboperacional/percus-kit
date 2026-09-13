@@ -12,7 +12,7 @@
   Escopo por risco (Task 6 do plano 2 -- enforcement-nao-silencioso):
     Guardas       -- so os hooks PreToolUse. Seguro registrar junto com o hooks.json do
                      plugin, porque duplicar guarda so decide duas vezes o mesmo bloqueio.
-    Observadores  -- os hooks Stop/PreCompact/SessionStart. So registrar depois de uma
+    Observadores  -- os hooks PostToolUse/Stop/PreCompact/SessionStart. So registrar depois de uma
                      publicacao do plugin que esvazie as entradas correspondentes do
                      hooks.json -- observador duplicado e efeito colateral duplicado de
                      verdade (ex.: POST duplicado), nao decisao redundante.
@@ -50,24 +50,49 @@ if (-not (Test-Path $manifestPath)) { throw "manifesto nao encontrado: $manifest
 
 $manifesto = Get-Content $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 
-# So entram hooks que PRECISAM de entrada propria. Hook com registro='dispatcher' e
-# alcancado pela camada 2 do percus-dispatch-pre; dar a ele uma entrada aqui faria o
+# So entram hooks que PRECISAM de entrada propria, e o criterio e POSITIVO:
+# registro='hooks.json'. Hook rodado por um dispatcher e
+# alcancado pela camada 2 do dispatcher que o roda; dar a ele uma entrada aqui faria o
 # check rodar DUAS vezes -- uma direto, outra pelo dispatcher. Para uma guarda isso
 # duplicaria a decisao (barulho), mas para qualquer check com efeito colateral seria
 # efeito duplicado de verdade, que e a razao de o escopo 'Observadores' ja existir.
-$vivos = @($manifesto.hooks | Where-Object { $_.registrado -and $_.registro -cne 'dispatcher' })
+# 6.50.0: era `-cne 'dispatcher'`. Com o dispatcher de PostToolUse, `registro` passou a
+# NOMEAR o dispatcher, e a negacao voltou a casar TODO MUNDO -- os 8 checks de comando
+# reapareceram no registro, que e exatamente a execucao dupla que este filtro evita.
+# Criterio positivo nao tem esse modo de falha. `registro` ausente = default historico
+# (entrada propria): e o que os manifestos sinteticos dos testes usam, e exigir o campo
+# ali zeraria o registro inteiro em vez de acusar o problema.
+$vivos = @($manifesto.hooks | Where-Object {
+        $_.registrado -and (-not $_.registro -or $_.registro -ceq 'hooks.json')
+    })
+
+# O dispatcher tem de entrar no escopo junto com quem ele roda: sem a entrada dele, os
+# checks que vivem atras ficam MUDOS e a maquina parece protegida. Ate 6.49.0 havia um
+# dispatcher so, de PreToolUse, e ele era jogado em 'Guardas' por uma lista literal.
+#
+# 6.50.0 mostrou o preco dessa lista: o dispatcher de PostToolUse tambem casava
+# 'dispatcher' e caiu em 'Guardas' -- entao `-Escopo Guardas` instalaria uma cadeia de
+# OBSERVADOR, e `-Escopo Observadores` nao instalaria o context-budget-guard de jeito
+# nenhum. Nao era erro de contagem: era hook no escopo errado, calado.
+#
+# O escopo sempre foi definido por EVENTO ("Guardas -- so os hooks PreToolUse", ver
+# .DESCRIPTION), entao a forma de escopo do dispatcher se DERIVA do evento dele, igual a
+# forma de qualquer outro hook. Derivar nao envelhece; lista literal envelhece.
+function Get-FormaDeEscopo {
+    param($Hook)
+    if ($Hook.forma -ceq 'dispatcher') {
+        if ($Hook.evento -ceq 'PreToolUse') { return 'guarda' } else { return 'observador' }
+    }
+    return $Hook.forma
+}
 
 $formasAlvo = switch ($Escopo) {
-    # O dispatcher entra em 'Guardas' porque e exatamente isso que ele entrega: sem a
-    # entrada dele, as 8 guardas de comando que vivem atras dele nao sao alcancadas por
-    # ninguem. Registrar 'Guardas' sem o dispatcher deixaria a maquina achando que esta
-    # protegida com 2 guardas registradas e 8 mudas.
-    'Guardas'      { @('guarda', 'dispatcher') }
+    'Guardas'      { @('guarda') }
     'Observadores' { @('observador') }
     'Todos'        { $null }
 }
 if ($formasAlvo) {
-    $vivos = @($vivos | Where-Object { $formasAlvo -ccontains $_.forma })
+    $vivos = @($vivos | Where-Object { $formasAlvo -ccontains (Get-FormaDeEscopo $_) })
 }
 
 # Fail-closed: confere TODOS antes de escrever qualquer coisa. Registro parcial mente sobre

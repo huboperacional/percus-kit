@@ -68,14 +68,14 @@ try {
     Sair 9   # fallback: a cadeia antiga nao depende do manifesto
 }
 
-# `registro -ceq 'dispatcher'` NAO e detalhe: sem ele o proprio dispatcher entra na
+# `registro -ceq 'percus-dispatch-pre'` NAO e detalhe: sem ele o proprio dispatcher entra na
 # lista (observado ao vivo: "checks rodados: 7 de 9"), e qualquer hook futuro com
 # entrada propria no hooks.json rodaria DUAS vezes -- uma pelo harness, outra aqui.
 # Hoje o dispatcher so nao se auto-executa por acidente (gatilhos null nunca casam),
 # e acidente nao e desenho. Achado do review cross-provider.
 $checks = @($manifesto.hooks | Where-Object {
     $_.evento -eq 'PreToolUse' -and $_.matcher -eq 'Bash|PowerShell' -and
-    $_.registrado -and $_.registro -ceq 'dispatcher'
+    $_.registrado -and $_.registro -ceq 'percus-dispatch-pre'
 })
 if ($checks.Count -eq 0) {
     $e.WriteLine("[percus:dispatch-pre] nenhum check registrado no manifesto.")

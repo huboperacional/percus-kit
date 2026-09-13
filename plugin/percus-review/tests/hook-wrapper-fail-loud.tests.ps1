@@ -320,24 +320,35 @@ Describe "wrapper .cmd tem a forma do seu evento" {
 
         # Piso de contagem: sem ele, uma pasta VAZIA faz este It passar sem verificar nada --
         # e a migracao dos hooks pro settings.json (spec sec. 9) esvazia exatamente esta pasta.
-        $cmds.Count | Should -Be 16 -Because "piso de contagem: It que passa vazio nao guarda nada"
+        # 6.50.0: +1 .cmd (percus-dispatch-post). Os WRAPPERS continuam 15 -- o
+        # context-budget-guard.cmd fica em disco de proposito, como rota de fallback do
+        # dispatcher, e segue sendo observador. O que cresceu foi a contagem de arquivos.
+        $cmds.Count | Should -Be 17 -Because "piso de contagem: It que passa vazio nao guarda nada"
 
         # 6.49.0: o percus-dispatch-pre.cmd nao e um wrapper -- nao envolve UM .ps1, ele tria e
         # roteia. A forma dele nao se compara com as duas de baixo, e forcar a comparacao so
         # produziria um vermelho permanente que alguem acabaria silenciando.
         #
         # Mas isencao sem prova nova E afrouxar a trava. Entao o dispatcher paga tres:
-        #   (a) e o UNICO isento, e isso e afirmado aqui (nao uma lista que cresce calada);
-        #   (b) tem .ps1 e escape proprios, conferidos aqui;
-        #   (c) a forma dele e provada por COMPORTAMENTO em dispatch-pre.tests.ps1 -- roda o
-        #       .cmd de verdade e confere triagem, agregacao, fallback e fail-loud.
+        #   (a) a isencao e a CATEGORIA declarada no manifesto, nao um nome escrito aqui;
+        #   (b) tem .ps1 e escape proprios, conferidos aqui, um a um;
+        #   (c) a forma de cada um e provada por COMPORTAMENTO em dispatch-pre.tests.ps1 e
+        #       dispatch-post.tests.ps1 -- rodam o .cmd de verdade e conferem triagem,
+        #       agregacao, fallback e fail-loud.
         # A regra que fica: .cmd novo sem forma declarada continua reprovando, como antes.
+        # 6.50.0: sao DOIS (pre e post). A isencao continua nao sendo uma lista de nomes --
+        # ela e a CATEGORIA `forma: dispatcher` declarada no manifesto, e cada isento paga os
+        # tres precos individualmente, no loop abaixo. Crescer a isencao exige declarar um
+        # dispatcher no manifesto, que os testes de hooks-manifest cobram por conta propria:
+        # nenhuma isencao nasce de um .cmd aparecendo em disco.
         $dispatchers = @($vivos | Where-Object { $_.forma -ceq 'dispatcher' })
-        $dispatchers.Count | Should -Be 1 -Because "isencao de forma vale para UM arquivo; duas ja seria uma lista crescendo"
-        $nomeDisp = $dispatchers[0].nome
-        Test-Path (Join-Path $script:hooksDir ($nomeDisp + '.ps1')) | Should -BeTrue -Because "a camada 2 do dispatcher tem de existir em disco"
-        (Get-Content (Join-Path $script:hooksDir ($nomeDisp + '.cmd')) -Raw) | Should -Match ([regex]::Escape($dispatchers[0].escape)) -Because "o escape do dispatcher e lido na camada 1"
-        $cmds = @($cmds | Where-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name) -cne $nomeDisp })
+        $dispatchers.Count | Should -BeGreaterThan 0 -Because "piso: sem dispatcher o filtro abaixo nao tiraria nada e o It viraria outro teste"
+        $nomesDisp = @($dispatchers | ForEach-Object { $_.nome })
+        foreach ($d in $dispatchers) {
+            Test-Path (Join-Path $script:hooksDir ($d.nome + '.ps1')) | Should -BeTrue -Because "a camada 2 de $($d.nome) tem de existir em disco"
+            (Get-Content (Join-Path $script:hooksDir ($d.nome + '.cmd')) -Raw) | Should -Match ([regex]::Escape($d.escape)) -Because "o escape de $($d.nome) e lido na camada 1"
+        }
+        $cmds = @($cmds | Where-Object { $nomesDisp -notcontains [IO.Path]::GetFileNameWithoutExtension($_.Name) })
 
         # .cmd nao declarado no manifesto nao tem evento -- e a forma dele seria ADIVINHADA.
         # Adivinhar e o erro que este It existe pra impedir, entao aqui e falha, nao default.

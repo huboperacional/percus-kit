@@ -26,7 +26,7 @@ Describe "hooks-manifest.json" {
         $script:todos.Count | Should -BeGreaterThan 0
     }
 
-    It "declara 16 hooks registrados (10 guarda / 5 observador / 1 dispatcher) + o orfao" {
+    It "declara 17 hooks registrados (10 guarda / 5 observador / 2 dispatcher) + o orfao" {
         # Piso de contagem, mesma razao do hook-wrapper-fail-loud: manifesto esvaziado faria
         # todos os It abaixo iterarem sobre lista vazia e passarem sem verificar nada.
         # 6.45.0: +1 observador (context-budget-guard, PostToolUse). 6.47.0: +1 guarda de comando
@@ -35,10 +35,13 @@ Describe "hooks-manifest.json" {
         # apenas deixaram de ter entrada propria no hooks.json e passaram a ser rodados pela
         # camada 2. Guarda dispatchada segue sendo guarda: e o campo `registro` que mudou, nao a
         # forma. Confundir os dois faria "saiu do hooks.json" ler como "deixou de valer".
-        $script:vivos.Count | Should -Be 16 -Because "piso: manifesto vazio nao guarda nada"
+        # 6.50.0: +1 dispatcher (percus-dispatch-post). O context-budget-guard continua
+        # observador -- ele so deixou de ter entrada propria no hooks.json e passou a ser
+        # rodado pela camada 2 do dispatcher de PostToolUse. Forma nao mudou; `registro` mudou.
+        $script:vivos.Count | Should -Be 17 -Because "piso: manifesto vazio nao guarda nada"
         @($script:vivos | Where-Object { $_.forma -ceq 'guarda' }).Count     | Should -Be 10
         @($script:vivos | Where-Object { $_.forma -ceq 'observador' }).Count | Should -Be 5
-        @($script:vivos | Where-Object { $_.forma -ceq 'dispatcher' }).Count | Should -Be 1
+        @($script:vivos | Where-Object { $_.forma -ceq 'dispatcher' }).Count | Should -Be 2
         @($script:todos | Where-Object { -not $_.registrado }).Count | Should -Be 1 -Because "canon-version-check e orfao conhecido; orfao novo aparecendo sem ninguem decidir e drift"
     }
 
@@ -131,18 +134,32 @@ Describe "hooks-manifest.json" {
         # guarda -- nao inspeciona nada, so roteia. A excecao nao pode ser uma lista de nomes
         # (envelhece calada), entao ela e ESTRUTURAL e conferida logo abaixo: e dispatcher quem
         # tem outros hooks apontando pra ele via registro='dispatcher'.
-        $ehDispatcher = @($script:vivos | Where-Object { $_.forma -ceq 'dispatcher' })
-        $ehDispatcher.Count | Should -Be 1 -Because "mais de um dispatcher e ambiguidade de roteamento"
-        $ehDispatcher[0].evento | Should -BeExactly 'PreToolUse'
-        $ehDispatcher[0].registro | Should -BeExactly 'hooks.json' -Because "o dispatcher precisa de entrada propria, senao nada o chama"
-        $dispatchados = @($script:vivos | Where-Object { $_.registro -ceq 'dispatcher' })
-        $dispatchados.Count | Should -BeGreaterThan 0 -Because "dispatcher sem ninguem atras dele e processo a toa"
-        foreach ($d in $dispatchados) {
-            # Se o evento/matcher do check nao bate com o do dispatcher, o harness nunca entrega
-            # aquela chamada -- o check some CALADO, que e a falha que este arquivo existe pra pegar.
-            $d.evento  | Should -BeExactly $ehDispatcher[0].evento  -Because "$($d.nome) so e alcancavel se compartilhar o evento do dispatcher"
-            $d.matcher | Should -BeExactly $ehDispatcher[0].matcher -Because "$($d.nome) so e alcancavel se compartilhar o matcher do dispatcher"
+        # 6.50.0: passaram a ser DOIS (PreToolUse e PostToolUse), entao a relacao
+        # "quem roda quem" deixou de caber num valor unico: `registro` agora NOMEIA o
+        # dispatcher. E isso que mantem a excecao ESTRUTURAL -- um terceiro dispatcher nao
+        # pede linha nova aqui, e check apontando pra dispatcher inexistente fica VERMELHO
+        # em vez de sumir calado.
+        $dispatchers = @($script:vivos | Where-Object { $_.forma -ceq 'dispatcher' })
+        $dispatchers.Count | Should -BeGreaterThan 0 -Because "piso: sem dispatcher os foreach abaixo passariam vazios"
+        $nomesDisp = @($dispatchers | ForEach-Object { $_.nome })
+
+        foreach ($disp in $dispatchers) {
+            $disp.registro | Should -BeExactly 'hooks.json' -Because "$($disp.nome) precisa de entrada propria, senao nada o chama"
+            $atras = @($script:vivos | Where-Object { $_.registro -ceq $disp.nome })
+            $atras.Count | Should -BeGreaterThan 0 -Because "$($disp.nome) sem ninguem atras dele e processo a toa"
+            foreach ($d in $atras) {
+                # Se o evento/matcher do check nao bate com o do dispatcher, o harness nunca entrega
+                # aquela chamada -- o check some CALADO, que e a falha que este arquivo existe pra pegar.
+                $d.evento  | Should -BeExactly $disp.evento  -Because "$($d.nome) so e alcancavel se compartilhar o evento de $($disp.nome)"
+                $d.matcher | Should -BeExactly $disp.matcher -Because "$($d.nome) so e alcancavel se compartilhar o matcher de $($disp.nome)"
+            }
         }
+
+        # Ponteiro quebrado: check que diz ser rodado por alguem que nao e dispatcher.
+        $ponteiros = @($script:vivos | Where-Object {
+                $_.registro -and $_.registro -cne 'hooks.json' -and $nomesDisp -notcontains $_.registro
+            } | ForEach-Object { "$($_.nome) -> registro='$($_.registro)'" })
+        @($ponteiros) | Should -BeNullOrEmpty -Because "registro tem de nomear um dispatcher que existe:`n$($ponteiros -join '`n')"
 
         $mentiras = @()
         foreach ($h in $script:vivos) {
@@ -224,16 +241,24 @@ Describe "hooks-manifest.json" {
         #                  e declarar gatilhos, senao a camada 1 nunca o acorda
         # Sem essa separacao, mover os 8 pra tras do dispatcher reprovaria aqui, e a saida facil
         # seria afrouxar o teste -- matando justamente a trava que impede o manifesto virar ficcao.
-        foreach ($h in @($script:vivos | Where-Object { $_.registro -ceq 'dispatcher' })) {
+        # 6.50.0: `gatilhos` so e obrigatorio atras de dispatcher que TRIA POR GATILHO. O
+        # dispatcher de PostToolUse tria por PORTA DE TEMPO -- la, check sem gatilho e o
+        # desenho, nao esquecimento. Quem decide e o campo `triagem` DO DISPATCHER, e nao uma
+        # lista de excecao por nome, que envelheceria calada.
+        $porNome = @{}
+        foreach ($d in @($script:vivos | Where-Object { $_.forma -ceq 'dispatcher' })) { $porNome[$d.nome] = $d }
+
+        foreach ($h in @($script:vivos | Where-Object { $porNome.ContainsKey("$($_.registro)") })) {
+            $disp = $porNome["$($h.registro)"]
             if ($registrado.ContainsKey($h.nome)) {
-                $divergencias += "$($h.nome): registro='dispatcher' mas tem entrada propria no hooks.json (rodaria DUAS vezes)"
+                $divergencias += "$($h.nome): registro='$($h.registro)' mas tem entrada propria no hooks.json (rodaria DUAS vezes)"
             }
-            if (-not $h.gatilhos -or @($h.gatilhos).Count -eq 0) {
-                $divergencias += "$($h.nome): registro='dispatcher' sem gatilhos declarados -- a camada 1 nunca o acordaria"
+            if ($disp.triagem -ceq 'gatilhos' -and (-not $h.gatilhos -or @($h.gatilhos).Count -eq 0)) {
+                $divergencias += "$($h.nome): atras de $($disp.nome) (triagem por gatilhos) sem gatilhos declarados -- a camada 1 nunca o acordaria"
             }
         }
 
-        foreach ($h in @($script:vivos | Where-Object { $_.registro -cne 'dispatcher' })) {
+        foreach ($h in @($script:vivos | Where-Object { -not $porNome.ContainsKey("$($_.registro)") })) {
             if (-not $registrado.ContainsKey($h.nome)) {
                 $divergencias += "$($h.nome): manifesto diz registrado, hooks.json nao tem"
                 continue
@@ -254,8 +279,8 @@ Describe "hooks-manifest.json" {
             $decl = @($script:vivos | Where-Object { $_.nome -ceq $nome })
             if ($decl.Count -eq 0) {
                 $divergencias += "$nome : hooks.json registra, manifesto nao declara"
-            } elseif ($decl[0].registro -ceq 'dispatcher') {
-                $divergencias += "$nome : hooks.json registra, mas o manifesto diz registro='dispatcher'"
+            } elseif ($porNome.ContainsKey("$($decl[0].registro)")) {
+                $divergencias += "$nome : hooks.json registra, mas o manifesto diz que quem o roda e $($decl[0].registro)"
             }
         }
 

@@ -222,8 +222,83 @@ Validação contra tráfego real (1 233 comandos de transcript): **80,5% dormem*
 **Os 8 hooks não mudaram uma linha** — ver a nota do `[Console]::SetIn` acima. Os `.cmd` antigos
 continuam em disco: são a rota de fallback da defesa 1, não resíduo.
 
-**Item 3 (dispatcher `PostToolUse` com porta por timestamp) é o próximo.** Ele carrega sozinho o
-ganho que a opção D descartada prometia — sem a cegueira de 130 chamadas.
+## ESTADO DA ENTREGA — item 3 (2026-09-12, 6.50.0)
+
+**Item 3 ENTREGUE** — dispatcher `PostToolUse` com porta por timestamp, entrada própria no
+`hooks.json`, suíte **625/625**.
+
+| critério de pronto | estado |
+|---|---|
+| 1. caminho comum medido | ✅ **50 ms** com a porta fechada (era 458–684 ms *sempre*) |
+| 2. fallback provado com `PERCUS_DISPATCHER_BYPASS=1` | ✅ teste duplo: camada 2 não sobe **e** o aviso continua saindo |
+| 3. teste de alcance + contenção | ✅ 14 testes, incluindo o par porta-fechada / porta-0 |
+| 4. paridade `.ps1`/`.sh` | ⏳ **pendente** — entra no item da paridade `.sh`, junto com a do `pre` |
+| 5. `hooks-manifest.json` + `enforcement-health` | ✅ campo `triagem` novo; health confere por dispatcher |
+| 6. suíte inteira verde | ✅ **625/625** |
+
+**O ganho medido, e por que ele é menor que o do `pre`.** O caminho comum caiu de 458 ms para
+**50 ms**, mas ele só vale nas 63% de chamadas em que a porta está fechada; nas outras 37% o
+custo é **781 ms** — ~100 ms *a mais* que a cadeia antiga, por causa da camada extra de `cmd.exe`
+e da leitura do manifesto. Ponderando pelo tráfego real: **684 ms → 320 ms, 2,1x**. É menos que os
+28x do `pre`, e a razão é estrutural: lá a triagem descarta trabalho que não precisava existir;
+aqui o trabalho precisa acontecer, só que menos vezes.
+
+### As três medições que desenharam esta entrega
+
+**1. A porta não cria cegueira nova** (11 679 invocações reais de `PostToolUse`, 40 transcripts):
+
+| porta | dormem | pior janela cega | crescimento não observado |
+|---|---|---|---|
+| 30 s | 63,0% | 14 chamadas / 29 s | 50 509 tokens |
+| 60 s | 76,2% | 17 chamadas / 60 s | 62 453 tokens |
+| 120 s | 85,4% | 29 chamadas / 120 s | 83 122 tokens |
+
+O número que decide é o **baseline**: rodando o guard em *toda* chamada, o maior salto de
+contexto de **um único passo** já é **104 664 tokens** — maior que o crescimento não observado sob
+qualquer porta testada. O guard sempre mede *depois* do salto; a porta só espaça a medição. É a
+diferença exata para a opção D, que criava cegueira **adicional** de até 130 chamadas, e
+justamente nas tools que mais inflam contexto.
+
+Atraso do aviso de limiar com porta de 30 s (73 cruzamentos medidos): mediana **0,9 chamada**
+(1 235 tokens), p95 4 359, máximo 17 040. Escolhido **30 s**, em `porta-post.txt`.
+
+**2. A porta não pode ser adaptativa ao percentual de contexto** — ela dependeria do denominador
+da janela, e ele **não está disponível**: dos 40 transcripts medidos, **nenhum** declara o marcador
+`[1m]`/`-1m` no campo `model` (24× `claude-opus-5` puro, 8× `claude-sonnet-5`). Simulada, a política
+adaptativa 60/15/0 dormia **8,8%** — quase toda sessão *parece* estar acima de 75% do piso de 200k.
+Isto é a mesma dívida que já está declarada no `context-budget-guard` (perna 2 da descoberta de
+janela é best-effort); aqui ela deixou de ser teórica e **mediu-se como não disponível**.
+
+**3. A camada 1 do `post` NÃO captura stdin, e isso não é cópia preguiçosa do `pre`.** O payload de
+`PostToolUse` carrega `tool_response`. Medido em **60 476 tool_results reais**: mediana 344 B, p99
+26 KB, **máximo 681 KB**, com **0,59% acima de 80 KB** — exatamente onde o `findstr "^"` do `pre`
+trunca. Capturar aqui traria truncagem **rotineira**, e no `post` truncagem viraria erro espúrio a
+cada tool call grande. Como a porta não precisa ler o payload, stdin é repassado direto ao
+PowerShell, como o `.cmd` antigo já fazia: a classe de falha inteira deixa de existir em vez de ser
+mitigada.
+
+### Duas coisas que a entrega mudou fora do escopo previsto
+
+- **`registro` deixou de ser binário e passou a NOMEAR o dispatcher** (`percus-dispatch-pre` /
+  `percus-dispatch-post`). Com dois dispatchers, o literal `'dispatcher'` não dizia *qual*, e todo
+  sítio que decidia por negação (`-cne 'dispatcher'`) voltou a casar todo mundo — os 8 checks de
+  comando reapareceram no registro, que é a execução dupla que aquele filtro existe para impedir.
+  Os critérios viraram **positivos** (`registro='hooks.json'` = precisa de entrada própria).
+- **O `registrar-hooks-settings.ps1` classificava todo `forma: dispatcher` como Guarda**, por lista
+  literal. O dispatcher de `PostToolUse` caiu em `-Escopo Guardas` — e some de `-Escopo
+  Observadores`. Não era contagem errada: era hook no escopo errado, calado. A forma de escopo
+  passou a ser **derivada do evento**, como a de qualquer outro hook.
+
+### O defeito que a porta NÃO conserta (e que esta sessão observou ao vivo)
+
+Com 181k tokens numa sessão de janela 1M, o guard anunciou *"LIMITE DURO (180k) cruzado … um resume
+em janela ~200k é impossível"*. Ele estava medindo certo e errando o **denominador** — o mesmo
+defeito que a perna 3 (falsificação) cobre só **acima** de 200k, quando a sessão já provou que a
+janela é maior. Abaixo disso ele afirma o piso. A medição do item 2 acima mostra que a perna 2
+(marcador no `model`) **nunca dispara na frota**, então este não é um caso raro: é o comportamento
+normal. Dívida declarada, dono do número no próprio hook — não entra neste pacote.
+
+**Item 4: o bastão passa para a spec das regras comportamentais.**
 
 ## Ordem de entrega
 
@@ -231,8 +306,9 @@ ganho que a opção D descartada prometia — sem a cegueira de 130 chamadas.
    Economia de 19 % dos spawns ao preço de até 130 chamadas consecutivas sem medir, e redundante
    com o item 3.
 2. Dispatcher `PreToolUse` + as 3 defesas + paridade `.sh` ← **primeiro passo real**
-3. Dispatcher `PostToolUse` com porta por timestamp (entrega o ganho do `context-budget-guard`
-   **sem** perder cobertura, que é o que a opção D não fazia)
+3. ~~Dispatcher `PostToolUse` com porta por timestamp~~ — **ENTREGUE** (6.50.0), ver a seção de
+   estado acima. 684 ms → 320 ms ponderado pelo tráfego real; a porta não cria cegueira nova, e
+   isso foi medido contra o baseline, não argumentado.
 4. *(passa o bastão para a spec das regras comportamentais)*
 
 ## Riscos

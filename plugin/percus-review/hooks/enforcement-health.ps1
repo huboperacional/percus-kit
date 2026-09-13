@@ -83,10 +83,11 @@ try {
                 }
             }
         }
-        # 6.49.0: ha DOIS caminhos de registro. Hook com registro='dispatcher' e alcancado pela
-        # camada 2 do percus-dispatch-pre e NAO tem entrada propria -- cobrar entrada dele seria
-        # falso positivo permanente, e health check que grita sempre vira health check ignorado.
-        $comEntradaPropria = @($vivos | Where-Object { $_.registro -cne 'dispatcher' })
+        # 6.50.0: ha DOIS caminhos de registro, e `registro` NOMEIA o dispatcher que roda o
+        # check (nao existe mais o literal 'dispatcher'). Quem e rodado por um dispatcher NAO tem
+        # entrada propria -- cobrar entrada dele seria falso positivo permanente, e health check
+        # que grita sempre vira health check ignorado.
+        $comEntradaPropria = @($vivos | Where-Object { -not $_.registro -or $_.registro -ceq 'hooks.json' })
         $faltando = @($comEntradaPropria | Where-Object { -not $registrados.ContainsKey($_.nome) } | ForEach-Object { $_.nome })
         if ($faltando.Count -gt 0) {
             $achados.Add("hook declarado no manifesto e AUSENTE do registro vivo: $($faltando -join ', ')")
@@ -94,19 +95,40 @@ try {
 
         # Mas o caminho do dispatcher tem a SUA propria forma de sumir calado, e ela e pior:
         # o check continua no manifesto, continua em disco, e simplesmente nunca e chamado.
-        $dispatchados = @($vivos | Where-Object { $_.registro -ceq 'dispatcher' })
-        if ($dispatchados.Count -gt 0) {
-            $disp = @($vivos | Where-Object { $_.forma -ceq 'dispatcher' })
-            if ($disp.Count -eq 0) {
-                $achados.Add("$($dispatchados.Count) hook(s) dependem de um dispatcher que o manifesto nao declara -- estao MUDOS")
-            } elseif (-not $registrados.ContainsKey($disp[0].nome)) {
-                $achados.Add("o dispatcher '$($disp[0].nome)' nao esta no registro vivo -- os $($dispatchados.Count) checks atras dele estao MUDOS")
+        # 6.50.0: sao DOIS dispatchers, e `registro` nomeia qual roda cada check -- entao a
+        # checagem e por dispatcher, nao mais sobre um unico $disp[0].
+        $porNome = @{}
+        foreach ($d in @($vivos | Where-Object { $_.forma -ceq 'dispatcher' })) { $porNome[$d.nome] = $d }
+
+        $dispatchados = @($vivos | Where-Object { $_.registro -and $_.registro -cne 'hooks.json' })
+        foreach ($h in $dispatchados) {
+            $nomeDisp = "$($h.registro)"
+            if (-not $porNome.ContainsKey($nomeDisp)) {
+                $achados.Add("hook '$($h.nome)' aponta pro dispatcher '$nomeDisp', que o manifesto nao declara -- esta MUDO")
+                continue
+            }
+            if (-not $registrados.ContainsKey($nomeDisp)) {
+                $achados.Add("o dispatcher '$nomeDisp' nao esta no registro vivo -- os checks atras dele estao MUDOS")
+                continue
             }
             # Gatilho ausente = a camada 1 nunca acorda aquele check. Some sem erro nenhum.
-            $semGatilho = @($dispatchados | Where-Object { -not $_.gatilhos -or @($_.gatilhos).Count -eq 0 } | ForEach-Object { $_.nome })
-            if ($semGatilho.Count -gt 0) {
-                $achados.Add("hook atras do dispatcher e SEM gatilho declarado (nunca sera acordado): $($semGatilho -join ', ')")
+            # So vale atras de dispatcher que TRIA POR GATILHO: o de PostToolUse tria por
+            # porta de tempo, e la check sem gatilho e o desenho, nao esquecimento.
+            if ($porNome[$nomeDisp].triagem -ceq 'gatilhos' -and (-not $h.gatilhos -or @($h.gatilhos).Count -eq 0)) {
+                $achados.Add("hook atras de '$nomeDisp' e SEM gatilho declarado (nunca sera acordado): $($h.nome)")
             }
+        }
+
+        # A porta do dispatcher de PostToolUse e chaveada por CLAUDE_CODE_SESSION_ID. Sem essa
+        # variavel nao ha como isolar uma sessao da outra, e a camada 1 desliga a porta de
+        # proposito (balde compartilhado silenciaria o guard de uma sessao inteira -- provado no
+        # review R11 com dois processos reais). O enforcement continua correto, so mais caro.
+        #
+        # O aviso mora AQUI, e nao na camada 1, porque aqui ele sai UMA vez por sessao: la seria
+        # uma linha de stderr em toda tool call, e aviso que repete sempre e aviso que ninguem le.
+        if (@($vivos | Where-Object { $_.triagem -ceq 'porta' }).Count -gt 0 -and
+            -not $env:CLAUDE_CODE_SESSION_ID) {
+            $achados.Add("CLAUDE_CODE_SESSION_ID ausente: a porta do dispatcher de PostToolUse fica DESLIGADA (o guard roda em toda tool call, como antes de 6.50.0). Enforcement intacto, so mais lento.")
         }
     }
 
