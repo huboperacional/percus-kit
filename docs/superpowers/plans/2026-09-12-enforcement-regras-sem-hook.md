@@ -36,7 +36,7 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
 4. **Consolidação da cadeia de hooks** — spec
    (`specs/2026-09-12-consolidacao-cadeia-de-hooks-design.md`). **Virou pré-requisito da 3** por
    medição. **Item 2 (dispatcher `PreToolUse`) ENTREGUE e PUBLICADO em 6.49.0.**
-   ← falta o item 3 (dispatcher `PostToolUse`) e a paridade `.sh`.
+   **Item 3 (dispatcher `PostToolUse`) ENTREGUE em 6.50.0** — e um emoji num comentário dele derrubava toda tool call, consertado na 6.51.0. ← falta só a **paridade `.sh`** dos dois dispatchers.
 5. ~~**Faixa de regras do revisor**~~ — **ENTREGUE** (`0d8a0d0`, 2026-09-12). Não eram 8 sítios:
    eram **36 ocorrências em 17 arquivos**, em três tetos que discordavam entre si, com o canon em
    R25. O verbete tinha varrido só `plugin/percus-review/scripts/` e relatado o número como se
@@ -88,7 +88,7 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
 
 ## ESTADO DA EXECUÇÃO
 
-### ✅ Feito (tudo PUBLICADO até 6.49.0 — nada pendente de push)
+### ✅ Feito (PUBLICADO até 6.51.0; a 6.52.0 está commitada, push pendente de R20)
 
 - **6.45.0** `context-budget-guard` — PostToolUse em todas as tools, mede o contexto vivo pela cauda
   do transcript. Nasceu de uma sessão que foi a 610k tokens com "checkpoint" dito 11 vezes.
@@ -106,6 +106,24 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
   mutação. **Publicado** (`ec0d798`).
 - **Spec do Pacote B** commitada (`e18abf8`), com veredito `AJUSTAR` do conselho — 10 findings a
   tratar antes de implementar.
+- **6.50.0** dispatcher `PostToolUse` com porta por timestamp (outra sessão). **Publicado** (`5cf6304`).
+- **6.51.0** **o revisor lê o canon em vez de citar de memória** — três defeitos da mesma família
+  ("literal escrito à mão fazendo as vezes de fonte"), fechados com derivação em runtime e guarda:
+  1. faixa de regras literal em **36 ocorrências / 17 arquivos** (não 8), três tetos discordando,
+     canon em R25 → `scripts/_faixa-regras.{ps1,sh}` deriva o maior `^## R<N>.`;
+  2. `system-prompt-{review,consult}.md` carregavam **cópia das 19 primeiras regras com 7 textos
+     errados** (numeração pré-renumeração) → `{{REGRAS_DO_CANON}}` substituído no load;
+  3. **bug de produção da 6.50.0:** um `⚠️` no `percus-dispatch-post.cmd` fazia o `cmd.exe` comer 4
+     caracteres do início das linhas → exit 255 em toda tool call; só na codepage OEM (no Git Bash
+     dava verde). Guarda: `cmd-ascii-puro.tests.ps1`.
+  O R11 achou 3 defeitos reais no próprio conserto (degradação que matava sob `set -e` fora de
+  `$( )`, travessão sem prova no PS 5.1, asserção vazia). **Publicado** (`0d19a31`, `246fd4d`).
+- **Skill `checkpoint`** ganha o gatilho pedido: a palavra "checkpoint", passo 0 "termine a tarefa
+  atual", e o limite do `/clear` dito na porta (`913668c`, publicado junto da 6.51.0).
+- **6.52.0** **hora de parede deixa de ser gatilho do `context-budget-guard`.** Decisão do operador:
+  *"o contexto não enche por horas, enche por trabalho"*. Saem o gatilho de 8h, `PERCUS_CTX_HOURS` e
+  toda menção a horas nas mensagens; ficam tokens e idade do transcript. **Commitado (`6e2b4bd`),
+  push pendente de R20.**
 
 ### ✅ Tarefa 3 fechada (2026-09-12)
 
@@ -136,7 +154,25 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
    varridos). Mitigação usada: dar à perna Cross-Claude o **caminho do arquivo**, não o texto.
    Registrado como risco §6.9 da spec — é defeito do kit, não da spec.
 
-### ⏳ Próximo passo imediato (checkpoint de 2026-09-12 ~22h)
+### ⏳ Próximo passo imediato (checkpoint de 2026-09-13)
+
+**A sessão de 12→13/09 fechou os itens 5 e 8 da "Ordem acertada" e destravou o 9.** Antes da fila:
+
+0. **Push da 6.52.0** — 3 commits locais (`6e2b4bd` + dois de conhecimento de outras sessões).
+   Precisa de autorização R20 explícita do operador. Enquanto não sobe, nem esta máquina (cache
+   6.49.0) nem a frota têm nada de 6.50 a 6.52 — inclusive o conserto do emoji que derruba o
+   dispatcher `PostToolUse`.
+1. **Poda do canon (item 9) — DESTRAVADA.** O revisor enxerga as 25 regras, e com o texto certo.
+   Decisão do operador: entra antes ou depois da fila abaixo. Descarte só com aprovação um a um.
+
+**Pendências novas, descobertas nesta sessão (fora da fila abaixo):**
+- **Hook `UserPromptSubmit` para o gatilho "checkpoint"** — o enforcement mecânico que a R12 pede.
+  Esperava a reestruturação de `hooks.json`/`hooks-manifest.json`, que aterrissou na 6.50.0: livre.
+- **`canon-version-check` avisa SEMPRE** — compara a data do frontmatter com semver, e o comentário
+  diz que é de propósito. Aviso que nunca fica verde é aviso desligado; foi por isso que a cópia
+  stale do canon sobreviveu quatro meses. Consertar a comparação ou apagar o aviso.
+- **R10 não tem hook nenhum.** O operador achava que R10 pedia autorização; quem pede é só a R20
+  (`external-action-guard`). R10 segue entre as comportamentais sem enforcement (item 4 da fila).
 
 **FILA, na ordem, autorizada pelo operador para execução autônoma:**
 
@@ -159,7 +195,7 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
 > lá) foi **descartada por medição** — economizava 19% dos spawns ao preço de até **130 chamadas
 > consecutivas** sem medir contexto. Ver a seção própria naquela spec.
 
-**Estado da árvore:** kit em **6.50.0**. Os dois dispatchers só valem na frota depois de push +
+**Estado da árvore:** kit em **6.52.0**, limpa, com 3 commits aguardando push. O cache desta máquina está em **6.49.0** — nada de 6.50 a 6.52 vale aqui nem na frota antes de push +
 auto-update + relaunch.
 
 **Por que isto entrou na frente.** A tarefa 3 ia adicionar 4 hooks; medi a cadeia antes e ela já
@@ -205,6 +241,10 @@ vale é a spec**.
   A perna 3 (falsificação) só cobre **acima** de 200k. Consertos plausíveis: ler a janela de uma
   fonte que o harness declare, ou parar de afirmar limiar enquanto a janela for suposta. Este é
   também o motivo de a porta do dispatcher `PostToolUse` ser fixa e não adaptativa.
+- **A idade do transcript ainda usa o relógio.** Na 6.52.0 a hora de parede saiu do gatilho, mas a
+  condição de DIAS continua sendo `(agora − 1º timestamp) / 24` — não distingue "retomou um
+  transcript de 2 dias atrás" (o incidente real) de "trabalhou 48h seguidas". O sinal certo para
+  resume velho é o **intervalo desde a última entrada** do transcript, não a idade da primeira.
 - **`spec-analyze-check` é warn-only** por desenho. Promover a bloqueio é decisão separada, depois
   de medir quanto a frota reclama.
 - **`pre-commit-check` casa `git`…`commit` como texto** — barrou dois comandos de *teste* nesta
@@ -222,5 +262,5 @@ vale é a spec**.
 
 `PERCUS_CANON_DIR` aponta para este repo, então **scripts** (`medir-baseline-boot`, `plano-sync`
 futuro) valem no instante em que são salvos. **Hooks e skills** só chegam aos projetos por
-publicação: push → auto-update (≤10 min) → novo launch. Cache atual: **6.45.0**; kit em **6.47.0**.
-Cinco commits aguardam push, pendente de autorização do operador (R20).
+publicação: push → auto-update (≤10 min) → novo launch. Cache desta máquina: **6.49.0**; kit em **6.52.0**.
+Três commits aguardam push (`6e2b4bd` e dois de conhecimento de outras sessões), pendente de autorização do operador (R20).
