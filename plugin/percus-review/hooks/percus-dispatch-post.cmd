@@ -1,5 +1,11 @@
 @echo off
 setlocal EnableExtensions
+REM ESTE ARQUIVO E ASCII PURO, E ISSO NAO E ESTILO: o cmd.exe le arquivo de lote por
+REM OFFSET DE BYTE e reposiciona a cada comando. Um caractere multi-byte desalinha o
+REM contador de bytes do de caracteres, e a partir dai ele reposiciona no lugar errado --
+REM o inicio das linhas some. Um unico emoji nesta linha 95 custou exit 255 em TODA tool
+REM call, e so aparecia na codepage OEM (no Git Bash, UTF-8, dava verde). Medido
+REM 2026-09-13. Guarda: plugin/percus-review/tests/cmd-ascii-puro.tests.ps1.
 REM ============================================================================
 REM Dispatcher PostToolUse -- CAMADA 1 (porta por timestamp em cmd.exe).
 REM
@@ -92,7 +98,7 @@ set "SID=%CLAUDE_CODE_SESSION_ID%"
 if not defined SID goto :abre_sem_marcar
 set "STAMP=%TEMP%\percus-post-gate-%SID%.txt"
 
-REM ⚠️ SID e STAMP sao resolvidos ANTES da validacao de N, e a ordem e o conserto
+REM ATENCAO: SID e STAMP sao resolvidos ANTES da validacao de N, e a ordem e o conserto
 REM de um defeito real (achado 1 do review R11): havia TRES `goto :abre` aqui
 REM embaixo -- N indefinido, N malformado e N<=0 -- e todos pulavam o bloco do
 REM STAMP. O `:abre` grava incondicionalmente, entao com STAMP vazio virava `>""`,

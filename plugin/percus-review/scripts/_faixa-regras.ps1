@@ -78,6 +78,47 @@ function Get-PercusCanonMaxRule {
     return ([int](($ns | Measure-Object -Maximum).Maximum))
 }
 
+function Get-PercusRegrasDoCanon {
+    <#
+      Lista das regras do canon, uma por linha, no formato "R<N> — <titulo>".
+      Devolve a frase degradada quando NAO conseguiu ler -- nunca uma lista inventada.
+
+      Existe porque os system-prompt-*.md carregavam uma COPIA INLINE das 19 primeiras
+      regras, escrita a mao numa numeracao anterior a renumeracao do canon: 7 das 19 traziam
+      o texto errado debaixo do numero certo (R1, R2, R4, R6, R8, R9, R12). E pior que a
+      faixa curta -- aquela tornava a regra invisivel, esta faz o revisor avaliar com
+      conviccao contra uma definicao que nao existe mais. Verbete:
+      conhecimento/resolver/system-prompt-do-revisor-tem-copia-do-canon-com-texto-de-regra-errado.md
+
+      ORDENA por numero, nao pela ordem do arquivo: o canon declara R13 DEPOIS de R19.
+    #>
+    [OutputType([string])]
+    param([string]$CanonDir)
+
+    $degradado = "(nao foi possivel ler as regras do canon -- consulte 01_REGRAS_INEGOCIAVEIS.md)"
+
+    $dir = Get-PercusCanonDir -CanonDir $CanonDir
+    if (-not $dir) { return $degradado }
+    $arq = Join-Path $dir "01_REGRAS_INEGOCIAVEIS.md"
+    if (-not (Test-Path $arq)) { return $degradado }
+
+    try {
+        $texto = [IO.File]::ReadAllText($arq)
+    } catch {
+        return $degradado
+    }
+
+    # `\s*$` no fim tambem come o \r de arquivo CRLF -- sem isso o par .sh diverge.
+    $ms = [regex]::Matches($texto, '(?m)^##\s+R(\d+)\.\s*(.+?)\s*$')
+    if ($ms.Count -eq 0) { return $degradado }
+
+    $linhas = $ms |
+        Sort-Object { [int]$_.Groups[1].Value } |
+        ForEach-Object { "R$($_.Groups[1].Value) — $($_.Groups[2].Value)" }
+
+    return ($linhas -join "`n")
+}
+
 function Get-PercusFaixaRegras {
     <#
       Trecho pronto pra embutir no prompt do revisor.

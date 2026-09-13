@@ -69,16 +69,19 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
    - **R12 é o critério de poda pronto**: *"regra que você não consegue verificar objetivamente que
      cumpriu é decoração"*. A poda é a aplicação da R12 ao próprio canon — e hoje 9 das 25 não têm
      seção de gate escrita.
-   - ~~**O revisor só conhece até R13/R19/R23**~~ — item 5 ENTREGUE: o revisor agora enxerga o
-     canon inteiro. **Mas apareceu um bloqueio novo, medido ao consertar a faixa:** os
-     `system-prompt-{review,consult}.md` carregam uma **cópia inline das 19 primeiras regras** numa
-     numeração pré-renumeração, e **7 delas (R1, R2, R4, R6, R8, R9, R12) têm o texto errado
-     debaixo do número certo**. Enquanto isso não for consertado, "ninguém cobra esta regra" é uma
-     conclusão inválida — o revisor cobra a regra ERRADA sob aquele número. Verbete:
+   - ~~**O revisor só conhece até R13/R19/R23**~~ — **DESTRAVADO em 2026-09-13 (6.51.0).** Eram
+     DOIS bloqueios, não um. O item 5 fechou o primeiro (a faixa curta). O segundo apareceu ao
+     consertá-la: os `system-prompt-{review,consult}.md` carregavam uma **cópia inline das 19
+     primeiras regras** numa numeração pré-renumeração, com **7 delas (R1, R2, R4, R6, R8, R9,
+     R12) trazendo o texto errado debaixo do número certo**. Os dois estão fechados: a faixa e os
+     **títulos** vêm do canon em tempo de execução (`{{FAIXA_REGRAS}}` e `{{REGRAS_DO_CANON}}`,
+     substituídos no load), com prova ponta a ponta por socket local de que o corpo enviado ao
+     modelo leva o título do canon de agora. Verbete:
      `conhecimento/resolver/system-prompt-do-revisor-tem-copia-do-canon-com-texto-de-regra-errado.md`.
-     **Este é o novo pré-requisito da poda**, e o conserto é barato: estender a substituição que já
-     existe (`{{FAIXA_REGRAS}}`) do teto para os títulos das regras.
 
+     ➡️ **A poda pode começar.** O revisor agora enxerga as 25 regras e as enxerga com o texto
+     certo, então *"ninguém cobra esta regra"* voltou a ser uma conclusão medível. Fica valendo o
+     aviso abaixo: continua não sendo exercício de contagem.
    ⚠️ **Não é exercício de contagem.** Regra descartada some do prompt do revisor e do critério de
    review de todos os projetos da frota. Cada descarte precisa dizer *o que passa a não ser mais
    verificado por ninguém* — e o descarte só vale com o operador aprovando um a um.

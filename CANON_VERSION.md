@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.50.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.51.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,77 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.51.0 — 2026-09-13
+
+**O revisor parou de citar o canon de memória — ele lê o canon agora.** Três defeitos da mesma
+família, todos "um literal escrito à mão fazendo as vezes de fonte", fechados com derivação em
+tempo de execução e guarda de regressão.
+
+**1. A faixa de regras era literal em 36 lugares** (entregue em `0d8a0d0`, que saiu na 6.50.0 sem
+entrada própria de changelog — esta seção quita isso). `R1-R13` no `deepseek-review`, `R1-R19` no
+council/consult/review, `R1-R23` no analyze, com o canon já em R25: o revisor respondia que as
+regras acima do literal **não existem**, com a confiança de quem cita documentação. Não eram os 8
+sítios que o verbete mapeava — eram **36 ocorrências em 17 arquivos**; a contagem antiga varreu só
+`plugin/percus-review/scripts/` e relatou como se fosse o repo. Agora `scripts/_faixa-regras.{ps1,sh}`
+deriva o maior `^## R<N>.` do canon a cada execução.
+
+**2. Os system prompts do Cross-Claude carregavam uma CÓPIA do canon — com 7 regras erradas.**
+`system-prompt-{review,consult}.md` não apontavam para o canon: traziam as 19 primeiras regras
+escritas à mão, numa numeração **anterior à renumeração**. Medido: R1, R2, R4, R6, R8, R9 e R12
+com o **texto errado debaixo do número certo** (R1 dizia "Linguagem e tom"; o canon diz "Critério
+único de feito: ciclo CRUD com F5"). É pior que a faixa curta — aquela tornava a regra invisível,
+e invisível se descobre pela ausência; esta faz o revisor avaliar **com convicção** contra uma
+definição que não existe mais, e o finding chega bem fundamentado. Agora o bloco é
+`{{REGRAS_DO_CANON}}`, substituído no load por `cross-claude.{ps1,sh}` com os títulos lidos do
+canon. Efeito colateral bom: 1 690 chars contra ~2 850 da cópia.
+
+> **Por que sobreviveu desde maio:** o `canon-version-check` compara **data** (frontmatter) com
+> **semver** (`CANON_VERSION.md`), e o próprio comentário do hook declara que vai *sempre* divergir,
+> de propósito, para "lembrar o operador". **Aviso que dispara sempre é aviso desligado** — ele
+> avisou em todo commit por quatro meses e não produziu uma única revisão da cópia.
+
+**3. BUG DE PRODUÇÃO na 6.50.0: um emoji derrubava o dispatcher `PostToolUse` inteiro.**
+`percus-dispatch-post.cmd` tinha um `⚠️` num comentário — o **único** byte não-ASCII entre os 17
+`.cmd` do kit. O `cmd.exe` lê arquivo de lote por **offset de byte** e reposiciona a cada comando;
+`⚠️` são 6 bytes para 2 caracteres, e a diferença de **4** era exatamente o número de caracteres
+que sumiam do início das linhas (`setlocal` virava `ocal`). Resultado: **exit 255 em toda tool
+call**. Só aparecia na codepage OEM — no Git Bash (UTF-8) byte e caractere coincidem e dava verde,
+que é por que passou pelo teste manual. Suíte saiu de 636/614/**14 vermelhas** para 649/641/**0**.
+
+**Degradação honesta, nos três.** "Não consegui medir" nunca vira número ou lista inventada: sem
+canon legível o prompt diz *"faixa não medida"* / *"não foi possível ler as regras do canon"* e
+aponta a fonte. É a mesma regra da spec do gate da R11 — caminho de erro e resultado negativo não
+podem desembocar no mesmo lugar.
+
+**Achado do próprio R11 nesta entrega:** os quatro consumidores do helper faziam `dot-source`
+incondicional sob `ErrorActionPreference=Stop` / `set -e`. Um cache parcial (script novo sem helper
+novo) **mataria o revisor** e travaria todo commit da frota por causa de um ornamento de prompt.
+Os seis carregam guardado agora, com teste rodando cada um **sem** o helper.
+
+**O R11 desta entrega achou dois defeitos reais no próprio conserto, e os dois viraram teste:**
+
+1. **Degradação que mata em vez de degradar.** Sob `set -e` + `pipefail`, um canon que *existe*
+   mas não tem `## R<N>.` fazia o `grep` devolver 1, o pipeline devolver 1 e a **atribuição
+   derrubar o script** — antes de chegar na guarda que produz a frase degradada. Passou
+   despercebido porque todos os call sites de hoje chamam dentro de `$( )`, onde o bash não
+   aplica errexit do mesmo jeito: medido, chamada **direta** sai 1 e a mesma dentro de `$( )`
+   sai 0. Segurança por forma da chamada não é segurança. Corrigido nas duas funções `.sh`,
+   com teste que chama **diretamente** sob `set -euo pipefail`.
+2. **O travessão novo podia virar mojibake no PowerShell 5.1.** Os títulos do canon têm acento e
+   `—`, coisa que a versão só-faixa (ASCII) nunca emitiu. Um `.ps1` sem BOM é lido como
+   Windows-1252 pelo 5.1 — e 5.1 não é hipótese, é o runtime dos wrappers `.cmd`. O helper já
+   tinha BOM; o que faltava era **prova**. Agora há teste que roda o helper sob `powershell.exe`
+   de verdade e compara byte a byte com a saída do pwsh. Provado por mutação: tirar o BOM
+   reprova os dois testes.
+
+**Guardas novas (o que impede a reincidência):**
+- `faixa-regras-derivada.tests.ps1` — nenhum sítio vivo pode voltar a ter faixa literal.
+- `regras-do-canon-injetadas.tests.ps1` — nenhum system prompt pode voltar a ter lista de regras
+  escrita à mão; e prova **ponta a ponta**, por socket local, que o corpo HTTP enviado leva o
+  título do canon e nenhum placeholder cru.
+- `cmd-ascii-puro.tests.ps1` — nenhum `.cmd` pode ter byte fora de ASCII, e os dois dispatchers
+  são executados de verdade pelo caminho de produção (`cmd /c` com caminho absoluto).
 
 ## Changelog v6.50.0 — 2026-09-12
 

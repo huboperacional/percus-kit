@@ -52,65 +52,8 @@ Describe "faixa de regras derivada do canon" {
         $script:canonVazio = Join-Path ([IO.Path]::GetTempPath()) ("canon-vazio-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
         New-Item -ItemType Directory -Path $script:canonVazio -Force | Out-Null
 
-        function Invoke-CapturaCorpoHttp {
-            param([scriptblock]$Disparo, [int]$TimeoutSeg = 60)
-
-            $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
-            $listener.Start()
-            try {
-                $porta = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
-                $job = & $Disparo $porta
-
-                $limite = (Get-Date).AddSeconds($TimeoutSeg)
-                while (-not $listener.Pending() -and (Get-Date) -lt $limite) { Start-Sleep -Milliseconds 100 }
-                if (-not $listener.Pending()) {
-                    if ($job) { Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue }
-                    return $null
-                }
-
-                $cliente = $listener.AcceptTcpClient()
-                $stream = $cliente.GetStream()
-                $stream.ReadTimeout = 15000
-                $buf = New-Object byte[] 262144
-                $sb = New-Object System.Text.StringBuilder
-                $tamanho = -1
-                while ($true) {
-                    $lidos = $stream.Read($buf, 0, $buf.Length)
-                    if ($lidos -le 0) { break }
-                    [void]$sb.Append([System.Text.Encoding]::UTF8.GetString($buf, 0, $lidos))
-                    $txt = $sb.ToString()
-                    $fim = $txt.IndexOf("`r`n`r`n")
-                    if ($fim -ge 0) {
-                        if ($tamanho -lt 0) {
-                            $m = [regex]::Match($txt.Substring(0, $fim), '(?im)^Content-Length:\s*(\d+)')
-                            if ($m.Success) { $tamanho = [int]$m.Groups[1].Value } else { $tamanho = 0 }
-                        }
-                        $corpoLido = [System.Text.Encoding]::UTF8.GetByteCount($txt.Substring($fim + 4))
-                        if ($corpoLido -ge $tamanho) { break }
-                    }
-                }
-
-                # Resposta minima no formato Anthropic, so pra o wrapper encerrar limpo.
-                $corpoResp = '{"content":[{"type":"text","text":"Sem findings criticos"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}'
-                $bytesResp = [System.Text.Encoding]::UTF8.GetBytes(
-                    "HTTP/1.1 200 OK`r`nContent-Type: application/json`r`nContent-Length: $($corpoResp.Length)`r`nConnection: close`r`n`r`n$corpoResp")
-                $stream.Write($bytesResp, 0, $bytesResp.Length)
-                $stream.Flush()
-                $cliente.Close()
-
-                if ($job) {
-                    Wait-Job $job -Timeout 30 | Out-Null
-                    Remove-Job $job -Force -ErrorAction SilentlyContinue
-                }
-
-                $texto = $sb.ToString()
-                $corte = $texto.IndexOf("`r`n`r`n")
-                if ($corte -lt 0) { return $null }
-                return $texto.Substring($corte + 4)
-            } finally {
-                $listener.Stop()
-            }
-        }
+        # harness compartilhado -- ver tests/_captura-http.ps1
+        . (Join-Path $PSScriptRoot '_captura-http.ps1')
 
         if (Test-Path $script:helperPs1) { . $script:helperPs1 }
     }
@@ -355,6 +298,57 @@ Describe "faixa de regras derivada do canon" {
             } finally {
                 Remove-Item $arqPrompt -Force -ErrorAction SilentlyContinue
             }
+        }
+    }
+
+    Context "as funcoes .sh sobrevivem a set -euo pipefail em chamada DIRETA" {
+
+        # Achado do R11 em 2026-09-13, e ele estava certo -- eu quase dispensei.
+        #
+        # Com `set -e` + `pipefail`, um canon que EXISTE mas nao tem `## R<N>.` faz o `grep`
+        # devolver 1, o pipeline devolver 1, e a atribuicao MATAR o script antes de chegar na
+        # guarda `[[ -n "$saida" ]]` que produz a frase degradada. Ou seja: o caminho que
+        # existe para degradar com honestidade e o caminho que morre.
+        #
+        # Por que passou despercebido: TODOS os call sites de hoje chamam dentro de `$( )`,
+        # e o bash nao aplica errexit do jeito esperado dentro de substituicao de comando --
+        # medido: chamada direta sai 1, a mesma chamada dentro de `$( )` sai 0. A seguranca
+        # de hoje e ACIDENTE da forma da chamada, nao propriedade da funcao. O primeiro call
+        # site direto que alguem escrever quebra.
+        BeforeAll {
+            $script:canonSemRegra = Join-Path ([IO.Path]::GetTempPath()) ("canon-sem-regra-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+            New-Item -ItemType Directory -Path $script:canonSemRegra -Force | Out-Null
+            [IO.File]::WriteAllText(
+                (Join-Path $script:canonSemRegra "01_REGRAS_INEGOCIAVEIS.md"),
+                "# Canon presente, porem sem nenhum cabecalho de regra`n`ntexto qualquer`n",
+                (New-Object System.Text.UTF8Encoding($false)))
+        }
+
+        AfterAll {
+            if ($script:canonSemRegra -and (Test-Path $script:canonSemRegra)) {
+                try { [IO.Directory]::Delete($script:canonSemRegra, $true) } catch { }
+            }
+        }
+
+        It "percus_canon_max_rule nao mata o script chamada DIRETAMENTE" {
+            if (-not $script:bash) { Set-ItResult -Skipped -Because "bash nao existe nesta maquina"; return }
+            $h = ($script:helperSh -replace '\\', '/')
+            $c = ($script:canonSemRegra -replace '\\', '/')
+            $saida = & $script:bash -c "set -euo pipefail; . '$h'; percus_canon_max_rule '$c'; echo ' VIVO'" 2>&1 | Out-String
+            # Comparacao EXATA, nao `-Match '0'`: aquilo casaria com qualquer string que
+            # contivesse um zero -- inclusive a frase degradada ou uma mensagem de erro --
+            # e passaria se a funcao devolvesse outra coisa. Apontado pelo R11 nesta entrega.
+            ($saida -replace '\s+', ' ').Trim() | Should -BeExactly '0 VIVO' `
+                -Because "tem que sair EXATAMENTE 0 (ausencia de medida) e o script tem que sobreviver"
+        }
+
+        It "percus_regras_do_canon nao mata o script chamada DIRETAMENTE" {
+            if (-not $script:bash) { Set-ItResult -Skipped -Because "bash nao existe nesta maquina"; return }
+            $h = ($script:helperSh -replace '\\', '/')
+            $c = ($script:canonSemRegra -replace '\\', '/')
+            $saida = & $script:bash -c "set -euo pipefail; . '$h'; percus_regras_do_canon '$c'; echo ' VIVO'" 2>&1 | Out-String
+            $saida | Should -Match 'VIVO' -Because "a funcao tem que DEGRADAR, nao derrubar quem a chamou"
+            $saida | Should -Match '01_REGRAS_INEGOCIAVEIS' -Because "degradar e dizer o que faltou e apontar a fonte"
         }
     }
 

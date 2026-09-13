@@ -1,6 +1,6 @@
 ## O system prompt do revisor tem uma CÓPIA do canon, e 7 das 19 regras têm o texto errado {#system-prompt-do-revisor-tem-copia-do-canon-com-texto-de-regra-errado}
 
-`tags: review, R11, R25, cross-claude, system-prompt, canon, copia do canon, renumeracao, canon-version-check, warn permanente, single-source-of-truth, drift de canon, poda do canon, PENDENTE`
+`tags: review, R11, R25, cross-claude, system-prompt, canon, copia do canon, renumeracao, canon-version-check, warn permanente, single-source-of-truth, drift de canon, poda do canon, CONSERTADO 2026-09-13`
 
 **Sintoma:** a perna Cross-Claude do conselho aponta violação de uma regra que **não é** aquela
 regra, ou deixa passar violação óbvia de uma regra que ela acha que é outra coisa. O finding vem
@@ -56,15 +56,32 @@ invertido: guarda viva gritando sempre.
 2. **Não conserte reescrevendo a cópia à mão.** Seria a terceira geração do mesmo defeito: uma
    cópia manual do canon que envelhece calada. O conserto é injetar os títulos das regras **lidos do
    canon em tempo de execução**, como já se faz com a faixa (`_faixa-regras.{ps1,sh}` +
-   `{{FAIXA_REGRAS}}` substituído no load do `.md` por `cross-claude.{ps1,sh}`) — o mecanismo já
-   está no lugar, falta estender do teto para os títulos.
+   `{{FAIXA_REGRAS}}` substituído no load do `.md` por `cross-claude.{ps1,sh}`). Foi isso que se
+   fez: o mecanismo existia para o teto e foi estendido para os títulos (`{{REGRAS_DO_CANON}}`).
 3. **Ao desenhar warn permanente, pergunte se ele pode ficar verde.** Se a resposta é não por
    construção, ele não é aviso: é decoração ruidosa, e cai na R12 pelo mesmo critério das regras sem
    gate. Prefira comparar coisas comparáveis (mesma unidade) ou não avisar.
-4. **Isto bloqueia a poda do canon** (item 9 do plano de enforcement): decidir que uma regra "morreu
-   porque ninguém a cobra" é inválido enquanto o revisor estiver cobrando a regra ERRADA sob aquele
-   número.
+4. **Isto bloqueava a poda do canon** (item 9 do plano de enforcement): decidir que uma regra
+   "morreu porque ninguém a cobra" era inválido enquanto o revisor cobrasse a regra ERRADA sob
+   aquele número. Com o conserto, a poda destravou — ver o estado no fim.
 
-**Estado:** ⏳ PENDENTE em 2026-09-12. Encontrado ao consertar a faixa de regras; a faixa saiu, a
-cópia inline ficou. Custo do conserto: estender a substituição já existente. Não foi feito na mesma
-mudança porque troca o conteúdo do prompt do revisor — decisão do operador, não efeito colateral.
+**Estado:** ✅ **CONSERTADO em 2026-09-13 (6.51.0).** O bloco inline virou o placeholder
+`{{REGRAS_DO_CANON}}`, substituído no load por `cross-claude.{ps1,sh}` com os títulos lidos do
+canon — mesmo mecanismo já usado para a faixa. Ficou **menor** que a cópia (1 690 chars contra
+~2 850) além de sempre correto.
+
+Duas coisas que o conserto ensinou, e que valem mais que o conserto:
+
+1. **A guarda burra quase apagou conteúdo bom.** A primeira varredura casou `^\*\*R<N> —` no
+   arquivo inteiro e comeu 85 linhas — levando junto a seção *"Antipadrões invioláveis"*, que usa
+   o mesmo formato mas são exemplos concretos de violação com código, conferidos e **corretos**.
+   O limite certo é o bloco entre o cabeçalho `## Regras inegociáveis` e o próximo `##`.
+   Guarda que mira formato em vez de posição destrói vizinho inocente.
+2. **O teste ponta a ponta quase deu falso negativo por causa de JSON.** O corpo trafega como
+   JSON, então as aspas do título da R1 (*Critério único de "feito"*) chegam escapadas (`\"`) e
+   a comparação literal falhava — o que **pareceria** "o título não chegou", exatamente o oposto
+   do que estava acontecendo. Desescape antes de comparar, ou você conserta o que já funciona.
+
+Guarda: `plugin/percus-review/tests/regras-do-canon-injetadas.tests.ps1` — reprova lista de
+regras escrita à mão sob aquele cabeçalho, e prova por socket local que o corpo enviado ao modelo
+leva o título do canon de agora e nenhum placeholder cru.

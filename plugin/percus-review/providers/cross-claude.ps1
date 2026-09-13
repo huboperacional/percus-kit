@@ -125,6 +125,15 @@ if (-not $PSBoundParameters.ContainsKey('SystemPrompt') -or -not $SystemPrompt) 
             "faixa nao medida -- consulte 01_REGRAS_INEGOCIAVEIS.md"
         }
         $SystemPrompt = $SystemPrompt.Replace('{{FAIXA_REGRAS}}', $faixa)
+        # As REGRAS em si tambem vem do canon agora, nao de copia inline no .md. Ate
+        # 2026-09-13 este arquivo carregava 19 regras escritas a mao, 7 delas com o texto
+        # errado debaixo do numero certo (numeracao pre-renumeracao do canon).
+        $regras = if (Get-Command Get-PercusRegrasDoCanon -ErrorAction SilentlyContinue) {
+            Get-PercusRegrasDoCanon
+        } else {
+            "(nao foi possivel ler as regras do canon -- consulte 01_REGRAS_INEGOCIAVEIS.md)"
+        }
+        $SystemPrompt = $SystemPrompt.Replace('{{REGRAS_DO_CANON}}', $regras)
     } else {
         $SystemPrompt = "Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
     }

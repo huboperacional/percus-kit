@@ -88,6 +88,14 @@ if [[ "$SYSTEM_PROMPT_EXPLICIT" -eq 0 || -z "$SYSTEM_PROMPT" ]]; then
             FAIXA_REGRAS="faixa nao medida -- consulte 01_REGRAS_INEGOCIAVEIS.md"
         fi
         SYSTEM_PROMPT="${SYSTEM_PROMPT//\{\{FAIXA_REGRAS\}\}/$FAIXA_REGRAS}"
+        # As REGRAS em si tambem vem do canon agora, nao de copia inline no .md -- ate
+        # 2026-09-13 eram 19 escritas a mao, 7 com o texto errado sob o numero certo.
+        if declare -F percus_regras_do_canon >/dev/null 2>&1; then
+            REGRAS_DO_CANON="$(percus_regras_do_canon)"
+        else
+            REGRAS_DO_CANON='(nao foi possivel ler as regras do canon -- consulte 01_REGRAS_INEGOCIAVEIS.md)'
+        fi
+        SYSTEM_PROMPT="${SYSTEM_PROMPT//\{\{REGRAS_DO_CANON\}\}/$REGRAS_DO_CANON}"
     else
         SYSTEM_PROMPT="Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
     fi
