@@ -37,7 +37,37 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
    (`specs/2026-09-12-consolidacao-cadeia-de-hooks-design.md`). **Virou pré-requisito da 3** por
    medição. **Item 2 (dispatcher `PreToolUse`) ENTREGUE e PUBLICADO em 6.49.0.**
    ← falta o item 3 (dispatcher `PostToolUse`) e a paridade `.sh`.
-5. **Pacote B** — ajustar o spec pelos findings do conselho e implementar `plano-sync`.
+5. **Faixa de regras do revisor** — `R1-R13`/`R1-R19`/`R1-R23` escritos à mão em **8 sítios** de
+   `plugin/percus-review/scripts/`, enquanto o canon vai a **R25**. O revisor ignora até 12 regras e
+   diz que elas "não existem" com confiança de quem cita documentação. Verbete:
+   `conhecimento/resolver/revisor-cita-faixa-de-regras-fixa-no-prompt-e-reprova-regra-valida.md`.
+   **← PRÓXIMO.** Conserto: derivar do maior `^## R<N>.` em tempo de execução, não trocar o literal.
+6. **Gate da R11** — spec escrita (`specs/2026-09-12-r11-gate-negativa-bem-sucedida-design.md`),
+   veredito **`BLOQUEADA`** do conselho (2/3). O *diagnóstico* foi confirmado; o *desenho da solução*
+   precisa ser refeito a partir da seção "Opções". Findings listados no topo da spec.
+7. **Pacote B** — ajustar o spec pelos findings do conselho e implementar `plano-sync`.
+8. **Skill `checkpoint`** — o operador pediu (12/09) o gatilho *"quando eu falar checkpoint: termine
+   a tarefa atual, atualize todos os arquivos, e façamos o clear"*. A skill existe; falta o gatilho.
+   **O agente não executa `/clear`** — não há ferramenta, e slash command não funciona no VSCode
+   dele. A skill vai até o bloco de retomada; o clear é do operador.
+9. **Poda do canon — o que ficou obsoleto e pode ser descartado.** Pedido do operador em 12/09,
+   **depois** dos itens 5 e 8. Varrer as 25 regras e perguntar de cada uma *"isto ainda descreve
+   como trabalhamos?"*, propondo descarte do que morreu. Três coisas medidas hoje que tornam isto
+   oportuno e dizem por onde começar:
+   - **R5 e R6 não têm o enforcement que a auditoria dizia ter** — os hooks que se autodeclaram
+     `(R5)`/`(R6)` cobram tipos e migration, disciplinas que eram R5/R6 num **canon anterior à
+     renumeração**. Se o canon já foi renumerado uma vez, há resíduo dessa renumeração em mais
+     lugares. Fonte: `conhecimento/resolver/auditoria-de-enforcement-por-numero-citado-conta-gate-que-nao-existe.md`.
+   - **R12 é o critério de poda pronto**: *"regra que você não consegue verificar objetivamente que
+     cumpriu é decoração"*. A poda é a aplicação da R12 ao próprio canon — e hoje 9 das 25 não têm
+     seção de gate escrita.
+   - **O revisor só conhece até R13/R19/R23** (item 5). Regra que o revisor nunca avalia e nenhum
+     hook verifica é candidata natural: ninguém a cobra, ninguém a mede, e ela ocupa orçamento de
+     atenção. **Fazer o item 5 ANTES**, senão a poda decide com base num revisor cego.
+
+   ⚠️ **Não é exercício de contagem.** Regra descartada some do prompt do revisor e do critério de
+   review de todos os projetos da frota. Cada descarte precisa dizer *o que passa a não ser mais
+   verificado por ninguém* — e o descarte só vale com o operador aprovando um a um.
 
 ## ESTADO DA EXECUÇÃO
 
