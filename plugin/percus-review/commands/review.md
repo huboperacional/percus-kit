@@ -45,7 +45,7 @@ Dispare subagent Sonnet via Agent tool (`subagent_type: "general-purpose"`) com 
 > Sugestão: ...
 > ```
 >
-> Foque em bugs, regressões, violações R1-R13. Se nada relevante, responda "Sem findings críticos."
+> Foque em bugs, regressões, violações do canon Percus (todas as regras de `01_REGRAS_INEGOCIAVEIS.md`). Se nada relevante, responda "Sem findings críticos."
 
 Apresente output do subagent sob cabeçalho `## Findings Cross-Claude`.
 

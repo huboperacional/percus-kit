@@ -77,6 +77,13 @@ param(
     ,[int]$MaxTokensPerFile  = 2000
 )
 $ErrorActionPreference = "Stop"
+
+# Faixa de regras MEDIDA no canon (nunca escrita a mao) -- ver scripts/_faixa-regras.ps1 e
+# conhecimento/resolver/revisor-cita-faixa-de-regras-fixa-no-prompt-e-reprova-regra-valida.md
+# Carga GUARDADA: a faixa e ornamento do prompt, o conselho e o gate. Helper ausente degrada,
+# nunca mata o orquestrador (finding do proprio R11 nesta mudanca).
+$faixaHelper = Join-Path $PSScriptRoot "_faixa-regras.ps1"
+if (Test-Path $faixaHelper) { . $faixaHelper }
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -308,12 +315,17 @@ if (-not $userPrompt -or $userPrompt.Trim().Length -eq 0) {
 }
 
 # Default system prompts per mode
+$faixaRegras = if (Get-Command Get-PercusFaixaRegras -ErrorAction SilentlyContinue) {
+    Get-PercusFaixaRegras
+} else {
+    "faixa nao medida -- consulte 01_REGRAS_INEGOCIAVEIS.md"
+}
 if (-not $SystemPrompt) {
     $SystemPrompt = switch ($Mode) {
         "consult"    { "Voce e consultor cross-provider Percus. Responda em <=150 palavras: 1) sua escolha/posicao, 2) razao principal, 3) maior risco da alternativa. Sem floreio." }
         "pre-mortem" { "Voce e consultor de pre-mortem Percus. Leia o plano e responda: SE este plano falhar em 30 dias, por que? Liste exatamente 3 motivos concretos em ordem de probabilidade decrescente, com 1 frase cada." }
-        "review"     { "Voce e revisor cross-provider Percus (R11). Aponte bugs, regressoes, violacoes R1-R19, mocks escondidos, JWT em localStorage, imports vetados. Se nada relevante: 'Sem findings criticos'." }
-        "analyze"    { "Voce e um dos 3 membros do conselho Percus fazendo ANALYZE de uma spec de feature (estilo /analyze do spec-kit): detecte defeitos da spec, nao opine sobre merito. Passes: (1) todo FR testavel e todo SC mensuravel? (2) termo vago/ambiguo? (3) terminologia consistente? (4) edge case sem FR? (5) viola constituicao R1-R23 ou 02_INFRA (CRITICAL)? (6) assumption/dependencia nao declarada? (7) vazamento WHAT->HOW (stack/tabela/endpoint na spec = MEDIUM). Output: 1 linha por finding no formato 'SEVERIDADE ref - defeito concreto - correcao em 1 frase'; severidade CRITICAL|HIGH|MEDIUM|LOW. Termine com 'VEREDITO: PRONTA' (zero critical/high), 'VEREDITO: AJUSTAR (N high)' ou 'VEREDITO: BLOQUEADA (N critical)'. Sem floreio." }
+        "review"     { "Voce e revisor cross-provider Percus (R11). Aponte bugs, regressoes, violacoes do canon Percus ($faixaRegras), mocks escondidos, JWT em localStorage, imports vetados. Se nada relevante: 'Sem findings criticos'." }
+        "analyze"    { "Voce e um dos 3 membros do conselho Percus fazendo ANALYZE de uma spec de feature (estilo /analyze do spec-kit): detecte defeitos da spec, nao opine sobre merito. Passes: (1) todo FR testavel e todo SC mensuravel? (2) termo vago/ambiguo? (3) terminologia consistente? (4) edge case sem FR? (5) viola constituicao Percus ($faixaRegras) ou 02_INFRA (CRITICAL)? (6) assumption/dependencia nao declarada? (7) vazamento WHAT->HOW (stack/tabela/endpoint na spec = MEDIUM). Output: 1 linha por finding no formato 'SEVERIDADE ref - defeito concreto - correcao em 1 frase'; severidade CRITICAL|HIGH|MEDIUM|LOW. Termine com 'VEREDITO: PRONTA' (zero critical/high), 'VEREDITO: AJUSTAR (N high)' ou 'VEREDITO: BLOQUEADA (N critical)'. Sem floreio." }
     }
 }
 
@@ -466,7 +478,7 @@ foreach ($p in $asyncProviders) {
         }
         if ($Wrapper -match 'cross-claude') {
             # F.1 fix v6.6.1: pra cross-claude, passar -Mode pra carregar system-prompt-{mode}.md
-            # (enriquecido com R1-R19, ativa cache Anthropic). NAO passar -SystemPrompt
+            # (enriquecido com as regras do canon, ativa cache Anthropic). NAO passar -SystemPrompt
             # senao wrapper detecta override via PSBoundParameters e pula o file load.
             if ($ModelArg) {
                 & $Wrapper -PromptFile $PromptF -Mode $ModeArg -Model $ModelArg

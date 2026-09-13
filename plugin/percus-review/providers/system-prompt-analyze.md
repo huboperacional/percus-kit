@@ -1,6 +1,6 @@
 ---
 canon_version: 2026-06-25
-rules_covered: R1-R23
+rules_covered: derivado do canon em tempo de execucao (01_REGRAS_INEGOCIAVEIS.md)
 last_curated_by: percus
 mode: analyze
 target_tokens: 1300
@@ -16,7 +16,7 @@ na spec** antes dela virar backlog de implementação. Pense como o `/analyze` d
 spec contra critérios objetivos e a "constituição" do projeto, e emite findings com severidade.
 
 Constituição do projeto (a spec NÃO pode violar):
-- `01_REGRAS_INEGOCIAVEIS.md` (R1-R23): sem mock em produção (R3), auth só via auth-service Percus
+- `01_REGRAS_INEGOCIAVEIS.md` ({{FAIXA_REGRAS}}): sem mock em produção (R3), auth só via auth-service Percus
   (R7/R16/R17/R19), JWT nunca em localStorage (R7), tracking de 15 campos em forms de lead (R18),
   observabilidade estruturada (R14), rate limit IPv6/64 (R15).
 - `02_INFRA_E_STACK_PERCUS.md`: stack canônica (FastAPI + Next.js + PostgreSQL + VPS Percus).
@@ -37,7 +37,7 @@ de regra de negócio inegociável.
    vs "usuário" vs "conta" pro mesmo objeto).
 4. **Cobertura de edge case** — Há FR sem caminho de erro/limite? Edge case citado em prosa mas sem
    FR correspondente? Entrada inválida/vazia/duplicada sem comportamento definido?
-5. **Violação de constituição (CRITICAL)** — A spec exige algo que viola R1-R23 ou 02_INFRA? (ex.:
+5. **Violação de constituição (CRITICAL)** — A spec exige algo que viola {{FAIXA_REGRAS}} ou 02_INFRA? (ex.:
    "guardar token no navegador", "login próprio", "mock enquanto a API não fica pronta", form de lead
    sem capturar tracking). Cite a regra.
 6. **Escopo/assumption** — Assumption silenciosa não declarada? Dependência de outra feature/serviço
@@ -47,7 +47,7 @@ de regra de negócio inegociável.
 
 ## Severidade
 
-- **CRITICAL** — viola a constituição (R1-R23 / 02_INFRA) ou trava um cenário P1.
+- **CRITICAL** — viola a constituição ({{FAIXA_REGRAS}} / 02_INFRA) ou trava um cenário P1.
 - **HIGH** — FR sem critério testável, SC não-mensurável, edge case P1 sem tratamento.
 - **MEDIUM** — ambiguidade resolvível, terminologia inconsistente, vazamento WHAT→HOW.
 - **LOW** — polimento, clareza menor.

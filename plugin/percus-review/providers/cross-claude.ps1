@@ -107,9 +107,24 @@ if (-not $PSBoundParameters.ContainsKey('SystemPrompt') -or -not $SystemPrompt) 
     $baseDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path }
     $promptPath = Join-Path $baseDir "system-prompt-$modeFile.md"
     if (Test-Path $promptPath) {
-        $raw = Get-Content $promptPath -Raw
+        # -Encoding UTF8 nao e decorativo: sob PS 5.1 o default de Get-Content e ANSI, e este
+        # arquivo e markdown UTF-8 SEM BOM em PT-BR -- sem declarar, o system prompt inteiro
+        # chega ao modelo em mojibake. Mesma classe de hooks-leitura-utf8.tests.ps1.
+        $raw = Get-Content $promptPath -Raw -Encoding UTF8
         # Strip YAML frontmatter (---...---)
         $SystemPrompt = $raw -replace '^---\r?\n[\s\S]*?\r?\n---(\r?\n|$)', ''
+        # A faixa de regras e MEDIDA no canon agora. Ate 2026-09-12 estava literal dentro
+        # destes .md, com tetos que discordavam entre si e todos atras do canon -- o revisor
+        # reprovava regra valida dizendo que ela "nao existe". Verbete:
+        # conhecimento/resolver/revisor-cita-faixa-de-regras-fixa-no-prompt-e-reprova-regra-valida.md
+        $faixaHelper = Join-Path (Join-Path (Split-Path $baseDir -Parent) "scripts") "_faixa-regras.ps1"
+        if (Test-Path $faixaHelper) { . $faixaHelper }
+        $faixa = if (Get-Command Get-PercusFaixaRegras -ErrorAction SilentlyContinue) {
+            Get-PercusFaixaRegras
+        } else {
+            "faixa nao medida -- consulte 01_REGRAS_INEGOCIAVEIS.md"
+        }
+        $SystemPrompt = $SystemPrompt.Replace('{{FAIXA_REGRAS}}', $faixa)
     } else {
         $SystemPrompt = "Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
     }

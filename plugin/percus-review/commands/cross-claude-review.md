@@ -30,7 +30,7 @@ Invoque a Agent tool com:
 > Sugestão: ação concreta
 > ```
 >
-> Foque em: bugs, regressões, violações R1-R13, mock escondido (R3), JWT em localStorage (R7), pasta sensível tocada indevidamente, imports fora do stack canônico.
+> Foque em: bugs, regressões, violações do canon Percus (todas as regras de `01_REGRAS_INEGOCIAVEIS.md`), mock escondido (R3), JWT em localStorage (R7), pasta sensível tocada indevidamente, imports fora do stack canônico.
 >
 > NÃO aponte estilo subjetivo sem regra concreta. NÃO sugira refactor fora do diff. Se nada relevante, responda "Sem findings críticos."
 

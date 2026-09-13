@@ -131,4 +131,4 @@ Permite rastreabilidade (auditavel em git log) + ativa router R11 pra Cross-Clau
 - Wrapper: `${env:PERCUS_CANON_DIR}/scripts/deepseek-impl.{ps1,sh}`.
 - Spec R13: `percus-kit/01_REGRAS_INEGOCIAVEIS.md`.
 - Decisao Opcao C+E: `Painel Gestao e Afiliados/.deepseek/council-log/20260516-175220-consult.jsonl`.
-- Skill irma: `feature-flow` (orquestra R1-R13, decide quando delegar como step 3).
+- Skill irma: `feature-flow` (orquestra o ciclo canônico de feature, decide quando delegar como step 3).

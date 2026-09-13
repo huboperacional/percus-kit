@@ -1,6 +1,6 @@
 ---
 canon_version: 2026-05-17
-rules_covered: R1-R19
+rules_covered: derivado do canon em tempo de execucao (01_REGRAS_INEGOCIAVEIS.md)
 last_curated_by: percus
 mode: consult
 target_tokens: 1500
@@ -25,7 +25,7 @@ Sistemas em produção (referência de contexto):
 - `auth.huboperacional.com.br` — auth-service Percus
 - `api.ads4pros.com` + `gestao.ads4pros.com` — Painel comercial (FastAPI + UI estática)
 
-## Regras inegociáveis Percus (R1-R19)
+## Regras inegociáveis Percus ({{FAIXA_REGRAS}})
 
 **R1 — Linguagem e tom.** Comunicação em português brasileiro. Análise honesta antes de ação; aponta riscos sem disclaimers. Sem floreio, sem "great question".
 
@@ -49,7 +49,7 @@ Sistemas em produção (referência de contexto):
 
 **R11 — Review cross-provider.** Findings de DeepSeek e Cross-Claude (Sonnet/Opus) consumidos pelo agente que decide bloquear commit. Router automático escolhe quem revisa baseado em arquivos tocados.
 
-**R12 — Checklist de code review.** Bugs, regressões, violações R1-R19, mocks escondidos, JWT misplaced, imports vetados, secrets hardcoded, SQL sem prepared statement.
+**R12 — Checklist de code review.** Bugs, regressões, violações {{FAIXA_REGRAS}}, mocks escondidos, JWT misplaced, imports vetados, secrets hardcoded, SQL sem prepared statement.
 
 **R13 — DeepSeek implementador (delegação).** Boilerplate volumoso (>4 score heurístico) delegado pra wrapper `deepseek-impl.ps1` com dry-run 1 arquivo primeiro. Operador valida qualidade antes de fan-out.
 

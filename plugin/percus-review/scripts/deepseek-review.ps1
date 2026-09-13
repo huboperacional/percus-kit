@@ -38,6 +38,12 @@ $ErrorActionPreference = "Stop"
 # e o ps51-compat afere PARSE, nao runtime -- isto passaria verde nos dois.
 $percusProvidersDir = Join-Path (Split-Path $PSScriptRoot -Parent) "providers"
 . (Join-Path $percusProvidersDir "_resposta.ps1")
+# Carga GUARDADA, nao incondicional. A faixa e ornamento do prompt; o review e o gate. Com
+# dot-source cru sob ErrorActionPreference=Stop, um cache parcial (script novo sem o helper
+# novo) mataria o revisor e travaria TODO commit da frota por causa do ornamento. Pego pelo
+# proprio R11 nesta mudanca. Guardado nos QUATRO consumidores, do mesmo jeito.
+$faixaHelper = Join-Path $PSScriptRoot "_faixa-regras.ps1"
+if (Test-Path $faixaHelper) { . $faixaHelper }
 
 # Force UTF-8 console (Windows PS 5.1 default is Win-1252, mangles PT-BR)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -136,6 +142,16 @@ $agents = if (Test-Path $agentsPath) {
 }
 
 # === BUILD PROMPT ===
+# A faixa e MEDIDA no canon agora, nao escrita a mao. Ate 2026-09-12 estava literal aqui com
+# um teto de duas dezenas atras do canon, e o revisor reprovava regra valida dizendo que ela
+# "nao existe". Ver scripts/_faixa-regras.ps1 e o verbete
+# conhecimento/resolver/revisor-cita-faixa-de-regras-fixa-no-prompt-e-reprova-regra-valida.md
+$faixaRegras = if (Get-Command Get-PercusFaixaRegras -ErrorAction SilentlyContinue) {
+    Get-PercusFaixaRegras
+} else {
+    "faixa nao medida -- consulte 01_REGRAS_INEGOCIAVEIS.md"
+}
+
 $systemPrompt = @"
 Você é revisor cross-provider de código no padrão Percus.
 Leia o git diff e o AGENTS.md (regras do projeto).
@@ -147,7 +163,7 @@ Regra violada: R{N} (se aplicável)
 Problema: descrição em 1-2 frases
 Sugestão: ação concreta
 
-Foque em: bugs, regressões, violações R1-R13, mock escondido (R3), JWT em localStorage (R7), pasta sensível tocada indevidamente, imports fora do stack canônico.
+Foque em: bugs, regressões, violações do canon Percus ($faixaRegras), mock escondido (R3), JWT em localStorage (R7), pasta sensível tocada indevidamente, imports fora do stack canônico.
 NÃO aponte estilo subjetivo sem regra concreta. NÃO sugira refactor fora do diff. Se nada relevante, responda "Sem findings críticos."
 "@
 

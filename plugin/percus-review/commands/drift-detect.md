@@ -65,7 +65,7 @@ CATALOG-INFO.YAML: <presente | ausente>
 ULTIMO REVIEW: <timestamp do .deepseek/reviews/ mais recente | nunca>
 
 CANON PERCUS (resumo):
-- R1-R19 em ${env:PERCUS_CANON_DIR}\01_REGRAS_INEGOCIAVEIS.md
+- todas as regras (R1 ao teto vigente) em ${env:PERCUS_CANON_DIR}\01_REGRAS_INEGOCIAVEIS.md
 - Stack canonico em 02_INFRA_E_STACK_PERCUS.md
 - Tracking em 03_TRACKING_ATTRIBUITION.md
 - Feature tracking em 05_FEATURE_TRACKING.md

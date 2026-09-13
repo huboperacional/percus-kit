@@ -9,6 +9,16 @@
 
 set -euo pipefail
 
+# Faixa de regras MEDIDA no canon (nunca escrita a mao) -- ver _faixa-regras.sh.
+# Carga GUARDADA, nao incondicional: sob `set -e` um source de arquivo ausente mata o script
+# inteiro, e um cache parcial travaria TODO commit da frota por causa de um ornamento de
+# prompt. Pego pelo proprio R11 nesta mudanca.
+_PERCUS_SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_PERCUS_SCRIPTS_DIR/_faixa-regras.sh" ]]; then
+    # shellcheck source=/dev/null
+    . "$_PERCUS_SCRIPTS_DIR/_faixa-regras.sh"
+fi
+
 BASE=""
 MODEL="${DEEPSEEK_MODEL:-deepseek-v4-flash}"
 # reasoning_effort (2026-08-19): este script roda a CADA commit e e o maior gastador do kit
@@ -121,6 +131,16 @@ else
 fi
 
 # === BUILD PROMPT ===
+# A faixa e MEDIDA no canon agora, nao escrita a mao. Ate 2026-09-12 estava literal aqui com
+# um teto de duas dezenas atras do canon, e o revisor reprovava regra valida dizendo que ela
+# "nao existe". Verbete:
+# conhecimento/resolver/revisor-cita-faixa-de-regras-fixa-no-prompt-e-reprova-regra-valida.md
+if declare -F percus_faixa_regras >/dev/null 2>&1; then
+    FAIXA_REGRAS="$(percus_faixa_regras)"
+else
+    FAIXA_REGRAS="faixa nao medida -- consulte 01_REGRAS_INEGOCIAVEIS.md"
+fi
+
 SYSTEM_PROMPT='Você é revisor cross-provider de código no padrão Percus.
 Leia o git diff e o AGENTS.md (regras do projeto).
 Para cada problema, emita finding no formato:
@@ -131,7 +151,7 @@ Regra violada: R{N} (se aplicável)
 Problema: descrição em 1-2 frases
 Sugestão: ação concreta
 
-Foque em: bugs, regressões, violações R1-R13, mock escondido (R3), JWT em localStorage (R7), pasta sensível tocada indevidamente, imports fora do stack canônico.
+Foque em: bugs, regressões, violações do canon Percus ('"$FAIXA_REGRAS"'), mock escondido (R3), JWT em localStorage (R7), pasta sensível tocada indevidamente, imports fora do stack canônico.
 NÃO aponte estilo subjetivo sem regra concreta. NÃO sugira refactor fora do diff. Se nada relevante, responda "Sem findings críticos."'
 
 USER_MSG="AGENTS.md do projeto:

@@ -7,7 +7,7 @@ allowed-tools: Read, Bash, Agent
 # /spec-analyze — Conselho valida a spec antes da implementação
 
 Roda o conselho em **modo analyze** (detecção estruturada: cobertura FR/SC, ambiguidade, edge case,
-violação de constituição R1-R23, vazamento WHAT→HOW) sobre a `spec.md` de uma feature. Preenche o gap
+violação da constituição Percus (`01_REGRAS_INEGOCIAVEIS.md` inteiro), vazamento WHAT→HOW) sobre a `spec.md` de uma feature. Preenche o gap
 do meio: a feature só vira `[0]` no `PLANO.md` depois de passar aqui sem CRITICAL pendente.
 
 > **Quando rodar:** após escrever a `spec.md` (template `templates/spec.template.md`) e passar o

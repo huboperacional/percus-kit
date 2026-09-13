@@ -7,6 +7,21 @@
 
 set -eo pipefail
 
+# Faixa de regras MEDIDA no canon (nunca escrita a mao) -- ver _faixa-regras.sh e
+# conhecimento/resolver/revisor-cita-faixa-de-regras-fixa-no-prompt-e-reprova-regra-valida.md
+# Carga GUARDADA: helper ausente degrada a faixa, nunca mata o orquestrador (finding do
+# proprio R11 nesta mudanca).
+_PERCUS_SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_PERCUS_SCRIPTS_DIR/_faixa-regras.sh" ]]; then
+    # shellcheck source=/dev/null
+    . "$_PERCUS_SCRIPTS_DIR/_faixa-regras.sh"
+fi
+if declare -F percus_faixa_regras >/dev/null 2>&1; then
+    FAIXA_REGRAS="$(percus_faixa_regras)"
+else
+    FAIXA_REGRAS="faixa nao medida -- consulte 01_REGRAS_INEGOCIAVEIS.md"
+fi
+
 PROMPT_FILE=""
 SYSTEM_PROMPT=""
 PROVIDERS="deepseek,groq-llama"
@@ -213,8 +228,8 @@ if [[ -z "$SYSTEM_PROMPT" ]]; then
     case "$MODE" in
         consult)    SYSTEM_PROMPT="Voce e consultor cross-provider Percus. Responda em <=150 palavras: 1) sua escolha/posicao, 2) razao principal, 3) maior risco da alternativa. Sem floreio.";;
         pre-mortem) SYSTEM_PROMPT="Voce e consultor de pre-mortem Percus. Leia o plano e responda: SE este plano falhar em 30 dias, por que? Liste exatamente 3 motivos concretos em ordem de probabilidade decrescente, com 1 frase cada.";;
-        review)     SYSTEM_PROMPT="Voce e revisor cross-provider Percus (R11). Aponte bugs, regressoes, violacoes R1-R19, mocks escondidos, JWT em localStorage, imports vetados. Se nada relevante: 'Sem findings criticos'.";;
-        analyze)    SYSTEM_PROMPT="Voce e um dos 3 membros do conselho Percus fazendo ANALYZE de uma spec de feature (estilo /analyze do spec-kit): detecte defeitos da spec, nao opine sobre merito. Passes: (1) todo FR testavel e todo SC mensuravel? (2) termo vago/ambiguo? (3) terminologia consistente? (4) edge case sem FR? (5) viola constituicao R1-R23 ou 02_INFRA (CRITICAL)? (6) assumption/dependencia nao declarada? (7) vazamento WHAT->HOW (stack/tabela/endpoint na spec = MEDIUM). Output: 1 linha por finding no formato 'SEVERIDADE ref - defeito concreto - correcao em 1 frase'; severidade CRITICAL|HIGH|MEDIUM|LOW. Termine com 'VEREDITO: PRONTA' (zero critical/high), 'VEREDITO: AJUSTAR (N high)' ou 'VEREDITO: BLOQUEADA (N critical)'. Sem floreio.";;
+        review)     SYSTEM_PROMPT="Voce e revisor cross-provider Percus (R11). Aponte bugs, regressoes, violacoes do canon Percus (${FAIXA_REGRAS}), mocks escondidos, JWT em localStorage, imports vetados. Se nada relevante: 'Sem findings criticos'.";;
+        analyze)    SYSTEM_PROMPT="Voce e um dos 3 membros do conselho Percus fazendo ANALYZE de uma spec de feature (estilo /analyze do spec-kit): detecte defeitos da spec, nao opine sobre merito. Passes: (1) todo FR testavel e todo SC mensuravel? (2) termo vago/ambiguo? (3) terminologia consistente? (4) edge case sem FR? (5) viola constituicao Percus (${FAIXA_REGRAS}) ou 02_INFRA (CRITICAL)? (6) assumption/dependencia nao declarada? (7) vazamento WHAT->HOW (stack/tabela/endpoint na spec = MEDIUM). Output: 1 linha por finding no formato 'SEVERIDADE ref - defeito concreto - correcao em 1 frase'; severidade CRITICAL|HIGH|MEDIUM|LOW. Termine com 'VEREDITO: PRONTA' (zero critical/high), 'VEREDITO: AJUSTAR (N high)' ou 'VEREDITO: BLOQUEADA (N critical)'. Sem floreio.";;
     esac
 fi
 
@@ -389,7 +404,7 @@ for p in "${ASYNC_PROVIDERS[@]}"; do
     esac
     (
         # F.1 fix v6.6.1: pra cross-claude, passar --mode pra carregar system-prompt-{mode}.md
-        # (enriquecido com R1-R19, ativa cache Anthropic). NAO passar --system-prompt
+        # (enriquecido com as regras do canon, ativa cache Anthropic). NAO passar --system-prompt
         # senao wrapper detecta override e pula o file load.
         if [[ "$WRAPPER" == *cross-claude* ]]; then
             if [[ -n "$MODEL_ARG" ]]; then

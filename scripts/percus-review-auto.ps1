@@ -291,8 +291,25 @@ switch ($decision.decision) {
                 "$cached`n$unstaged".Trim()
             }
             if ($diff) {
+                # Faixa MEDIDA no canon, nunca escrita a mao -- ver o verbete
+                # conhecimento/resolver/revisor-cita-faixa-de-regras-fixa-no-prompt-e-reprova-regra-valida.md
+                # Este prompt roda a CADA commit da frota; um teto velho aqui e um teto velho
+                # em todo projeto. Se o helper faltar, o prompt sai SEM faixa -- nunca com uma
+                # faixa chutada.
+                # $current e a pasta do PLUGIN (resolvida de $pluginsDir la em cima), nao a
+                # raiz do kit -- mesma base de $deepseekScript e $orchScript. Entao isto
+                # aponta pro UNICO helper, em plugin/percus-review/scripts/. Nao ha segunda
+                # copia em scripts/ da raiz. O R11 levantou o contrario duas vezes olhando so
+                # o caminho relativo; fica dito aqui pra nao ser relitigado.
+                $faixaHelper = Join-Path $current.FullName "scripts\_faixa-regras.ps1"
+                if (Test-Path $faixaHelper) { . $faixaHelper }
+                $faixaRegras = if (Get-Command Get-PercusFaixaRegras -ErrorAction SilentlyContinue) {
+                    Get-PercusFaixaRegras
+                } else {
+                    "faixa nao medida -- consulte 01_REGRAS_INEGOCIAVEIS.md"
+                }
                 $tmpPrompt = [System.IO.Path]::GetTempFileName()
-                "Revise o git diff abaixo no padrao Percus R1-R19. Aponte bugs, regressoes, mocks, violacoes de auth, imports vetados. Se nada relevante: 'Sem findings criticos'.`n`n---DIFF---`n$diff" | Out-File -FilePath $tmpPrompt -Encoding utf8 -NoNewline
+                "Revise o git diff abaixo no padrao Percus ($faixaRegras). Aponte bugs, regressoes, mocks, violacoes de auth, imports vetados. Se nada relevante: 'Sem findings criticos'.`n`n---DIFF---`n$diff" | Out-File -FilePath $tmpPrompt -Encoding utf8 -NoNewline
                 try {
                     & $PsExe -NoProfile -ExecutionPolicy Bypass -File $orchScript -PromptFile $tmpPrompt -Mode review -Providers "groq-llama" 2>$null | Out-Null
                     [Console]::Error.WriteLine("[percus-review-auto] orchestrator Llama executado (log em .deepseek/council-log/)")

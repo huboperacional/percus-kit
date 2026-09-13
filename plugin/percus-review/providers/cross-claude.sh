@@ -74,6 +74,20 @@ if [[ "$SYSTEM_PROMPT_EXPLICIT" -eq 0 || -z "$SYSTEM_PROMPT" ]]; then
             in_yaml==0 && printed==1 { print }
             in_yaml==0 && found_first==0 { print }
         ' "$PROMPT_PATH")
+        # A faixa de regras e MEDIDA no canon agora. Ate 2026-09-12 estava literal dentro
+        # destes .md, com tetos que discordavam entre si e todos atras do canon. Verbete:
+        # conhecimento/resolver/revisor-cita-faixa-de-regras-fixa-no-prompt-e-reprova-regra-valida.md
+        FAIXA_HELPER="$(dirname "$BASE_DIR")/scripts/_faixa-regras.sh"
+        if [[ -f "$FAIXA_HELPER" ]]; then
+            # shellcheck source=/dev/null
+            . "$FAIXA_HELPER"
+        fi
+        if declare -F percus_faixa_regras >/dev/null 2>&1; then
+            FAIXA_REGRAS="$(percus_faixa_regras)"
+        else
+            FAIXA_REGRAS="faixa nao medida -- consulte 01_REGRAS_INEGOCIAVEIS.md"
+        fi
+        SYSTEM_PROMPT="${SYSTEM_PROMPT//\{\{FAIXA_REGRAS\}\}/$FAIXA_REGRAS}"
     else
         SYSTEM_PROMPT="Voce e consultor cross-provider Percus. Responda direto, sem floreio. Aponte riscos concretos."
     fi

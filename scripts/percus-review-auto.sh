@@ -288,8 +288,22 @@ case "$DECISION" in
                 DIFF=$(printf '%s\n%s' "$(git diff --cached 2>/dev/null)" "$(git diff 2>/dev/null)")
             fi
             if [ -n "$(printf '%s' "$DIFF" | tr -d '[:space:]')" ]; then
+                # Faixa MEDIDA no canon, nunca escrita a mao -- ver o verbete
+                # conhecimento/resolver/revisor-cita-faixa-de-regras-fixa-no-prompt-e-reprova-regra-valida.md
+                # Este prompt roda a CADA commit da frota. Sem o helper, sai SEM faixa --
+                # nunca com uma faixa chutada.
+                FAIXA_HELPER="$CURRENT/scripts/_faixa-regras.sh"
+                if [ -f "$FAIXA_HELPER" ]; then
+                    # shellcheck source=/dev/null
+                    . "$FAIXA_HELPER"
+                fi
+                if declare -F percus_faixa_regras >/dev/null 2>&1; then
+                    FAIXA_REGRAS="$(percus_faixa_regras)"
+                else
+                    FAIXA_REGRAS="faixa nao medida -- consulte 01_REGRAS_INEGOCIAVEIS.md"
+                fi
                 TMP_PROMPT=$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-council-$$.txt")
-                printf 'Revise o git diff abaixo no padrao Percus R1-R19. Aponte bugs, regressoes, mocks, violacoes de auth, imports vetados. Se nada relevante: '"'"'Sem findings criticos'"'"'.\n\n---DIFF---\n%s' "$DIFF" > "$TMP_PROMPT"
+                printf 'Revise o git diff abaixo no padrao Percus (%s). Aponte bugs, regressoes, mocks, violacoes de auth, imports vetados. Se nada relevante: '"'"'Sem findings criticos'"'"'.\n\n---DIFF---\n%s' "$FAIXA_REGRAS" "$DIFF" > "$TMP_PROMPT"
                 if bash "$ORCH" --prompt-file "$TMP_PROMPT" --mode review --providers groq-llama >/dev/null 2>&1; then
                     >&2 echo "[percus-review-auto] orchestrator Llama executado (log em .deepseek/council-log/)"
                 else
