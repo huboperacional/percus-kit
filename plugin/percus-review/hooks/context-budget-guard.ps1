@@ -16,7 +16,7 @@
 # CADA tool call. Get-Content inteiro aqui seria custo linear no tamanho da sessao, pago a cada
 # passo, justamente quando a sessao ja esta pesada.
 #
-# Debounce: um aviso por NIVEL cruzado (warn, hard) e um por condicao de tempo (horas, dias),
+# Debounce: um aviso por NIVEL cruzado (warn, hard) e um pela idade do transcript (dias),
 # por sessao, em .deepseek/context-budget/<session_id>.json. Repetir a cada tool e ruido.
 #
 # A JANELA e descoberta, nao suposta (consertado 2026-09-12). Antes os limiares eram absolutos
@@ -36,7 +36,9 @@
 #
 # Limiares e janela (env-overridable; env explicito sempre vence a descoberta):
 #   PERCUS_CTX_WINDOW=0 (auto)   PERCUS_CTX_WARN=0 (75%)   PERCUS_CTX_HARD=0 (90%)
-#   PERCUS_CTX_HOURS=8   PERCUS_CTX_RESUME_DAYS=2
+#   PERCUS_CTX_RESUME_DAYS=2
+# NAO existe mais PERCUS_CTX_HOURS (6.52.0): hora de parede deixou de ser gatilho. Decisao do
+# operador -- "o contexto nao enche por horas, enche por trabalho". Ver o bloco do $horas abaixo.
 # Quem fala com quem: o AGENTE sempre (additionalContext) -- ele nao ve painel de contexto, e foi
 # um agente que NAO SABIA que produziu a sessao de 610k. O OPERADOR so com PERCUS_CTX_OPERADOR=1:
 # ele ve o contexto no painel do VSCode e dispara o checkpoint na mao (decisao dele, 2026-09-12).
@@ -68,7 +70,6 @@ try {
     $winEnv   = Get-Limiar 'PERCUS_CTX_WINDOW'      0
     $warnEnv  = Get-Limiar 'PERCUS_CTX_WARN'        0
     $hardEnv  = Get-Limiar 'PERCUS_CTX_HARD'        0
-    $limHoras = Get-Limiar 'PERCUS_CTX_HOURS'       8
     $limDias  = Get-Limiar 'PERCUS_CTX_RESUME_DAYS' 2
 
     # ---- cauda: ultima usage ----
@@ -171,6 +172,11 @@ try {
     $limWarn = if ($warnEnv -gt 0) { $warnEnv } else { [int][Math]::Floor($janela * 0.75) }
     $limHard = if ($hardEnv -gt 0) { $hardEnv } else { [int][Math]::Floor($janela * 0.90) }
 
+    # HORA DE PAREDE NAO E GATILHO (removido na 6.52.0). Sessao parada 10h tem o mesmo contexto de
+    # quando parou: o gatilho de 8h mandava RESET com 100k de contexto so porque o relogio andou, e a
+    # mensagem trazia "Xh de sessao" em todo aviso -- que o AGENTE passou a repetir ao operador como
+    # argumento de reset. O que mede carga e TOKEN. $horas segue calculado so porque dele sai $dias
+    # (idade do transcript: resume velho, outro defeito) e porque vai pro log. Nunca pra decisao, nunca pra texto.
     $horas = 0.0
     if ($cabeca -match '"timestamp"\s*:\s*"([^"]+)"') {
         try {
@@ -191,29 +197,26 @@ try {
     # silenciar o limite que ele mesmo configurou, contrariando "env explicito sempre vence a
     # descoberta" (finding R11, 4a rodada).
     if ($janelaIncerta -and $hardEnv -le 0 -and $nivel -ge 2) { $nivel = 1 }
-    $condHoras = ($horas -ge $limHoras)
     $condDias  = ($dias  -ge $limDias)
 
     # ---- debounce por sessao ----
     $stateDir = Join-Path $cwd ".deepseek\context-budget"
     if (-not (Test-Path -LiteralPath $stateDir)) { New-Item -ItemType Directory -Path $stateDir -Force | Out-Null }
     $stateFile = Join-Path $stateDir "$sessionId.json"
-    $st = @{ nivel = 0; horas = $false; dias = $false }
+    $st = @{ nivel = 0; dias = $false }
     if (Test-Path -LiteralPath $stateFile) {
         try {
             $lido = [System.IO.File]::ReadAllText($stateFile) | ConvertFrom-Json
             $st.nivel = [int]$lido.nivel
-            $st.horas = [bool]$lido.horas
             $st.dias  = [bool]$lido.dias
         } catch { }
     }
 
-    $fala = ($nivel -gt $st.nivel) -or ($condHoras -and -not $st.horas) -or ($condDias -and -not $st.dias)
+    $fala = ($nivel -gt $st.nivel) -or ($condDias -and -not $st.dias)
     if (-not $fala) { exit 0 }
 
     $novo = @{
         nivel = [Math]::Max($nivel, $st.nivel)
-        horas = ($st.horas -or $condHoras)
         dias  = ($st.dias  -or $condDias)
         ts    = (Get-Date -Format 'o')
         tokens = $tokens
@@ -227,7 +230,6 @@ try {
     # Floor, pelo mesmo motivo do $pct: limWarn=562700 daria 563 com [int]() e 562 no bash.
     $kWarn = [int][Math]::Floor($limWarn / 1000)
     $kHard = [int][Math]::Floor($limHard / 1000)
-    $h     = [Math]::Floor($horas)
 
     $kJanela = [int][Math]::Floor($janela / 1000)
     # Math::Floor, nao [int]() -- [int]() no PowerShell e banker's rounding, NAO truncamento, entao
@@ -239,9 +241,9 @@ try {
     # A janela e a FONTE dela entram na mensagem porque a suposicao invisivel foi o que criou o
     # bug: durante meses este hook assumiu 200k sem nunca dizer que assumia.
     if ($janelaIncerta) {
-        $partes.Add("[percus:context-budget] contexto vivo ~${k}k tokens, ${h}h de sessao. Janela $janelaFonte -- entao ela e MAIOR que isso, mas eu nao sei quanto, e sem o denominador nao da pra dizer se voce esta perto do teto. Defina PERCUS_CTX_WINDOW pra eu voltar a medir percentual.")
+        $partes.Add("[percus:context-budget] contexto vivo ~${k}k tokens. Janela $janelaFonte -- entao ela e MAIOR que isso, mas eu nao sei quanto, e sem o denominador nao da pra dizer se voce esta perto do teto. Defina PERCUS_CTX_WINDOW pra eu voltar a medir percentual.")
     } else {
-        $partes.Add("[percus:context-budget] contexto vivo ~${k}k tokens (${pct}% de uma janela ~${kJanela}k -- $janelaFonte), ${h}h de sessao; limiar de aviso ${kWarn}k.")
+        $partes.Add("[percus:context-budget] contexto vivo ~${k}k tokens (${pct}% de uma janela ~${kJanela}k -- $janelaFonte); limiar de aviso ${kWarn}k.")
     }
     if ($nivel -ge 2 -and $janelaIncerta) {
         # Chegar aqui com a janela indeterminada so acontece com PERCUS_CTX_HARD declarado (senao
@@ -264,8 +266,6 @@ try {
     }
     if ($condDias) {
         $partes.Add("Este transcript foi iniciado ha $dias dias -- e uma sessao retomada/velha. Nao continue nela: abra sessao nova e cole o bloco de retomada do HANDOFF.")
-    } elseif ($condHoras) {
-        $partes.Add("${h}h de parede na mesma sessao: o custo por passo so sobe daqui.")
     }
     # A linha de acao tambem nao pode reafirmar o denominador que a 1a frase acabou de negar: dizer
     # "eu nao sei a janela" e depois "resume em janela ~200k falha" e a certeza falsa de volta pela
@@ -289,7 +289,7 @@ try {
         # ACABOU de declarar desconhecida ("105% da janela"), e o teste do agente nao pega isso
         # porque e outra mensagem (finding R11, 5a rodada)
         $pctTxt = if ($janelaIncerta) { "janela indeterminada" } else { "${pct}% da janela" }
-        $msgOperador = "[percus:hook context-budget-guard] contexto ~${k}k tokens / ${h}h ($pctTxt). Hora de checkpoint + sessao nova (veja o aviso ao agente)."
+        $msgOperador = "[percus:hook context-budget-guard] contexto ~${k}k tokens ($pctTxt). Hora de checkpoint + sessao nova (veja o aviso ao agente)."
     }
 
     # ---- log fail-loud (prova que disparou) ----

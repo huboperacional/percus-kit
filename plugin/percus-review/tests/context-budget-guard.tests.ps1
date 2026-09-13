@@ -202,14 +202,89 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
         }
     }
 
-    Context "tempo de parede e idade: sessao velha avisa mesmo com poucos tokens" {
-        It "100k tokens mas 9h de sessao -> avisa citando as horas" {
-            $t = New-Transcript -Tokens 100000 -HorasAtras 9
-            $r = Invoke-Guard -Transcript $t
-            $r.Json | Should -Not -BeNullOrEmpty
-            $r.Json.hookSpecificOutput.additionalContext | Should -Match '9h'
+    # Decisao do operador em 2026-09-13: "o contexto nao enche por horas, enche por trabalho".
+    #
+    # Ate a 6.51.0 havia um gatilho INDEPENDENTE de 8h de parede (PERCUS_CTX_HOURS): o hook
+    # avisava e mandava RESET com qualquer contexto, ate com 100k. Mas sessao parada 10h tem o
+    # mesmo contexto de quando parou -- hora de parede e proxy, nao medida. E o efeito colateral
+    # era pior que ruido: a mensagem trazia "Xh de sessao" em TODO aviso, e o AGENTE passou a
+    # repetir "16h de sessao" ao operador como se fosse argumento pra reset. Medido na sessao que
+    # originou esta mudanca. Mesma familia da faixa de regras e da copia do canon: medir o
+    # rotulo em vez da coisa.
+    Context "hora de parede NAO e gatilho: o contexto enche por trabalho, nao por relogio" {
+        BeforeAll {
+            $script:bashCtx = (Get-Command bash -ErrorAction SilentlyContinue).Source
+            if (-not $script:bashCtx) {
+                $script:bashCtx = @("$env:ProgramFiles\Git\bin\bash.exe", "$env:ProgramFiles\Git\usr\bin\bash.exe") |
+                            Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            }
+            $script:shCtx = Join-Path $PSScriptRoot ".." "hooks" "context-budget-guard.sh"
+            function Invoke-GuardSh {
+                param([string]$Transcript, [string]$SessionId = "sh-$(Get-Random)")
+                $cwd = Split-Path $Transcript -Parent
+                $payload = @{ session_id = $SessionId; transcript_path = $Transcript; cwd = $cwd; hook_event_name = "PostToolUse" } | ConvertTo-Json -Compress
+                Push-Location $cwd
+                try { return (($payload | & $script:bashCtx $script:shCtx 2>$null) -join "").Trim() } finally { Pop-Location }
+            }
         }
 
+        It "100k tokens e 9h de sessao -> SILENCIO (hora sozinha nao dispara)" {
+            $t = New-Transcript -Tokens 100000 -HorasAtras 9
+            $r = Invoke-Guard -Transcript $t
+            $r.Code | Should -Be 0
+            $r.Out | Should -BeNullOrEmpty -Because "9h paradas nao encheram contexto nenhum; 100k esta abaixo do limiar"
+        }
+
+        It "nem PERCUS_CTX_HOURS=1 religa o gatilho -- o botao nao existe mais" {
+            $antes = $env:PERCUS_CTX_HOURS
+            $env:PERCUS_CTX_HOURS = "1"
+            try {
+                $t = New-Transcript -Tokens 100000 -HorasAtras 9
+                $r = Invoke-Guard -Transcript $t
+            } finally {
+                if ($null -eq $antes) { Remove-Item Env:PERCUS_CTX_HOURS -ErrorAction SilentlyContinue } else { $env:PERCUS_CTX_HOURS = $antes }
+            }
+            $r.Out | Should -BeNullOrEmpty -Because "variavel que ninguem mais le nao pode ressuscitar o gatilho"
+        }
+
+        It "quando fala por TOKENS, a mensagem ao agente nao cita horas de sessao" {
+            $t = New-Transcript -Tokens 160000 -HorasAtras 9
+            $r = Invoke-Guard -Transcript $t
+            $msg = $r.Json.hookSpecificOutput.additionalContext
+            $msg | Should -Match '160k' -Because "anti-vacuidade: o hook tem que ter falado, senao o Not-Match abaixo passa por nada"
+            $msg | Should -Not -Match '\d+\s*h de (sess|parede)' -Because "o agente repete o que le; hora na mensagem vira argumento de reset"
+        }
+
+        It "o aviso ao OPERADOR tambem nao cita horas" {
+            $env:PERCUS_CTX_OPERADOR = "1"
+            try {
+                $t = New-Transcript -Tokens 160000 -HorasAtras 9
+                $r = Invoke-Guard -Transcript $t
+            } finally { Remove-Item Env:PERCUS_CTX_OPERADOR -ErrorAction SilentlyContinue }
+            $r.Json.systemMessage | Should -Match '160k' -Because "anti-vacuidade"
+            $r.Json.systemMessage | Should -Not -Match '/\s*\d+\s*h\b' -Because "era '~160k tokens / 9h'"
+        }
+
+        It "o .sh tambem fica em SILENCIO com 9h e poucos tokens (paridade)" {
+            if (-not $script:bashCtx) { Set-ItResult -Skipped -Because "sem bash"; return }
+            $t = New-Transcript -Tokens 100000 -HorasAtras 9
+            Invoke-GuardSh -Transcript $t | Should -BeNullOrEmpty
+        }
+
+        It "o .sh, quando fala por tokens, tambem nao cita horas (paridade)" {
+            if (-not $script:bashCtx) { Set-ItResult -Skipped -Because "sem bash"; return }
+            $t = New-Transcript -Tokens 160000 -HorasAtras 9
+            $msg = ((Invoke-GuardSh -Transcript $t) | ConvertFrom-Json).hookSpecificOutput.additionalContext
+            $msg | Should -Match '160k' -Because "anti-vacuidade"
+            $msg | Should -Not -Match '\d+\s*h de (sess|parede)'
+        }
+    }
+
+    # A IDADE DO TRANSCRIPT continua valendo, e nao e a mesma coisa que hora de parede: e outro
+    # defeito. O incidente de origem foi um transcript RETOMADO dois dias depois cuja 1a chamada ja
+    # marcava 188k e cuja compactacao caiu em rate-limit. Nao e "trabalhou demais", e "voltou a um
+    # transcript velho".
+    Context "idade do transcript: resume de dias atras continua avisando" {
         It "100k tokens mas transcript iniciado ha 3 dias (resume velho) -> avisa citando os dias" {
             $t = New-Transcript -Tokens 100000 -HorasAtras 72
             $r = Invoke-Guard -Transcript $t

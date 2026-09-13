@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.51.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.52.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,40 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.52.0 — 2026-09-13
+
+**Hora de parede deixou de ser gatilho do `context-budget-guard`.** Decisão do operador: *"o
+contexto não enche por horas, enche por trabalho"*.
+
+Até a 6.51.0 havia um gatilho **independente** de 8h de parede (`PERCUS_CTX_HOURS`). Ele avisava e
+mandava RESET com qualquer contexto — até com 100k — só porque o relógio andou. Sessão parada 10h
+tem o mesmo contexto de quando parou: hora é proxy, não medida. É a mesma família dos três defeitos
+da 6.51.0 (faixa de regras, cópia do canon, emoji no `.cmd`): medir o rótulo em vez da coisa.
+
+O efeito colateral era pior que ruído. A mensagem trazia *"Xh de sessão"* em **todo** aviso, até nos
+disparados por token — e o agente passou a repetir *"16h de sessão"* ao operador como argumento
+para reset. Medido na própria sessão que originou esta mudança.
+
+**O que ficou:**
+- **Tokens** (75% / 90% da janela descoberta) — é o que mede carga.
+- **Idade do transcript** (2+ dias, `PERCUS_CTX_RESUME_DAYS`) — não é "trabalhou demais", é "voltou
+  a um transcript velho". O incidente de origem foi exatamente isso: resume dois dias depois, 1ª
+  chamada já em 188k, compactação caindo em rate-limit.
+
+**O que saiu:** o gatilho de horas, a variável `PERCUS_CTX_HOURS` (não existe mais; defini-la não
+religa nada — há teste para isso), o campo `horas` do estado de debounce, e **toda menção a horas
+nas mensagens** ao agente e ao operador, nos dois pares `.ps1`/`.sh`. As horas seguem calculadas só
+porque delas sai a idade em dias, e seguem no `eventos.jsonl` como telemetria — nunca em decisão,
+nunca em texto.
+
+Também corrigido: a skill `checkpoint` citava "~150k ou 8h+ de parede" como motivo de reset. Os
+150k estavam errados desde a 6.48.0 (a janela passou a ser descoberta) e as 8h saem agora; o texto
+novo diz explicitamente para não citar horas de sessão como argumento.
+
+**Testes:** 6 novos em `context-budget-guard.tests.ps1` — silêncio com 9h e 100k; `PERCUS_CTX_HOURS=1`
+não religa; mensagem ao agente e ao operador sem horas; paridade `.sh` nos dois casos. O teste de
+resume de 3 dias continua verde.
 
 ## Changelog v6.51.0 — 2026-09-13
 

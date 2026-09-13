@@ -90,8 +90,10 @@ PLANO, e o arquivo do próximo passo). O bloco é **ponteiro + estado mínimo** 
 do HANDOFF: os arquivos são a fonte; o bloco só diz por onde recomeçar.
 
 ### 5. Reset — encerrar a sessão
-Se o hook `context-budget-guard` avisou nesta sessão (contexto acima de ~150k, ou 8h+ de parede, ou
-transcript retomado com dias de idade), **o checkpoint não termina no commit: termina no reset.** Diga
+Se o hook `context-budget-guard` avisou nesta sessão (contexto acima do limiar de aviso — 75% da
+janela do modelo —, ou transcript retomado com dias de idade), **o checkpoint não termina no commit:
+termina no reset.** Hora de parede **não** é motivo: o contexto enche por trabalho, não por relógio —
+sessão parada 10h tem o mesmo contexto de quando parou. Não cite "Xh de sessão" como argumento. Diga
 ao operador, literalmente:
 
 > "Checkpoint feito e commitado. Esta sessão está com ~{N}k tokens de contexto — continuar nela custa

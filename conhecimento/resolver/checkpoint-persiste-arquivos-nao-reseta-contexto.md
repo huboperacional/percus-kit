@@ -43,6 +43,14 @@ com o bloco de retomada, não no commit. O loop `v2/loops/checkpoint.md` dizia "
 colar" enquanto a skill mandava gerar — resolvido a favor do bloco (≤15 linhas, ponteiro + próximo
 passo): é exatamente o que salva um resume que ficou impossível.
 
+**Atualização (6.52.0, 2026-09-13): o gatilho de 8h de parede foi REMOVIDO.** Decisão do operador:
+*"o contexto não enche por horas, enche por trabalho"*. Sessão parada 10h tem o mesmo contexto de
+quando parou, então hora de parede era proxy, não medida — o hook mandava reset com 100k de
+contexto só porque o relógio andou. Pior: a mensagem trazia "Xh de sessão" em todo aviso, e o
+agente passou a repetir "16h de sessão" ao operador como argumento para reset. Hoje o hook dispara
+por **tokens** (75%/90% da janela) e por **idade do transcript** (2+ dias — um resume velho, que é
+outro defeito). `PERCUS_CTX_HOURS` não existe mais. A frase acima descreve a 6.45.0, não o presente.
+
 **Discriminante:** o contexto vivo é um número que o harness já grava a cada chamada. Se a regra
 para controlá-lo depende de alguém *lembrar* de fazer checkpoint, ela já falhou (CONSTITUIÇÃO §6) —
 o hook mede; a skill diz o que fazer com a medida. O matcher é vazio de propósito: contexto cresce
