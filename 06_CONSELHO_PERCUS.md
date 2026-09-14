@@ -94,12 +94,17 @@ Comando manual: `/council:consult <pergunta>`.
 
 ### Modo 3 — Pre-mortem (plano)
 
-**Quando:** **SEMPRE que um plano fica pronto** (antes de `ExitPlanMode` / antes de começar a implementar),
-independente do tamanho. O operador quer conselho em todo plano.
+**Quando:** conforme o **trilho** da feature (R9, "Trilho P / M / G"):
+- **G:** sempre que o plano fica pronto, antes de `ExitPlanMode` / antes de implementar.
+- **M:** só se o operador pedir.
+- **P:** não roda — o plano é uma lista de tarefas.
 
-**Quem aciona:** o **próprio agente** roda `council-pre-mortem` sozinho ao finalizar o plano — sem pedir
-permissão, sem depender de threshold. O hook `pre-plan-exit.{ps1,sh}` (>500 linhas) continua como **backstop**
-(pega o caso do agente esquecer), mas o comportamento primário é o agente disparar **sempre**.
+**Quem aciona:** no trilho G, o **próprio agente** roda `council-pre-mortem` sozinho ao finalizar o plano,
+sem pedir permissão. O hook `pre-plan-exit.{ps1,sh}` (>500 linhas) continua como **backstop** em qualquer
+trilho: plano de contrato P/M não deveria chegar a 500 linhas, e quando chega é sinal de trilho errado.
+
+> Mudança de 2026-09-14: antes o pre-mortem rodava "independente do tamanho". Medido no mesmo dia: ajuste
+> em tela existente passou por dois pre-mortems e levou o dia inteiro; o custo não se pagava fora do G.
 
 **Como funciona:**
 
@@ -147,11 +152,12 @@ Diferença pra Modo 2: Modo 2 reduz perguntas (consenso → não pergunta); Modo
 
 ### Modo 5 — Spec Analyze (validação de spec, pré-`[0]`)
 
-**Quando:** **SEMPRE que uma `spec.md` fica pronta** (template `templates/spec.template.md`), antes dela
-virar `[0]` no `PLANO.md`. O operador quer conselho em **toda** spec — não só nas "não-triviais". Preenche o
-gap entre "escopo do projeto" (SCOPE_COUNCIL, dia 1) e "review do código" (Modo 1, pré-commit).
+**Quando:** no trilho **G** (R9), sempre que a `spec.md` fica pronta (template `templates/spec.template.md`),
+antes dela virar `[0]` no `PLANO.md`. Nos trilhos **P e M** não há spec completa: a feature leva mini-spec
+de 3 linhas no PLANO, e o analyze só roda se o operador pedir. Preenche o gap entre "escopo do projeto"
+(SCOPE_COUNCIL, dia 1) e "review do código" (Modo 1, pré-commit).
 
-**Quem aciona:** o **próprio agente** roda `spec-analyze` sozinho ao finalizar a spec — sem pedir permissão.
+**Quem aciona:** no trilho G, o **próprio agente** roda `spec-analyze` sozinho ao finalizar a spec — sem pedir permissão.
 (Gate `[S]` do `feature-flow`; comando manual equivalente: `/percus-review:spec-analyze <spec.md>`.)
 
 **Como funciona:** o conselho roda em **modo analyze** — não opina sobre mérito, faz **detecção

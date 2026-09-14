@@ -5,7 +5,7 @@ description: Pre-mortem do plano atual via conselho 3-membros. Cada membro respo
 
 # /council:pre-mortem
 
-Use **antes de ExitPlanMode** em planos com escopo nao-trivial. Conselho aponta riscos invisiveis pro autor.
+Use **antes de ExitPlanMode** em planos do trilho G (R9); no trilho M, so se o operador pedir; no P, nao. Conselho aponta riscos invisiveis pro autor.
 
 ## Fluxo
 

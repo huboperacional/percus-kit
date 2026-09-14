@@ -11,11 +11,14 @@ ultima-atualizacao: 2026-05-03
 
 ## Tier 1 — Obrigatórias (R9)
 
+> **O disparo depende do trilho P / M / G** declarado no início da feature (R9). A tabela da R9 é a fonte;
+> este guia só resume.
+
 | Skill | Disparar quando | Ganho |
 |---|---|---|
-| `superpowers:brainstorming` | Feature não-trivial, antes de qualquer código | Evita retrabalho de premissa errada |
-| `superpowers:writing-plans` | Multi-step com 3+ arquivos a tocar | Plano salvo + revisado, executável depois |
-| `superpowers:subagent-driven-development` | Plano com 3+ tasks independentes | -60% contexto principal, paralelismo |
+| `superpowers:brainstorming` | Toda feature, antes de qualquer código — caminho Spike (P), Bounded (M) ou Architectural (G) | Evita retrabalho de premissa errada |
+| `superpowers:writing-plans` | Trilho G. Em M, plano de contrato (R9); em P, lista de tarefas | Plano salvo + revisado, executável depois |
+| `superpowers:subagent-driven-development` | Trilho G (uma tarefa por implementador) e M (lotes de 2–4 tarefas) | -60% contexto principal, paralelismo |
 | `superpowers:test-driven-development` | Endpoint novo / função pura nova | Testes antes do código (R1) |
 | `superpowers:systematic-debugging` | Bug ou teste quebrado | Causa raiz, não workaround |
 | `superpowers:requesting-code-review` | Antes de commitar diff > 500 linhas | Cobertura redundante ao `/percus-review:review` |
@@ -36,7 +39,7 @@ ultima-atualizacao: 2026-05-03
 
 | Skill | Disparar quando |
 |---|---|
-| `percus-review:feature-flow` | Toda feature ou bugfix não-trivial — orquestra R1→R19 |
+| `percus-review:feature-flow` | Toda feature ou bugfix — começa declarando o trilho P / M / G (R9) |
 | `percus-review:close-milestone` | Antes de marcar ✓ no PLANO (fechar marco) |
 
 ### Fase 6+ (NOVAS — após bump pra plugin v6.0.0)
@@ -60,7 +63,7 @@ Detalhes completos: `${env:PERCUS_CANON_DIR}\06_CONSELHO_PERCUS.md`.
 ## Antipatterns
 
 - ❌ Pular brainstorming "porque já sei o que fazer" — feature simples vira retrabalho
-- ❌ Implementar plano com 3+ tasks serialmente sem subagent-driven — desperdiça contexto/tempo
+- ❌ Executar fora do que o trilho pede (R9): revisão por tarefa em P/M, ou plano G serial sem subagent-driven — desperdiça contexto/tempo
 - ❌ "Vou usar worktree depois" — depois é nunca
 
 ## Referências

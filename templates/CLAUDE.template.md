@@ -143,13 +143,17 @@ Auditoria em `docs/mock-audit.md`, atualizada toda sessão com frontend.
 
 Ver `checklists/CHECKLIST_FEATURE_NOVA.md` (na pasta `percus-kit`).
 
-Resumo: brainstorming → plano → TDD → execução vertical [0]→[5-T] → `/percus-review:review` → commit.
+Resumo: **declare o trilho P / M / G** (R9) → brainstorming pelo caminho do trilho → plano (P: lista de tarefas; M: plano de contrato; G: plano completo) → TDD → execução vertical [0]→[5-T] → `/percus-review:review` → commit.
+
+**Plano de contrato nos trilhos P e M (tem precedência sobre `superpowers:writing-plans`):** cada tarefa leva arquivos, assinaturas, casos de teste (entrada → saída), critério de pronto e armadilhas; código só onde há armadilha concreta. Proibido colar spec inteira ou repetir código entre tarefas.
+
+**Uma frente por sessão.** A próxima frente é planejada em sessão nova ou depois que a atual estiver no ar. Estourou 2× a estimativa → pare e replaneje com o operador.
 
 ## Autonomia — resolva o máximo sem perguntar (R5, R9, R11)
 
 O operador quer que você **resolva o máximo possível sozinho**. Confirmação é EXCEÇÃO, não default.
 
-- **Rode review/conselho/testes/lint/build/checkpoint sozinho.** ❌ Nunca peça "rode `/percus-review:review`" — você dispara o wrapper (auto-trigger). Ao finalizar uma **spec** → roda `spec-analyze` sozinho; ao finalizar um **plano** → roda `council-pre-mortem` sozinho. Sempre, sem perguntar.
+- **Rode review/conselho/testes/lint/build sozinho.** ❌ Nunca peça "rode `/percus-review:review`" — você dispara o wrapper (auto-trigger). No **trilho G**: ao finalizar uma **spec** → roda `spec-analyze` sozinho; ao finalizar um **plano** → roda `council-pre-mortem` sozinho. Nos trilhos P e M esses dois não rodam, salvo pedido do operador.
 - **Maximize paralelo (default):** subagents pra tasks independentes, frentes disjuntas, múltiplos tool calls concorrentes numa só mensagem. Serial só com dependência real. Não paralelizar quando cabia = anti-padrão.
 - **Limpe lixo que VOCÊ criou** (scratchpad, worktrees temp, arquivos efêmeros, branches locais próprias) sem confirmar. R5 não se aplica a lixo auto-criado.
 - **Deploy/mutação de prod é autônomo (padrão Percus):** troca de env, `--env-add`, restart/redeploy, rollback, migration com `downgrade` testado → **execute direto, sem confirmar caso a caso**; escolha o caminho padrão (faça tudo, ex.: via SSH). Ler segredo do `.env` e usá-lo sem imprimir = ok.

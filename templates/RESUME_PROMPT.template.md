@@ -22,8 +22,8 @@ RELEIA PRIMEIRO (nesta ordem):
 
 BLOQUEIOS / PRECISA DE MIM: {lista, ou "nenhum"}.
 
-REGRAS ATIVAS: canon Percus v{X.Y.Z}; R11 (review antes de commit); gate [S] (spec+analyze antes de
-feature não-trivial); R23 (consultar COMO_RESOLVER antes de debugar).
+REGRAS ATIVAS: canon Percus v{X.Y.Z}; trilho da frente atual {P|M|G} (R9); R11 (review antes de commit);
+gate [S] (spec+analyze só no trilho G); R23 (consultar COMO_RESOLVER antes de debugar).
 ```
 
 ---

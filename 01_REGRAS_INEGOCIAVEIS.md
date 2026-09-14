@@ -85,6 +85,12 @@ Criar X → F5 (dado continua?) → Editar X → F5 (mudou?) → Deletar X → F
 
 **Build passando ≠ feito. Tela abrindo ≠ feito. Endpoint respondendo no Postman ≠ feito.**
 
+**Forma visual (só quando a mudança não cria, edita nem apaga dado).** Ajuste de layout, texto, filtro de
+exibição ou ordenação em tela que já existe não tem ciclo CRUD próprio. Nesses casos o critério de `[5-T]` é
+a **tela real** conferida pelo operador depois de F5 (print ou confirmação dele), com o trailer
+`UI-verified: YYYY-MM-DD HH:MM` no lugar do `CRUD-verified`. Se a mudança toca qualquer caminho que grava
+dado, vale o ciclo CRUD completo — a forma visual não é atalho para feature com persistência.
+
 ---
 
 ## R2. Tracking de status — atualização imediata
@@ -287,15 +293,50 @@ Spec completa: [`PADRAO_AUTH_SERVICE.md`](PADRAO_AUTH_SERVICE.md) + [`docs/super
 
 ## R9. Superpowers — não são opcionais
 
-**Regra:** Para cada feature nova, execute o fluxo:
+**Regra:** Toda feature ou bugfix começa declarando o **trilho** (P, M ou G). O trilho decide o peso do fluxo; a tabela de skills mais abaixo vale conforme o trilho.
+
+### Trilho P / M / G — critério único de tamanho
+
+| Trilho | Critério |
+|---|---|
+| **P** | Mexe em tela, função ou endpoint que **já existe**; até ~5 arquivos; **nenhum** item do G |
+| **M** | Feature nova (tela, endpoint ou função nova), **sem** nenhum item do G |
+| **G** | Qualquer um destes: schema ou migration; auth, identidade ou pagamento; gravação ou apagamento em dado do operador; pasta sensível (`.percus-review.json`); hook, gate, plugin ou canon Percus; deploy ou infra |
+
+- O agente declara o trilho e a estimativa **na primeira resposta** da feature (ex.: "Trilho P: ajuste de layout na tela X, 3 arquivos, meio dia"). Dúvida entre dois trilhos se resolve pelo critério da tabela, não por "segurança". O operador pode promover; o agente promove sozinho ao descobrir um item do G no meio. Nunca rebaixa.
+- "Trivial", "não-trivial" e os limiares de 2+/3+ arquivos ou tasks que aparecem em outros documentos do canon **ficam substituídos** por esta tabela.
+
+| Etapa | P | M | G |
+|---|---|---|---|
+| Brainstorming (`superpowers:brainstorming`) | caminho **Spike** (2–3 frases, sem spec) | caminho **Bounded** (design no chat, sem spec file) | caminho **Architectural** |
+| Spec e `spec-analyze` | mini-spec de 3 linhas no PLANO; sem analyze | mini-spec no PLANO; analyze só se o operador pedir | spec completa + `spec-analyze` automático |
+| Plano | lista de tarefas de até 1 página | **plano de contrato** (abaixo), até ~600 linhas | plano completo (`superpowers:writing-plans`) |
+| `council-pre-mortem` | não | só se o operador pedir | automático |
+| Execução | uma tarefa: inline ou um implementador | lotes de 2–4 tarefas por implementador | uma tarefa por implementador (`subagent-driven-development`) |
+| Revisão de tarefa | não (só a final) | uma por lote | uma por tarefa |
+| R11 (review cross-provider) | uma vez, sobre o diff staged final | uma por lote, sobre o diff staged do lote | por commit |
+| Rodadas de conserto por achado | até 2 | até 2 | até 5 |
+| Revisão final do branch | sonnet | sonnet | opus |
+| Fact-check F3 dos findings | não | não | sim |
+| Marco (`milestone-review`) | não há marco | a revisão final fecha o marco | duplo (R11) |
+| Suíte de testes | `rodar-suite.ps1 -Afetados` por tarefa; inteira uma vez no fim | idem, por lote | inteira no fim de cada marco |
+| Verificação de feito (R1) | forma visual ou CRUD, conforme R1 | CRUD; visual se não persiste dado | CRUD |
+
+**Plano de contrato (trilhos P e M).** Esta regra tem precedência sobre o default da skill `superpowers:writing-plans` — a própria `using-superpowers` dá precedência a instrução do projeto sobre skill. Cada tarefa leva: arquivos a tocar; assinaturas e interfaces; casos de teste (entrada → saída esperada); critério de pronto; armadilhas conhecidas. **Código só onde há armadilha concreta** (compatibilidade PS 5.1, regex, encoding, SQL delicado). Proibido colar a spec inteira ou repetir código entre tarefas. Motivo medido em 2026-09-14: planos de 4.485–14.323 linhas com 71–83% de código colado; o revisor lia o código duas vezes e cada mudança de escopo reescrevia milhares de linhas.
+
+**Uma frente por sessão.** Uma frente ativa por sessão; a próxima é planejada em sessão nova ou depois que a atual estiver no ar. Estourou 2× a estimativa declarada → parar e replanejar com o operador, em vez de insistir.
+
+**Decisões visuais antes do plano.** Em tarefa visual M ou G, mockup ou tabela aprovados e uma lista de "decisões fechadas" (até 10 linhas) vêm **antes** do plano; mudança depois do plano pronto vira fatia nova no PLANO, não reescrita. Em P, o loop de feedback é a tela real (R10, "iteração rápida sobre tela existente").
+
+### Skills do fluxo
 
 | Fase | Skill | Disparo |
 |------|-------|---------|
-| Início orquestrado | `percus-review:feature-flow` | **Toda feature/bugfix não-trivial** — substitui carregar R1+R9+R11+R13 separadamente |
-| Brainstorming | `superpowers:brainstorming` | Feature não-trivial, antes de qualquer código |
+| Início orquestrado | `percus-review:feature-flow` | **Toda feature/bugfix** — começa pelo trilho; substitui carregar R1+R9+R11+R13 separadamente |
+| Brainstorming | `superpowers:brainstorming` | Antes de qualquer código, pelo caminho do trilho (Spike / Bounded / Architectural) |
 | Exploração | `Explore` (subagent) | Código desconhecido em projeto grande |
-| Plano | `superpowers:writing-plans` | Multi-step com 3+ arquivos a tocar |
-| Execução paralela | `superpowers:subagent-driven-development` | **DEFAULT — busque ativamente. Plano com 2+ tasks independentes → paralelize** (corta contexto principal ~60%) |
+| Plano | `superpowers:writing-plans` | Trilho G (em M, plano de contrato; em P, lista de tarefas) |
+| Execução paralela | `superpowers:subagent-driven-development` | Trilho G por tarefa; trilho M por lote de 2–4 tarefas; trilho P inline ou um implementador |
 | Paralelização B/F | `superpowers:dispatching-parallel-agents` | Backend + Frontend, ou quaisquer frentes disjuntas |
 | Testes | `superpowers:test-driven-development` | **Todo endpoint novo** — vitest antes do código |
 | Debug | `superpowers:systematic-debugging` | Qualquer bug ou teste quebrado |
@@ -309,13 +350,14 @@ dependência entre eles. Serial só quando há dependência real (B precisa do o
 paralelizar quando cabia = anti-padrão** — custa tempo e contexto do operador.
 
 **Executar plano é subagent-driven por DEFAULT — não pergunte "subagent ou inline" (pergunta boba):**
-plano/frente com 2+ tasks independentes → dispara um subagente por task, revisa entre tasks. Inline só
-pra tarefa única trivial, onde o subagente é puro custo. Perguntar como executar quando o default já é
-subagent = a mesma trava-boba que R5 combate.
+trilho G → um subagente por task, revisa entre tasks; trilho M → um subagente por lote de 2–4 tasks, uma
+revisão por lote; trilho P → inline ou um implementador, sem revisão por tarefa. Perguntar como executar
+quando o trilho já decide = a mesma trava-boba que R5 combate.
 
-**Conselho automático (não pede permissão):** ao finalizar uma **spec** → o agente roda `spec-analyze`
-sozinho (Modo 5); ao finalizar um **plano** (antes de implementar) → roda `council-pre-mortem` sozinho
-(Modo 3). Sempre, sem perguntar. Detalhe em `06_CONSELHO_PERCUS.md`.
+**Conselho automático no trilho G (não pede permissão):** ao finalizar uma **spec** → o agente roda
+`spec-analyze` sozinho (Modo 5); ao finalizar um **plano** (antes de implementar) → roda `council-pre-mortem`
+sozinho (Modo 3). Nos trilhos P e M, nenhum dos dois roda sem pedido do operador. Detalhe em
+`06_CONSELHO_PERCUS.md`.
 
 **Cobertura mecânica (defesa em profundidade — dois layers):**
 
@@ -983,7 +1025,7 @@ num umbrella único. Princípio declarado pelo operador: "reforço = apontamento
 14. ❌ Rodar DeepSeek em `--apply` direto sem dry-run (R13)
 15. ❌ Delegar pra DeepSeek tasks em pasta sensível (auth/payment/migrations) ou sem plano explícito (R13)
 16. ❌ Aplicar saída DeepSeek sem trailer `Co-implemented-by: deepseek-v4` no commit (R13 + R11) — router não detecta auto-revisão
-17. ❌ Implementar plano com 3+ tasks independentes serialmente em vez de via `superpowers:subagent-driven-development` (R9) — desperdiça contexto principal e tempo
+17. ❌ Executar fora do que o trilho pede (R9): tarefa por tarefa com revisão individual em trilho P/M, ou plano G serial sem `superpowers:subagent-driven-development` — desperdiça tempo e contexto num sentido ou no outro
 18. ❌ Editar PLANO.md adicionando ✓ sem invocar `percus-review:close-milestone` antes (R11 ampliada)
 19. ❌ Refresh JWT stateless (sem family invalidation) — token roubado vale TTL inteiro sem revogação (R7)
 20. ❌ Reimplementar magic-link no projeto em vez de consumir `/auth/magic/*` do auth-service (R17)

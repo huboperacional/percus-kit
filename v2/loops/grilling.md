@@ -1,6 +1,6 @@
 # Loop: grilling — extrair intenção
 
-**Quando:** antes de qualquer feature não-trivial ou projeto novo. O operador também dispara na mão ("me grelha", "estressa esse plano").
+**Quando:** antes de feature do trilho G (R9) ou projeto novo; nos trilhos P e M, só se o operador pedir. O operador também dispara na mão ("me grelha", "estressa esse plano").
 
 **Por quê:** o modo de falha caro não é código errado — é código **certo para o problema errado**. Este loop gasta 40 minutos de pergunta para poupar 3 dias de retrabalho.
 

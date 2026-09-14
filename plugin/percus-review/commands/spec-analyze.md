@@ -11,8 +11,8 @@ violação da constituição Percus (`01_REGRAS_INEGOCIAVEIS.md` inteiro), vazam
 do meio: a feature só vira `[0]` no `PLANO.md` depois de passar aqui sem CRITICAL pendente.
 
 > **Quando rodar:** após escrever a `spec.md` (template `templates/spec.template.md`) e passar o
-> auto-checklist (`templates/spec-checklist.template.md`), e depois do `/clarify`. Só para feature
-> **não-trivial** — feature trivial usa mini-spec e pula (ver `feature-flow`).
+> auto-checklist (`templates/spec-checklist.template.md`), e depois do `/clarify`. Automático só no
+> **trilho G** (R9); trilhos P e M usam mini-spec e pulam, salvo pedido do operador (ver `feature-flow`).
 
 ## Passo 1 — Providers: sempre 3
 

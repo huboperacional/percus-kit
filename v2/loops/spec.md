@@ -1,6 +1,6 @@
 # Loop: spec — requisito testável
 
-**Quando:** feature não-trivial, depois do `grilling` e antes de qualquer código.
+**Quando:** feature do trilho G (R9), depois do `grilling` e antes de qualquer código. Trilhos P e M: mini-spec de 3 linhas no PLANO.
 
 **Por quê:** requisito que não dá para testar não dá para verificar — e vira discussão no fim, quando custa caro.
 

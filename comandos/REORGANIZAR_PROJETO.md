@@ -55,7 +55,7 @@ Use os templates do canon como referência (não inline, não invente):
 PASSO 2 — Adotar as diretivas vigentes (ler a fonte no canon e aplicar o que faltar):
 - R10/R11/R13 (baseline Fase 4): design v0/shadcn; review cross-provider antes de commit E no marco;
   routing Claude/DeepSeek/revisores. Ver 01_REGRAS + 04_MODEL_ROUTING.
-- Gate [S]: feature não-trivial → spec.md (template) + /clarify (≤5) + /percus-review:spec-analyze ANTES de [0]. (06_CONSELHO Modo 5)
+- Trilho P / M / G (R9): toda feature declara o trilho. Gate [S] só no trilho G → spec.md (template) + /clarify (≤5) + /percus-review:spec-analyze ANTES de [0]. (06_CONSELHO Modo 5)
 - R23: consultar ${env:PERCUS_CANON_DIR}/conhecimento/resolver/ antes de debugar; registrar após (skill consult-knowledge).
 - R24: deploy ao milestone/fim-do-dia/sob-demanda, NÃO per-feature (comandos/DEPLOY.md, smoke+rollback).
 - Checkpoint: rodar a skill `checkpoint` (linguagem natural, não slash) ao fim de milestone (PreCompact é backstop).

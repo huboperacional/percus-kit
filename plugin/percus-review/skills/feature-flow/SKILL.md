@@ -7,17 +7,26 @@ description: Use when starting any feature or bugfix in a Percus project. Orches
 
 Quando começar feature nova OU bugfix em projeto Percus, siga este fluxo.
 
-## Quando NÃO usar
-- Bug fix de 1 linha, rename trivial, typo → só faz e roda `/percus-review:review`
-- Sessão de consulta (ler código, explicar) → não aplicável
+## Passo 0 — declare o trilho (R9)
+
+Na primeira resposta da feature, declare o trilho **P, M ou G** e a estimativa, pela tabela única de
+`${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md` (R9, "Trilho P / M / G"). Tudo abaixo vale **conforme o
+trilho**. Sessão de consulta (ler código, explicar) não é feature e não declara trilho.
 
 ## Fluxo (passos numerados)
 
-### 1. Brainstorming se não-trivial (R9)
-Invoque `superpowers:brainstorming` antes de codar quando feature tem qualquer ambiguidade.
+### 1. Brainstorming pelo caminho do trilho (R9)
+`superpowers:brainstorming`: P → caminho **Spike**; M → **Bounded**; G → **Architectural**.
 
-### 2. Plano se 3+ arquivos (R9)
-Invoque `superpowers:writing-plans`. Output: `docs/plans/<topic>.md` com tasks numeradas.
+### 1.5 Decisões visuais antes do plano (R9, R10)
+Tarefa visual M ou G: mockup ou tabela aprovados + lista de "decisões fechadas" (até 10 linhas) **antes** do
+plano. Em P, itere na tela real.
+
+### 2. Plano conforme o trilho (R9)
+- **P:** lista de tarefas de até 1 página (no chat ou no PLANO).
+- **M:** **plano de contrato** — por tarefa: arquivos, assinaturas, casos de teste (entrada → saída),
+  critério de pronto, armadilhas. Código só onde há armadilha concreta. Até ~600 linhas.
+- **G:** `superpowers:writing-plans` completo.
 
 ### 3. G-DELEGA pra cada task (R13)
 
@@ -25,15 +34,15 @@ Invoque `superpowers:writing-plans`. Output: `docs/plans/<topic>.md` com tasks n
 |---|---|
 | Mecânica + plano explícito + ≤3 arquivos OU padrão repetido + fora de pasta sensível | DeepSeek (wrapper + trailer `Co-implemented-by: deepseek-v4`) |
 | Decisão arquitetural / debug / pasta sensível (auth/payment/migrations) | Claude direto |
-| 3+ tasks independentes | `superpowers:subagent-driven-development` OBRIGATÓRIO |
+| Trilho M | `superpowers:subagent-driven-development` em **lotes de 2–4 tarefas** por implementador, uma revisão por lote |
+| Trilho G | `superpowers:subagent-driven-development`, uma tarefa por implementador |
 
 ### 4. TDD pra endpoint novo (R9)
 Invoque `superpowers:test-driven-development`. Vitest/pytest antes do código.
 
-### 4.5 Gate [S] — spec + analyze ANTES de [0] (v6.19.0, proporcional)
+### 4.5 Gate [S] — spec + analyze ANTES de [0] (só trilho G)
 
-Feature **não-trivial** (toca schema + endpoint + UI, ou pasta sensível) passa por um gate de spec
-antes de virar `[0]`:
+Trilho **G** passa por um gate de spec antes de virar `[0]`:
 
 1. Escreva a `spec.md` da feature do template `${env:PERCUS_CANON_DIR}/templates/spec.template.md`
    (WHAT/WHY tech-agnóstico — stack fica no PLANO, não na spec).
@@ -43,14 +52,14 @@ antes de virar `[0]`:
    providers; 3 se pasta sensível ou `--deep`. CRITICAL passa por fact-check F3.
 5. **VEREDITO PRONTA** → cole na §8 da spec e marque a feature `[0]`. **BLOQUEADA** → corrija e re-rode.
 
-**Feature trivial** (cópia, 1 campo, fix isolado) **pula o gate**: declare uma **mini-spec de 3 linhas**
-no `PLANO.md` (o quê / por quê / critério de pronto) e siga direto pro `[0]`. Mesmo critério de "pula se
-trivial" do SCOPE_COUNCIL — o gate vale quando dispara, não vira cerimônia.
+Trilhos **P e M** **pulam o gate**: declare uma **mini-spec de 3 linhas** no `PLANO.md` (o quê / por quê /
+critério de pronto) e siga direto pro `[0]`. No M, o operador pode pedir o analyze. O gate vale quando o
+trilho pede, não vira cerimônia.
 
 Ref: `06_CONSELHO_PERCUS.md` Modo 5 + mapeamento spec-kit↔Percus.
 
 ### 5. Pipeline R2: [0]→[1-S]→[2-E]→[3-H]→[4-C]→[5-T]
-Avança SÓ com verificação. Não arredondar. (`[S]` do passo 4.5 precede `[0]` em feature não-trivial.)
+Avança SÓ com verificação. Não arredondar. (`[S]` do passo 4.5 precede `[0]` no trilho G.)
 
 ### 6. Review pre-commit (R11) — IMPORTANTE
 **Auto-trigger via wrapper kit-level (v5.1.0+):** antes de cada `git commit` que você for executar via Bash tool, rode:
@@ -65,8 +74,15 @@ Não pede pro usuário colar slash command — o agente faz tudo. Hook pre-commi
 
 Para invocação humana (fora do agente), `/percus-review:review` no chat ainda funciona.
 
-### 7. Marco
-Invoque `percus-review:close-milestone` ao fechar fase/feature/épico (skill irmã).
+### 7. Marco (conforme o trilho)
+- **P:** não há marco; a feature fecha no `[5-T]`.
+- **M:** a revisão final do branch (sonnet) fecha o marco.
+- **G:** `percus-review:close-milestone` ao fechar fase/feature/épico (skill irmã), com `milestone-review` duplo.
+
+### Verificação de feito (R1) no trilho
+Mudança sem gravação de dado (layout, texto, filtro de exibição) usa a **forma visual** da R1: tela real
+conferida pelo operador depois de F5 e trailer `UI-verified: YYYY-MM-DD HH:MM`. Qualquer caminho que grava
+dado exige o ciclo CRUD abaixo.
 
 ### 8. Marcações visuais (R2)
 - 🤖 = delegado pro DeepSeek (commit deve ter trailer `Co-implemented-by: deepseek-v4`)

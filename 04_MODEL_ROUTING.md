@@ -44,6 +44,22 @@ A partir da Fase 6, o roteamento ganha **camada explícita de Haiku 4.5** pra ta
 | Pre-mortem de plano | **Conselho 3-mem** (paralelo) | composto | Plural por design |
 | Pré-pergunta consulting | **Conselho 3-mem** (paralelo) | composto | Reduz interrupção do operador |
 
+### Papéis de subagente por trilho (SDD, R9)
+
+Todo despacho declara `model:` explicitamente — sem isso o subagente herda o modelo da sessão, em geral o
+mais caro. Tabela medida contra o fechamento de 2026-09-14 (45 subagentes, ~2,0 M tokens, 5 em opus).
+
+| Papel | Trilho P | Trilho M | Trilho G |
+|---|---|---|---|
+| Escritor de plano | — (lista de tarefas no chat) | sonnet | opus |
+| Implementador | sonnet (ou inline) | sonnet, por lote | sonnet, por tarefa |
+| Revisor de tarefa / lote | — | sonnet | sonnet |
+| Re-revisão escopada (conserto até ~200 linhas) | haiku | haiku | sonnet |
+| Revisão final do branch | sonnet | sonnet | opus |
+| R11 Cross-Claude (quando o router pede) | sonnet | sonnet | sonnet |
+
+Modelo "Fable" tem limite semanal próprio: não usar em subagente de rotina.
+
 ### Conselho 3-membros (Fase 6)
 
 | Membro | Provider | Modelo | Custo aprox |

@@ -21,13 +21,41 @@ Se o pedido contém: `landing page`, `home`, `redesign`, `dashboard`, `painel`, 
 
 ---
 
-## Fluxo principal (na ordem)
+## Passo 0 — declare o trilho (R9)
+
+Na primeira resposta, declare **Trilho P, M ou G** e a estimativa, pela tabela única da R9
+(`01_REGRAS_INEGOCIAVEIS.md`, "Trilho P / M / G"). Use a checklist do trilho; o **fluxo principal completo
+abaixo é o do trilho G**.
+
+### Checklist do trilho P (tela, função ou endpoint que já existe; até ~5 arquivos; nada do G)
+
+1. Declare "Trilho P" + estimativa.
+2. Mini-spec de 3 linhas no PLANO (o quê / por quê / critério de pronto) e lista de tarefas.
+3. Implemente (inline ou um implementador); teste onde há lógica; `scripts/rodar-suite.ps1 -Afetados`.
+4. R11 uma vez, sobre o diff staged final; commit.
+5. R1 na forma que cabe (visual ou CRUD), confirmada pelo operador → `[5-T]`, com PLANO e HANDOFF juntos.
+
+### Checklist do trilho M (feature nova sem nada do G)
+
+1. Declare "Trilho M" + estimativa.
+2. Brainstorming pelo caminho **Bounded** (design no chat, sem spec file).
+3. Tarefa visual: decisões fechadas + mockup/tabela **antes** do plano (R10).
+4. Mini-spec no PLANO + **plano de contrato** (até ~600 linhas; código só em armadilha concreta).
+5. G-DELEGA por tarefa (abaixo).
+6. Lotes de 2–4 tarefas por implementador; TDD em endpoint novo; `-Afetados` por lote.
+7. R11 + revisão por lote (sonnet); até 2 rodadas de conserto.
+8. Revisão final do branch (sonnet) + suíte inteira uma vez.
+9. R1 (CRUD; visual se não persiste dado) → `[5-T]`, com PLANO e HANDOFF juntos.
+
+---
+
+## Fluxo principal — trilho G (na ordem)
 
 ### 1. Brainstorming — `superpowers:brainstorming`
 
 5-10 min antes de qualquer código. Explora 2-3 abordagens com tradeoffs. Usuário escolhe.
 
-**Exceção declarável:** "Pulando brainstorming porque é trivial — só {X}". Se a feature toca >2 arquivos, brainstorming não é trivial.
+No trilho G, caminho **Architectural**. (Trilhos P e M usam Spike e Bounded — ver checklists do Passo 0.)
 
 ### 2. Exploração — `Explore` (subagent)
 
@@ -42,9 +70,9 @@ Obrigatório se a feature:
 
 Plano escrito ≠ plano mental. Reduz drift no meio da execução.
 
-### 3.5 Gate [S] — spec + analyze antes do `[0]` (feature não-trivial, v6.19.0)
+### 3.5 Gate [S] — spec + analyze antes do `[0]` (trilho G)
 
-Feature **não-trivial** (toca schema + endpoint + UI, ou pasta sensível) passa por spec antes de virar `[0]`:
+Feature do **trilho G** (R9) passa por spec antes de virar `[0]`:
 
 1. Escreva `spec.md` do template `${env:PERCUS_CANON_DIR}/templates/spec.template.md` (WHAT/WHY, tech-agnóstico).
 2. Auto-valide com `templates/spec-checklist.template.md`.
@@ -192,6 +220,8 @@ Antes do `git commit`, atualize:
 ---
 
 ## Quando NÃO seguir esse checklist completo
+
+- **Trilho P ou M** (R9): use a checklist curta do Passo 0, não o fluxo principal.
 
 - **Bug fix em código existente** que não muda comportamento de feature: pode pular brainstorming/plano. Ainda precisa TDD se mexer em endpoint, e ainda precisa atualizar HANDOFF.
 - **Refactor sem mudança funcional**: pode pular tracking `[0]→[5-T]`. Ainda precisa code-review.

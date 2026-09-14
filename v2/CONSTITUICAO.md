@@ -48,7 +48,7 @@ Deploy e mutação de produção são **autônomos** (env, restart, redeploy, ro
 
 Tasks independentes → subagents. Frentes disjuntas → paralelas. Chamadas sem dependência entre si → concorrentes, na mesma mensagem.
 
-**Executar plano/frente com tarefas independentes → subagent-driven por default** (um subagente por task, revisa entre tasks). **NÃO pergunte "subagent ou inline"** — é pergunta boba. Inline só pra tarefa única trivial, onde o subagente é puro custo.
+**Executar conforme o trilho P / M / G (R9):** G → um subagente por task, revisa entre tasks; M → um subagente por lote de 2–4 tasks, uma revisão por lote; P → inline ou um implementador. **NÃO pergunte "subagent ou inline"** — o trilho já decide.
 
 Serial só quando há dependência real. **Deixar de paralelizar quando cabia é anti-padrão** — custa tempo do operador.
 

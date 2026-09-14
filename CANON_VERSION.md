@@ -23,6 +23,46 @@
 
 ---
 
+## Pendente de versão — trilhos P / M / G (branch `worktree-trilhos-pmg`, 2026-09-14)
+
+> **Sem bump neste branch, de propósito.** Os branches `worktree-checkpoint-so-operador` (6.54.0),
+> `worktree-state-drift-nao-comparou` (6.54.0) e `worktree-plano-sync` (6.55.0) já disputam números. O número
+> desta mudança é atribuído **na hora do merge**, com `scripts/bump-canon.ps1`, na ordem que o operador
+> decidir. Os commits deste branch declaram o escape do gate de versão com esse motivo.
+
+**Problema.** Um ajuste em tela que já existia levou um dia inteiro (2026-09-14). Medido no mesmo dia:
+planos de 4.485–14.323 linhas com 71–83% de código colado (maio–julho: 700–1.000); "trivial" tinha quatro
+definições diferentes no canon; `spec-analyze` e `council-pre-mortem` rodavam automaticamente em qualquer
+tamanho; o fechamento de duas frentes consumiu ~2,0 M tokens em 45 subagentes (5 em opus). Revisão
+completa: `D:\Claud Automations\.claude-home\plans\estamos-reestruturando-nosso-padr-o-curious-gosling.md`
+(pontos 1–6, 9, 10, 12, 13, 15, 16, 21 e 29 desta leva).
+
+**O que mudou (só texto do canon, nenhum código):**
+- **R9:** critério único de tamanho — trilho **P** (mexe no que já existe, até ~5 arquivos, nada sensível),
+  **M** (feature nova sem nada sensível), **G** (schema, auth, pagamento, dado do operador, pasta sensível,
+  hook/canon, deploy). O agente declara o trilho e a estimativa na primeira resposta; nunca rebaixa. Tabela
+  do que cada trilho exige: caminho do brainstorming, spec, plano, pre-mortem, execução, revisão, R11,
+  rodadas de conserto, revisão final, fact-check, marco, suíte e forma da R1.
+- **Plano de contrato** nos trilhos P e M, com precedência sobre o default de `superpowers:writing-plans`:
+  arquivos, assinaturas, casos de teste, critério de pronto e armadilhas; código só em armadilha concreta.
+- **Uma frente por sessão** e **decisões visuais antes do plano**.
+- **R1:** forma visual para mudança que não grava dado (`UI-verified`).
+- **06 (Modos 3 e 5):** `council-pre-mortem` e `spec-analyze` automáticos só no trilho G.
+- **`feature-flow`, `CHECKLIST_FEATURE_NOVA`, `USANDO_SUPERPOWERS`, `CLAUDE.template`:** passam a referenciar
+  o trilho; checklists curtas para P (5 itens) e M (9 itens).
+- **`04_MODEL_ROUTING`:** modelo por papel de subagente em cada trilho; haiku em re-revisão escopada pequena
+  de P/M; opus só em plano e revisão final do G.
+- **Novo `templates/DESPACHO_SUBAGENTE.template.md`:** despacho em até 40 linhas com os contratos que evitam
+  os incidentes de 2026-09-14 (suíte em background que morre, `cd` herdado, crase no `-m`, relatório perdido
+  por limite de API, retomada respondendo a notificação antiga).
+
+**O que NÃO mudou nesta leva:** hooks e scripts. O `crud-evidence-warn` ainda não reconhece `UI-verified`
+(avisa, não bloqueia); R11 por lote já é aceito pelo hook por hash do diff, sem mudança de código. Fallback
+automático do R11, provider Gemini, telemetria e suíte ficam para as fases seguintes da revisão.
+
+**Merge:** conflito esperado em `templates/CLAUDE.template.md` (linha de autonomia) com o branch do
+checkpoint, que também tira o checkpoint dessa frase; resolver ficando com o texto dos dois.
+
 ## Changelog v6.53.0 — 2026-09-13
 
 **Paridade `.sh` dos dois dispatchers.** Fecha o critério de pronto 4 da consolidação da cadeia de
