@@ -56,3 +56,9 @@ autorização É lida e o bloqueio vem do texto do comando.
 seguinte foi bloqueado porque o comando anterior tinha feito `cd CL_Liliflow/app` para montar o
 `git archive`, e o `.percus/` mora em `CL_Liliflow/`. Um `cd` isolado para a raiz destravou, com a
 mesma autorização e sem tocar no arquivo.
+
+**Recorrência, com outro repositório (LiliCalc, 2026-09-14):** o `cd` não precisa ser para um
+subdiretório. No meio do deploy, um `cd` para o `percus-kit` — para commitar um verbete — deixou a
+sessão lá, e o `ssh` seguinte foi bloqueado com a mensagem genérica e sem linha no log de usos. O
+mesmo `cd` isolado de volta para a raiz do projeto destravou, com a mesma autorização. Commit em
+outro repositório durante uma janela R20: use `git -C <repo>` em vez de `cd`.

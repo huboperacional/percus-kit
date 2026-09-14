@@ -888,6 +888,7 @@
 - [Workers Builds falha em todo push porque o diretório de assets é gerado e está no `.gitignore`](workers-builds-sem-build-command-nao-acha-out.md)
 - [Worktree novo não roda os testes do projeto — três causas independentes, todas invisíveis até você tentar](worktree-novo-nao-roda-os-testes-do-projeto.md)
 - [Worktree novo nasce SEM histórico de review — R11 bloqueia o 1º commit mesmo com review recente na main](worktree-novo-sem-historico-review.md)
+- [`git worktree remove` apaga também os IGNORADOS — o log R20 e as evidências da worktree vão junto](worktree-remove-apaga-os-ignorados-e-leva-o-registro-r20.md)
 - [`git worktree remove` falha com "Invalid argument" (não timeout) quando o worktree tem uma junction do Windows dentro](worktree-remove-junction-windows.md)
 - [O wrapper de review lê o `.env` do diretório ATUAL, e `$env:` vence o arquivo](wrapper-de-review-le-env-do-diretorio-atual.md)
 - [O wrapper de review rodado de dentro de um worktree revisa a ÁRVORE ERRADA](wrapper-de-review-rodado-de-worktree-revisa-a-arvore-errada.md)
