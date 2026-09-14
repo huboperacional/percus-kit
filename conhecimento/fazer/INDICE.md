@@ -40,6 +40,7 @@
 - [Provar uma guarda dentro de um loop agendado: arme só a precondição, nunca o coletor](provar-guarda-de-loop-agendado-sem-chamar-o-coletor.md)
 - [A R10 roteia por TIPO — só tela nova em alta fidelidade espera o operador](r10-roteia-por-tipo-nem-toda-tela-espera-o-operador.md)
 - [Consultar o conselho (consult / pre-mortem / analyze)](rodar-conselho.md)
+- [Rollback de migration com dump: restore atômico em duas etapas, senha por stdin](rollback-de-migration-restore-atomico-em-duas-etapas.md)
 - [Rota nova nasce em módulo próprio, e é isso que torna as frentes paralelizáveis](rota-nova-em-modulo-proprio-destrava-paralelo.md)
 - [SDD em árvore compartilhada: o `BASE` do `review-package` fica errado se gravado antes do dispatch](sdd-review-package-base-em-arvore-compartilhada.md)
 - [Semear um teste E2E/R1 para dado que nasce de EFEITO, não de rota](semear-e2e-para-dado-que-nasce-de-efeito-nao-de-rota.md)

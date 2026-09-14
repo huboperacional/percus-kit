@@ -37,3 +37,14 @@ docker build -t <img> /tmp/wt-<sha>/<contexto>
 
 **Não "conserte" trocando `update_failure_action` de `rollback` para `pause`:** o rollback estava
 certo, barrou uma imagem que de fato não sobe. Se trocar para diagnosticar, **devolva** no fim.
+
+**Alternativa sem bundle (medida em 2026-09-14, LiliCalc):** o tarball feito no Windows serve se a
+conversão for desligada no próprio comando — `git -c core.autocrlf=false archive --format=tar.gz -o x.tgz HEAD <pastas>`
+grava os bytes dos blobs. Confira antes de enviar: `tar -xzOf x.tgz --wildcards '*.sh' | grep -c $'\r'`
+tem que dar `0`.
+
+**Recorrência:** LiliCalc, deploy da Fase 8 (2026-09-14). Este verbete já existia e não foi
+consultado antes do deploy (R23). O ensaio da imagem com `--entrypoint sh` passou e não pegou nada;
+ensaie sempre com o entrypoint real (`docker run --rm <img> true`). Na hora da falha, devolva o
+`latest` para a imagem anterior antes de diagnosticar — senão um restart do contêiner antigo sobe a
+quebrada.

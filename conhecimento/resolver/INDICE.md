@@ -616,6 +616,7 @@
 - [O pré-requisito "ação do operador" pode já estar satisfeito — meça antes de esperar](prerequisito-do-operador-pode-ser-medido.md)
 - [Hook `PreToolUse` bloqueia o comando INTEIRO — `add` encadeado antes do commit nunca roda](pretooluse-bloqueia-comando-inteiro-add-nao-roda.md)
 - [Hook pre-commit (R11) é PreToolUse: "review && commit" numa chamada só sempre bloqueia](pretooluse-review-commit.md)
+- [`prisma dev` em background morre quando a sessão do agente troca de contexto](prisma-dev-morre-quando-a-sessao-troca-de-contexto.md)
 - [Mensagem proativa no número do OTP derruba o login inteiro](proativo-no-numero-do-otp-derruba-o-login.md)
 - [`process.exit()` com um `fetch` em voo derruba o Node no Windows com assertion do libuv — e o operador vê crash onde era falha tratada](process-exit-durante-fetch-derruba-node-no-windows.md)
 - [O aviso promete o que o gate não entrega (promessa e decisão em módulos diferentes)](promessa-e-decisao-separadas.md)
