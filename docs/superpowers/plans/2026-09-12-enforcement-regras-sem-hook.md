@@ -202,8 +202,9 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
    findings) foi aplicada no corpo, que agora tem RF1–RF27 e SC1–SC5; a rodada 2, **por delta**, deu
    `AJUSTAR` nas três pernas, sem CRITICAL, e a triagem dela está no topo da spec
    (`specs/2026-09-12-plano-hub-gerado-design.md`). Pelo teto de 2 rodadas, não volta ao analyze.
-   **Próximo passo literal:** plano de implementação (`writing-plans`), começando pelo conserto do
-   `state-drift-check` (RF21–RF22c), que independe do resto. **Decisão reversível do operador:** o
+   **Próximo passo literal:** executar o plano 1,
+   `plans/2026-09-13-state-drift-check-nao-comparou.md` (conserto do `state-drift-check`, RF21–RF22c),
+   que independe do resto; depois, o plano 2 (`plano-sync`). **Decisão reversível do operador:** o
    Fatiar recusa o projeto inteiro por tarefa fora de frente ou preâmbulo acima de 40 linhas, e hoje só
    o piloto passa; a alternativa da Cross-Claude está registrada na spec, com o motivo de não entrar.
 4. **Os hooks das comportamentais**, na ordem que a spec manda: **R5 primeiro e sozinho** (único
