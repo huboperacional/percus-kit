@@ -84,6 +84,23 @@ anti-padrões que mandavam fazer checkpoint proativo e resetar depois do aviso f
 
 Um teste novo varre esses arquivos pelas frases exatas para nenhuma voltar.
 
+**Testes:** 14 novos (6 no hook, nos dois runtimes; 6 nas portas da skill; 2 na varredura do canon) e
+1 reescrito. O teste de 3 dias exigia "sessao nova", ou seja, a própria ordem. Todos ficaram
+vermelhos antes do conserto. Suíte 729/6/8, contra 703/18/8
+no baseline, com o mesmo `PERCUS_CTX_WINDOW=1000000` herdado. Cada commit que leva código passou pelo R11.
+
+**Dívidas registradas (fora do escopo):**
+- Descobrir a janela pelo statusline, o único ponto que recebe `context_window.context_window_size`.
+  Sem isso, o hook segue indeterminado acima de 200k em sessão 1M sem `PERCUS_CTX_WINDOW`.
+- A mensagem do `pre-compact-checkpoint` (`.ps1:33`, `.sh:25`) ainda manda rodar `/checkpoint` como
+  slash, e esse slash não existe no ambiente do operador.
+- A base `conhecimento/` não foi revista à luz desta decisão (ex.:
+  `checkpoint-persiste-arquivos-nao-reseta-contexto`), nem `skills/consult-knowledge/SKILL.md:90`,
+  que chama a skill `checkpoint` de gate de captura. O `INDICE.md` gerado colide com mudança não
+  commitada de outra sessão no checkout principal.
+- O gate barra por `conhecimento/resolver/INDICE.md` desatualizado desde 9a23c82 (5 verbetes fora do
+  índice). Os 4 commits desta versão declararam `PERCUS_GATE_OVERSIZE`, com a linha `Gate:` no corpo.
+
 ## Changelog v6.53.0 — 2026-09-13
 
 **Paridade `.sh` dos dois dispatchers.** Fecha o critério de pronto 4 da consolidação da cadeia de
