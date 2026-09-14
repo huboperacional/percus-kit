@@ -21,6 +21,18 @@ Describe "gatilho da skill checkpoint" {
         # A description e o que dispara a skill. Extrai so ela, do frontmatter YAML.
         $m = [regex]::Match($script:texto, '(?ms)^---\s*\r?\n.*?^description:\s*(?<d>.+?)\r?\n(?:^[a-z_]+:|^---)')
         $script:description = if ($m.Success) { $m.Groups['d'].Value } else { "" }
+
+        # Secao do markdown: do titulo (prefixo ASCII) ate o proximo titulo de nivel igual ou maior.
+        function Get-Secao {
+            param([string]$Prefixo)
+            $i = $script:texto.IndexOf($Prefixo, [StringComparison]::Ordinal)
+            if ($i -lt 0) { return "" }
+            $nivel = ([regex]::Match($Prefixo, '^#+')).Value.Length
+            $resto = $script:texto.Substring($i + $Prefixo.Length)
+            $mm = [regex]::Match($resto, '(?m)^#{1,' + $nivel + '} ')
+            if ($mm.Success) { return $Prefixo + $resto.Substring(0, $mm.Index) }
+            return $Prefixo + $resto
+        }
     }
 
     It "a skill existe" {
@@ -70,5 +82,51 @@ Describe "gatilho da skill checkpoint" {
         # checkpointar) ou travamento (nao checkpointar nunca).
         $script:texto | Should -Match '(?i)n[aã]o d[aá] pra terminar|n[aã]o for poss[ií]vel terminar|nao puder ser terminada' `
             -Because "tarefa que nao fecha tem que virar proximo-passo declarado, nao fingimento"
+    }
+
+    # Decisao do operador em 2026-09-14: so o operador inicia checkpoint e manda abrir sessao nova.
+    # Medido no mesmo dia: sessao com 244k tokens (26% de uma janela de 1M) recebeu do hook "rode
+    # percus-review:checkpoint e encerre em RESET", fez checkpoint e mandou o operador abrir sessao
+    # nova sem ele pedir. A skill obedecia por tres portas: o hook como gatilho na description, os
+    # gatilhos automaticos em "Quando rodar" e o reset obrigatorio do passo 5.
+
+    It "a description so tem o operador como gatilho (sem milestone, sem hook, sem contexto crescendo)" {
+        $script:description | Should -Not -Match '(?i)milestone|context-budget|contexto cresceu|contexto ficando grande' `
+            -Because "description e o que dispara a skill; gatilho que nao seja o operador vira checkpoint por conta propria"
+    }
+
+    It "a description diz que o agente nunca inicia checkpoint nem manda abrir sessao nova" {
+        $script:description | Should -Match '(?i)nunca inicia checkpoint por conta pr.pria'
+        $script:description | Should -Match '(?i)abrir sess.o nova sem o operador pedir'
+    }
+
+    It "Quando rodar lista so pedidos do operador" {
+        $s = Get-Secao '## Quando rodar'
+        $s.Length | Should -BeGreaterThan 100 -Because "anti-vacuidade: a secao tem que existir"
+        $s | Should -Not -Match '(?i)milestone|context-budget|contexto ficando grande|PreCompact|hook'
+        $s | Should -Match '(?i)checkpoint'
+        $s | Should -Match '(?i)fechar ou limpar a sess.o'
+    }
+
+    It "O que o agente NAO faz inclui iniciar checkpoint e mandar abrir sessao nova" {
+        $s = Get-Secao '## O que o agente'
+        $s.Length | Should -BeGreaterThan 100 -Because "anti-vacuidade"
+        $s | Should -Match '(?i)n.o inicia checkpoint por conta pr.pria'
+        $s | Should -Match '(?i)n.o manda abrir sess.o nova'
+    }
+
+    It "o passo 5 so fala de sessao nova quando o operador pediu" {
+        $s = Get-Secao '### 5.'
+        $s.Length | Should -BeGreaterThan 100 -Because "anti-vacuidade"
+        $s | Should -Not -Match '(?i)obrigat|n.o retome o trabalho' -Because "reset obrigatorio foi a porta que mandou abrir sessao nova sem pedido"
+        $s | Should -Match '(?i)operador pediu'
+    }
+
+    It "nenhum resto da politica antiga: reset obrigatorio, horas na saida, checkpoint proativo" {
+        $script:texto | Should -Not -Match 'RESET OBRIGAT'
+        $script:texto | Should -Not -Match '\{H\}h' -Because "hora de parede saiu da politica na 6.52.0 e sobrou na saida esperada"
+        $script:texto | Should -Not -Match '(?i)fa.a no milestone, proativo'
+        $script:texto | Should -Not -Match '(?i)checkpoint sem reset em sess.o avisada'
+        $script:texto | Should -Not -Match '(?i)\(agente\) roda isto'
     }
 }

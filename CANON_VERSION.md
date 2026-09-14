@@ -64,6 +64,13 @@ isso por conta própria e, no máximo, menciona o número ao operador uma vez. �
 `context_window.context_window_size`. Sem `PERCUS_CTX_WINDOW`, uma sessão 1M continua indeterminada
 acima de 200k. A diferença é que isso agora só produz um número, e não uma ordem.
 
+**Skill `checkpoint`:** a `description` passa a ter só o operador como gatilho: a palavra checkpoint,
+em qualquer forma, ou o pedido explícito de fechar ou limpar a sessão. Saem, como gatilhos do agente,
+o fim de milestone, o aviso do hook, o contexto ficando grande e o aviso do PreCompact. O passo 5 só
+fala em sessão nova se o operador pediu ("checkpoint e clear") e não diz mais "Não retome o trabalho
+na sessão atual". A saída esperada perdeu "RESET OBRIGATÓRIO" e o `/{H}h`, que sobrou da 6.52.0. Os
+anti-padrões que mandavam fazer checkpoint proativo e resetar depois do aviso foram invertidos.
+
 ## Changelog v6.53.0 — 2026-09-13
 
 **Paridade `.sh` dos dois dispatchers.** Fecha o critério de pronto 4 da consolidação da cadeia de

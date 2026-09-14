@@ -1,29 +1,41 @@
 ---
 name: checkpoint
-description: Use SEMPRE que o operador disser a palavra checkpoint, em qualquer forma (faz um checkpoint, checkpoint e clear, hora do checkpoint, bora checkpointar) — esse é o gatilho principal. Também ao fim de cada milestone, quando o hook context-budget-guard avisar que o contexto cresceu, ou antes de um /clear ou /compact. Ordem obrigatória — TERMINE a tarefa atual primeiro, depois sincronize PLANO + HANDOFF + mock-audit, registre conhecimento novo (R23), commite com review (R11) e emita o prompt de retomada pronto pra colar. O agente NÃO executa o /clear — não existe ferramenta pra isso e slash command não funciona no VSCode do operador; quem dá o reset é o operador, e a skill termina no bloco de retomada. Checkpoint é persistência — quem gere contexto é o reset; o hook PreCompact é só backstop.
+description: Use SÓ quando o operador pedir — quando ele disser a palavra checkpoint, em qualquer forma (faz um checkpoint, checkpoint e clear, hora do checkpoint, bora checkpointar), ou pedir explicitamente pra fechar ou limpar a sessão. O agente NUNCA inicia checkpoint por conta própria nem manda abrir sessão nova sem o operador pedir (decisão do operador, 2026-09-14). Ordem obrigatória — TERMINE a tarefa atual primeiro, depois sincronize PLANO + HANDOFF + mock-audit, registre conhecimento novo (R23), commite com review (R11) e emita o prompt de retomada pronto pra colar. O agente NÃO executa o /clear — não existe ferramenta pra isso e slash command não funciona no VSCode do operador; quem dá o reset é o operador, e a skill termina no bloco de retomada. Checkpoint é persistência — quem gere contexto é o reset; o hook PreCompact é só backstop.
 ---
 
 # Percus — Checkpoint de contexto
 
 Snapshot deliberado do estado da sessão para que um `/clear` (ou compactação) não perca nada e a
-retomada seja limpa. **Você (agente) roda isto ao fim de cada milestone** — não espere o contexto
-estourar. O hook `PreCompact` existe só como rede de segurança se você esquecer.
+retomada seja limpa. **Só o operador inicia isto** — dizendo checkpoint, ou pedindo pra fechar ou
+limpar a sessão. O hook `PreCompact` existe só como rede de segurança.
 
 > **Checkpoint escreve arquivos; só o reset salva contexto.** Medido em 2026-09-12: uma sessão de
 > 14h foi de 69k a 610k tokens com a palavra "checkpoint" aparecendo 11 vezes — os arquivos ficaram
 > em dia e o contexto continuou morrendo. Retomada dois dias depois, a compactação falhou e a sessão
-> acabou em "Prompt is too long". Por isso o passo 5 existe e não é opcional.
+> acabou em "Prompt is too long".
+>
+> **E resetar é decisão do operador, não do agente.** Medido em 2026-09-14: uma sessão com 244k
+> tokens (26% de uma janela de 1M) fez checkpoint e mandou o operador abrir sessão nova sem ele
+> pedir. O hook `context-budget-guard` não sabia a janela e mandava "rode checkpoint e encerre em
+> RESET". O operador vê o contexto no painel do VSCode, e é ele quem decide.
 
 ## Quando rodar
 
+Só quando o operador pede. São dois gatilhos e não há outro:
+
 - **O operador disse "checkpoint"** — em qualquer forma ("faz um checkpoint", "checkpoint e clear",
-  "hora do checkpoint"). Este é o gatilho principal e não precisa de mais nada: a palavra basta.
-- **Fim de um milestone / fase** do plano (momento natural de checkpoint).
-- **Contexto ficando grande** (resposta lenta, muita coisa acumulada) — antes de pedir `/clear`.
-- Antes de um `/compact` manual.
-- Quando o hook `PreCompact` avisar que a compactação vai acontecer (rode antes dela).
+  "hora do checkpoint"). A palavra basta.
+- **O operador pediu pra fechar ou limpar a sessão** — "fecha a sessão", "vou dar clear", "prepara
+  pra sessão nova", "antes do compact".
 
 ## O que o agente NÃO faz
+
+**Não inicia checkpoint por conta própria.** Nem ao fim de milestone, nem porque o hook
+`context-budget-guard` informou o tamanho do contexto, nem porque a sessão parece grande. O hook só
+informa. Se o operador ainda não sabe o número, mencione-o **uma vez** e siga o trabalho.
+
+**Não manda abrir sessão nova** sem o operador pedir, nem depois de um checkpoint que ele pediu só
+como "checkpoint".
 
 **O `/clear` é do operador.** O agente não tem ferramenta para limpar contexto, e slash command não
 funciona no VSCode dele — então a skill vai **até o bloco de retomada** e para ali. Prometer o clear
@@ -89,19 +101,17 @@ bloco pro operador** — é o que ele cola na sessão nova. Aponte os 2-3 arquiv
 PLANO, e o arquivo do próximo passo). O bloco é **ponteiro + estado mínimo** (≤15 linhas), não cópia
 do HANDOFF: os arquivos são a fonte; o bloco só diz por onde recomeçar.
 
-### 5. Reset — encerrar a sessão
-Se o hook `context-budget-guard` avisou nesta sessão (contexto acima do limiar de aviso — 75% da
-janela do modelo —, ou transcript retomado com dias de idade), **o checkpoint não termina no commit:
-termina no reset.** Hora de parede **não** é motivo: o contexto enche por trabalho, não por relógio —
-sessão parada 10h tem o mesmo contexto de quando parou. Não cite "Xh de sessão" como argumento. Diga
-ao operador, literalmente:
+### 5. Sessão nova — só se o operador pediu
+Se o pedido do operador incluiu fechar ou limpar a sessão ("checkpoint e clear", "fecha a sessão",
+"vou abrir outra"), termine dizendo, literalmente:
 
-> "Checkpoint feito e commitado. Esta sessão está com ~{N}k tokens de contexto — continuar nela custa
-> mais a cada passo e um resume futuro falha. Abra uma **sessão nova** (botão de nova conversa no VSCode,
-> ou `/clear` no terminal) e cole o bloco acima."
+> "Checkpoint feito e commitado. Pode abrir a **sessão nova** (botão de nova conversa no VSCode, ou
+> `/clear` no terminal) e colar o bloco acima."
 
-Não retome o trabalho na sessão atual depois disso. Sem aviso do hook, o reset é opcional — mas ao fim
-de milestone continua sendo a hora natural de fazê-lo.
+Se ele pediu só "checkpoint", a skill termina no bloco de retomada e o trabalho continua nesta sessão
+quando ele quiser. Não sugira sessão nova por conta própria. O aviso do `context-budget-guard` não é
+motivo, porque ele só informa o tamanho. Horas de sessão também não são: o contexto enche por
+trabalho, não por relógio.
 
 ## Saída esperada (mostre ao operador)
 
@@ -111,7 +121,7 @@ Tarefa atual: {terminada | PARADA em <arquivo:linha> — próximo passo: <litera
 Arquivos sincronizados: PLANO ✓ HANDOFF ✓ mock-audit {✓/N/A}
 Conhecimento novo: {slug do verbete escrito em conhecimento/resolver/, ou "nenhum"}
 Commit: {hash + msg curta, ou "sem mudança de código"}
-Contexto: ~{N}k tokens / {H}h — {RESET OBRIGATÓRIO: abra sessão nova | reset opcional}
+Contexto: ~{N}k tokens (informativo) — {sessão nova: pedida pelo operador | não pedida, segue nesta sessão}
 
 ═══ PROMPT DE RETOMADA (cole na sessão nova) ═══
 {bloco preenchido do RESUME_PROMPT.template.md}
@@ -124,11 +134,12 @@ Contexto: ~{N}k tokens / {H}h — {RESET OBRIGATÓRIO: abra sessão nova | reset
   declara o que não deu.
 - ❌ **Dizer que vai dar o `/clear`, ou esperar por ele.** O agente não executa clear. Entregue o
   bloco e encerre — o reset é do operador.
-- ❌ Esperar o contexto estourar pra fazer checkpoint — faça no milestone, proativo.
-- ❌ **Checkpoint sem reset em sessão avisada pelo hook** — o arquivo salva, o contexto continua
-  morrendo (sessão de 610k tokens, Empresa-Milionaria, 2026-09-10).
-- ❌ Retomar (`--resume` / "retomar") um transcript de dias ou de centenas de k — abra sessão nova e
-  cole o bloco; o hook avisa na primeira tool se você fizer isso mesmo assim.
+- ❌ **Iniciar checkpoint por conta própria**, seja ao fim de milestone, por aviso do hook ou porque o
+  contexto cresceu. Checkpoint é do operador (2026-09-14).
+- ❌ **Mandar o operador abrir sessão nova sem ele pedir.** Em 2026-09-14 uma sessão a 26% de uma
+  janela de 1M fez isso, obedecendo a um hook que não sabia a janela.
+- ❌ Tratar a idade do transcript como ordem. O hook informa quando a sessão foi retomada de dias
+  atrás; se o operador não sabe, diga uma vez, e a decisão é dele.
 - ❌ Atualizar só HANDOFF e não PLANO (ou vice-versa) — `state-drift-check` bloqueia.
 - ❌ Emitir resume prompt vago ("continuar a feature X") — o próximo passo tem que ser literal.
 - ❌ Confiar só no hook `PreCompact` — ele é backstop e não escreve HANDOFF semântico (é um script).
