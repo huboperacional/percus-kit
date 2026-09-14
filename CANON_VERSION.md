@@ -99,7 +99,22 @@ no baseline, com o mesmo `PERCUS_CTX_WINDOW=1000000` herdado. Cada commit que le
   que chama a skill `checkpoint` de gate de captura. O `INDICE.md` gerado colide com mudança não
   commitada de outra sessão no checkout principal.
 - O gate barra por `conhecimento/resolver/INDICE.md` desatualizado desde 9a23c82 (5 verbetes fora do
-  índice). Os 4 commits desta versão declararam `PERCUS_GATE_OVERSIZE`, com a linha `Gate:` no corpo.
+  índice). Todos os commits desta versão declararam `PERCUS_GATE_OVERSIZE`, com a linha `Gate:` no
+  corpo.
+- Merge desta branch em `main` sem push ativa hook e canon novos nesta máquina na hora (trampolim via
+  `PERCUS_CANON_DIR`: `context-budget-guard.cmd:4-6`, `percus-dispatch-post.cmd:50-52` preferem o kit
+  apontado por `PERCUS_CANON_DIR` ao plugin instalado), mas a skill `checkpoint` continua vindo do
+  cache do plugin instalado (`plugins/cache/percus-tools/percus-review/6.53.0/skills/checkpoint/SKILL.md`
+  — ainda a versão anterior, com "quando o hook `context-budget-guard` avisar" como gatilho e o passo
+  5 tratando o reset como obrigatório). Até o push e o autoUpdate do plugin (ou `/reload-plugins`), o
+  agente convive com um hook que só informa e uma skill que ainda manda agir. O fechamento completo
+  desta dívida exige push da branch **e** o autoUpdate (ou reload) do plugin instalado.
+- O hook ainda dá ordem ao agente sobre a variável de ambiente: `context-budget-guard.ps1:248` e
+  `.sh:116` ("Defina PERCUS_CTX_WINDOW pra eu voltar a medir percentual"), `.ps1:268` e `.sh:129`
+  ("confira o painel de contexto e, se for o caso, sete PERCUS_CTX_WINDOW"). Essas linhas vão para o
+  `additionalContext` do agente, que não vê o painel do VSCode e poderia editar `settings.json`
+  sozinho. Uma versão futura deveria reformular as duas para "o operador pode definir..." nos dois
+  runtimes, sem tirar a métrica do hook.
 
 ## Changelog v6.53.0 — 2026-09-13
 

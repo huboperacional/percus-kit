@@ -25,7 +25,7 @@
 
 **5. Review + commit** dos artefatos.
 
-**6. Sessão nova só se o operador pediu.** O `context-budget-guard` só informa o tamanho do contexto e a idade do transcript; ele não manda fazer checkpoint nem resetar. Se o operador pediu checkpoint e clear, o checkpoint termina entregando o bloco de retomada (≤15 linhas, ponteiro + próximo passo — os arquivos continuam sendo a fonte) pra ele colar na sessão nova. Sem esse pedido, termina no commit.
+**6. Sessão nova só se o operador pediu.** O `context-budget-guard` só informa o tamanho do contexto e a idade do transcript; ele não manda fazer checkpoint nem resetar. O checkpoint sempre termina entregando o bloco de retomada (≤15 linhas, ponteiro + próximo passo — os arquivos continuam sendo a fonte). Se o operador pediu checkpoint e clear, é isso que ele cola na sessão nova; sem esse pedido, o trabalho segue nesta sessão.
 
 ## Duas armadilhas que já custaram caro
 

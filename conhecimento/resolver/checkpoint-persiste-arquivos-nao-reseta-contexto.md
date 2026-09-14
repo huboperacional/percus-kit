@@ -51,6 +51,16 @@ agente passou a repetir "16h de sessão" ao operador como argumento para reset. 
 por **tokens** (75%/90% da janela) e por **idade do transcript** (2+ dias — um resume velho, que é
 outro defeito). `PERCUS_CTX_HOURS` não existe mais. A frase acima descreve a 6.45.0, não o presente.
 
+**Atualização (6.54.0, 2026-09-14): checkpoint e sessão nova passam a ser só do operador.** O
+`context-budget-guard` deixou de dar qualquer ordem — nos dois runtimes (`.ps1`/`.sh`) ele só informa
+o tamanho do contexto e a idade do transcript, e termina avisando que a decisão de checkpoint ou
+sessão nova é do operador. A skill `checkpoint` perdeu o aviso do hook como gatilho: ela só roda
+quando o operador pede (a palavra checkpoint, ou fechar/limpar a sessão), e o passo 5 só fala em
+sessão nova se ele pediu — sem esse pedido, a skill termina no bloco de retomada, e o trabalho segue
+nesta mesma sessão. As frases acima, "quando o hook avisou, o checkpoint termina em sessão nova"
+(parágrafo da 6.45.0) e "o hook mede; a skill diz o que fazer com a medida" (Discriminante, abaixo),
+descrevem a política anterior à 6.54.0 — não a atual.
+
 **Discriminante:** o contexto vivo é um número que o harness já grava a cada chamada. Se a regra
 para controlá-lo depende de alguém *lembrar* de fazer checkpoint, ela já falhou (CONSTITUIÇÃO §6) —
 o hook mede; a skill diz o que fazer com a medida. O matcher é vazio de propósito: contexto cresce
