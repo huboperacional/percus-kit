@@ -56,4 +56,6 @@ processo em vez do lado do dado.
 `dispatch-pre-paridade-sh.tests.ps1` e `dispatch-post-paridade-sh.tests.ps1`.
 
 **Relacionado:** [[crlf-mata-regex-git-bash]] (a quinta armadilha da mesma tarefa: o `\r` do
-`jq.exe` nativo, que zerou a seleção de checks) · [[regra-duplicada-ps1-sh]].
+`jq.exe` nativo, que zerou a seleção de checks) · [[regra-duplicada-ps1-sh]] ·
+[[harness-de-teste-vaza-estado-de-processo-para-o-arquivo-seguinte]] (o cenário do item 3 trocava
+`HOME`, e a restauração com `$null` deixava `HOME=""` para o arquivo de teste seguinte).

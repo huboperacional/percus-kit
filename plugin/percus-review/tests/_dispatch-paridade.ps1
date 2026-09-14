@@ -175,9 +175,21 @@ function Invoke-Runtime {
             Stderr   = [IO.File]::ReadAllText($tmpErr)
         }
     } finally {
-        foreach ($k in $antigos.Keys) { [Environment]::SetEnvironmentVariable($k, $antigos[$k]) }
+        foreach ($k in $antigos.Keys) { Restore-EnvDoProcesso $k $antigos[$k] }
         foreach ($t in $tmpIn, $tmpOut, $tmpErr) { Remove-Item -LiteralPath $t -Force -ErrorAction SilentlyContinue }
     }
+}
+
+function Restore-EnvDoProcesso {
+    # Devolve a variavel ao estado de antes, INCLUSIVE a ausencia. No pwsh,
+    # SetEnvironmentVariable(k, $null) NAO remove: o binder converte $null em "" e a variavel passa
+    # a existir vazia (medido 2026-09-13). Assim HOME ausente virava HOME="", o lancador
+    # Git\bin\bash.exe perdia o jq, e o cross-claude.sh do arquivo de teste SEGUINTE no mesmo
+    # processo saia 127 sem fazer o POST. So [NullString]::Value remove. Contrato em
+    # dispatch-paridade-harness.tests.ps1.
+    param([string]$Nome, $Valor)
+    if ($null -eq $Valor) { [Environment]::SetEnvironmentVariable($Nome, [NullString]::Value) }
+    else { [Environment]::SetEnvironmentVariable($Nome, [string]$Valor) }
 }
 
 function Invoke-BashComando {
@@ -191,7 +203,7 @@ function Invoke-BashComando {
         [Environment]::SetEnvironmentVariable($k, $Env[$k])
     }
     try { return ((& $Bash -c $Comando 2>&1) -join "`n") }
-    finally { foreach ($k in $antigos.Keys) { [Environment]::SetEnvironmentVariable($k, $antigos[$k]) } }
+    finally { foreach ($k in $antigos.Keys) { Restore-EnvDoProcesso $k $antigos[$k] } }
 }
 
 function Get-EnvSemJq {

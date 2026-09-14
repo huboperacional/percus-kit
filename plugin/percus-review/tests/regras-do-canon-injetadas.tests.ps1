@@ -26,10 +26,6 @@
 
 Describe "regras do canon injetadas no system prompt" {
 
-    AfterAll {
-        [Console]::OutputEncoding = $script:encodingAnterior
-    }
-
     BeforeAll {
         # O pwsh decodifica o STDOUT de comando nativo (& bash, powershell.exe) com
         # [Console]::OutputEncoding -- que e 850 quando a suite roda pelo Bash ou em janela oculta
@@ -67,9 +63,13 @@ Describe "regras do canon injetadas no system prompt" {
     }
 
     AfterAll {
+        # UM AfterAll so. Com dois no mesmo bloco o Pester 5 roda apenas o ultimo: o que devolvia a
+        # codepage nunca executava, e o console ficava em 65001 para os arquivos seguintes do mesmo
+        # balde do rodar-suite (medido 2026-09-13; guarda em pester-blocos-unicos.tests.ps1).
         if ($script:canonVazio -and (Test-Path $script:canonVazio)) {
             try { [IO.Directory]::Delete($script:canonVazio, $true) } catch { }
         }
+        if ($script:encodingAnterior) { [Console]::OutputEncoding = $script:encodingAnterior }
     }
 
     Context "o helper le as regras do canon" {

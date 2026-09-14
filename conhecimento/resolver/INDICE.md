@@ -399,6 +399,7 @@
 - [Harness de teste remoto que empacota a árvore pode deixar o âncora de config para trás — e as guardas somem em silêncio](harness-remoto-empacota-sem-o-ancora-de-rootdir.md)
 - [Harness de auditoria de RLS escrito "uma política por tabela" reprova pra sempre a segunda política aditiva legítima](harness-rls-por-tabela-reprova-a-segunda-politica-legitima.md)
 - [Cabeçalho HTTP com acento ou travessão derruba a resposta com 500](header-http-nao-aceita-acento.md)
+- [Harness de teste vaza estado de PROCESSO para o arquivo seguinte: `$null` que cria variável vazia e `AfterAll` duplicado que some calado](harness-de-teste-vaza-estado-de-processo-para-o-arquivo-seguinte.md)
 - [A leitura de versão do `enforcement-health` VENCE no meio da sessão — `autoUpdate` fecha a divergência sozinho enquanto você "conserta"](health-check-versao-vence-autoupdate.md)
 - [Helper de teste aceita override e o DESCARTA em silêncio — os testes passam por coincidência](helper-de-teste-descarta-override-em-silencio.md)
 - [O heredoc citado do Bash come uma barra invertida, e o estrago sai na cara do cliente](heredoc-citado-do-bash-come-barra-invertida.md)
