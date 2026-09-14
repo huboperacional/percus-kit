@@ -728,6 +728,7 @@
 - [`set -e` com `\[ cond \] && VAR=1` aborta ou não conforme a POSIÇÃO da linha — e o conselho discorda sobre isso](set-e-com-and-aborta-so-no-ultimo-comando-da-funcao.md)
 - [O `set -e` não dispara dentro de `$( )` — e isso mascara uma degradação que na verdade mata](set-e-nao-dispara-dentro-de-substituicao-de-comando-e-mascara-degradacao-que-mata.md)
 - [`SET LOCAL` morre no commit — e código legado que comita por dentro precisa de rearme por transação](set-local-morre-no-commit-rearme-por-transacao.md)
+- [Os `.sh` do percus-review chegam ao cache do plugin com CRLF — e o `install-git-hooks` copia o template assim para `.git/hooks`](sh-do-plugin-no-cache-chega-com-crlf-e-o-hook-nativo-copia-assim.md)
 - [`TableCell` do shadcn tem `whitespace-nowrap` por padrão — texto livre vaza por cima da coluna vizinha](shadcn-table-cell-whitespace-nowrap-vaza-texto-livre.md)
 - [`sharp` ausente: o log grita, a resposta é 200 e a imagem vai ao ar sem otimizar](sharp-ausente-serve-imagem-sem-otimizar.md)
 - [Sinal novo colocado antes de um `return` antigo herda a responsabilidade do caminho inteiro](sinal-novo-nao-pode-piorar-coleta-que-ja-funcionava.md)
