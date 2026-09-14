@@ -39,5 +39,19 @@ sobreviveu a vários commits e reviews porque é invisível. Foi trocado pelo te
 3. Varra de novo depois do conserto. O script que consertou este caso também foi escrito pelo
    agente, e a verificação final foi o que confirmou a grafia certa no disco.
 
+**Recorrência pela ferramenta de edição, e o caminho inverso (LiliCalc, 2026-09-14).** Um regex de
+TypeScript que normaliza os espaços do `Intl` (U+00A0 e U+202F) passou pelas duas direções:
+
+- **Reescrever o arquivo inteiro a partir do que a leitura mostrou trocou os dois caracteres por
+  espaço comum.** A leitura exibe U+00A0 e U+202F como espaço; quem reescreve copiando o que viu grava
+  espaço. O regex virou "troca espaço por espaço" — defeito de comportamento, não só de grafia.
+- **O conserto com a forma barra-u, pela ferramenta de edição, chegou ao disco como os caracteres
+  crus** — o efeito deste verbete, agora também no Edit.
+
+A varredura de bytes pegou as duas, antes de o teste rodar. O conserto que ficou foi um PowerShell que
+monta a barra com `[char]92` e troca a string no arquivo, seguido de nova varredura. Regra prática:
+**não reescreva inteiro um arquivo que tem caractere invisível** — edite o trecho, e varra os bytes
+depois.
+
 **Relacionado:** [[crlf-mata-regex-git-bash]] (o outro caractere invisível da mesma tarefa, vindo do
 `jq.exe`) · [[teste-de-hook-no-windows-mede-o-ambiente-do-runner-e-nao-o-do-harness]].
