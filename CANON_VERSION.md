@@ -71,6 +71,19 @@ fala em sessão nova se o operador pediu ("checkpoint e clear") e não diz mais 
 na sessão atual". A saída esperada perdeu "RESET OBRIGATÓRIO" e o `/{H}h`, que sobrou da 6.52.0. Os
 anti-padrões que mandavam fazer checkpoint proativo e resetar depois do aviso foram invertidos.
 
+**Texto do canon alinhado.** Seis lugares repetiam a política antiga:
+- `v2/loops/checkpoint.md`: o passo 6 mandava encerrar em reset quando o hook mandasse e ainda citava
+  o gatilho de 8h.
+- `templates/CLAUDE.template.md`: checkpoint estava na lista "rode sozinho" e, na tabela, como
+  "contexto cheio".
+- `templates/RESUME_PROMPT.template.md`: dizia que o prompt é gerado "ao fim de um milestone".
+- `01_REGRAS_INEGOCIAVEIS.md`: a R5 listava checkpoint entre os auto-triggers, e o item 4 da R23 o
+  tratava como rede de captura.
+- `comandos/SKILLS_VS_COMMANDS.md`: tinha "auto ao fim de marco" e "o agente invoca checkpoint".
+- `comandos/REORGANIZAR_PROJETO.md`: mandava rodar checkpoint "ao fim de milestone".
+
+Um teste novo varre esses arquivos pelas frases exatas para nenhuma voltar.
+
 ## Changelog v6.53.0 — 2026-09-13
 
 **Paridade `.sh` dos dois dispatchers.** Fecha o critério de pronto 4 da consolidação da cadeia de

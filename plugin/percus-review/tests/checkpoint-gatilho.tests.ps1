@@ -130,3 +130,51 @@ Describe "gatilho da skill checkpoint" {
         $script:texto | Should -Not -Match '(?i)\(agente\) roda isto'
     }
 }
+
+# Decisao do operador em 2026-09-14: so o operador inicia checkpoint e manda abrir sessao nova.
+# A skill era so uma das portas. O canon repetia a politica antiga em seis lugares -- o loop, o
+# template do CLAUDE.md que vai pra todo projeto, o template do prompt de retomada, a R5, a R23 e
+# dois docs de comandos -- e o agente le esses textos no boot. Esta varredura prende as frases
+# exatas que davam checkpoint ao agente, para nenhuma voltar.
+Describe "canon nao da checkpoint ao agente" {
+
+    BeforeAll {
+        $script:raiz = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+        $script:proibidos = @(
+            @{ Arquivo = 'v2\loops\checkpoint.md';              Regex = '(?i)encerre em reset quando o hook';        Era = 'passo 6 mandava resetar quando o hook mandasse' }
+            @{ Arquivo = 'v2\loops\checkpoint.md';              Regex = '(?i)sess.o passa de 8h';                    Era = 'gatilho de 8h, removido na 6.52.0' }
+            @{ Arquivo = 'v2\loops\checkpoint.md';              Regex = '(?i)\*\*Quando:\*\* fim de milestone';     Era = 'milestone como gatilho do agente' }
+            @{ Arquivo = 'templates\CLAUDE.template.md';        Regex = '(?i)build/checkpoint sozinho';              Era = 'checkpoint na lista rode sozinho' }
+            @{ Arquivo = 'templates\CLAUDE.template.md';        Regex = '(?i)Sess.o terminando / contexto cheio';    Era = 'contexto cheio como gatilho do loop' }
+            @{ Arquivo = 'templates\RESUME_PROMPT.template.md'; Regex = '(?i)checkpoint` ao fim de um milestone';    Era = 'milestone como gatilho' }
+            @{ Arquivo = '01_REGRAS_INEGOCIAVEIS.md';           Regex = '(?i)build / checkpoint \(passos internos';  Era = 'checkpoint entre os auto-triggers da R5' }
+            @{ Arquivo = '01_REGRAS_INEGOCIAVEIS.md';           Regex = '(?i)a captura n.o depende de mem.ria';      Era = 'R23 contava com checkpoint automatico' }
+            @{ Arquivo = 'comandos\SKILLS_VS_COMMANDS.md';      Regex = '(?i)auto ao fim de marco';                  Era = 'checkpoint automatico no fim de marco' }
+            @{ Arquivo = 'comandos\SKILLS_VS_COMMANDS.md';      Regex = '(?i)invoca `checkpoint`/`feature-flow`';    Era = 'agente invocando checkpoint por conta propria' }
+            @{ Arquivo = 'comandos\REORGANIZAR_PROJETO.md';     Regex = '(?i)ao fim de milestone \(PreCompact';      Era = 'checkpoint ao fim de milestone' }
+        )
+
+        function Get-TextoCanon {
+            param([string]$Relativo)
+            $p = Join-Path $script:raiz $Relativo
+            if (-not (Test-Path -LiteralPath $p)) { return "" }
+            return [IO.File]::ReadAllText($p)
+        }
+    }
+
+    It "nenhum doc do canon repete a politica antiga de checkpoint" {
+        $achados = New-Object System.Collections.Generic.List[string]
+        foreach ($p in $script:proibidos) {
+            $txt = Get-TextoCanon $p.Arquivo
+            $txt.Length | Should -BeGreaterThan 200 -Because "anti-vacuidade: $($p.Arquivo) tem que existir e ter conteudo"
+            if ($txt -match $p.Regex) { $achados.Add("$($p.Arquivo): $($p.Era)") }
+        }
+        ($achados -join "`n") | Should -BeNullOrEmpty -Because "a politica antiga voltou"
+    }
+
+    It "o loop, o template do CLAUDE.md e a R5 dizem que so o operador inicia checkpoint" {
+        foreach ($a in @('v2\loops\checkpoint.md', 'templates\CLAUDE.template.md', '01_REGRAS_INEGOCIAVEIS.md')) {
+            Get-TextoCanon $a | Should -Match '(?i)s. o operador inicia checkpoint' -Because "$a tem que dizer de quem e a decisao"
+        }
+    }
+}

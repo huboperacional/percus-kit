@@ -30,7 +30,7 @@ carrega **só o loop da situação**. Invariantes: `${env:PERCUS_CANON_DIR}/v2/C
 | Vai começar a implementar | `v2/loops/tdd.md` |
 | Vai commitar | `v2/loops/review.md` |
 | Marco pronto pra prod | `v2/loops/deploy.md` |
-| Sessão terminando / contexto cheio | `v2/loops/checkpoint.md` |
+| Operador pediu checkpoint, ou pediu pra fechar a sessão | `v2/loops/checkpoint.md` |
 | Algo repetidamente estranho (escape reincidente, doc que não bate) | `v2/loops/drift.md` |
 
 Sem situação da tabela → não carregue loop nenhum. Formatos de artefato (HANDOFF/CONTEXT/
@@ -149,7 +149,8 @@ Resumo: brainstorming → plano → TDD → execução vertical [0]→[5-T] → 
 
 O operador quer que você **resolva o máximo possível sozinho**. Confirmação é EXCEÇÃO, não default.
 
-- **Rode review/conselho/testes/lint/build/checkpoint sozinho.** ❌ Nunca peça "rode `/percus-review:review`" — você dispara o wrapper (auto-trigger). Ao finalizar uma **spec** → roda `spec-analyze` sozinho; ao finalizar um **plano** → roda `council-pre-mortem` sozinho. Sempre, sem perguntar.
+- **Rode review/conselho/testes/lint/build sozinho.** ❌ Nunca peça "rode `/percus-review:review`" — você dispara o wrapper (auto-trigger). Ao finalizar uma **spec** → roda `spec-analyze` sozinho; ao finalizar um **plano** → roda `council-pre-mortem` sozinho. Sempre, sem perguntar.
+- **Checkpoint e sessão nova são do operador.** Só o operador inicia checkpoint e manda abrir sessão nova. Fim de milestone e aviso do `context-budget-guard` não são gatilho seu: o hook só informa o tamanho do contexto. Se o operador não sabe o número, mencione uma vez e siga.
 - **Maximize paralelo (default):** subagents pra tasks independentes, frentes disjuntas, múltiplos tool calls concorrentes numa só mensagem. Serial só com dependência real. Não paralelizar quando cabia = anti-padrão.
 - **Limpe lixo que VOCÊ criou** (scratchpad, worktrees temp, arquivos efêmeros, branches locais próprias) sem confirmar. R5 não se aplica a lixo auto-criado.
 - **Deploy/mutação de prod é autônomo (padrão Percus):** troca de env, `--env-add`, restart/redeploy, rollback, migration com `downgrade` testado → **execute direto, sem confirmar caso a caso**; escolha o caminho padrão (faça tudo, ex.: via SSH). Ler segredo do `.env` e usá-lo sem imprimir = ok.

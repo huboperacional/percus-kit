@@ -182,7 +182,7 @@ já decidido — NUNCA um menu "(a)/(b)/(c) quem faz o quê".**
 
 **Filosofia (resolver o máximo sem perguntar):** confirmação é EXCEÇÃO, não default. **Resolva sozinho — NÃO
 peça permissão pra:**
-- Rodar review / conselho / testes / lint / build / checkpoint (passos internos; auto-trigger, ver R11).
+- Rodar review / conselho / testes / lint / build (passos internos; auto-trigger, ver R11). **Checkpoint fica fora desta lista:** só o operador inicia checkpoint e manda abrir sessão nova (decisão de 2026-09-14; skill `checkpoint`).
 - Limpar **lixo que VOCÊ criou nesta sessão**: scratchpad, worktrees temporários, arquivos efêmeros de
   plano/review, branches locais que você mesmo abriu. R5 **não se aplica a lixo auto-criado**.
 - Ler segredo do `.env` e usá-lo num deploy/`--env-add` **sem imprimi-lo** (operação de infra normal).
@@ -888,7 +888,8 @@ versionada no git, consultável por **classe de sintoma**, sincroniza pra todas 
 2. `percus-gate.sh` bloco 2c barra referência ao caminho do monólito aposentado.
 3. Ao bater num erro conhecido, há evidência de consulta antes do debug (a skill loga / o agente declara).
 4. `CHECKLIST_ENCERRAR_SESSAO.md` tem o passo "problema novo resolvido virou verbete?"; a skill
-   `checkpoint` reforça (a captura não depende de memória — fica num gate que já roda).
+   `checkpoint` reforça quando o operador a pede. Ela deixou de ser gatilho automático em
+   2026-09-14, então não é rede: a captura continua sendo obrigação da sessão que resolveu.
 
 **Refs:**
 - Skill: `consult-knowledge` (`plugin/percus-review/skills/consult-knowledge/SKILL.md`) — invoca-se por linguagem natural, não por slash (ver `comandos/SKILLS_VS_COMMANDS.md`)
