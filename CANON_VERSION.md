@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.53.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.54.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -22,6 +22,47 @@
 > Resumindo o que continua valendo: `plugin/percus-review/plugin.json` (source) acompanha esta versão; a pasta em cache reflete o último republish. Para **gates**, ficar atrás é legítimo. Para **hooks**, ficar atrás é defeito operacional e precisa de publicação.
 
 ---
+
+## Changelog v6.54.0 — 2026-09-14
+
+**Checkpoint e sessão nova passam a ser só do operador.** O `context-budget-guard` deixa de dar ordem e
+só informa o tamanho do contexto.
+
+**O defeito (medido em 2026-09-14):** uma sessão `claude-opus-5[1m]` (janela de 1M) estava com 244k
+tokens, 26% da janela. Ela fez checkpoint e mandou o operador abrir sessão nova sem ele pedir. O
+`model` gravado no transcript não traz `[1m]`, então o hook caiu no piso de 200k, passou dele e
+declarou a janela INDETERMINADA. Mesmo admitindo que não sabia se a sessão estava perto do teto, a
+mensagem terminava em "Acao: rode percus-review:checkpoint e encerre em RESET". A condição de
+transcript velho ordenava "Nao continue nela: abra sessao nova". E a skill `checkpoint` tinha o aviso
+do hook como gatilho, com reset obrigatório depois dele.
+
+**Decisão do operador:** só o operador inicia checkpoint e manda abrir sessão nova. O agente nunca faz
+isso por conta própria e, no máximo, menciona o número ao operador uma vez. É a mesma direção de
+2026-09-12, quando o aviso ao operador virou opcional porque ele vê o contexto no painel do VSCode.
+
+**Hook (`.ps1` e `.sh`, em paridade):**
+- Sai a linha "Acao: rode percus-review:checkpoint e encerre em RESET" nas duas variantes, e com ela
+  "Acima de ~Xk um resume futuro em janela ~Yk falha".
+- A idade do transcript só informa ("iniciado ha N dias -- e uma sessao retomada/velha") e não manda
+  mais abrir sessão nova.
+- Toda mensagem ao agente termina na mesma frase: "Isto e so informacao: decidir checkpoint ou sessao
+  nova e do operador. Voce NAO inicia checkpoint nem manda abrir sessao nova por conta propria; no
+  maximo mencione estes numeros ao operador uma vez."
+- O aviso opcional ao operador (`PERCUS_CTX_OPERADOR=1`) troca "Hora de checkpoint + sessao nova" por
+  "Checkpoint e sessao nova ficam a seu criterio".
+- **Ficam:** os níveis (75% e 90% da janela), o debounce de um aviso por nível, o texto do LIMITE DURO
+  e a ressalva do piso adivinhado. Eles dizem quando o hook fala e o que se sabe sobre o teto: são
+  informação, não ordem. Os invariantes das rodadas de R11 da janela descoberta continuam cobertos
+  pelos testes que já existiam.
+- A `_nota` do `hooks-manifest.json` ainda descrevia 150k/180k fixos e `PERCUS_CTX_HOURS=8h`, que
+  saiu na 6.52.0. Foi corrigida junto.
+- `context-budget-guard.tests.ps1` zera os `PERCUS_CTX_*` herdados e os restaura no fim. Com a
+  mitigação `PERCUS_CTX_WINDOW=1000000` no settings do usuário, os casos de 160k/185k ficavam mudos,
+  e o arquivo passava a medir o ambiente do runner em vez do hook.
+
+**Não resolve a janela.** O input dos hooks não traz o tamanho da janela; só o statusline recebe
+`context_window.context_window_size`. Sem `PERCUS_CTX_WINDOW`, uma sessão 1M continua indeterminada
+acima de 200k. A diferença é que isso agora só produz um número, e não uma ordem.
 
 ## Changelog v6.53.0 — 2026-09-13
 

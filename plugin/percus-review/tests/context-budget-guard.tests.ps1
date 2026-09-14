@@ -20,6 +20,18 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
     BeforeAll {
         $script:hook = Join-Path $PSScriptRoot ".." "hooks" "context-budget-guard.ps1"
 
+        # O runner herda o ambiente da sessao que o chamou. Com PERCUS_CTX_WINDOW=1000000 no
+        # settings do usuario (mitigacao de 2026-09-14), 160k fica mudo e metade deste arquivo
+        # passa a medir o ambiente em vez do hook -- mesma classe do verbete
+        # teste-de-hook-no-windows-mede-o-ambiente-do-runner-e-nao-o-do-harness. Zera aqui e
+        # restaura no AfterAll; os testes que precisam de um valor setam e removem o seu.
+        $script:ctxEnvNomes = @('PERCUS_CTX_WINDOW', 'PERCUS_CTX_WARN', 'PERCUS_CTX_HARD', 'PERCUS_CTX_RESUME_DAYS', 'PERCUS_CTX_OPERADOR', 'PERCUS_CTX_HOURS', 'PERCUS_SKIP_CONTEXT_BUDGET')
+        $script:ctxEnvSalvo = @{}
+        foreach ($nome in $script:ctxEnvNomes) {
+            $script:ctxEnvSalvo[$nome] = [Environment]::GetEnvironmentVariable($nome)
+            Remove-Item "Env:$nome" -ErrorAction SilentlyContinue
+        }
+
         # Fabrica um transcript jsonl com a forma que o harness grava: primeira linha com
         # timestamp, linhas de enchimento SEM "usage", e a ultima chamada com usage.
         function New-Transcript {
@@ -81,6 +93,14 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
             $json = $null
             if ($texto) { try { $json = $texto | ConvertFrom-Json } catch { $json = $null } }
             return [pscustomobject]@{ Code = $code; Out = $texto; Json = $json; Ms = $sw.ElapsedMilliseconds; Cwd = $Cwd }
+        }
+    }
+
+    AfterAll {
+        foreach ($nome in $script:ctxEnvNomes) {
+            $valor = $script:ctxEnvSalvo[$nome]
+            if ($null -eq $valor) { Remove-Item "Env:$nome" -ErrorAction SilentlyContinue }
+            else { Set-Item "Env:$nome" $valor }
         }
     }
 
@@ -285,12 +305,14 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
     # marcava 188k e cuja compactacao caiu em rate-limit. Nao e "trabalhou demais", e "voltou a um
     # transcript velho".
     Context "idade do transcript: resume de dias atras continua avisando" {
-        It "100k tokens mas transcript iniciado ha 3 dias (resume velho) -> avisa citando os dias" {
+        It "100k tokens mas transcript iniciado ha 3 dias (resume velho) -> informa citando os dias" {
             $t = New-Transcript -Tokens 100000 -HorasAtras 72
             $r = Invoke-Guard -Transcript $t
             $r.Json | Should -Not -BeNullOrEmpty
             $r.Json.hookSpecificOutput.additionalContext | Should -Match '3 dias'
-            $r.Json.hookSpecificOutput.additionalContext | Should -Match 'sess[aã]o nova'
+            $r.Json.hookSpecificOutput.additionalContext | Should -Match 'retomada/velha'
+            # ate a 6.53.0 esta assercao era 'sessao nova' -- exigia a ordem que o operador tirou
+            $r.Json.hookSpecificOutput.additionalContext | Should -Not -Match 'Nao continue nela'
         }
     }
 
@@ -564,6 +586,130 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
             $env:PERCUS_CTX_WINDOW = "1000000"
             try { $r = Invoke-Guard -Transcript $t } finally { Remove-Item Env:PERCUS_CTX_WINDOW -ErrorAction SilentlyContinue }
             $r.Json.hookSpecificOutput.additionalContext | Should -Not -Match '200k'
+        }
+    }
+
+    # Decisao do operador em 2026-09-14: "so o operador inicia checkpoint e manda abrir sessao nova".
+    #
+    # Ate a 6.53.0 TODA mensagem terminava em "Acao: rode percus-review:checkpoint e encerre em
+    # RESET" -- inclusive com a janela INDETERMINADA, quando o proprio hook acabara de admitir que
+    # nao sabia se a sessao estava perto do teto. Medido: sessao claude-opus-5[1m] (janela 1M) com
+    # 244k tokens, 26% da janela, recebeu esse aviso, fez checkpoint e mandou o operador abrir
+    # sessao nova sem ele pedir. O model do transcript nao traz [1m]; o hook caiu no piso de 200k.
+    # Estes testes varrem TODOS os caminhos que falam -- aviso, duro, duro com HARD explicito,
+    # indeterminada, idade do transcript -- nos dois runtimes, porque a ordem estava nos dois.
+    Context "so informa: checkpoint e sessao nova sao do operador (2026-09-14)" {
+        BeforeAll {
+            $script:ordens = @(
+                'Acao:',
+                'rode percus-review:checkpoint',
+                'encerre em RESET',
+                'abra sessao nova',
+                'Nao continue nela',
+                'so o reset salva contexto'
+            )
+            $script:regraOperador = 'Isto e so informacao: decidir checkpoint ou sessao nova e do operador. Voce NAO inicia checkpoint nem manda abrir sessao nova por conta propria; no maximo mencione estes numeros ao operador uma vez.'
+
+            $script:bashSo = (Get-Command bash -ErrorAction SilentlyContinue).Source
+            if (-not $script:bashSo) {
+                $script:bashSo = @("$env:ProgramFiles\Git\bin\bash.exe", "$env:ProgramFiles\Git\usr\bin\bash.exe") |
+                                 Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            }
+            $script:shSo = Join-Path $PSScriptRoot ".." "hooks" "context-budget-guard.sh"
+
+            # Roda o .sh e devolve o JSON (ou $null se ele ficou mudo).
+            function Invoke-GuardShSo {
+                param([string]$Transcript, [string]$SessionId = "so-sh-$(Get-Random)")
+                $cwd = Split-Path $Transcript -Parent
+                $payload = @{ session_id = $SessionId; transcript_path = $Transcript; cwd = $cwd; hook_event_name = "PostToolUse" } | ConvertTo-Json -Compress
+                Push-Location $cwd
+                try { $txt = (($payload | & $script:bashSo $script:shSo 2>$null) -join "").Trim() } finally { Pop-Location }
+                if (-not $txt) { return $null }
+                return ($txt | ConvertFrom-Json)
+            }
+
+            # Nenhuma ordem, e a regra do operador presente. Mensagem vazia NAO passa (anti-vacuidade).
+            function Assert-SoInforma {
+                param([string]$Msg, [string]$Caso)
+                $Msg | Should -Not -BeNullOrEmpty -Because "o hook tinha que ter falado no caso '$Caso'"
+                $Msg | Should -Match '~\d+k tokens' -Because "o numero e a informacao que fica ($Caso)"
+                foreach ($o in $script:ordens) {
+                    # -CMatch (case-sensitive), nao -Match: 'Acao:' case-insensitive colide com o
+                    # substring final de "informacao:" (mesmo padrao de no-legacy-kit-path.tests.ps1)
+                    $Msg | Should -Not -CMatch ([regex]::Escape($o)) -Because "caso '$Caso' ainda ordena: $Msg"
+                }
+                $Msg.Contains($script:regraOperador) | Should -BeTrue -Because "caso '$Caso' tem que dizer que a decisao e do operador: $Msg"
+            }
+
+            # Os DOIS runtimes no mesmo transcript: sem ordem, com a regra, e mensagem identica.
+            function Assert-SoInformaNosDois {
+                param([string]$Transcript, [string]$Caso)
+                $r = Invoke-Guard -Transcript $Transcript
+                $msgPs = $r.Json.hookSpecificOutput.additionalContext
+                Assert-SoInforma -Msg $msgPs -Caso "$Caso (.ps1)"
+                $msgSh = $null
+                if ($script:bashSo) {
+                    $sh = Invoke-GuardShSo -Transcript $Transcript
+                    if ($sh) { $msgSh = $sh.hookSpecificOutput.additionalContext }
+                    Assert-SoInforma -Msg $msgSh -Caso "$Caso (.sh)"
+                    $msgSh | Should -Be $msgPs -Because "paridade no caso '$Caso'`nps: $msgPs`nsh: $msgSh"
+                }
+                return [pscustomobject]@{ Ps = $msgPs; Sh = $msgSh; SemBash = (-not $script:bashSo) }
+            }
+        }
+
+        It "aviso sobre o piso (160k): informa o numero e nao ordena checkpoint" {
+            $t = New-Transcript -Tokens 160000 -Model 'claude-opus-4-7'
+            $x = Assert-SoInformaNosDois -Transcript $t -Caso 'aviso 160k'
+            $x.Ps | Should -Match '160k'
+            if ($x.SemBash) { Set-ItResult -Skipped -Because "sem bash: so o .ps1 foi aferido" }
+        }
+
+        It "LIMITE DURO sobre o piso (185k): o nivel continua, a ordem nao" {
+            $t = New-Transcript -Tokens 185000 -Model 'claude-opus-4-7'
+            $x = Assert-SoInformaNosDois -Transcript $t -Caso 'duro 185k'
+            $x.Ps | Should -Match 'LIMITE DURO' -Because "o nivel e informacao sobre o teto; so a ordem saiu"
+            if ($x.SemBash) { Set-ItResult -Skipped -Because "sem bash: so o .ps1 foi aferido" }
+        }
+
+        It "o caso medido: 244k num modelo sem marcador (janela INDETERMINADA) nao ordena RESET" {
+            $t = New-Transcript -Tokens 244000 -Model 'claude-opus-5'
+            $x = Assert-SoInformaNosDois -Transcript $t -Caso 'indeterminada 244k'
+            $x.Ps | Should -Match 'INDETERMINADA'
+            $x.Ps | Should -Match '244k'
+            if ($x.SemBash) { Set-ItResult -Skipped -Because "sem bash: so o .ps1 foi aferido" }
+        }
+
+        It "PERCUS_CTX_HARD explicito com janela indeterminada (210k): duro, sem ordem" {
+            $t = New-Transcript -Tokens 210000 -Model 'claude-opus-4-7'
+            $env:PERCUS_CTX_HARD = "180000"
+            try { $x = Assert-SoInformaNosDois -Transcript $t -Caso 'HARD explicito 210k' } finally { Remove-Item Env:PERCUS_CTX_HARD -ErrorAction SilentlyContinue }
+            $x.Ps | Should -Match 'LIMITE DURO'
+            if ($x.SemBash) { Set-ItResult -Skipped -Because "sem bash: so o .ps1 foi aferido" }
+        }
+
+        It "transcript de 3 dias (100k): informa a idade e nao manda abrir sessao nova" {
+            $t = New-Transcript -Tokens 100000 -HorasAtras 72
+            $x = Assert-SoInformaNosDois -Transcript $t -Caso 'transcript velho'
+            $x.Ps | Should -Match '3 dias'
+            if ($x.SemBash) { Set-ItResult -Skipped -Because "sem bash: so o .ps1 foi aferido" }
+        }
+
+        It "PERCUS_CTX_OPERADOR=1: o aviso ao operador informa e deixa a decisao com ele, igual nos dois runtimes" {
+            $t = New-Transcript -Tokens 160000 -Model 'claude-opus-4-7'
+            $env:PERCUS_CTX_OPERADOR = "1"
+            try {
+                $r = Invoke-Guard -Transcript $t
+                $sh = $null
+                if ($script:bashSo) { $sh = Invoke-GuardShSo -Transcript $t }
+            } finally { Remove-Item Env:PERCUS_CTX_OPERADOR -ErrorAction SilentlyContinue }
+            $op = $r.Json.systemMessage
+            $op | Should -Match '160k' -Because "anti-vacuidade"
+            $op | Should -Not -Match 'Hora de checkpoint' -Because "o operador decide; o hook nao empurra"
+            $op | Should -Not -Match 'veja o aviso ao agente' -Because "o aviso ao agente nao tem mais acao pra ver"
+            $op | Should -Match 'a seu criterio'
+            if (-not $script:bashSo) { Set-ItResult -Skipped -Because "sem bash: so o .ps1 foi aferido"; return }
+            $sh.systemMessage | Should -Be $op
         }
     }
 

@@ -2,7 +2,8 @@
 # Hook PostToolUse Percus (todas as tools) -- orcamento de contexto. OBSERVADOR: exit 0 sempre.
 # Paridade com context-budget-guard.ps1 (a fonte da logica e o .ps1; leia o cabecalho dele).
 # Le a ultima `usage` da CAUDA do transcript (tail -c), soma input + cache_read + cache_creation,
-# e avisa (additionalContext + systemMessage) acima dos limiares, uma vez por nivel por sessao.
+# e informa (additionalContext; systemMessage so com PERCUS_CTX_OPERADOR) acima dos limiares, uma vez
+# por nivel por sessao. SO INFORMA (6.54.0): checkpoint e sessao nova sao decisao do operador.
 set +e
 
 STDIN=$(cat)
@@ -128,16 +129,13 @@ elif [ "$NIVEL" -ge 2 ]; then
     piso*) MSG="$MSG ATENCAO: a janela ~${KJ}k acima e um PISO adivinhado -- o modelo nao a declara. Se esta sessao tem janela maior (ex.: variante 1M), este aviso e falso: confira o painel de contexto e, se for o caso, sete PERCUS_CTX_WINDOW." ;;
   esac
 fi
-if [ "$COND_D" -eq 1 ]; then MSG="$MSG Este transcript foi iniciado ha $DIAS dias -- e uma sessao retomada/velha. Nao continue nela: abra sessao nova e cole o bloco de retomada do HANDOFF."
+if [ "$COND_D" -eq 1 ]; then MSG="$MSG Este transcript foi iniciado ha $DIAS dias -- e uma sessao retomada/velha."
 fi
-if [ "$JANELA_INCERTA" -eq 1 ]; then
-  MSG="$MSG Acao: rode percus-review:checkpoint e encerre em RESET (sessao nova + bloco de retomada). Checkpoint escreve arquivos; so o reset salva contexto."
-else
-  MSG="$MSG Acao: rode percus-review:checkpoint e encerre em RESET (sessao nova + bloco de retomada). Checkpoint escreve arquivos; so o reset salva contexto. Acima de ~${KW}k um resume futuro em janela ~${KJ}k falha."
-fi
-# o operador so e avisado se pedir: ele ve o contexto no painel do VSCode (decisao dele 2026-09-12)
+# SO INFORMA (paridade .ps1; decisao do operador 2026-09-14): nenhuma ordem de checkpoint ou RESET
+MSG="$MSG Isto e so informacao: decidir checkpoint ou sessao nova e do operador. Voce NAO inicia checkpoint nem manda abrir sessao nova por conta propria; no maximo mencione estes numeros ao operador uma vez."
+# o operador so e informado se pedir: ele ve o contexto no painel do VSCode e decide (2026-09-12 e 2026-09-14)
 OP=""
-[ "$(limiar "${PERCUS_CTX_OPERADOR:-}" 0)" -gt 0 ] && OP="[percus:hook context-budget-guard] contexto ~${K}k tokens (${PCT_TXT}). Hora de checkpoint + sessao nova (veja o aviso ao agente)."
+[ "$(limiar "${PERCUS_CTX_OPERADOR:-}" 0)" -gt 0 ] && OP="[percus:hook context-budget-guard] contexto ~${K}k tokens (${PCT_TXT}). Checkpoint e sessao nova ficam a seu criterio."
 
 jq -n --arg sid "$SESSION_ID" --argjson t "$TOKENS" --argjson h "$HORAS" --argjson n "$NIVEL" --argjson d "$DIAS" \
   '{ts:(now|todate),session_id:$sid,tokens:$t,horas:$h,nivel:$n,dias:$d}' >> "$STATE_DIR/eventos.jsonl" 2>/dev/null
