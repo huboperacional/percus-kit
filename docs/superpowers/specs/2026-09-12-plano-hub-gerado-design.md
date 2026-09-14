@@ -9,6 +9,69 @@ O `docs/PLANO.md` deixa de ser um arquivo escrito à mão que cresce sem limite 
 **hub gerado** de ~1 tela. Cada frente vira um arquivo próprio em `docs/plano/`, e o estado de uma
 frente passa a ser **derivado** das suas tarefas em vez de declarado no título.
 
+## Rodada 1 do `spec-analyze` — triagem dos findings, com premissa conferida (2026-09-13)
+
+> **Estado:** `AJUSTAR`. Esta seção diz o que muda na spec; o corpo abaixo **ainda não foi ajustado**.
+> Próximo passo: aplicar os itens ACEITAR no corpo e rodar a rodada 2 **por delta** (verbete
+> `perna-do-conselho-reprova-spec-que-nao-leu-inteira`), levando as medições abaixo no delta e dizendo
+> o que não reanalisar.
+
+**Fontes.** DeepSeek e Llama: `.deepseek/council-log/20260912-153617-analyze.jsonl` (`truncated: false`,
+4 138 tokens: as duas pernas leram a spec inteira). Cross-Claude: saiu `error` nesse log; a resposta
+válida veio do subagente da sessão de 12/09. **Contagem real: 37 findings** (DeepSeek 21, sendo 6 HIGH;
+Llama 10, sendo 2 HIGH; Cross-Claude 6, sendo 2 HIGH). O "10 findings (6+2+2)" do plano contava só os HIGH.
+
+### Medições que decidem a triagem
+
+| O que a spec afirma | Medido em 2026-09-13 | Veredito |
+|---|---|---|
+| `state-drift-check` só lê o HANDOFF dentro de "Status de features"; 4 de 31 têm | Código confirma (`Read-HandoffFeatures`; sem casar, `exit 0`). **4 de 27** HANDOFFs na raiz dos projetos têm a seção | procede; recontar o N |
+| `crud-evidence-warn` casa por basename | Confirmado (`GetFileName` = `PLANO.md`/`HANDOFF.md`), e ele é **warn-only** | procede |
+| `PLANO.template.md` tem `## Histórico` | Confirmado (linha 74) | procede |
+| "teto 150 já funciona: 12 projetos com gate, máximo 153" | O gate é `v2/gates/percus-gate.sh:54`. **13** projetos têm `percus-gate` em hook de git e HANDOFF; o maior tem **230 linhas** (`Paid Midia Automation/docs/HANDOFF.md`) | **falso**, e pior que o finding |
+| Fatiar por `##` | `## Fase`/`## Marco` aparece **0** vezes em 4 de 5 PLANOs (6 só no Empresa-Milionaria, que a spec recusa). Mas `##` que **não é frente** existe em todos: Micro Investors 4 de 24, tiatendo 2 de 173, Plexco Tasks 15 de 84 (`Incidente:`, `Backlog:`, `Dívida:`), Familia-Milionaria 37 de 55. **`### Frente` aninhada**: tiatendo 13, Plexco Tasks 3 | a premissa da Cross-Claude cai; o problema de fundo é **maior** |
+| Só tags do vocabulário canônico | Plexco Tasks tem `[EM EXECUÇÃO]` em título de `##` | a ordenação precisa tratar tag desconhecida |
+
+### ACEITAR (entram no corpo)
+
+1. **Ordem total das tags**, e o comportamento com tag desconhecida (DeepSeek HIGH; Llama FR-001 é o mesmo).
+2. **Hub de "~1 tela" x `_contexto.md` de até 150 linhas**, contradição interna (DeepSeek HIGH). Fixar o orçamento do hub em linhas, contando o `_contexto.md`.
+3. **Critério de "`[5-T]` antiga"** e destino de `[5-T]` sem data (DeepSeek HIGH).
+4. **`state-drift-check`: exit code e mensagem de cada caso** (DeepSeek HIGH; Llama SC-001 é o mesmo). Hoje ele bloqueia (exit 2) só em divergência casada e sai 0 calado quando não consegue comparar. Decidir como "avisar" sai num evento `Stop`.
+5. **Numerar requisitos (RF-N)** e ligar cada teste a um RF (DeepSeek HIGH), no estilo da spec das comportamentais.
+6. **SC do benefício "3,6 → ~2 leituras por sessão"**, medido com o mesmo método dos 384 transcripts (DeepSeek HIGH).
+7. **Seções `##` que não são frente e `### Frente` aninhada**: classificação e destino no Fatiar (Cross-Claude HIGH, reformulado pela medição; o LOW da DeepSeek sobre as 4 seções do piloto é o mesmo).
+8. **Corrigir "12 projetos, máximo 153"** para 13 projetos, máximo 230 (Cross-Claude HIGH), e rever o argumento "o teto já funciona".
+9. `docs/ESTADO.md` (Projeção): formato e relação com o hub (DeepSeek MEDIUM).
+10. Slug: sanitização e colisão determinística (DeepSeek MEDIUM; Cross-Claude LOW).
+11. "Árvore suja": o predicado exato, e se vale para `-Modo Projecao` (DeepSeek MEDIUM; Cross-Claude MEDIUM).
+12. Conservação de tarefas: declarar que o script move linhas **sem editar**. O multiconjunto das linhas exatas é o invariante, e qualquer diferença aborta (DeepSeek MEDIUM).
+13. Uma unidade só nas medições de leitura: tokens (DeepSeek MEDIUM).
+14. Teto do `_contexto.md`: bloqueia ou avisa, e o que o Sync faz ao estourar (DeepSeek MEDIUM; Llama TERM-002).
+15. Frente sem tarefa: estado explícito (DeepSeek MEDIUM).
+16. Renomear frente: o hub é regerado a cada Sync; decidir o que acontece com os links do `historico/` (DeepSeek MEDIUM, parcial).
+17. Versão do formato: declarar que vale para o diretório, e não por arquivo de frente (DeepSeek MEDIUM, parcial).
+18. `crud-evidence-warn`: declarar que continua warn-only depois de incluir `docs/plano/*.md` (DeepSeek MEDIUM).
+19. "30 projetos": citar o comando. Hoje são 27 HANDOFFs na raiz e 33 repositórios git em `D:\Claud Automations` (DeepSeek MEDIUM).
+20. **O Sync nunca arquiva** frente que fecha no uso normal: só o Fatiar move para `historico/` (Cross-Claude MEDIUM). É um buraco real.
+21. Redação: o título "não é fonte do estado; é lido só para sinalizar divergência" (DeepSeek LOW; Llama TERM-003 é o mesmo).
+22. Migração v1→v2: marcar como reservada e testar só "versão desconhecida → recusa" (DeepSeek LOW).
+23. Definir "hub" (Llama TERM-001).
+24. Empresa-Milionaria: exigir a mensagem de recusa e o relatório no formato padrão (Llama EDGE-001, parcial).
+25. Declarar as dependências: PowerShell 5.1+ e git (Llama ASSUMP-001).
+26. Mapear Etapa D/A aos passos do Rollout (Cross-Claude LOW).
+
+### RECUSAR, com motivo
+
+- **"Vazamento de HOW"** (caminho do kit, nome de script, flags, marcador HTML, caminho de teste: DeepSeek MEDIUM ×2, Llama LEAK-001). As specs de design do kit nomeiam artefato de propósito, como fazem a de consolidação e a das comportamentais. A separação WHAT/HOW do spec-kit não é o padrão da casa.
+- **"frente" x "bloco"** (Llama CONSIST-001): a tabela mapeia o vocabulário do operador de propósito. Nos artefatos só existe "Frente".
+- **Descrever a R11 na spec** (Llama CONSIST-002): é documento interno do kit, e a regra é referência do canon.
+
+### O que a triagem muda na implementação
+
+- O conserto do `state-drift-check`, que sai verde calado em 23 de 27 projetos, **independe do resto** e pode sair antes do `plano-sync`.
+- O item 7 muda o desenho do Fatiar. Por medição, "cada `##` é uma frente" é falso nos quatro PLANOs que o script aceitaria.
+
 ## Motivação — e a correção de rota que a medição impôs
 
 O pacote nasceu de uma hipótese que **a medição desmentiu**, e o registro honesto disso é parte do

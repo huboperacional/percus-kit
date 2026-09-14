@@ -88,7 +88,7 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
 
 ## ESTADO DA EXECUÇÃO
 
-### ✅ Feito (PUBLICADO até 6.52.0; a 6.53.0 está commitada, push pendente de R20)
+### ✅ Feito (PUBLICADO até 6.53.0 + o conserto do harness, `origin/main` = `7535c2f`)
 
 - **6.45.0** `context-budget-guard` — PostToolUse em todas as tools, mede o contexto vivo pela cauda
   do transcript. Nasceu de uma sessão que foi a 610k tokens com "checkpoint" dito 11 vezes.
@@ -129,7 +129,15 @@ cumpriu, ela é decoração"* — e R12 não tem verificação nenhuma. É decor
   mesmo payload, exigindo saídas iguais. O teste achou cinco armadilhas que um lado só não veria: o
   `\r` do `jq.exe` nativo zerando a seleção de checks; o `set /p` com BOM válido em 65001 e lixo em
   850; o `chcp` que come stdin; o lançador do Git que devolve `%HOME%\bin` ao PATH; e um `U+001F` que
-  chegou ao disco como byte. **Commitado, push pendente de R20.**
+  chegou ao disco como byte. **Publicado** (`903a7f5..7535c2f`, 2026-09-13), junto do conserto abaixo.
+- **`7535c2f`** **o harness de teste da 6.53.0 vazava estado de processo.** A suíte dava 721/721 pelo
+  Git Bash e **711/721** por um pwsh sem `HOME`. Restaurar variável ausente com `$null` a cria **vazia**
+  no pwsh: `HOME=""` tirava o `jq` do lançador do Git, e o `cross-claude.sh` do arquivo **seguinte** no
+  mesmo balde saía 127. De carona, dois `AfterAll` no mesmo bloco, dos quais o Pester roda só o último.
+  Consertado com duas guardas novas (`dispatch-paridade-harness`, `pester-blocos-unicos`), com RED visto
+  antes. Suíte: **729/729** pelo Git Bash; **721/729, 0 falhas, 8 skipped** pelo PowerShell. Verbete
+  `harness-de-teste-vaza-estado-de-processo-para-o-arquivo-seguinte`. Janela R20 arquivada em
+  `docs/historico/2026-09-13-r20-publicacao-6.53.0-consumida.json`.
 
 ### ✅ Tarefa 3 fechada (2026-09-12)
 
@@ -160,15 +168,15 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
    varridos). Mitigação usada: dar à perna Cross-Claude o **caminho do arquivo**, não o texto.
    Registrado como risco §6.9 da spec — é defeito do kit, não da spec.
 
-### ⏳ Próximo passo imediato (checkpoint de 2026-09-13)
+### ⏳ Próximo passo imediato (checkpoint de 2026-09-13, noite)
 
-**A sessão de 12→13/09 fechou os itens 5 e 8 da "Ordem acertada" e destravou o 9.** Antes da fila:
+**A sessão da noite de 13/09 publicou a 6.53.0 e consertou o harness de teste dela.** Antes da fila:
 
-0. ~~**Push da 6.52.0**~~ — **FEITO em 2026-09-13** (`246fd4d..29ce534`), com autorização R20 do
-   operador na conversa; janela arquivada em `docs/historico/`. **O passo 0 agora é o push da 6.53.0**,
-   e ele pede R20 de novo: a autorização anterior cobria aqueles 4 commits, não commit novo.
-1. **Poda do canon (item 9) — DESTRAVADA.** O revisor enxerga as 25 regras, e com o texto certo.
-   Decisão do operador: entra antes ou depois da fila abaixo. Descarte só com aprovação um a um.
+0. ~~**Push da 6.53.0**~~ — **FEITO em 2026-09-13** (`903a7f5..7535c2f`), com autorização R20 nova do
+   operador, condicionada à suíte sem falha nos dois ambientes. A suíte pré-push achou o vazamento do
+   harness (ver `7535c2f` acima), e o conserto foi publicado junto. Janela arquivada em `docs/historico/`.
+1. **Poda do canon (item 9) — DESTRAVADA, e com a ordem decidida pelo operador (13/09): DEPOIS da
+   fila.** Descarte só com aprovação um a um, numa sessão com o operador presente.
 
 **Pendências novas, descobertas nesta sessão (fora da fila abaixo):**
 - **Hook `UserPromptSubmit` para o gatilho "checkpoint"** — o enforcement mecânico que a R12 pede.
@@ -190,7 +198,12 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
 2. ~~**Paridade `.sh`**~~ — **ENTREGUE em 6.53.0**: `percus-dispatch-{pre,post}.sh` e 58 testes que
    rodam o `.cmd` e o `.sh` lado a lado. As cinco armadilhas que ela achou estão na seção de estado da
    paridade `.sh`, na spec de consolidação. **O próximo da fila é o item 3, Pacote B.**
-3. **Pacote B** — `AJUSTAR` com 10 findings do conselho a tratar antes de implementar `plano-sync`.
+3. **Pacote B** — `AJUSTAR`. **Triagem feita em 2026-09-13** e persistida no topo da spec
+   (`specs/2026-09-12-plano-hub-gerado-design.md`): são **37** findings, não 10, com a premissa de cada
+   um conferida por medição (26 itens aceitos, 3 grupos recusados com motivo). **Próximo passo
+   literal:** aplicar os itens ACEITAR no corpo da spec e rodar a rodada 2 do `spec-analyze` **por
+   delta**. Só depois implementar `plano-sync`. O conserto do `state-drift-check` independe do resto e
+   pode sair antes.
 4. **Os hooks das comportamentais**, na ordem que a spec manda: **R5 primeiro e sozinho** (único
    bloqueante; operador autorizou publicar em vigor), depois medir, depois R10 sozinho, depois o
    resto.
@@ -201,10 +214,10 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
 > lá) foi **descartada por medição** — economizava 19% dos spawns ao preço de até **130 chamadas
 > consecutivas** sem medir contexto. Ver a seção própria naquela spec.
 
-**Estado da árvore:** kit em **6.53.0**, com o commit da paridade `.sh` aguardando push (R20). O
-cache desta máquina está em **6.51.0**: o `installed_plugins.json` foi relido em 13/09, e o "6.49.0"
-que este parágrafo dizia já estava vencido. A 6.52.0 está publicada e chega por auto-update. A 6.53.0
-não muda registro (`hooks.json` intocado); ela só acrescenta os `.sh` e os testes.
+**Estado da árvore:** kit em **6.53.0**, publicada junto do conserto do harness (`origin/main` =
+`7535c2f`). O cache desta máquina está em **6.52.0**: o `percus:health` do boot da noite de 13/09
+acusou `instalada 6.52.0 ≠ kit 6.53.0`. A 6.53.0 chega por auto-update e não muda registro
+(`hooks.json` intocado); ela só acrescenta os `.sh`, os testes e o conserto do harness.
 
 **Por que isto entrou na frente.** A tarefa 3 ia adicionar 4 hooks; medi a cadeia antes e ela já
 custa **3 357 ms em todo comando Bash** (8 hooks × ~420 ms de startup do PowerShell, mesmo em
@@ -279,12 +292,24 @@ vale é a spec**.
   ter. R5 e R6 entraram na triagem como descobertas (RF20a) e o que falta delas — **o shape de cada
   uma** — está declarado em aberto na §6.8 da spec, não escondido. Dono do número:
   `conhecimento/resolver/regra-declarada-automatica-sem-hook-e-decoracao.md`.
-- **Pacote B**: `AJUSTAR` com 10 findings (6 DeepSeek, 2 Llama, 2 Cross-Claude), incluindo uma
-  afirmação minha no spec que citava `153 linhas` como prova de que um teto de `150` funciona.
+- **Pacote B**: `AJUSTAR`, com **37** findings (21 DeepSeek, 10 Llama, 6 Cross-Claude), triados em
+  2026-09-13 no topo da spec. A afirmação `153 linhas` era pior do que o finding dizia: medido, são 13
+  projetos com gate, e o maior HANDOFF tem 230 linhas.
+- **A suíte do kit não roda em paralelo consigo mesma.** O teste "DOIS checks" de
+  `dispatch-post.tests.ps1` grava no `hooks-manifest.json` REAL e restaura o que leu. Duas execuções
+  simultâneas (2026-09-13) deixaram o manifesto registrando checks inexistentes, e os hooks vivos de
+  todas as sessões (via `PERCUS_CANON_DIR`) passaram a acusar erro em toda tool call. Mesmo rodando
+  sozinho, o teste afeta as sessões vivas por alguns segundos. Conserto: fixture próprio para o
+  manifesto. Verbete `teste-de-hook-roda-na-raiz-le-estado-real` (terceiro dano).
+- **O `Invoke-Runtime` zera, e não apaga, as variáveis da base durante a chamada**
+  (`_dispatch-paridade.ps1`). O dispatcher vê `PERCUS_CANON_DIR=""`, e não ausente, embora o comentário
+  diga "apagado". Para os checks de hoje dá no mesmo, e desde o `7535c2f` não vaza depois da chamada;
+  vira diferença se algum check distinguir vazio de ausente.
 
 ### Publicação
 
 `PERCUS_CANON_DIR` aponta para este repo, então **scripts** (`medir-baseline-boot`, `plano-sync`
 futuro) valem no instante em que são salvos. **Hooks e skills** só chegam aos projetos por
-publicação: push → auto-update (≤10 min) → novo launch. Cache desta máquina: **6.51.0**; kit em **6.53.0**; `origin/main` em `29ce534` (6.52.0).
-O commit da 6.53.0 aguarda push, pendente de autorização do operador (R20).
+publicação: push → auto-update (≤10 min) → novo launch. Cache desta máquina: **6.52.0**; kit em
+**6.53.0**; `origin/main` em `7535c2f` (6.53.0 + conserto do harness). O commit de checkpoint desta
+sessão (só docs) fica local até nova autorização R20.

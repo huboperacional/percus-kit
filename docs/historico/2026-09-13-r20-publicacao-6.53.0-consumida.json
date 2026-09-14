@@ -1,0 +1,6 @@
+﻿{
+  "id": "f51aa2b6-8100-4d05-ac8a-1d3b76d0727f",
+  "motivo": "Operador autorizou explicitamente na conversa (AskUserQuestion: Sim, autorizo os 2) publicar a main do percus-kit no remoto: 58f3de9 (6.53.0, paridade .sh dos dispatchers) e 7535c2f (conserto do harness de teste), fast-forward sobre origin/main 903a7f5, condicionado a suite sem falha nos dois ambientes - cumprido: Git Bash 729/729; PowerShell 721/729 com 0 falhas e 8 skipped.",
+  "autorizado_em": "2026-09-13T20:45:54.1881113-04:00",
+  "timestamp_unix": 1789346754
+}
