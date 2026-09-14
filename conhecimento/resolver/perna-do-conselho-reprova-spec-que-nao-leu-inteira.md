@@ -54,12 +54,18 @@ do documento inteiro (~14k tokens), montei um **delta de 2243 tokens**: só a de
 > reais de primeira** — incluindo o melhor achado da spec inteira.
 
 A lição não é "as pernas baratas são fracas". É que **estavam sendo avaliadas sobre um texto que não
-recebiam**. Duas regras para o delta funcionar:
+recebiam**. Três regras para o delta funcionar:
 
 1. **Traga as medições junto.** Perna que lê "o scaffolder não menciona banco" sem poder conferir só
    pode acreditar ou ignorar. Com o número/medição no delta, ela revisa o raciocínio.
 2. **Diga explicitamente o que NÃO reanalisar.** Sem isso a perna relitiga premissa já fechada em
    rodadas anteriores, e você paga findings repetidos.
+3. **Confira na spec antes de aceitar finding de borda.** O delta resume, e a borda que ele omite
+   volta como finding. Medido na rodada 2 do Pacote B (2026-09-13, delta de ~2,5k tokens com 12
+   decisões): dos 20 findings das pernas de API, 3 pediam regra que a spec já tinha e o delta não
+   carregava (frente só com tag desconhecida, arquivo de frente criado à mão, ordem das recusas), e
+   outros 3 contradiziam o texto do próprio delta. É o preço do delta, não defeito dele; o erro caro é
+   aceitar o finding sem abrir a spec.
 
 **Conserto de verdade (pendente, no kit):** uma das duas —
 1. o orquestrador passa **arquivo** em vez de texto quando o alvo é um arquivo e a perna sabe ler; ou

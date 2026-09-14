@@ -36,5 +36,14 @@ domínio existe. E **separe sempre "não achei" de "não existe" no relatório**
 inteiro do levantamento. Uma afirmação estratégica publicada com base num "não achei" precisou de
 correção pública no mesmo dia.
 
+**Mesma classe, outra fonte: subagente de documentação que nega.** Numa sessão do percus-kit
+(2026-09-13), um subagente consultado sobre hooks do Claude Code respondeu que `systemMessage` num
+hook `Stop` "é lido mas descartado" e que "não existe" forma de dar texto ao modelo sem bloquear —
+com três links, nenhum deles sustentando as duas frases. A página oficial, lida em seguida, diz o
+contrário, literalmente: *"Stop does not support `additionalContext`. To give Claude text without
+blocking, return `systemMessage`."* A spec que dependia disso teria nascido com o canal errado.
+**Negativa sem trecho citado é "não achei":** antes de desenhar em cima dela, abra a fonte e procure a
+frase.
+
 **Ref:** tiatendo, 2026-08-16 (pesquisa de precificação, 60+ concorrentes; re-verificação com
-controle mobile×desktop).
+controle mobile×desktop); percus-kit, 2026-09-13 (canal de aviso do hook `Stop`, spec do Pacote B).

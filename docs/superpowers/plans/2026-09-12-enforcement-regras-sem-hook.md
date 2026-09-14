@@ -198,12 +198,14 @@ Triagem por **shape do observável** (guarda de comando / guarda de caminho / ob
 2. ~~**Paridade `.sh`**~~ — **ENTREGUE em 6.53.0**: `percus-dispatch-{pre,post}.sh` e 58 testes que
    rodam o `.cmd` e o `.sh` lado a lado. As cinco armadilhas que ela achou estão na seção de estado da
    paridade `.sh`, na spec de consolidação. **O próximo da fila é o item 3, Pacote B.**
-3. **Pacote B** — `AJUSTAR`. **Triagem feita em 2026-09-13** e persistida no topo da spec
-   (`specs/2026-09-12-plano-hub-gerado-design.md`): são **37** findings, não 10, com a premissa de cada
-   um conferida por medição (26 itens aceitos, 3 grupos recusados com motivo). **Próximo passo
-   literal:** aplicar os itens ACEITAR no corpo da spec e rodar a rodada 2 do `spec-analyze` **por
-   delta**. Só depois implementar `plano-sync`. O conserto do `state-drift-check` independe do resto e
-   pode sair antes.
+3. **Pacote B** — spec **pronta para o plano de implementação** (2026-09-13, noite). A rodada 1 (37
+   findings) foi aplicada no corpo, que agora tem RF1–RF27 e SC1–SC5; a rodada 2, **por delta**, deu
+   `AJUSTAR` nas três pernas, sem CRITICAL, e a triagem dela está no topo da spec
+   (`specs/2026-09-12-plano-hub-gerado-design.md`). Pelo teto de 2 rodadas, não volta ao analyze.
+   **Próximo passo literal:** plano de implementação (`writing-plans`), começando pelo conserto do
+   `state-drift-check` (RF21–RF22c), que independe do resto. **Decisão reversível do operador:** o
+   Fatiar recusa o projeto inteiro por tarefa fora de frente ou preâmbulo acima de 40 linhas, e hoje só
+   o piloto passa; a alternativa da Cross-Claude está registrada na spec, com o motivo de não entrar.
 4. **Os hooks das comportamentais**, na ordem que a spec manda: **R5 primeiro e sozinho** (único
    bloqueante; operador autorizou publicar em vigor), depois medir, depois R10 sozinho, depois o
    resto.
@@ -292,9 +294,11 @@ vale é a spec**.
   ter. R5 e R6 entraram na triagem como descobertas (RF20a) e o que falta delas — **o shape de cada
   uma** — está declarado em aberto na §6.8 da spec, não escondido. Dono do número:
   `conhecimento/resolver/regra-declarada-automatica-sem-hook-e-decoracao.md`.
-- **Pacote B**: `AJUSTAR`, com **37** findings (21 DeepSeek, 10 Llama, 6 Cross-Claude), triados em
-  2026-09-13 no topo da spec. A afirmação `153 linhas` era pior do que o finding dizia: medido, são 13
-  projetos com gate, e o maior HANDOFF tem 230 linhas.
+- **Pacote B**: rodadas 1 e 2 tratadas em 2026-09-13. Sobram, fora da spec, dois achados de HANDOFF: o
+  `docs/HANDOFF.md` do Paid Midia tem 230 linhas **com** o `percus-gate` instalado (como passou não foi
+  medido), e 20 dos 33 repositórios não têm o gate (o maior HANDOFF entre eles, 2 216 linhas).
+- **A perna DeepSeek do `spec-analyze` esgota o teto de 16 000 tokens raciocinando** mesmo sobre um delta
+  de ~2,5k tokens, e volta vazia. Na rodada 2 do Pacote B, refeita sozinha com `-MaxTokens 32000`.
 - **A suíte do kit não roda em paralelo consigo mesma.** O teste "DOIS checks" de
   `dispatch-post.tests.ps1` grava no `hooks-manifest.json` REAL e restaura o que leu. Duas execuções
   simultâneas (2026-09-13) deixaram o manifesto registrando checks inexistentes, e os hooks vivos de
