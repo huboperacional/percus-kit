@@ -40,8 +40,13 @@ certo, barrou uma imagem que de fato não sobe. Se trocar para diagnosticar, **d
 
 **Alternativa sem bundle (medida em 2026-09-14, LiliCalc):** o tarball feito no Windows serve se a
 conversão for desligada no próprio comando — `git -c core.autocrlf=false archive --format=tar.gz -o x.tgz HEAD <pastas>`
-grava os bytes dos blobs. Confira antes de enviar: `tar -xzOf x.tgz --wildcards '*.sh' | grep -c $'\r'`
-tem que dar `0`.
+grava os bytes dos blobs. Confira antes de enviar contando o BYTE:
+`tar -xzOf x.tgz --wildcards '*.sh' | tr -cd '\r' | wc -c` tem que dar `0`.
+
+**Não confira com `grep -c $'\r'` no Git Bash.** Medido em 2026-09-14 com controles, GNU grep 3.0
+do Git for Windows: `printf 'a\nb\nc\n' | grep -c $'\r'` dá `3` e `printf 'a\r\nb\n' | grep -c $'\r'`
+dá `0`. Ele conta toda linha do arquivo bom e zera no quebrado — alarme falso no LF e aprovação do
+CRLF, o pior sentido possível para um gate. `tr -cd '\r' | wc -c` deu `1` e `0` nos mesmos controles.
 
 **Recorrência:** LiliCalc, deploy da Fase 8 (2026-09-14). Este verbete já existia e não foi
 consultado antes do deploy (R23). O ensaio da imagem com `--entrypoint sh` passou e não pegou nada;
