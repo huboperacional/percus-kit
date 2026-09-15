@@ -32,7 +32,11 @@ Describe "deepseek-review.ps1 -- timeout, retry e provedor indisponivel" {
         }
 
         function Invoke-Cliente {
-            param([string]$Repo, [string]$Url, [string[]]$ArgsExtra = @(), [hashtable]$Env = @{})
+            # -Executavel parametrizado (2026-09-14, fix round 1): a suite inteira roda sob pwsh
+            # (.NET Core). O runtime real dos hooks e Windows PowerShell 5.1 (.NET Framework), onde
+            # HttpClient carrega e embrulha timeout de forma diferente -- um cliente que so foi
+            # exercitado em pwsh pode quebrar SILENCIOSAMENTE no runtime que todo projeto usa.
+            param([string]$Repo, [string]$Url, [string[]]$ArgsExtra = @(), [hashtable]$Env = @{}, [string]$Executavel = 'pwsh')
             $envTotal = @{ DEEPSEEK_API_KEY = $script:chave; PERCUS_DEEPSEEK_TIMEOUT_S = $null; PERCUS_DEEPSEEK_BACKOFF_S = $null }
             foreach ($k in $Env.Keys) { $envTotal[$k] = $Env[$k] }
             $antigos = Set-EnvTemporario $envTotal
@@ -40,7 +44,7 @@ Describe "deepseek-review.ps1 -- timeout, retry e provedor indisponivel" {
             $sw = [Diagnostics.Stopwatch]::StartNew()
             Push-Location $Repo
             try {
-                $out = & pwsh -NoProfile -File $script:cliente -Endpoint $Url @ArgsExtra 2>$err
+                $out = & $Executavel -NoProfile -File $script:cliente -Endpoint $Url @ArgsExtra 2>$err
                 $code = $LASTEXITCODE
             } finally { Pop-Location; $sw.Stop(); Restore-EnvTemporario $antigos }
             $texto = ''; if (Test-Path $err) { $texto = [IO.File]::ReadAllText($err, $script:u8) }
@@ -51,15 +55,19 @@ Describe "deepseek-review.ps1 -- timeout, retry e provedor indisponivel" {
         }
 
         function Invoke-ComRoteiro {
-            param([object[]]$Roteiro, [string[]]$ArgsExtra = @('-TimeoutSec', '2', '-BackoffSec', '1'), [hashtable]$Env = @{}, [switch]$SemCommit)
+            param([object[]]$Roteiro, [string[]]$ArgsExtra = @('-TimeoutSec', '2', '-BackoffSec', '1'), [hashtable]$Env = @{}, [switch]$SemCommit, [string]$Executavel = 'pwsh')
             $srv = Start-ServidorFalso -Roteiro $Roteiro
             try {
                 $repo = New-RepoCliente -SemCommit:$SemCommit
-                $r = Invoke-Cliente -Repo $repo -Url $srv.Url -ArgsExtra $ArgsExtra -Env $Env
+                $r = Invoke-Cliente -Repo $repo -Url $srv.Url -ArgsExtra $ArgsExtra -Env $Env -Executavel $Executavel
                 $r | Add-Member -NotePropertyName Requisicoes -NotePropertyValue (Get-ContagemServidorFalso $srv)
                 return $r
             } finally { Stop-ServidorFalso $srv }
         }
+
+        # Resolvido uma vez no BeforeAll do Describe: $null se a maquina nao tiver Windows
+        # PowerShell 5.1 instalado (fora do padrao em Windows 10/11, mas possivel).
+        $script:ps51 = (Get-Command 'powershell.exe' -ErrorAction SilentlyContinue).Source
     }
 
     AfterAll {
@@ -170,5 +178,48 @@ Describe "deepseek-review.ps1 -- timeout, retry e provedor indisponivel" {
         $r.Code | Should -Be 0 -Because $r.Err
         $r.Marcadores | Should -Contain 'latest.jsonl'
         @($r.Marcadores | Where-Object { $_ -like 'd-*' }).Count | Should -Be 0
+    }
+
+    # Fix round 1 (2026-09-14, achado da review R11 do controlador): a matriz inteira acima roda
+    # sob pwsh (.NET Core). O runtime real dos hooks e Windows PowerShell 5.1 (.NET Framework),
+    # onde HttpClient carrega e embrulha timeout de forma diferente. Nao repete a matriz inteira
+    # aqui -- subconjunto minimo que prova que as strings do CONTRATO saem identicas nos dois
+    # runtimes: sucesso, retry por timeout (2 conexoes), 4xx fatal (1 conexao) e mascara da chave.
+    Context "mesmo contrato sob Windows PowerShell 5.1 (powershell.exe)" {
+        It "200 com choices: 1 requisicao, exit 0 (5.1)" {
+            if (-not $script:ps51) { Set-ItResult -Skipped -Because "powershell.exe nao encontrado nesta maquina"; return }
+            $r = Invoke-ComRoteiro -Roteiro @((New-RespostaFalsa -Corpo $script:ok)) -Executavel $script:ps51
+            $r.Code | Should -Be 0 -Because $r.Err
+            $r.Requisicoes | Should -Be 1
+        }
+
+        It "1a falha por timeout, 2a responde: exit 0, exatamente 2 requisicoes (5.1)" {
+            if (-not $script:ps51) { Set-ItResult -Skipped -Because "powershell.exe nao encontrado nesta maquina"; return }
+            $roteiro = @(@{ status = 200; corpo = ''; pendurar = $true }, (New-RespostaFalsa -Corpo $script:ok))
+            $r = Invoke-ComRoteiro -Roteiro $roteiro -Executavel $script:ps51
+            $r.Code | Should -Be 0 -Because $r.Err
+            $r.Requisicoes | Should -Be 2
+            $r.Err | Should -Match ([regex]::Escape("tentativa 1 falhou: ") + '.*' + [regex]::Escape('timeout de 2s'))
+            $r.Err | Should -Match 'Nova tentativa em 1s\.'
+        }
+
+        It "HTTP 401: exatamente 1 requisicao, exit 1, sem retry (5.1)" {
+            if (-not $script:ps51) { Set-ItResult -Skipped -Because "powershell.exe nao encontrado nesta maquina"; return }
+            $r = Invoke-ComRoteiro -Roteiro @((New-RespostaFalsa -Status 401 -Corpo ('{"error":"chave ' + $script:chave + '"}'))) -Executavel $script:ps51
+            $r.Code | Should -Be 1 -Because $r.Err
+            $r.Requisicoes | Should -Be 1
+            $r.Err | Should -Match "HTTP 401 -- nao recuperavel"
+            $r.Err.Contains($script:chave) | Should -BeFalse
+        }
+
+        It "SC-003: mascara a chave no corpo despejado antes de cortar em 2000 chars (5.1)" {
+            if (-not $script:ps51) { Set-ItResult -Skipped -Because "powershell.exe nao encontrado nesta maquina"; return }
+            $r = Invoke-ComRoteiro -Roteiro @((New-RespostaFalsa -Corpo $script:semChoices5k)) -Executavel $script:ps51
+            $trecho = $script:semChoices5k.Replace($script:chave, '***').Substring(0, 2000)
+            $r.Code | Should -Be 4 -Because $r.Err
+            $r.Requisicoes | Should -Be 2
+            $r.Err.Contains($trecho) | Should -BeTrue -Because "stderr tem de mostrar exatamente os primeiros 2000 caracteres, tambem em 5.1"
+            $r.Err.Contains($script:chave) | Should -BeFalse
+        }
     }
 }
