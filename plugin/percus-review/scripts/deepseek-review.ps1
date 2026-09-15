@@ -25,7 +25,11 @@ param(
     [ValidateSet("none","low","medium","high","")]
     [string]$ReasoningEffort = "low",
     [double]$Temperature = 0.0,
-    [string]$Endpoint = "https://api.deepseek.com/v1/chat/completions"
+    [string]$Endpoint = "https://api.deepseek.com/v1/chat/completions",
+    # 2026-09-14 (FR-001/002): precedencia parametro > env > padrao. Sem valor padrao no param de
+    # proposito: $PSBoundParameters diz se o chamador passou.
+    [int]$TimeoutSec,
+    [int]$BackoffSec
 )
 $ErrorActionPreference = "Stop"
 
@@ -95,6 +99,27 @@ if (-not $env:DEEPSEEK_API_KEY) {
 if (-not $env:DEEPSEEK_API_KEY) {
     throw "DEEPSEEK_API_KEY ausente. Configure no .env do projeto."
 }
+
+# === TIMEOUT E BACKOFF (2026-09-14) ===
+# Ate aqui a chamada nao tinha timeout: medido um travamento de 4 min que segurou uma onda de
+# commits ~65 min. Parametro invalido e erro do chamador (exit 2); env invalida vira padrao com aviso.
+function Get-InteiroDeEnv {
+    param([string]$Nome, [int]$Padrao, [int]$Minimo)
+    $valor = [Environment]::GetEnvironmentVariable($Nome)
+    if ([string]::IsNullOrWhiteSpace($valor)) { return $Padrao }
+    $n = 0
+    if ([int]::TryParse($valor.Trim(), [ref]$n) -and $n -ge $Minimo) { return $n }
+    [Console]::Error.WriteLine("[deepseek-review] WARN: $Nome='$valor' invalido -- usando padrao $Padrao.")
+    return $Padrao
+}
+if ($PSBoundParameters.ContainsKey('TimeoutSec')) {
+    if ($TimeoutSec -lt 1) { [Console]::Error.WriteLine("[deepseek-review] ERRO: -TimeoutSec precisa ser >= 1."); exit 2 }
+    $timeoutEfetivo = $TimeoutSec
+} else { $timeoutEfetivo = Get-InteiroDeEnv -Nome 'PERCUS_DEEPSEEK_TIMEOUT_S' -Padrao 180 -Minimo 1 }
+if ($PSBoundParameters.ContainsKey('BackoffSec')) {
+    if ($BackoffSec -lt 0) { [Console]::Error.WriteLine("[deepseek-review] ERRO: -BackoffSec precisa ser >= 0."); exit 2 }
+    $backoffEfetivo = $BackoffSec
+} else { $backoffEfetivo = Get-InteiroDeEnv -Nome 'PERCUS_DEEPSEEK_BACKOFF_S' -Padrao 5 -Minimo 0 }
 
 # === COLLECT DIFF ===
 if ($Base) {
@@ -197,18 +222,118 @@ $body = $bodyObj | ConvertTo-Json -Depth 10 -Compress
 # Use [System.Text.Encoding]::UTF8.GetBytes() to force UTF-8 body.
 $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
 
-$headers = @{
-    "Authorization" = "Bearer $env:DEEPSEEK_API_KEY"
-    "Content-Type"  = "application/json; charset=utf-8"
+# === CHAMADA COM TIMEOUT E EXATAMENTE 1 RETRY (2026-09-14, FR-001..005) ===
+# HttpClient e nao Invoke-RestMethod: no 5.1 o IRM lanca em 4xx/5xx e o corpo se perde, e em 2xx sem
+# choices a linha seguinte morria em "Cannot index into a null array" descartando o corpo (verbete
+# deepseek-review-2xx-sem-choices-nao-grava-review). HttpClient devolve status e corpo nos dois
+# runtimes, e o Timeout cobre conexao + leitura do corpo (ResponseContentRead e o padrao).
+Add-Type -AssemblyName System.Net.Http
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+
+function Get-TrechoMascarado {
+    # Mascara ANTES de cortar: cortar primeiro deixaria meia chave na borda dos 2000.
+    param([string]$Corpo, [string]$Chave)
+    $m = "$Corpo"
+    if ($Chave) { $m = $m.Replace($Chave, '***') }
+    if ($m.Length -gt 2000) { $m = $m.Substring(0, 2000) }
+    return $m
 }
 
-try {
-    $response = Invoke-RestMethod -Uri $Endpoint -Method Post -Headers $headers -Body $bodyBytes
-    $findings = $response.choices[0].message.content
-} catch {
-    Write-Host "[deepseek-review] ERRO: $_" -ForegroundColor Red
+function Write-UltimoErro {
+    param([int]$Status, [string]$Trecho)
+    try {
+        $dir = Join-Path (Get-Location) '.deepseek\reviews'
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $txt = "timestamp=" + [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ') + "`n" + "status=$Status`n---`n" + $Trecho
+        [IO.File]::WriteAllText((Join-Path $dir 'ultimo-erro.txt'), $txt, (New-Object System.Text.UTF8Encoding($false)))
+    } catch {
+        [Console]::Error.WriteLine("[deepseek-review] WARN: nao consegui gravar ultimo-erro.txt: $($_.Exception.Message)")
+    }
+}
+
+function Invoke-TentativaDeepSeek {
+    param([string]$Uri, [byte[]]$Corpo, [string]$Chave, [int]$Timeout)
+    $cliente = New-Object System.Net.Http.HttpClient
+    $cliente.Timeout = [TimeSpan]::FromSeconds($Timeout)
+    try {
+        $req = New-Object System.Net.Http.HttpRequestMessage([System.Net.Http.HttpMethod]::Post, $Uri)
+        [void]$req.Headers.TryAddWithoutValidation('Authorization', "Bearer $Chave")
+        # Virgula: passa o byte[] como UM argumento, nao como N argumentos.
+        $conteudo = New-Object System.Net.Http.ByteArrayContent -ArgumentList (,$Corpo)
+        [void]$conteudo.Headers.TryAddWithoutValidation('Content-Type', 'application/json; charset=utf-8')
+        $req.Content = $conteudo
+        $resp = $cliente.SendAsync($req).GetAwaiter().GetResult()
+        $bytes = $resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+        return @{ Rede = $false; Status = [int]$resp.StatusCode; Corpo = [Text.Encoding]::UTF8.GetString($bytes); Erro = '' }
+    } catch {
+        # HttpClient.Timeout aborta a leitura cancelando a task: a excecao de FORA e
+        # TaskCanceledException, mas a MAIS FUNDA da cadeia costuma ser um IOException generico
+        # ("operacao de E/S anulada"). Descer direto ate a mais funda (como o resto do script faz
+        # pra pegar a mensagem legivel) perdia o sinal de timeout -- medido: o teste de timeout
+        # caia no ramo "erro de rede/timeout: <IOException>" em vez de "timeout de Ns". Por isso
+        # a cadeia INTEIRA e varrida pelo tipo ANTES de descer pra pegar a mensagem.
+        $e = $_.Exception
+        $ehTimeout = $false
+        $cursor = $e
+        while ($cursor) {
+            if ($cursor -is [System.Threading.Tasks.TaskCanceledException] -or
+                $cursor -is [System.TimeoutException] -or
+                $cursor -is [System.OperationCanceledException]) { $ehTimeout = $true }
+            $cursor = $cursor.InnerException
+        }
+        while ($e.InnerException) { $e = $e.InnerException }
+        $msg = $e.Message
+        if ($ehTimeout) { $msg = "timeout de ${Timeout}s" }
+        return @{ Rede = $true; Status = 0; Corpo = ''; Erro = $msg }
+    } finally { $cliente.Dispose() }
+}
+
+function Get-VereditoTentativa {
+    # @{ Veredito = 'ok'|'retry'|'fatal'; Causa; Resposta }
+    param($T, [string]$Chave)
+    if ($T.Rede) { return @{ Veredito = 'retry'; Causa = "erro de rede/timeout: $($T.Erro)"; Resposta = $null } }
+    $s = $T.Status
+    $obj = $null
+    $temChoices = $false
+    $corpoLimpo = "$($T.Corpo)".Trim()
+    # Raiz pelo 1o caractere: pwsh 7 enumera array na raiz do ConvertFrom-Json.
+    if ($corpoLimpo.StartsWith('{')) {
+        try { $obj = ConvertFrom-Json -InputObject $T.Corpo -ErrorAction Stop } catch { $obj = $null }
+        if ($obj -is [System.Management.Automation.PSCustomObject] -and $null -ne $obj.choices -and @($obj.choices).Count -gt 0) { $temChoices = $true }
+    }
+    if (-not $temChoices) {
+        $trecho = Get-TrechoMascarado -Corpo $T.Corpo -Chave $Chave
+        [Console]::Error.WriteLine("[deepseek-review] resposta sem choices (HTTP $s) -- primeiros 2000 caracteres do corpo:")
+        [Console]::Error.WriteLine($trecho)
+        Write-UltimoErro -Status $s -Trecho $trecho
+    }
+    if ($s -ge 200 -and $s -le 299) {
+        if ($temChoices) { return @{ Veredito = 'ok'; Causa = ''; Resposta = $obj } }
+        if ($corpoLimpo.Length -eq 0) { return @{ Veredito = 'retry'; Causa = "HTTP $s com corpo vazio"; Resposta = $null } }
+        return @{ Veredito = 'retry'; Causa = "HTTP $s sem choices"; Resposta = $null }
+    }
+    if ($s -eq 429 -or ($s -ge 500 -and $s -le 599)) { return @{ Veredito = 'retry'; Causa = "HTTP $s"; Resposta = $null } }
+    return @{ Veredito = 'fatal'; Causa = "HTTP $s"; Resposta = $null }
+}
+
+[Console]::Error.WriteLine("[deepseek-review] timeout=${timeoutEfetivo}s backoff=${backoffEfetivo}s")
+$chaveApi = $env:DEEPSEEK_API_KEY
+$av = Get-VereditoTentativa -T (Invoke-TentativaDeepSeek -Uri $Endpoint -Corpo $bodyBytes -Chave $chaveApi -Timeout $timeoutEfetivo) -Chave $chaveApi
+if ($av.Veredito -eq 'retry') {
+    [Console]::Error.WriteLine("[deepseek-review] tentativa 1 falhou: $($av.Causa.Replace($chaveApi, '***')). Nova tentativa em ${backoffEfetivo}s.")
+    Start-Sleep -Seconds $backoffEfetivo
+    $av = Get-VereditoTentativa -T (Invoke-TentativaDeepSeek -Uri $Endpoint -Corpo $bodyBytes -Chave $chaveApi -Timeout $timeoutEfetivo) -Chave $chaveApi
+    if ($av.Veredito -eq 'retry') {
+        [Console]::Error.WriteLine("[deepseek-review] PROVEDOR INDISPONIVEL apos retry: $($av.Causa.Replace($chaveApi, '***')). Nenhum marcador gravado (exit 4).")
+        exit 4
+    }
+}
+if ($av.Veredito -eq 'fatal') {
+    [Console]::Error.WriteLine("[deepseek-review] ERRO: $($av.Causa) -- nao recuperavel, sem nova tentativa. Nenhum marcador gravado (exit 1).")
     exit 1
 }
+$response = $av.Resposta
+$findings = $response.choices[0].message.content
 
 # === GATE: resposta nao utilizavel NAO libera commit ===
 # Ate 2026-08-16 o marcador abaixo era escrito incondicionalmente. Se o modelo devolvesse
@@ -314,7 +439,9 @@ try {
     } finally { Remove-Item $tmpDiff -Force -ErrorAction SilentlyContinue }
     # Guarda do hash vazio: sem ela, git falhando geraria o marcador "d-.jsonl" -- lixo que ainda
     # por cima casaria com um hash vazio do outro lado, liberando commit sem review.
-    if ($hashHex) {
+    # e3b0c44298fc = hash do arquivo VAZIO (repo sem commit, git diff HEAD falhou): sem hash,
+    # nunca d-e3b0c44298fc.jsonl (emenda FR-011).
+    if ($hashHex -and $hashHex -ne 'e3b0c44298fc') {
         Copy-Item -Path $logFile -Destination (Join-Path $logDir "d-$hashHex.jsonl") -Force
     }
 } catch {

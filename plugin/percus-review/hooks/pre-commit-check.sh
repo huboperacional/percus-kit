@@ -7,6 +7,123 @@
 
 set +e
 
+# >>> percus-classifica-marcador (copia IDENTICA em hooks/pre-commit-check.sh e git-hooks/pre-commit.template.sh)
+# Classifica .deepseek/reviews/*.jsonl sem jq: o hook git nativo nao pode depender dele (FR-018).
+# Saida: linha 1 = review|placeholder|invalido; linha 2 = motivo (invalido) ou decision
+# (placeholder); linha 3 = reason (placeholder, conteudo JSON-escapado cru). Ordem e textos sao
+# contrato com Get-ClasseMarcador em pre-commit-check.ps1 -- mude os tres juntos.
+# Programa em heredoc dentro de FUNCAO (heredoc dentro de $(...) parseia mal em bash antigo) e
+# passado por tr -d CR (o cache do plugin chega com CRLF).
+percus_awk_classifica() {
+cat <<'PERCUS_AWK_FIM'
+function ws(   c) { while (p <= n) { c = substr(s, p, 1); if (c == " " || c == "\t" || c == "\n" || c == "\r") p++; else break } }
+function pstr(   c, st, blank, h) {
+  if (substr(s, p, 1) != "\"") return 0
+  p++; st = p; blank = 1
+  while (p <= n) {
+    c = substr(s, p, 1)
+    if (c == "\"") { SRAW = substr(s, st, p - st); SBLANK = blank; p++; return 1 }
+    if (c == "\\") {
+      c = substr(s, p + 1, 1)
+      if (c == "n" || c == "t" || c == "r") { p += 2; continue }
+      if (c == "\"" || c == "\\" || c == "/" || c == "b" || c == "f") { blank = 0; p += 2; continue }
+      if (c == "u") {
+        h = tolower(substr(s, p + 2, 4))
+        if (h !~ /^[0-9a-f][0-9a-f][0-9a-f][0-9a-f]$/) return 0
+        if (h != "0020" && h != "0009" && h != "000a" && h != "000d") blank = 0
+        p += 6; continue
+      }
+      return 0
+    }
+    if (c != " " && c != "\t" && c != "\n" && c != "\r") blank = 0
+    p++
+  }
+  return 0
+}
+function pnum(   st, c, tok) {
+  st = p
+  while (p <= n) { c = substr(s, p, 1); if (index("+-.eE0123456789", c) > 0) p++; else break }
+  tok = substr(s, st, p - st)
+  if (tok !~ /^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)?$/) return 0
+  VTYPE = "number"; return 1
+}
+function parr(depth,   c) {
+  p++; ws()
+  if (substr(s, p, 1) == "]") { p++; VTYPE = "array"; return 1 }
+  while (1) {
+    if (!pval(depth + 1)) return 0
+    ws(); c = substr(s, p, 1)
+    if (c == ",") { p++; continue }
+    if (c == "]") { p++; VTYPE = "array"; return 1 }
+    return 0
+  }
+}
+function pobj(depth,   c, k) {
+  p++; ws()
+  if (substr(s, p, 1) == "}") { p++; VTYPE = "object"; return 1 }
+  while (1) {
+    ws(); if (!pstr()) return 0
+    k = SRAW
+    ws(); if (substr(s, p, 1) != ":") return 0
+    p++
+    if (!pval(depth + 1)) return 0
+    if (depth == 0) {
+      if (k == "findings") { FT = VTYPE; if (VTYPE == "string") FB = SBLANK }
+      if (k == "deferred") { DT = VTYPE }
+      if (k == "reason") { RT = VTYPE; if (VTYPE == "string") { RB = SBLANK; RR = SRAW } }
+      if (k == "decision") { ET = VTYPE; if (VTYPE == "string") { EB = SBLANK; ER = SRAW } }
+    }
+    ws(); c = substr(s, p, 1)
+    if (c == ",") { p++; continue }
+    if (c == "}") { p++; VTYPE = "object"; return 1 }
+    return 0
+  }
+}
+function pval(depth,   c) {
+  ws(); c = substr(s, p, 1)
+  if (c == "{") return pobj(depth)
+  if (c == "[") return parr(depth)
+  if (c == "\"") { if (!pstr()) return 0; VTYPE = "string"; return 1 }
+  if (substr(s, p, 4) == "true") { p += 4; VTYPE = "true"; return 1 }
+  if (substr(s, p, 5) == "false") { p += 5; VTYPE = "false"; return 1 }
+  if (substr(s, p, 4) == "null") { p += 4; VTYPE = "null"; return 1 }
+  if (c == "-" || (c >= "0" && c <= "9")) return pnum()
+  return 0
+}
+{ s = s $0 "\n" }
+END {
+  if (substr(s, 1, 3) == "\357\273\277") s = substr(s, 4)
+  n = length(s); p = 1; ws()
+  if (p > n) { print "invalido"; print "vazio"; exit }
+  if (!pval(0)) { print "invalido"; print "nao e JSON"; exit }
+  ws()
+  if (p <= n) { print "invalido"; print "nao e JSON"; exit }
+  if (VTYPE != "object") { print "invalido"; print "raiz nao e objeto"; exit }
+  if (DT == "true" && RT == "string" && RB == 0) {
+    gsub(/[\001-\037]/, " ", RR); gsub(/[\001-\037]/, " ", ER)
+    print "placeholder"
+    if (ET == "string" && EB == 0) print ER; else print "desconhecida"
+    print RR
+    exit
+  }
+  if (FT == "") { print "invalido"; print "sem findings nem placeholder"; exit }
+  if (FT != "string") { print "invalido"; print "findings nao e string"; exit }
+  if (FB == 1) { print "invalido"; print "findings vazio"; exit }
+  print "review"
+}
+PERCUS_AWK_FIM
+}
+percus_classifica_marcador() {
+    _pcm_tam=$(wc -c < "$1" 2>/dev/null | tr -d ' \r')
+    if [ -z "$_pcm_tam" ]; then printf 'invalido\nilegivel\n'; return 0; fi
+    if [ "$_pcm_tam" -gt 262144 ]; then printf 'invalido\nacima do teto (256 KB)\n'; return 0; fi
+    LC_ALL=C awk "$(percus_awk_classifica | tr -d '\r')" "$1"
+}
+percus_json_escapa() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+# <<< percus-classifica-marcador
+
 STDIN=$(cat)
 [ -z "$STDIN" ] && exit 0
 
@@ -105,28 +222,30 @@ fi
 # antigo sem dizer por que.
 #
 # Lookup DIRETO pelo nome: O(1), sem enumerar o diretorio.
+RECUSADO=""
 if command -v sha256sum >/dev/null 2>&1; then
-  # Hash do ARQUIVO escrito por `git diff --output=`, nunca da saida capturada pelo shell --
-  # ver o comentario gemeo no deepseek-review.sh. Shell diferente decodifica diferente; git
-  # escrevendo o arquivo elimina a variavel.
   TMP_DIFF="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-diff-$$")"
-  # `-C "$REPO_ROOT"` e obrigatorio: o hook roda no cwd do agente, nao no repo alvo. Sem
-  # ele o hash sai do diff do diretorio errado, nunca casa com o marcador, e a otimizacao
-  # vira codigo morto que sempre cai no fallback -- falha silenciosa.
   git -C "$REPO_ROOT" diff HEAD --output="$TMP_DIFF" 2>/dev/null || true
   DIFF_HASH=$(sha256sum "$TMP_DIFF" 2>/dev/null | cut -c1-12)
   rm -f "$TMP_DIFF"
   POR_HASH="$REVIEW_DIR/d-$DIFF_HASH.jsonl"
-  # -n no hash: sem ele, git falhando faria o hook procurar "d-.jsonl" -- que o lado escritor
-  # ja nao cria mais, mas o par tem que ser simetrico pra nao reabrir a brecha por um lado so.
-  if [ -n "$DIFF_HASH" ] && [ -f "$POR_HASH" ]; then
+  # e3b0c44298fc = hash do conteudo vazio = sem hash (emenda FR-016).
+  if [ -n "$DIFF_HASH" ] && [ "$DIFF_HASH" != "e3b0c44298fc" ] && [ -f "$POR_HASH" ]; then
     H_NOW=$(date +%s)
     H_MTIME=$(stat -c %Y "$POR_HASH" 2>/dev/null || stat -f %m "$POR_HASH" 2>/dev/null)
-    if [ $((H_NOW - H_MTIME)) -le 86400 ]; then
-      exit 0
+    if [ -n "$H_MTIME" ] && [ $((H_NOW - H_MTIME)) -le 86400 ]; then
+      _CLS=$(percus_classifica_marcador "$POR_HASH")
+      _CLASSE=$(printf '%s\n' "$_CLS" | sed -n 1p)
+      if [ "$_CLASSE" = "review" ]; then exit 0; fi
+      if [ "$_CLASSE" = "placeholder" ]; then _MOT="placeholder nao libera por hash"; else _MOT=$(printf '%s\n' "$_CLS" | sed -n 2p); fi
+      RECUSADO="d-$DIFF_HASH.jsonl recusado: $_MOT"
     fi
   fi
 fi
+recusado_context() {
+  [ -n "$RECUSADO" ] && echo "  recusado: $RECUSADO" >&2
+  return 0
+}
 
 # Path fixo latest.jsonl (2026-07-20) -- O(1); fallback ao glob so se ausente.
 LATEST="$REVIEW_DIR/latest.jsonl"
@@ -134,6 +253,7 @@ LATEST="$REVIEW_DIR/latest.jsonl"
 if [ -z "$LATEST" ]; then
   echo "[percus:hook pre-commit] BLOCK: $REVIEW_DIR vazia" >&2
   block_context "$REVIEW_DIR"
+  recusado_context
   echo "Rode /percus-review:review do repo target antes de commitar (R11)." >&2
   exit 2
 fi
@@ -147,9 +267,25 @@ if [ $AGE -gt 300 ]; then
   AGE_MIN=$(( AGE / 60 ))
   echo "[percus:hook pre-commit] BLOCK: ultimo review tem $AGE_MIN min (max 5)" >&2
   block_context "$REVIEW_DIR"
+  recusado_context
   echo "  latest:   $(basename "$LATEST")" >&2
   echo "Rode /percus-review:review de novo (R11)." >&2
   exit 2
 fi
 
-exit 0
+_CLS=$(percus_classifica_marcador "$LATEST")
+_CLASSE=$(printf '%s\n' "$_CLS" | sed -n 1p)
+if [ "$_CLASSE" = "review" ]; then exit 0; fi
+if [ "$_CLASSE" = "placeholder" ]; then
+  _DEC=$(printf '%s\n' "$_CLS" | sed -n 2p)
+  _REA=$(printf '%s\n' "$_CLS" | sed -n 3p)
+  echo "[percus:hook pre-commit] AVISO: commit SEM review real -- liberado por placeholder deferido ($(basename "$LATEST"), decision=$_DEC). Registre a review Cross-Claude com registrar-review." >&2
+  { printf '{"timestamp":"%s","camada":"pretooluse","repo":"%s","decision":"%s","reason":"%s"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(percus_json_escapa "$REPO_ROOT")" "$_DEC" "$_REA" >> "$REVIEW_DIR/deferidos.log"; } 2>/dev/null || true
+  exit 0
+fi
+echo "[percus:hook pre-commit] BLOCK: marcador $(basename "$LATEST") invalido: $(printf '%s\n' "$_CLS" | sed -n 2p)" >&2
+block_context "$REVIEW_DIR"
+recusado_context
+echo "Rode /percus-review:review de novo (R11)." >&2
+exit 2

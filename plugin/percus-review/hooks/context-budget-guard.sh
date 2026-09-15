@@ -3,7 +3,7 @@
 # Paridade com context-budget-guard.ps1 (a fonte da logica e o .ps1; leia o cabecalho dele).
 # Le a ultima `usage` da CAUDA do transcript (tail -c), soma input + cache_read + cache_creation,
 # e informa (additionalContext; systemMessage so com PERCUS_CTX_OPERADOR) acima dos limiares, uma vez
-# por nivel por sessao. SO INFORMA (6.54.0): checkpoint e sessao nova sao decisao do operador.
+# por nivel por sessao. SO INFORMA (6.57.0): checkpoint e sessao nova sao decisao do operador.
 set +e
 
 STDIN=$(cat)

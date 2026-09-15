@@ -59,7 +59,7 @@ Avança SÓ com verificação. Não arredondar. (`[S]` do passo 4.5 precede `[0]
 pwsh -NoProfile -ExecutionPolicy Bypass -File "${env:PERCUS_CANON_DIR}\scripts\percus-review-auto.ps1"
 ```
 
-(ou `.sh` em Unix). Wrapper resolve plugin instalado + decide router + dispatch DeepSeek. Se output stderr tiver marker `__PERCUS_NEEDS_CROSS_CLAUDE__`, dispatch Sonnet subagent IMEDIATAMENTE via Agent tool com prompt R11 cross-claude-review e salve findings em `.deepseek/reviews/<ts>-cross-claude.jsonl`.
+(ou `.sh` em Unix). Wrapper resolve plugin instalado + decide router + dispatch DeepSeek. Se output stderr tiver marker `__PERCUS_NEEDS_CROSS_CLAUDE__`, dispatch Sonnet subagent IMEDIATAMENTE via Agent tool com prompt R11 cross-claude-review e registre os findings com `registrar-review` (a linha pronta já vem no próprio marcador; grave o arquivo de findings fora do repo, `-Canal cross-claude`/`--canal cross-claude`) para liberar o commit pelo hash do diff.
 
 Não pede pro usuário colar slash command — o agente faz tudo. Hook pre-commit (Layer 1+2) é safety net se você esquecer.
 

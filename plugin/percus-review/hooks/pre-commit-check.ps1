@@ -53,6 +53,64 @@ function Get-CommitTargetDir {
     return $fallback
 }
 
+# === CLASSIFICACAO DO MARCADOR (2026-09-14, FR-015) ===
+# Ate aqui o hook liberava pela EXISTENCIA do arquivo: placeholder, arquivo vazio ou lixo em
+# d-<hash>.jsonl passavam igual a review real. Ordem e textos sao contrato com o bloco awk
+# percus-classifica-marcador dos .sh -- mude os tres juntos.
+# ARMADILHA pwsh 7: ConvertFrom-Json ENUMERA array na raiz, entao '[{"findings":"x"}]' viraria o
+# objeto de dentro e liberaria. Por isso a raiz tambem e decidida pelo primeiro caractere.
+# Nome de chave com -ceq: acesso a propriedade no PowerShell ignora caixa; o awk nao.
+# Limite conhecido fora da matriz: pwsh 7 converte string com cara de data ISO em DateTime.
+function Get-PropriedadeExata {
+    param($Obj, [string]$Nome)
+    foreach ($p in $Obj.PSObject.Properties) { if ($p.Name -ceq $Nome) { return $p } }
+    return $null
+}
+
+function Get-ClasseMarcador {
+    param([string]$Caminho)
+    $r = @{ Classe = 'invalido'; Motivo = ''; Decision = 'desconhecida'; Reason = '' }
+    $ws = [char[]]@(32, 9, 10, 13)
+    try {
+        if ((Get-Item -LiteralPath $Caminho).Length -gt 262144) { $r.Motivo = 'acima do teto (256 KB)'; return $r }
+        $bytes = [IO.File]::ReadAllBytes($Caminho)
+    } catch { $r.Motivo = 'ilegivel'; return $r }
+    $ini = 0
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $ini = 3 }
+    $texto = (New-Object System.Text.UTF8Encoding($false)).GetString($bytes, $ini, $bytes.Length - $ini)
+    $limpo = $texto.Trim($ws)
+    if ($limpo.Length -eq 0) { $r.Motivo = 'vazio'; return $r }
+    $obj = $null
+    try { $obj = ConvertFrom-Json -InputObject $texto -ErrorAction Stop } catch { $r.Motivo = 'nao e JSON'; return $r }
+    if (-not $limpo.StartsWith('{') -or $obj -isnot [System.Management.Automation.PSCustomObject]) { $r.Motivo = 'raiz nao e objeto'; return $r }
+    $pDef = Get-PropriedadeExata $obj 'deferred'
+    $pRea = Get-PropriedadeExata $obj 'reason'
+    if ($pDef -and ($pDef.Value -is [bool]) -and $pDef.Value -and $pRea -and ($pRea.Value -is [string]) -and $pRea.Value.Trim($ws).Length -gt 0) {
+        $r.Classe = 'placeholder'; $r.Reason = $pRea.Value
+        $pDec = Get-PropriedadeExata $obj 'decision'
+        if ($pDec -and ($pDec.Value -is [string]) -and $pDec.Value.Trim($ws).Length -gt 0) { $r.Decision = $pDec.Value }
+        return $r
+    }
+    $pFin = Get-PropriedadeExata $obj 'findings'
+    if (-not $pFin) { $r.Motivo = 'sem findings nem placeholder'; return $r }
+    if ($pFin.Value -isnot [string]) { $r.Motivo = 'findings nao e string'; return $r }
+    if ($pFin.Value.Trim($ws).Length -eq 0) { $r.Motivo = 'findings vazio'; return $r }
+    $r.Classe = 'review'
+    return $r
+}
+
+function Add-LinhaDeferido {
+    param([string]$ReviewDir, [string]$Camada, [string]$Repo, [string]$Decision, [string]$Reason)
+    $linha = [ordered]@{
+        timestamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+        camada    = $Camada
+        repo      = $Repo
+        decision  = $Decision
+        reason    = $Reason
+    } | ConvertTo-Json -Compress
+    [IO.File]::AppendAllText((Join-Path $ReviewDir 'deferidos.log'), $linha + "`n", (New-Object System.Text.UTF8Encoding($false)))
+}
+
 try {
     # PowerShell -File com stdin via pipe (testes Pester) consome stdin pelo automatic
     # $input enumerator e [Console]::In.ReadToEnd() retorna vazio. Em producao via
@@ -92,6 +150,11 @@ try {
             [Console]::Error.WriteLine("  cwd:      $cwd")
         }
         [Console]::Error.WriteLine("  searched: $searched")
+    }
+
+    $recusado = $null
+    function Write-Recusado {
+        if ($recusado) { [Console]::Error.WriteLine("  recusado: $recusado") }
     }
 
     # === POLITICA DE RISCO: review por CRITERIO, nao por frequencia (2026-08-19) ===
@@ -150,6 +213,7 @@ try {
     # produz hash diferente do bash pro MESMO diff (medido 2026-08-19). Com --output= quem
     # escreve os bytes e o git, igual nos dois runtimes.
     try {
+        $hashHex = $null
         $tmpDiff = [System.IO.Path]::GetTempFileName()
         try {
             # `-C $repoRoot` e obrigatorio: o hook roda no cwd do AGENTE, nao no repo alvo. O
@@ -165,10 +229,21 @@ try {
             try { $hashHex = ([BitConverter]::ToString($sha.ComputeHash($fs)) -replace '-','').ToLower().Substring(0,12) }
             finally { $fs.Dispose() }
         } finally { Remove-Item $tmpDiff -Force -ErrorAction SilentlyContinue }
-        $porHash = Join-Path $reviewDir "d-$hashHex.jsonl"
-        if (Test-Path $porHash) {
-            $idade = (Get-Date) - (Get-Item $porHash).LastWriteTime
-            if ($idade.TotalHours -le 24) { exit 0 }
+        # Hash do conteudo VAZIO (e3b0c44298fc) = sem hash: repo sem commit ou sem mudanca. Um
+        # d-e3b0c44298fc.jsonl liberaria por 24 h qualquer diff de repo sem commit (emenda FR-016).
+        if ($hashHex -and $hashHex -ne 'e3b0c44298fc') {
+            $porHash = Join-Path $reviewDir "d-$hashHex.jsonl"
+            if (Test-Path -LiteralPath $porHash) {
+                $idade = (Get-Date) - (Get-Item -LiteralPath $porHash).LastWriteTime
+                # >24 h: ignorado SEM ler (FR-016).
+                if ($idade.TotalHours -le 24) {
+                    $cHash = Get-ClasseMarcador -Caminho $porHash
+                    if ($cHash.Classe -eq 'review') { exit 0 }
+                    $motivoHash = $cHash.Motivo
+                    if ($cHash.Classe -eq 'placeholder') { $motivoHash = 'placeholder nao libera por hash' }
+                    $recusado = "d-$hashHex.jsonl recusado: $motivoHash"
+                }
+            }
         }
     } catch { }
 
@@ -183,6 +258,7 @@ try {
     if (-not $latest) {
         [Console]::Error.WriteLine("[percus:hook pre-commit] BLOCK: .deepseek/reviews/ vazia no repo target")
         Write-BlockContext -searched $reviewDir
+        Write-Recusado
         [Console]::Error.WriteLine("Rode /percus-review:review do repo target antes de commitar (R11).")
         exit 2
     }
@@ -192,15 +268,27 @@ try {
         $mins = [math]::Round($age.TotalMinutes, 1)
         [Console]::Error.WriteLine("[percus:hook pre-commit] BLOCK: ultimo /percus-review:review tem $mins min (max 5).")
         Write-BlockContext -searched $reviewDir
+        Write-Recusado
         [Console]::Error.WriteLine("  latest:   $($latest.Name)")
         [Console]::Error.WriteLine("Rode /percus-review:review de novo antes de commitar (R11).")
         exit 2
     }
 
-    # Review fresco -> libera
-    exit 0
+    # <=5 min: agora o conteudo decide (FR-017).
+    $cLatest = Get-ClasseMarcador -Caminho $latest.FullName
+    if ($cLatest.Classe -eq 'review') { exit 0 }
+    if ($cLatest.Classe -eq 'placeholder') {
+        [Console]::Error.WriteLine("[percus:hook pre-commit] AVISO: commit SEM review real -- liberado por placeholder deferido ($($latest.Name), decision=$($cLatest.Decision)). Registre a review Cross-Claude com registrar-review.")
+        try { Add-LinhaDeferido -ReviewDir $reviewDir -Camada 'pretooluse' -Repo $repoRoot -Decision $cLatest.Decision -Reason $cLatest.Reason } catch { }
+        exit 0
+    }
+    [Console]::Error.WriteLine("[percus:hook pre-commit] BLOCK: marcador $($latest.Name) invalido: $($cLatest.Motivo)")
+    Write-BlockContext -searched $reviewDir
+    Write-Recusado
+    [Console]::Error.WriteLine("Rode /percus-review:review de novo antes de commitar (R11).")
+    exit 2
 } catch {
     # Falha do hook nao bloqueia workflow
-    Write-Host "[percus:hook pre-commit] WARN: hook crashed, allowing commit. Error: $_" -ForegroundColor DarkYellow
+    [Console]::Error.WriteLine("[percus:hook pre-commit] WARN: hook crashed, allowing commit. Error: $_")
     exit 0
 }

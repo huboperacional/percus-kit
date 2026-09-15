@@ -10,6 +10,7 @@ caixa de texto pro operador colar). Ver `conhecimento/resolver/cross-repo-write.
 |---|---|---|
 | `HANDOFF_PAINEL_v6.10.md` | v6.10.0 (re-alocação de portas, bloco de 20) | Aplicado — histórico |
 | `HANDOFF_CONSUMIDORES_v6.10.md` | v6.10.0 (re-alocar `port_base` em cada projeto) | Aplicado — histórico |
+| `HANDOFF_CONSUMIDORES_v6.56.md` | v6.56.1 (R11 com retry + `registrar-review`; hook lê o marcador) | Em curso — hooks git reinstalados nesta máquina em 2026-09-15; 4 `CLAUDE.md` aguardam commit no próprio projeto |
 
 Handoffs de releases passadas ficam como referência de "o que foi pedido ao operador naquela versão".
 Não são instrução corrente — para o estado atual de portas/infra, ver `02_INFRA` §5 + R22.

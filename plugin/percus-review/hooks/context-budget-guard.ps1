@@ -10,7 +10,7 @@
 # (additionalContext) e o operador (systemMessage) quando passa dos limiares.
 #
 # NAO bloqueia e NAO ordena. Bloqueio em contexto vivo vira escape rotineiro, e escape rotineiro
-# mata o sinal -- foi o que o teto do CONTEXT.md provou. Ordem tambem nao (6.54.0): ate a 6.53.0
+# mata o sinal -- foi o que o teto do CONTEXT.md provou. Ordem tambem nao (6.57.0): ate a 6.56.1
 # toda mensagem terminava em "rode checkpoint e encerre em RESET", e o agente obedecia mesmo com a
 # janela INDETERMINADA (244k de uma janela de 1M, 2026-09-14). O que ele faz e nao deixar o agente
 # NAO SABER. Decidir checkpoint e sessao nova e do operador, que ve o painel de contexto.
@@ -271,7 +271,7 @@ try {
     if ($condDias) {
         $partes.Add("Este transcript foi iniciado ha $dias dias -- e uma sessao retomada/velha.")
     }
-    # SO INFORMA (decisao do operador, 2026-09-14). Ate a 6.53.0 aqui havia "Acao: rode
+    # SO INFORMA (decisao do operador, 2026-09-14). Ate a 6.56.1 aqui havia "Acao: rode
     # percus-review:checkpoint e encerre em RESET" em TODO aviso, e a idade do transcript mandava
     # "Nao continue nela: abra sessao nova". Com a janela INDETERMINADA o hook dizia que nao sabia se
     # a sessao estava perto do teto e ordenava reset na frase seguinte. Medido: claude-opus-5[1m] a

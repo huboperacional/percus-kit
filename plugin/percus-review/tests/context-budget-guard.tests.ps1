@@ -311,7 +311,7 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
             $r.Json | Should -Not -BeNullOrEmpty
             $r.Json.hookSpecificOutput.additionalContext | Should -Match '3 dias'
             $r.Json.hookSpecificOutput.additionalContext | Should -Match 'retomada/velha'
-            # ate a 6.53.0 esta assercao era 'sessao nova' -- exigia a ordem que o operador tirou
+            # ate a 6.56.1 esta assercao era 'sessao nova' -- exigia a ordem que o operador tirou
             $r.Json.hookSpecificOutput.additionalContext | Should -Not -Match 'Nao continue nela'
         }
     }
@@ -591,7 +591,7 @@ Describe "context-budget-guard hook (orcamento de contexto, warn-only)" {
 
     # Decisao do operador em 2026-09-14: "so o operador inicia checkpoint e manda abrir sessao nova".
     #
-    # Ate a 6.53.0 TODA mensagem terminava em "Acao: rode percus-review:checkpoint e encerre em
+    # Ate a 6.56.1 TODA mensagem terminava em "Acao: rode percus-review:checkpoint e encerre em
     # RESET" -- inclusive com a janela INDETERMINADA, quando o proprio hook acabara de admitir que
     # nao sabia se a sessao estava perto do teto. Medido: sessao claude-opus-5[1m] (janela 1M) com
     # 244k tokens, 26% da janela, recebeu esse aviso, fez checkpoint e mandou o operador abrir

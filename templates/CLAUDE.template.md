@@ -200,11 +200,11 @@ Agente Claude Code AUTO-DISPARA review antes de qualquer `git commit` que ele me
 3. **Se aparecer marker `__PERCUS_NEEDS_CROSS_CLAUDE__`** no stderr do wrapper:
    - Significa que a decisão do router foi `cross-claude` ou `dual` (pasta sensível, marco, ou commit veio de DeepSeek).
    - Dispatch Sonnet subagent IMEDIATAMENTE via Agent tool (`subagent_type: "general-purpose"`) com prompt R11 cross-claude-review (revisar `git diff` vs AGENTS.md).
-   - Salvar output do subagent em `.deepseek/reviews/<timestamp>-cross-claude.jsonl` para satisfazer o hook (`.deepseek/reviews/` é gitignored).
+   - Grave o output do subagent num arquivo fora do repo (a linha pronta com o comando já vem no marcador) e registre com `registrar-review` (`-Canal cross-claude`/`--canal cross-claude`) para liberar o commit pelo hash do diff. Sem esse registro, o commit só passa pelo placeholder de 5 min.
 
 4. **Apresentar consolidado** (DeepSeek findings + Cross-Claude findings se aplicável) ao usuário. Declarar em voz alta findings ignorados e o porquê.
 
-5. **`git commit`** — hooks Layer 1 (PreToolUse) e Layer 2 (git nativo) aprovam por TTL do review fresco.
+5. **`git commit`** — hooks Layer 1 (PreToolUse) e Layer 2 (git nativo) liberam pela review registrada com `registrar-review` (ou pelo hash do `d-<hash>.jsonl`); o placeholder de `latest.jsonl` sozinho libera só por 5 min.
 
 **Ao fechar marco:** mesmo padrão, mas com wrapper de marco:
 ```

@@ -20,6 +20,8 @@ if [[ -f "$_PERCUS_SCRIPTS_DIR/_faixa-regras.sh" ]]; then
 fi
 
 BASE=""
+TIMEOUT_ARG=""
+BACKOFF_ARG=""
 MODEL="${DEEPSEEK_MODEL:-deepseek-v4-flash}"
 # reasoning_effort (2026-08-19): este script roda a CADA commit e e o maior gastador do kit
 # -- a telemetria mostrou uma review queimando 31.747 tokens de saida, 31.197 (98%) so
@@ -38,6 +40,18 @@ while [[ $# -gt 0 ]]; do
             BASE="$2"; shift 2 ;;
         --base=*)
             BASE="${1#*=}"; shift ;;
+        --endpoint)
+            ENDPOINT="$2"; shift 2 ;;
+        --endpoint=*)
+            ENDPOINT="${1#*=}"; shift ;;
+        --timeout)
+            TIMEOUT_ARG="$2"; shift 2 ;;
+        --timeout=*)
+            TIMEOUT_ARG="${1#*=}"; shift ;;
+        --backoff)
+            BACKOFF_ARG="$2"; shift 2 ;;
+        --backoff=*)
+            BACKOFF_ARG="${1#*=}"; shift ;;
         -h|--help)
             sed -n '2,9p' "$0"; exit 0 ;;
         *)
@@ -69,6 +83,36 @@ for cmd in curl jq git; do
         exit 1
     fi
 done
+
+# === TIMEOUT E BACKOFF (2026-09-14, FR-001/002): flag > env > padrao ===
+e_inteiro() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; return 0; }
+# Fix round 1 (2026-09-14, achado da review): "08"/"09" sao digitos validos pra e_inteiro mas o
+# bash avalia -lt/-ge em contexto aritmetico, onde zero a esquerda vira octal -- "08" nao e octal
+# valido (digito 8) e o bash solta "value too great for base" no stderr, alem de a comparacao
+# falhar por acidente. 10#$v forca base 10 antes de qualquer comparacao/atribuicao.
+config_de_env() {  # $1 nome da var, $2 padrao, $3 minimo
+    local v="${!1:-}" n
+    if [[ -z "$v" ]]; then printf '%s' "$2"; return 0; fi
+    if e_inteiro "$v"; then
+        n=$((10#$v))
+        if [[ "$n" -ge "$3" ]]; then printf '%s' "$n"; return 0; fi
+    fi
+    echo "[deepseek-review] WARN: $1='$v' invalido -- usando padrao $2." >&2
+    printf '%s' "$2"
+}
+if [[ -n "$TIMEOUT_ARG" ]]; then
+    if ! e_inteiro "$TIMEOUT_ARG"; then echo "[deepseek-review] ERRO: --timeout precisa ser inteiro >= 1." >&2; exit 2; fi
+    TIMEOUT_S=$((10#$TIMEOUT_ARG))
+    if [[ "$TIMEOUT_S" -lt 1 ]]; then echo "[deepseek-review] ERRO: --timeout precisa ser inteiro >= 1." >&2; exit 2; fi
+else
+    TIMEOUT_S="$(config_de_env PERCUS_DEEPSEEK_TIMEOUT_S 180 1)"
+fi
+if [[ -n "$BACKOFF_ARG" ]]; then
+    if ! e_inteiro "$BACKOFF_ARG"; then echo "[deepseek-review] ERRO: --backoff precisa ser inteiro >= 0." >&2; exit 2; fi
+    BACKOFF_S=$((10#$BACKOFF_ARG))
+else
+    BACKOFF_S="$(config_de_env PERCUS_DEEPSEEK_BACKOFF_S 5 0)"
+fi
 
 # === COLLECT DIFF ===
 # ⚠️ `2>/dev/null || true` num portao é a receita do falso-verde: `git diff`
@@ -169,7 +213,9 @@ ${DIFF}"
 # falhou". Mesma licao que ja tinha sido aprendida pro curl logo abaixo.
 # Encontrado em 2026-07-27 (diff de 52KB do proprio fix do router).
 USER_MSG_FILE="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-usermsg-$$.txt")"
-trap 'rm -f "$USER_MSG_FILE"' EXIT
+RESP_FILE="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-resp-$$.json")"
+CURL_ERR="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-curlerr-$$.txt")"
+trap 'rm -f "$USER_MSG_FILE" "$RESP_FILE" "$CURL_ERR"' EXIT
 printf '%s' "$USER_MSG" > "$USER_MSG_FILE"
 
 BODY="$(jq -n \
@@ -188,30 +234,82 @@ BODY="$(jq -n \
     }
     + (if $effort == "" then {} else {reasoning_effort: $effort} end)')"
 
-# === CALL API ===
-# Body via stdin (--data-binary @-), NÃO via argv. Em git-bash Windows, curl
-# recebe argv via Windows-API que reencoda UTF-8 → CP1252 → UTF-8 e quebra
-# multi-byte chars, gerando "invalid unicode code point" no parser DeepSeek.
-# Stdin contorna o argv inteiro.
-RESPONSE="$(printf '%s' "$BODY" | curl -sS -X POST "$ENDPOINT" \
-    -H "Authorization: Bearer ${DEEPSEEK_API_KEY}" \
-    -H "Content-Type: application/json; charset=utf-8" \
-    --data-binary @-)" || {
-    echo "[deepseek-review] ERRO: chamada API falhou." >&2
-    exit 1
+# === CALL API: TIMEOUT E EXATAMENTE 1 RETRY (2026-09-14, FR-001..005) ===
+# Body via stdin (--data-binary @-), NAO via argv: git-bash reencoda argv e quebra UTF-8.
+# -o arquivo + -w status: sem isso 4xx/5xx e 2xx sem choices eram indistinguiveis.
+mask_trecho() {  # stdin: corpo bruto -> stdout: primeiros 2000 CARACTERES, chave trocada por ***
+    local raw masked
+    raw="$(cat; printf x)"; raw="${raw%x}"
+    masked="${raw//"$DEEPSEEK_API_KEY"/***}"
+    # Mascara ANTES de cortar. Locale UTF-8 so no subshell: o corte e por caractere, nao por byte.
+    ( LC_ALL=C.UTF-8; printf '%s' "${masked:0:2000}" )
 }
 
-FINDINGS="$(printf '%s' "$RESPONSE" | jq -r '.choices[0].message.content // empty' 2>/dev/null)"
-if [[ -z "$FINDINGS" ]]; then
-    echo "[deepseek-review] ERRO: resposta vazia ou inválida. Raw:" >&2
-    echo "$RESPONSE" >&2
+tentativa() {  # define TENT_VEREDITO (ok|retry|fatal) e TENT_CAUSA
+    local rc=0 status tem trecho
+    : > "$RESP_FILE"
+    status="$(printf '%s' "$BODY" | curl -sS -o "$RESP_FILE" -w '%{http_code}' --max-time "$TIMEOUT_S" \
+        -X POST "$ENDPOINT" \
+        -H "Authorization: Bearer ${DEEPSEEK_API_KEY}" \
+        -H "Content-Type: application/json; charset=utf-8" \
+        --data-binary @- 2>"$CURL_ERR")" || rc=$?
+    status="$(printf '%s' "$status" | tr -d '\r' || true)"
+    if [[ $rc -ne 0 ]]; then
+        TENT_VEREDITO=retry
+        if [[ $rc -eq 28 ]]; then TENT_CAUSA="erro de rede/timeout: timeout de ${TIMEOUT_S}s"
+        else TENT_CAUSA="erro de rede/timeout: curl exit $rc $(tr -d '\r\n' < "$CURL_ERR")"; fi
+        return 0
+    fi
+    tem="$(jq -r 'if type == "object" and (.choices | type) == "array" and (.choices | length) > 0 then "sim" else "nao" end' < "$RESP_FILE" 2>/dev/null | tr -d '\r' || true)"
+    [[ "$tem" == "sim" ]] || tem="nao"
+    if [[ "$tem" == "nao" ]]; then
+        trecho="$(mask_trecho < "$RESP_FILE"; printf x)"; trecho="${trecho%x}"
+        echo "[deepseek-review] resposta sem choices (HTTP $status) -- primeiros 2000 caracteres do corpo:" >&2
+        printf '%s\n' "$trecho" >&2
+        { mkdir -p ".deepseek/reviews" && printf 'timestamp=%s\nstatus=%s\n---\n%s' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$status" "$trecho" > ".deepseek/reviews/ultimo-erro.txt"; } 2>/dev/null \
+            || echo "[deepseek-review] WARN: nao consegui gravar ultimo-erro.txt" >&2
+    fi
+    if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+        if [[ "$tem" == "sim" ]]; then TENT_VEREDITO=ok; TENT_CAUSA=""; return 0; fi
+        TENT_VEREDITO=retry
+        if [[ -z "$(tr -d ' \t\r\n' < "$RESP_FILE")" ]]; then TENT_CAUSA="HTTP $status com corpo vazio"
+        else TENT_CAUSA="HTTP $status sem choices"; fi
+        return 0
+    fi
+    if [[ "$status" == "429" || "$status" =~ ^5[0-9][0-9]$ ]]; then TENT_VEREDITO=retry; TENT_CAUSA="HTTP $status"; return 0; fi
+    TENT_VEREDITO=fatal; TENT_CAUSA="HTTP $status"
+    return 0
+}
+
+echo "[deepseek-review] timeout=${TIMEOUT_S}s backoff=${BACKOFF_S}s" >&2
+tentativa
+if [[ "$TENT_VEREDITO" == "retry" ]]; then
+    echo "[deepseek-review] tentativa 1 falhou: ${TENT_CAUSA}. Nova tentativa em ${BACKOFF_S}s." >&2
+    sleep "$BACKOFF_S"
+    tentativa
+    if [[ "$TENT_VEREDITO" == "retry" ]]; then
+        echo "[deepseek-review] PROVEDOR INDISPONIVEL apos retry: ${TENT_CAUSA}. Nenhum marcador gravado (exit 4)." >&2
+        exit 4
+    fi
+fi
+if [[ "$TENT_VEREDITO" == "fatal" ]]; then
+    echo "[deepseek-review] ERRO: ${TENT_CAUSA} -- nao recuperavel, sem nova tentativa. Nenhum marcador gravado (exit 1)." >&2
     exit 1
+fi
+RESPONSE="$(cat "$RESP_FILE")"
+
+FINDINGS="$(printf '%s' "$RESPONSE" | jq -r '.choices[0].message.content // empty' 2>/dev/null | tr -d '\r' || true)"
+if [[ -z "$FINDINGS" ]]; then
+    # Com choices e content vazio: resposta inutilizavel, nao outage (FR-005 exit 3, sem retry).
+    echo "[deepseek-review] REVIEW NAO CONCLUIDA -- content vazio." >&2
+    echo "[deepseek-review] O marcador NAO foi escrito: o commit segue bloqueado (R11)." >&2
+    exit 3
 fi
 
 # Vazia ja era barrada acima; CORTADA nao era. Resposta truncada tem texto -- passa no teste
 # de vazio -- mas a ultima frase nao terminou e a conclusao pode nem ter sido escrita. Aceitar
 # isso como review completa e a mesma classe de fail-open, so que mais dificil de ver.
-FINISH="$(printf '%s' "$RESPONSE" | jq -r '.choices[0].finish_reason // empty' 2>/dev/null)"
+FINISH="$(printf '%s' "$RESPONSE" | jq -r '.choices[0].finish_reason // empty' 2>/dev/null | tr -d '\r' || true)"
 if [[ "$FINISH" == "length" ]]; then
     echo "[deepseek-review] REVIEW NAO CONCLUIDA -- resposta CORTADA no teto de tokens." >&2
     echo "[deepseek-review] O marcador NAO foi escrito: o commit segue bloqueado (R11)." >&2
@@ -236,13 +334,14 @@ mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/latest.jsonl"
 LOG_TMP="${LOG_DIR}/latest.jsonl.tmp"
 DIFF_LINES="$(echo "$DIFF" | wc -l | tr -d ' ')"
-jq -n \
+printf '%s' "$RESPONSE" | jq -c \
     --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg base "$BASE" \
     --argjson diff_lines "$DIFF_LINES" \
+    --arg model "$MODEL" \
     --arg findings "$FINDINGS" \
-    '{ timestamp: $timestamp, base: $base, diff_lines: $diff_lines, findings: $findings }' \
-    > "$LOG_TMP" && mv -f "$LOG_TMP" "$LOG_FILE"
+    '{ timestamp: $timestamp, base: $base, diff_lines: $diff_lines, model: $model, usage: (.usage // null), findings: $findings }' \
+    | tr -d '\r' > "$LOG_TMP" && mv -f "$LOG_TMP" "$LOG_FILE"
 
 # === MARCADOR POR HASH DO DIFF (2026-08-19) ===
 # Validade da review deixa de ser TEMPO e passa a ser CONTEUDO. A janela de 5 min media a coisa
@@ -267,7 +366,8 @@ if command -v sha256sum >/dev/null 2>&1; then
     rm -f "$TMP_DIFF"
     # Guarda do hash vazio: sem ela, `git diff` falhando gera o marcador "d-.jsonl" -- lixo que
     # ainda por cima casaria com um hash vazio do outro lado, liberando commit sem review.
-    if [ -n "$DIFF_HASH" ]; then
+    # e3b0c44298fc = hash do arquivo vazio: sem hash, nunca d-e3b0c44298fc.jsonl (emenda FR-011).
+    if [ -n "$DIFF_HASH" ] && [ "$DIFF_HASH" != "e3b0c44298fc" ]; then
         cp -f "$LOG_FILE" "$LOG_DIR/d-$DIFF_HASH.jsonl" 2>/dev/null || true
     fi
 fi
@@ -279,10 +379,6 @@ fi
 #
 # APPEND de uma linha por review em .deepseek/spend/<YYYY-MM>.jsonl -- arquivo por MES, que e
 # o que impede a volta do acumulo que pendurou o hook em 148s. O hook nunca varre este dir.
-#
-# NOTA: o marcador acima nao grava model/usage nesta versao .sh (o irmao .ps1 passou a gravar
-# em 2026-08-15 e este ficou para tras). A telemetria abaixo grava os dois de qualquer jeito,
-# entao o gasto do caminho Unix passa a ser mensuravel mesmo com o marcador incompleto.
 #
 # `|| true` no fim: este script libera o commit (R11). Telemetria que falha nao pode custar um
 # commit -- mesmo principio que fez os campos ausentes virarem null no marcador.

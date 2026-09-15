@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.54.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.57.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -23,7 +23,19 @@
 
 ---
 
-## Changelog v6.54.0 — 2026-09-14
+## Pendente de versão
+
+> Entradas desta seção ainda não têm número: a versão é atribuída no merge para a `main` (sem bump
+> em branch). Quem fizer o merge move a entrada para um `## Changelog vX.Y.Z` e bumpa.
+
+(nenhuma entrada)
+
+---
+
+## Changelog v6.57.0 — 2026-09-15
+
+> Originalmente preparado como 6.54.0 no branch `worktree-checkpoint-so-operador`; renumerado no
+> merge porque a `main` já estava em 6.56.1.
 
 **Checkpoint e sessão nova passam a ser só do operador.** O `context-budget-guard` deixa de dar ordem e
 só informa o tamanho do contexto.
@@ -115,6 +127,95 @@ no baseline, com o mesmo `PERCUS_CTX_WINDOW=1000000` herdado. Cada commit que le
   `additionalContext` do agente, que não vê o painel do VSCode e poderia editar `settings.json`
   sozinho. Uma versão futura deveria reformular as duas para "o operador pode definir..." nos dois
   runtimes, sem tirar a métrica do hook.
+
+## Changelog v6.56.1 — 2026-09-15
+
+- **Hook git nativo híbrido não pula mais a lógica custom quando o R11 libera pelo hash.** O bloco
+  Percus de `plugin/percus-review/git-hooks/pre-commit.template.sh` fazia `exit 0` ao achar
+  `d-<hash>.jsonl` com review — em hook híbrido (bloco Percus + lógica após `PERCUS-MERGED-HOOK END`,
+  como o gate V2 em tiatendo, auth-service e Plexco Coach) o gate V2 deixava de rodar justamente nos
+  commits revisados. Defeito anterior à 6.56.0 (já existia em c144aaf); achado ao preparar a
+  reinstalação do hook nos projetos. Agora a aprovação por hash segue para depois do `END`, igual à
+  aprovação por `latest.jsonl`. Teste novo em `pre-commit-marcador-classificacao.tests.ps1`
+  ("git hibrido": hash/latest/placeholder seguem para o custom; marcador inválido bloqueia antes).
+- **Reinstalação:** use este template (6.56.1), não o da 6.56.0, ao atualizar o hook git dos projetos.
+
+## Changelog v6.56.0 — 2026-09-15
+
+> Números 6.54.0 e 6.55.0 pulados de propósito: estavam em uso nos branches ainda não mergeados
+> `worktree-checkpoint-so-operador` / `worktree-state-drift-nao-comparou` (6.54.0) e
+> `worktree-plano-sync` (6.55.0). Quem mergear esses branches renumera para a próxima versão livre.
+
+### R11 sem ponto único de falha (branch `worktree-r11-fallback`, spec `docs/superpowers/specs/2026-09-14-r11-sem-ponto-unico-design.md`)
+
+- **Cliente `deepseek-review.{ps1,sh}`:** timeout por chamada (padrão 180 s) e exatamente 1 retry
+  (backoff 5 s) em timeout/rede, 429, 5xx e 2xx sem `choices`; 4xx ≠ 429 sai exit 1 sem retry;
+  **exit 4** = provedor indisponível após retry. Corpo sem `choices` vai ao stderr (2 000 caracteres,
+  chave mascarada) e a `.deepseek/reviews/ultimo-erro.txt`. O `.sh` passa a gravar `model`/`usage`.
+- **Novo `registrar-review.{ps1,sh}`:** grava a review do subagente Cross-Claude em
+  `d-<hash>.jsonl` + `latest.jsonl` (hash igual ao do hook, gravação atômica com rollback, telemetria).
+- **Wrapper `percus-review-auto.{ps1,sh}`:** `reason` distingue exit 4; todas as emissões do marcador
+  `__PERCUS_NEEDS_CROSS_CLAUDE__` trazem a linha pronta do `registrar-review`; stderr do cliente visível.
+- **Hook `pre-commit-check.{ps1,sh}` + `git-hooks/pre-commit.template.sh`:** o marcador passa a ser
+  LIDO — só review com `findings` não vazio libera; placeholder libera por `latest.jsonl` ≤5 min com
+  aviso e linha em `.deepseek/reviews/deferidos.log`; hash do diff vazio (`e3b0c44298fc`) não conta.
+  **Projetos com o hook git instalado precisam reinstalar.** `/percus-review:install-git-hooks` (passo
+  "Replace", `plugin/percus-review/commands/install-git-hooks.md:122-123`) faz `cp` puro do template
+  — o template no CACHE do plugin chega em CRLF (verbete
+  `conhecimento/resolver/sh-do-plugin-no-cache-chega-com-crlf-e-o-hook-nativo-copia-assim.md`), então
+  a cópia crua nasce em CRLF em `.git/hooks/pre-commit`. Reinstale removendo o `\r`, não com o `cp` da
+  skill:
+  `tr -d '\r' < "${CLAUDE_PLUGIN_ROOT}/git-hooks/pre-commit.template.sh" > .git/hooks/pre-commit`
+  (mais `chmod +x .git/hooks/pre-commit` fora do Windows).
+- **Publicação:** mudança em `plugin/percus-review/hooks/` e `scripts/` do plugin exige publicação
+  (ver topo deste arquivo); o wrapper do kit aponta para a cópia do kit do `registrar-review` enquanto
+  o cache não a tiver.
+- **Condições de rollout:**
+  (a) exige push + `autoUpdate` do plugin para o cache pegar o hook/scripts novos (ver nota do topo
+  deste arquivo sobre gates vs. hooks);
+  (b) **merge para a `main` do kit ativa o hook `.ps1` NA HORA em toda sessão desta máquina** — o
+  `PERCUS_CANON_DIR` aponta pro checkout do kit, e o hook novo passa a valer no próximo commit de
+  qualquer projeto local, sem esperar publicação/autoUpdate (isso só governa o plugin em CACHE, usado
+  por máquinas remotas e pelo `.cmd`/registro). **Rollback:** `git revert` do commit de merge na
+  `main` do kit. **Escape de emergência enquanto reverte:** `PERCUS_HOOKS_DISABLED=1` (declarado em
+  voz alta; nunca use fora de uma reversão em andamento) — o hook já verifica essa variável
+  (`plugin/percus-review/hooks/pre-commit-check.ps1:135`, `pre-commit-check.sh:139`) e sai 0 sem
+  classificar nada;
+  (c) **SC-007 (latência):** medido nesta revisão — mediana **+29,9 ms** e **+47,3 ms** contra o teto
+  de 20 ms do critério original (dois runs, hook antigo vs. novo, mesmo processo de medição). O custo
+  só incide no caminho `git commit` (o hook sai cedo pra qualquer outro comando,
+  `plugin/percus-review/hooks/pre-commit-check.ps1:129`), concentrado no PRIMEIRO uso por processo
+  (~45–65 ms na 1ª chamada de `Get-ClasseMarcador`, ~2 ms nas seguintes; sem causa barata única — o
+  custo se espalha por `New-Object UTF8Encoding`, enumeração de `PSObject.Properties`, `Get-Item`, etc).
+  **Isto NÃO atende o SC-007 como escrito** (≤20 ms); é ~5–10% de um caminho que já paga ~420 ms de
+  partida do PowerShell 5.1 + `git diff`. **Aceito como está pelo operador no merge (2026-09-15)**; o
+  critério da spec não foi reescrito;
+  (d) projetos com o hook git nativo instalado precisam reinstalar (ponto acima);
+  (e) `.deepseek/reviews/deferidos.log` cresce **sem rotação** — é sinal de saúde do R11 (linhas
+  demais = commits liberando por placeholder em vez de review real), não um arquivo gerenciado: hoje
+  ninguém poda. Observar na primeira semana e decidir poda manual ou automática depois.
+- **Follow-ups após o merge (não bloqueiam; achados da revisão final, 2026-09-15):**
+  - `.sh` fecha (fail-closed) em vez de abrir quando o classificador awk não responde com
+    `review|placeholder|invalido` (saída vazia por awk não-GNU ausente/quebrado) — deveria emitir
+    `WARN: hook crashed, allowing commit` + exit 0, como o `.ps1` já faz.
+  - `registrar-review.ps1` escreve com `[Console]::Out` e troca `Console.OutputEncoding` do processo
+    chamador — quando invocado embutido (`$r = & registrar-review.ps1 ...`), a linha `hash=...` não é
+    capturável no `$r` (medido: `out=` vazio) e a sessão do chamador fica com a codificação trocada.
+  - Rollback de `registrar-review.{ps1,sh}` apaga também um `d-<hash>.jsonl` PRÉ-EXISTENTE (ex.: do
+    canal `dual` no mesmo diff) se a gravação do `latest` falhar depois — raro e inofensivo pro gate
+    (bloqueia, não libera), mas a mensagem de erro só descreve o que ESTA chamada gravou.
+  - `percus-milestone-review-auto.{ps1,sh}` ficou fora do novo contrato: sem motivo do exit 4 e sem a
+    linha pronta de `registrar-review` nas emissões do marcador (o marco não costuma gatear commit,
+    por isso ficou fora do escopo desta spec).
+  - Divergência de leniência JSON entre hosts: `ConvertFrom-Json` aceita aspas simples/comentários que
+    o awk recusa — nenhum escritor real produz isso hoje (809/809 marcadores reais concordam nos três
+    classificadores), só uma diferença de tolerância a documentar.
+  - Cliente `.sh` passa a chave da API como argumento de `curl`, visível na lista de processos do SO
+    enquanto a chamada dura — pré-existente, fora do diff desta feature.
+
+**Evidência:** suíte inteira 878/904 com as mesmas 18 falhas conhecidas da base; 809/809 marcadores
+reais desta máquina classificados igual em Windows PowerShell 5.1, pwsh 7 e awk (revisão final da
+branch, 2026-09-15).
 
 ## Changelog v6.53.0 — 2026-09-13
 
