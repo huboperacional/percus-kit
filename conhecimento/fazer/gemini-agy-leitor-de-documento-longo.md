@@ -48,18 +48,12 @@ invalido; 3 = alguma fatia vazia/sem `result`/`escalate_admin`; 4 = `agy` ausent
   PowerShell e a funcao devolve string vazia silenciosamente — sem erro, sem aviso. O sintoma foi um
   `powershell.exe` filho abrindo sessao **interativa** (banner "Windows PowerShell / Copyright...")
   em vez de rodar `-File`, porque `.Arguments` ficou vazio.
-- **`powershell.exe -File <script>` como NETO (via `ProcessStartInfo` filho de outro processo com
-  stdin redirecionado) injeta um BOM UTF-8 (`EF BB BF`) no INICIO do que o script recebe via
-  `[Console]::OpenStandardInput()`, mesmo que o pai tenha escrito bytes sem BOM.** Reproduzido em
-  isolamento: um script trivial que so copia `stdin` para um arquivo grava `EF BB BF` antes dos
-  bytes reais, tanto rodando de dentro de outro `powershell.exe` quanto de um `pwsh`. Isso e' um
-  artefato do HOST `powershell.exe` (Windows PowerShell 5.1) ao ler stdin redirecionado — nao
-  acontece com o `agy.exe` real (executavel nativo, sem esse host no meio). **Consequencia para o
-  teste:** a costura `-AgyExe agy-falso.ps1` (usada para nao gastar cota) so serve pra afirmar
-  "sem BOM" quando rodada via `pwsh` (`Invoke-Pester` normal). Sob `powershell.exe` 5.1 bruto, esse
-  UM caso especifico (BOM no stdin) falha por causa do host, nao do script — os outros 8 casos
-  passam normalmente sob 5.1. Se algum dia o pipeline real trocar `agy.exe` por um wrapper `.ps1` em
-  producao, reveja esta armadilha antes de confiar em "sem BOM" como evidencia.
+- **BOM no stdin sob `powershell.exe` 5.1 (NAO confirmado):** na implementacao (2026-09-15) o caso
+  "stdin sem BOM" falhou uma vez sob 5.1 e foi atribuido ao host `powershell.exe -File` como neto.
+  A revisao reproduziu com os arquivos do commit, em tres aninhamentos (Bash, pwsh e a suite
+  espelhada -> powershell.exe -> `agy-falso.ps1`), e **nao viu BOM nenhum: 10/10 verdes sob 5.1**. A
+  causa daquela falha e' desconhecida. Se o caso voltar a falhar, compare os bytes gravados pelo
+  falso com os escritos pelo pai antes de culpar o host.
 - **Deadlock de pipe:** comece a leitura assincrona de stdout/stderr (`ReadToEndAsync`) **antes** de
   escrever o stdin. Com fatia grande, `agy` pode escrever no stdout enquanto o script ainda escreve.
 - **Stdin em UTF-8 sem BOM:** escreva `[System.Text.UTF8Encoding]::new($false).GetBytes($json +
