@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hook pre-commit Percus mock-scan (R3) - Unix.
-# Skip explicito: commit message com 'MOCK-OK:' OU PERCUS_SKIP_MOCK_SCAN=1.
+# Skip explicito: 'MOCK-OK:' em qualquer -m ou no arquivo de -F OU PERCUS_SKIP_MOCK_SCAN=1.
 
 set -eo pipefail
 source "$(dirname "$0")/_helpers.sh"
@@ -15,15 +15,118 @@ command=$(echo "$stdin_data" | python3 -c "import sys,json; print(json.load(sys.
 [[ "$command" =~ git[[:space:]]+commit[[:space:]]+--amend[[:space:]]+--no-edit ]] && exit 0
 [[ -n "$PERCUS_HOOKS_DISABLED" || -n "$PERCUS_SKIP_MOCK_SCAN" ]] && exit 0
 
-# MOCK-OK escape on commit message
-if [[ "$command" =~ -m[[:space:]]+\"([^\"]+)\" ]]; then
-    [[ "${BASH_REMATCH[1]}" =~ MOCK-OK: ]] && exit 0
-fi
-if [[ "$command" =~ -m[[:space:]]+\'([^\']+)\' ]]; then
-    [[ "${BASH_REMATCH[1]}" =~ MOCK-OK: ]] && exit 0
-fi
-
 project_root=$(resolve_percus_project_root "$command")
+
+# Escape MOCK-OK: (T10, 2026-09-15) -- paridade com a perna .ps1, que e requisito
+# de seguranca: uma perna que libera onde a outra bloqueia e defeito.
+# Vale em QUALQUER -m "..."/-m '...' (todas as ocorrencias) ou nas primeiras
+# 64 KB do arquivo de -F <arq> / --file=<arq> / --file <arq>. Caminho relativo
+# resolve contra resolve_percus_project_root, nunca contra o pwd deste processo.
+# `-F -` (stdin), inexistente, diretorio ou ilegivel -> SEM escape.
+# `[[ =~ ]]` so pega a 1a ocorrencia: o laco consome o trecho casado e repete.
+# LIMITES (custo, revisao T10): a busca olha so os primeiros 65536 BYTES do
+# comando e no maximo 64 ocorrencias por regex. Passou disso -> sem escape (o
+# scan segue). Sem limite o custo explodia: 100 KB levavam 43 s, e hook que
+# estoura o timeout do Claude Code deixa o commit passar SEM scan.
+# Casamento do escape igual ao .ps1: sem caixa, e com fronteira antes em que
+# QUALQUER caractere nao-ASCII conta como letra (`eMOCK-OK:` com acento colado
+# bloqueia nas duas pernas). Para isso o texto passa por `tr` que troca todo
+# byte >= 0x80 por 'a' e NUL por espaco antes do `=~`.
+percus_tem_escape() {
+    local txt="$1" rc=1
+    shopt -s nocasematch
+    [[ "$txt" =~ (^|[^[:alnum:]_])MOCK-OK: ]] && rc=0
+    shopt -u nocasematch
+    return $rc
+}
+PERCUS_ESCAPE_JANELA=65536
+PERCUS_ESCAPE_MAX=64
+
+escape=0
+# `|| true`: com pipefail, o SIGPIPE do printf quando o head fecha cedo mataria
+# o script (set -e) com exit != 2, que o Claude Code le como liberacao.
+# O '.' sentinela impede o $() de comer \n do fim da janela (paridade com o .ps1).
+cmd_esc=$(printf '%s' "$command" | head -c "$PERCUS_ESCAPE_JANELA"; printf '.') || true
+cmd_esc="${cmd_esc%.}"
+# Truncamento medido em BYTES: `${#}` conta caracteres do locale, e um corte no
+# meio de um caractere multibyte podia empatar as contagens (R11 da correcao).
+# `local LC_ALL=C` dentro da funcao troca o locale so ali, sem fork.
+percus_len_bytes() { local LC_ALL=C; PERCUS_LEN=${#1}; }
+percus_len_bytes "$command"
+cmd_truncado=0
+(( PERCUS_LEN > PERCUS_ESCAPE_JANELA )) && cmd_truncado=1
+# So as mensagens usam a copia ASCII; o -F precisa do caminho original.
+cmd_msg=$(printf '%s' "$cmd_esc" | LC_ALL=C tr '\000\200-\377' ' a') || true
+
+re_msg_dq='-m[[:space:]]+"([^"]+)"'
+re_msg_sq=$'-m[[:space:]]+\'([^\']+)\''
+for re in "$re_msg_dq" "$re_msg_sq"; do
+    rest="$cmd_msg"
+    n_ocorr=0
+    while [[ $escape -eq 0 && $n_ocorr -lt $PERCUS_ESCAPE_MAX && "$rest" =~ $re ]]; do
+        # Copia ANTES de chamar percus_tem_escape: o `=~` dela sobrescreve o
+        # BASH_REMATCH, o resto nao encolhe e o laco nunca termina (medido).
+        casado="${BASH_REMATCH[0]}"
+        msg="${BASH_REMATCH[1]}"
+        n_ocorr=$((n_ocorr + 1))
+        # Consumo LINEAR: `${rest%%"$casado"*}` acha o prefixo antes da 1a
+        # ocorrencia literal. O antigo `${rest#*"$casado"}` testava cada
+        # prefixo contra `*literal` e era O(n^2) (40 KB antes do -m = 1,4 s).
+        antes="${rest%%"$casado"*}"
+        rest="${rest:$((${#antes} + ${#casado}))}"
+        percus_tem_escape "$msg" && escape=1
+    done
+done
+
+# Laco do -F em BYTES (re-revisao, Importante 1): com locale UTF-8 o token nu
+# `[^[:space:]"';&|]+` parava num byte invalido -- o 1o byte de um `e` acentuado
+# cortado pela janela, ou o `e` em cp1252 que o python3 do Git Bash imprime -- e
+# casava so o prefixo `msg` do caminho, lendo outro arquivo e liberando onde o .ps1
+# bloqueia. `local LC_ALL=C` troca o locale so dentro desta funcao. O laco do -m
+# nao precisa: ele roda sobre `cmd_msg`, que o `tr` ja deixou 100% ASCII.
+percus_escape_por_arquivo() {
+    local LC_ALL=C
+    # Grupos: 4 = entre aspas duplas, 5 = entre aspas simples, 6 = token nu.
+    re_arq=$'(^|[[:space:]])(-F[[:space:]]+|--file=|--file[[:space:]]+)("([^"]*)"|\'([^\']*)\'|([^[:space:]"\';&|]+))'
+    rest="$cmd_esc"
+    n_ocorr=0
+    arq_vistos=$'\n'
+    while [[ $escape -eq 0 && $n_ocorr -lt $PERCUS_ESCAPE_MAX && "$rest" =~ $re_arq ]]; do
+        # Idem: copiar o BASH_REMATCH antes de qualquer outro `=~`.
+        casado="${BASH_REMATCH[0]}"
+        arq="${BASH_REMATCH[4]}${BASH_REMATCH[5]}${BASH_REMATCH[6]}"
+        n_ocorr=$((n_ocorr + 1))
+        # O 'x' repoe um caractere nao-espaco no lugar do fim do trecho casado:
+        # sem ele o `^` casaria no inicio do resto e aceitaria `-F "a"-F b`, que o
+        # .NET (fronteira real do comando) recusa.
+        antes="${rest%%"$casado"*}"
+        rest="x${rest:$((${#antes} + ${#casado}))}"
+        # Trecho que termina exatamente no corte da janela pode ser caminho
+        # partido (`-F msg` de `-F msg.txt`): sem escape.
+        [[ $cmd_truncado -eq 1 && "$rest" == "x" ]] && continue
+        [[ -z "$arq" || "$arq" == "-" ]] && continue
+        if [[ ! ( "$arq" == /* || "$arq" == \\* || "$arq" =~ ^[A-Za-z]: ) ]]; then
+            arq="$project_root/$arq"
+        fi
+        [[ -f "$arq" ]] || continue
+        # Mesmo arquivo repetido le uma vez so: cada leitura custa 2 forks (~80 ms
+        # no Git Bash), e 64 x `-F x.py` levava 5 s. So desempenho; o resultado e o mesmo.
+        [[ "$arq_vistos" == *$'\n'"$arq"$'\n'* ]] && continue
+        arq_vistos="${arq_vistos}${arq}"$'\n'
+        # head -c: nunca le o arquivo inteiro para a memoria. Falha de leitura
+        # (pipefail) -> sem escape. tr: NUL (que o bash nao guarda em variavel)
+        # vira espaco e byte nao-ASCII vira 'a' -- mesma fronteira do .ps1.
+        # sed tira um BOM UTF-8 inicial (Out-File -Encoding UTF8 do PS 5.1 grava BOM):
+        # sem isso o EF BB BF vira 'aaa' colado no MOCK-OK: da 1a linha. Paridade com o .ps1.
+        trecho=$(head -c 65536 -- "$arq" 2>/dev/null | LC_ALL=C sed '1s/^\xEF\xBB\xBF//' | LC_ALL=C tr '\000\200-\377' ' a') && rc_leitura=0 || rc_leitura=$?
+        [[ $rc_leitura -eq 0 ]] || continue
+        percus_tem_escape "$trecho" && escape=1
+    done
+    return 0
+}
+[[ $escape -eq 0 ]] && percus_escape_por_arquivo
+[[ $escape -eq 1 ]] && exit 0
+
 [[ -d "$project_root/.git" ]] || exit 0
 
 files=$(get_percus_staged_files "$project_root" .py .ts .tsx .js .jsx .go .rs .java .css .html .vue .svelte .sql)
@@ -179,6 +282,6 @@ fi
 write_percus_block "mock-scan" \
     "encontrados ${#findings[@]}+ padrao(es) de mock/placeholder em arquivos staged (R3)." \
     "${findings[@]}" \
-    "Remova o mock OU use commit message comecando com 'MOCK-OK: <motivo>' pra pular." \
+    "Remova o mock OU ponha 'MOCK-OK: <motivo>' em qualquer -m (qualquer posicao) ou no arquivo de -F (primeiras 64 KB) pra pular." \
     "Skip permanente: PERCUS_SKIP_MOCK_SCAN=1 (declarar motivo em voz alta)."
 exit 2
