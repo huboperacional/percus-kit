@@ -172,7 +172,7 @@ try {
         } catch { }
     }
     if ($verKit -and $verInst -and ($verKit -ne $verInst)) {
-        $achados.Add("versao instalada ($verInst) diferente da do kit ($verKit) -- mudanca de REGISTRO (matcher, hook novo) ainda nao vale nesta maquina")
+        $achados.Add("versao instalada ($verInst) diferente da do kit ($verKit) -- skills, commands e REGISTRO de hooks ainda sao os da $verInst nesta maquina; hooks .ps1 ja vem do kit pelo trampolim. Publique (push) e deixe o autoUpdate trazer, ou rode a sessao nova depois dele.")
     }
 
     # ---- 5. O escape de emergencia virou estado permanente? ------------------------------
