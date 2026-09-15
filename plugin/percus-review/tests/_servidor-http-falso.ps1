@@ -61,6 +61,16 @@ while ($true) {
         $cabPedido = New-Object byte[] $fimGravar
         [Array]::Copy($bytesPedido, $cabPedido, $fimGravar)
         [IO.File]::WriteAllBytes((Join-Path $Dir ("pedido-" + $n + ".txt")), $cabPedido)
+        # Corpo em corpo-<n>.txt (2026-09-15, fatiamento R11): o teste afere o que cada fatia mandou.
+        # ANTES do desvio de `pendurar`, de proposito: o pedido ja chegou inteiro (o laco acima le
+        # ate o Content-Length), e quem pendura tambem quer poder aferir o que foi enviado.
+        # $fimGravar e $fimCab + 4 sempre que $fimCab >= 0 (ver acima), entao a guarda por $fimCab
+        # garante offset valido; sem cabecalho completo nao ha corpo para separar.
+        if ($fimCab -ge 0 -and $bytesPedido.Length -gt $fimGravar) {
+            $corpoPedido = New-Object byte[] ($bytesPedido.Length - $fimGravar)
+            [Array]::Copy($bytesPedido, $fimGravar, $corpoPedido, 0, $corpoPedido.Length)
+            [IO.File]::WriteAllBytes((Join-Path $Dir ("corpo-" + $n + ".txt")), $corpoPedido)
+        }
         if ($item.pendurar) { [void]$pendurados.Add($cli); continue }
         $corpo = $u8.GetBytes([string]$item.corpo)
         $cab = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 $($item.status) Falso`r`nContent-Type: application/json`r`nContent-Length: $($corpo.Length)`r`nConnection: close`r`n`r`n")
@@ -102,6 +112,14 @@ function Get-PedidoServidorFalso {
     $arq = Join-Path $Servidor.Dir ("pedido-" + $N + ".txt")
     if (-not (Test-Path -LiteralPath $arq)) { return $null }
     return [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($arq))
+}
+
+function Get-CorpoServidorFalso {
+    # Corpo UTF-8 do pedido <N> (1 = primeira conexao), ou $null se ele nao chegou.
+    param($Servidor, [int]$N = 1)
+    $arq = Join-Path $Servidor.Dir ("corpo-" + $N + ".txt")
+    if (-not (Test-Path -LiteralPath $arq)) { return $null }
+    return [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($arq))
 }
 
 function Stop-ServidorFalso {

@@ -22,6 +22,8 @@ fi
 BASE=""
 TIMEOUT_ARG=""
 BACKOFF_ARG=""
+MAX_LINHAS_FATIA_ARG=""
+MAX_FATIAS_ARG=""
 MODEL="${DEEPSEEK_MODEL:-deepseek-v4-flash}"
 # reasoning_effort (2026-08-19): este script roda a CADA commit e e o maior gastador do kit
 # -- a telemetria mostrou uma review queimando 31.747 tokens de saida, 31.197 (98%) so
@@ -52,6 +54,14 @@ while [[ $# -gt 0 ]]; do
             BACKOFF_ARG="$2"; shift 2 ;;
         --backoff=*)
             BACKOFF_ARG="${1#*=}"; shift ;;
+        --max-linhas-fatia)
+            MAX_LINHAS_FATIA_ARG="$2"; shift 2 ;;
+        --max-linhas-fatia=*)
+            MAX_LINHAS_FATIA_ARG="${1#*=}"; shift ;;
+        --max-fatias)
+            MAX_FATIAS_ARG="$2"; shift 2 ;;
+        --max-fatias=*)
+            MAX_FATIAS_ARG="${1#*=}"; shift ;;
         -h|--help)
             sed -n '2,9p' "$0"; exit 0 ;;
         *)
@@ -112,6 +122,23 @@ if [[ -n "$BACKOFF_ARG" ]]; then
     BACKOFF_S=$((10#$BACKOFF_ARG))
 else
     BACKOFF_S="$(config_de_env PERCUS_DEEPSEEK_BACKOFF_S 5 0)"
+fi
+# Fatiamento (2026-09-15, ponto 23): mesma precedencia do timeout.
+if [[ -n "$MAX_LINHAS_FATIA_ARG" ]]; then
+    if ! e_inteiro "$MAX_LINHAS_FATIA_ARG" || [[ "$((10#$MAX_LINHAS_FATIA_ARG))" -lt 200 ]]; then
+        echo "[deepseek-review] ERRO: --max-linhas-fatia precisa ser inteiro >= 200." >&2; exit 2
+    fi
+    MAX_LINHAS_FATIA=$((10#$MAX_LINHAS_FATIA_ARG))
+else
+    MAX_LINHAS_FATIA="$(config_de_env PERCUS_R11_MAX_LINHAS_FATIA 1500 200)"
+fi
+if [[ -n "$MAX_FATIAS_ARG" ]]; then
+    if ! e_inteiro "$MAX_FATIAS_ARG" || [[ "$((10#$MAX_FATIAS_ARG))" -lt 1 ]]; then
+        echo "[deepseek-review] ERRO: --max-fatias precisa ser inteiro >= 1." >&2; exit 2
+    fi
+    MAX_FATIAS=$((10#$MAX_FATIAS_ARG))
+else
+    MAX_FATIAS="$(config_de_env PERCUS_R11_MAX_FATIAS 8 1)"
 fi
 
 # === COLLECT DIFF ===
@@ -221,10 +248,17 @@ CURL_ERR="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-curlerr-$$.txt")"
 # nome previsivel: se o mktemp falhar, para. `--config -` nao serve aqui: o stdin ja e o corpo.
 # `-H @arquivo` exige curl >= 7.55.0 (2017); o Git for Windows e o curl 8.18 desta maquina atendem.
 AUTH_FILE="$(mktemp "${TMPDIR:-/tmp}/percus-auth-XXXXXX" 2>/dev/null)" || AUTH_FILE=""
+# Fatiamento (ponto 23): blocos por arquivo, corpo e resposta de cada fatia moram em FATIA_DIR, que
+# sai no MESMO trap do cabecalho. Todas as fatias reusam o mesmo AUTH_FILE.
+FATIA_DIR="$(mktemp -d "${TMPDIR:-/tmp}/percus-fatias-XXXXXX" 2>/dev/null)" || FATIA_DIR=""
 # `|| true`: sob set -e um rm que falhasse dentro do trap trocaria o codigo de saida (exit 4 etc.).
-trap 'rm -f "$USER_MSG_FILE" "$RESP_FILE" "$CURL_ERR" ${AUTH_FILE:+"$AUTH_FILE"} || true' EXIT
+trap 'rm -f "$USER_MSG_FILE" "$RESP_FILE" "$CURL_ERR" ${AUTH_FILE:+"$AUTH_FILE"} || true; rm -rf ${FATIA_DIR:+"$FATIA_DIR"} || true' EXIT
 if [[ -z "$AUTH_FILE" ]]; then
     echo "[deepseek-review] ERRO: nao consegui criar o arquivo temporario do cabecalho de autenticacao." >&2
+    exit 1
+fi
+if [[ -z "$FATIA_DIR" ]]; then
+    echo "[deepseek-review] ERRO: nao consegui criar o diretorio temporario das fatias." >&2
     exit 1
 fi
 chmod 600 "$AUTH_FILE" 2>/dev/null || true
@@ -234,11 +268,12 @@ chmod 600 "$AUTH_FILE" 2>/dev/null || true
 printf 'Authorization: Bearer %s\n' "${DEEPSEEK_API_KEY//$'\r'/}" > "$AUTH_FILE"
 printf '%s' "$USER_MSG" > "$USER_MSG_FILE"
 
+montar_body() {  # $1 system prompt, $2 arquivo com a mensagem do usuario -> define BODY
 BODY="$(jq -n \
     --arg model "$MODEL" \
     --argjson temperature "$TEMPERATURE" \
-    --arg sys "$SYSTEM_PROMPT" \
-    --rawfile usr "$USER_MSG_FILE" \
+    --arg sys "$1" \
+    --rawfile usr "$2" \
     --arg effort "$REASONING_EFFORT" \
     '{
         model: $model,
@@ -249,6 +284,7 @@ BODY="$(jq -n \
         ]
     }
     + (if $effort == "" then {} else {reasoning_effort: $effort} end)')"
+}
 
 # === CALL API: TIMEOUT E EXATAMENTE 1 RETRY (2026-09-14, FR-001..005) ===
 # Body via stdin (--data-binary @-), NAO via argv: git-bash reencoda argv e quebra UTF-8.
@@ -298,18 +334,36 @@ tentativa() {  # define TENT_VEREDITO (ok|retry|fatal) e TENT_CAUSA
 }
 
 echo "[deepseek-review] timeout=${TIMEOUT_S}s backoff=${BACKOFF_S}s" >&2
+
+agora_ms() {
+    # EPOCHREALTIME (builtin do bash 5) primeiro: sem processo novo. Fallback `date +%s%3N`; em
+    # date sem %N (BSD) o %3N volta literal e a ultima perna usa segundos*1000.
+    local s="${EPOCHREALTIME:-}"
+    s="${s//,/.}"  # separador decimal segue o locale (pt-BR usa virgula)
+    if [[ "$s" == *.*[0-9] ]]; then printf '%s' "$(( ${s%.*} * 1000 + 10#${s#*.} / 1000 ))"; return 0; fi
+    s="$(date +%s%3N 2>/dev/null || true)"
+    case "$s" in ''|*[!0-9]*) s="$(( $(date +%s) * 1000 ))" ;; esac
+    printf '%s' "$s"
+}
+
+# Uma chamada com timeout e exatamente 1 retry, e os portoes da resposta. Qualquer falha SAI do
+# script com o codigo de sempre (+ " (fatia i/n)" quando fatiado): nada abaixo -- latest.jsonl,
+# d-<hash>, spend -- e gravado. Fatia parcial nunca libera commit meio revisado.
+revisar_chamada() {  # $1 sufixo ("" ou " (fatia i/n)"), $2 arquivo onde guardar a resposta ok
+local SUF="$1" RESPONSE FINDINGS FINISH T0
+T0="$(agora_ms)"
 tentativa
 if [[ "$TENT_VEREDITO" == "retry" ]]; then
-    echo "[deepseek-review] tentativa 1 falhou: ${TENT_CAUSA}. Nova tentativa em ${BACKOFF_S}s." >&2
+    echo "[deepseek-review] tentativa 1 falhou: ${TENT_CAUSA}. Nova tentativa em ${BACKOFF_S}s.${SUF}" >&2
     sleep "$BACKOFF_S"
     tentativa
     if [[ "$TENT_VEREDITO" == "retry" ]]; then
-        echo "[deepseek-review] PROVEDOR INDISPONIVEL apos retry: ${TENT_CAUSA}. Nenhum marcador gravado (exit 4)." >&2
+        echo "[deepseek-review] PROVEDOR INDISPONIVEL apos retry: ${TENT_CAUSA}. Nenhum marcador gravado (exit 4).${SUF}" >&2
         exit 4
     fi
 fi
 if [[ "$TENT_VEREDITO" == "fatal" ]]; then
-    echo "[deepseek-review] ERRO: ${TENT_CAUSA} -- nao recuperavel, sem nova tentativa. Nenhum marcador gravado (exit 1)." >&2
+    echo "[deepseek-review] ERRO: ${TENT_CAUSA} -- nao recuperavel, sem nova tentativa. Nenhum marcador gravado (exit 1).${SUF}" >&2
     exit 1
 fi
 RESPONSE="$(cat "$RESP_FILE")"
@@ -317,7 +371,7 @@ RESPONSE="$(cat "$RESP_FILE")"
 FINDINGS="$(printf '%s' "$RESPONSE" | jq -r '.choices[0].message.content // empty' 2>/dev/null | tr -d '\r' || true)"
 if [[ -z "$FINDINGS" ]]; then
     # Com choices e content vazio: resposta inutilizavel, nao outage (FR-005 exit 3, sem retry).
-    echo "[deepseek-review] REVIEW NAO CONCLUIDA -- content vazio." >&2
+    echo "[deepseek-review] REVIEW NAO CONCLUIDA -- content vazio.${SUF}" >&2
     echo "[deepseek-review] O marcador NAO foi escrito: o commit segue bloqueado (R11)." >&2
     exit 3
 fi
@@ -327,7 +381,7 @@ fi
 # isso como review completa e a mesma classe de fail-open, so que mais dificil de ver.
 FINISH="$(printf '%s' "$RESPONSE" | jq -r '.choices[0].finish_reason // empty' 2>/dev/null | tr -d '\r' || true)"
 if [[ "$FINISH" == "length" ]]; then
-    echo "[deepseek-review] REVIEW NAO CONCLUIDA -- resposta CORTADA no teto de tokens." >&2
+    echo "[deepseek-review] REVIEW NAO CONCLUIDA -- resposta CORTADA no teto de tokens.${SUF}" >&2
     echo "[deepseek-review] O marcador NAO foi escrito: o commit segue bloqueado (R11)." >&2
     echo "[deepseek-review] Rode de novo. Se repetir, encolha o diff -- nao o teto." >&2
     exit 3
@@ -337,10 +391,141 @@ fi
 # conta como falha. "stop" e o encerramento normal no formato OpenAI que a DeepSeek usa --
 # NAO generalize esta regra pro Cross-Claude, que devolve "end_turn".
 if [[ "$FINISH" != "stop" ]]; then
-    echo "[deepseek-review] REVIEW NAO CONCLUIDA -- finish_reason inesperado: '${FINISH:-<ausente>}'." >&2
+    echo "[deepseek-review] REVIEW NAO CONCLUIDA -- finish_reason inesperado: '${FINISH:-<ausente>}'.${SUF}" >&2
     echo "[deepseek-review] O marcador NAO foi escrito: o commit segue bloqueado (R11)." >&2
     exit 3
 fi
+cp -f "$RESP_FILE" "$2"
+CHAMADA_LAT_MS=$(( $(agora_ms) - T0 ))
+}
+
+# === FATIAMENTO POR ARQUIVO (2026-09-15, ponto 23) ===
+# Os achados saturam em ~2,6 por chamada (verbete achado-de-review-satura-com-o-tamanho-do-diff).
+# Acima do teto o diff e partido nas fronteiras `diff --git` (so no INICIO da linha: dentro de um
+# .md a string vem com prefixo +/-/espaco). Codigo primeiro, teste depois, cada grupo na ordem do
+# diff; gulosa ate o teto; arquivo maior que o teto vira fatia propria, sem corte.
+# O awk grava cada bloco byte a byte (o \r de arquivo CRLF segue no diff enviado); o \r so e
+# tirado do CAMINHO extraido do cabecalho.
+DIFF_LINES="$(printf '%s\n' "$DIFF" | wc -l | tr -d ' \r')"
+FAT_N=0
+declare -a FAT_BLOCOS=() FAT_LINHAS=() FAT_ARQS=()
+if [[ "$DIFF_LINES" -gt "$MAX_LINHAS_FATIA" ]]; then
+    # Diretorio pelo AMBIENTE, nao por -v: -v interpreta escapes, e um TMPDIR Windows
+    # (C:\Users\...\tmp) viraria tab no \t.
+    printf '%s\n' "$DIFF" | PERCUS_FATIA_DIR="$FATIA_DIR" awk '
+        BEGIN { dir = ENVIRON["PERCUS_FATIA_DIR"] }
+        function eh_teste(p,   nome, cam) {
+            # tolower: a convencao do kit e `x.tests.ps1`, mas o padrao do Pester em outros projetos
+            # e `X.Tests.ps1`, e o awk e case-sensitive -- sem isto o teste ia pro grupo de codigo.
+            cam = tolower(p); nome = cam; sub(/.*\//, "", nome)
+            return (nome ~ /\.tests\.ps1$/ || nome ~ /^test_.*\.py$/ || nome ~ /_test\.py$/ || nome ~ /\.(test|spec)\.tsx?$/ || ("/" cam) ~ /\/tests\//) ? 1 : 0
+        }
+        function fecha() {
+            if (n > 0) { close(arq); printf "%d\t%d\t%d\t%s\n", n, linhas, eh_teste(caminho), caminho > (dir "/indice.tsv") }
+        }
+        {
+            cab = (substr($0, 1, 11) == "diff --git ")
+            if (n == 0 || (cab && tem_cab)) {
+                fecha(); n++; linhas = 0; tem_cab = 0; caminho = ""
+                arq = sprintf("%s/b-%05d", dir, n)
+            }
+            if (cab) {
+                tem_cab = 1; p = $0; sub(/\r$/, "", p); resto = p; pos = 0
+                while ((k = index(resto, " b/")) > 0) { pos += k + 2; resto = substr(resto, k + 3) }
+                if (pos > 0) { caminho = substr(p, pos + 1) }
+                else {
+                    resto = p; pos = 0
+                    while ((k = index(resto, " \"b/")) > 0) { pos += k + 3; resto = substr(resto, k + 4) }
+                    if (pos > 0) { caminho = substr(p, pos + 1); sub(/"$/, "", caminho) }
+                }
+            }
+            print > arq
+            linhas++
+        }
+        END { fecha(); close(dir "/indice.tsv") }
+    '
+    for GRUPO in 0 1; do
+        CUR_B=""; CUR_L=0; CUR_A=""
+        while IFS=$'\t' read -r B_N B_L B_T B_P; do
+            [[ "$B_T" == "$GRUPO" ]] || continue
+            if [[ -n "$CUR_B" && $((CUR_L + B_L)) -gt "$MAX_LINHAS_FATIA" ]]; then
+                FAT_BLOCOS[FAT_N]="$CUR_B"; FAT_LINHAS[FAT_N]="$CUR_L"; FAT_ARQS[FAT_N]="$CUR_A"; FAT_N=$((FAT_N + 1))
+                CUR_B=""; CUR_L=0; CUR_A=""
+            fi
+            CUR_B="${CUR_B:+$CUR_B }$B_N"; CUR_L=$((CUR_L + B_L))
+            if [[ -n "$B_P" ]]; then CUR_A="${CUR_A:+$CUR_A, }$B_P"; fi
+        done < "$FATIA_DIR/indice.tsv"
+        if [[ -n "$CUR_B" ]]; then
+            FAT_BLOCOS[FAT_N]="$CUR_B"; FAT_LINHAS[FAT_N]="$CUR_L"; FAT_ARQS[FAT_N]="$CUR_A"; FAT_N=$((FAT_N + 1))
+        fi
+    done
+    if [[ "$FAT_N" -gt "$MAX_FATIAS" ]]; then
+        echo "[deepseek-review] WARN: diff de ${DIFF_LINES} linhas precisaria de ${FAT_N} fatias (> ${MAX_FATIAS}): revisado inteiro; achados saturam em ~2,6 por chamada -- considere dividir o commit." >&2
+    fi
+fi
+N_CHAMADAS=1
+if [[ "$FAT_N" -gt 1 && "$FAT_N" -le "$MAX_FATIAS" ]]; then N_CHAMADAS="$FAT_N"; fi
+echo "[deepseek-review] max_linhas_fatia=${MAX_LINHAS_FATIA} max_fatias=${MAX_FATIAS} diff_lines=${DIFF_LINES} chamadas=${N_CHAMADAS}" >&2
+
+declare -a CH_LAT=()
+if [[ "$N_CHAMADAS" -eq 1 ]]; then
+    # Sem fatiar: corpo identico ao de antes do fatiamento.
+    montar_body "$SYSTEM_PROMPT" "$USER_MSG_FILE"
+    revisar_chamada "" "$FATIA_DIR/resp-1.json"
+    CH_LAT[1]="$CHAMADA_LAT_MS"
+    FAT_LINHAS[0]="$DIFF_LINES"
+else
+    # Em ordem: as fatias de teste so rodam depois de todas as de codigo passarem.
+    for ((I = 1; I <= N_CHAMADAS; I++)); do
+        for B in ${FAT_BLOCOS[I-1]}; do cat "$FATIA_DIR/$(printf 'b-%05d' "$B")"; done > "$FATIA_DIR/blocos-$I.txt"
+        # Tira SO o \n final que o awk sempre acrescenta (paridade com o .ps1, que junta as linhas
+        # sem terminador). `$(...)` comeria TAMBEM as linhas em branco do fim do diff -- o .sh
+        # normaliza linha so com espaco para vazia antes de fatiar (achado do R11 desta mudanca).
+        truncate -s -1 "$FATIA_DIR/blocos-$I.txt" 2>/dev/null || true
+        {
+            printf 'AGENTS.md do projeto:\n%s\n\n---\n\nGit diff:\n' "$AGENTS"
+            cat "$FATIA_DIR/blocos-$I.txt"
+        } > "$FATIA_DIR/usr-$I.txt"
+        montar_body "${SYSTEM_PROMPT}
+
+Esta e a fatia ${I} de ${N_CHAMADAS} (arquivos: ${FAT_ARQS[I-1]}). Revise so o que esta nela." "$FATIA_DIR/usr-$I.txt"
+        revisar_chamada " (fatia ${I}/${N_CHAMADAS})" "$FATIA_DIR/resp-$I.json"
+        CH_LAT[I]="$CHAMADA_LAT_MS"
+    done
+fi
+
+# Todas as chamadas ok. Achados: resposta crua sem fatiar; fatiado, "### Fatia i/n -- arquivos"
+# + resposta de cada uma. usage: cru sem fatiar; fatiado, soma campo a campo (ausente = 0).
+if [[ "$N_CHAMADAS" -eq 1 ]]; then
+    RESPONSE="$(cat "$FATIA_DIR/resp-1.json")"
+    FINDINGS="$(printf '%s' "$RESPONSE" | jq -r '.choices[0].message.content // empty' 2>/dev/null | tr -d '\r' || true)"
+    USAGE_JSON="$(printf '%s' "$RESPONSE" | jq -c '.usage // null' | tr -d '\r')"
+else
+    TRAVESSAO=$'\xe2\x80\x94'
+    FINDINGS=""
+    for ((I = 1; I <= N_CHAMADAS; I++)); do
+        PARTE="$(jq -r '.choices[0].message.content // empty' < "$FATIA_DIR/resp-$I.json" | tr -d '\r')"
+        CAB_F="### Fatia ${I}/${N_CHAMADAS} ${TRAVESSAO} ${FAT_ARQS[I-1]}"
+        if [[ -n "$FINDINGS" ]]; then FINDINGS="${FINDINGS}
+
+"; fi
+        FINDINGS="${FINDINGS}${CAB_F}
+
+${PARTE}"
+    done
+    USAGE_JSON="$(cat "$FATIA_DIR"/resp-*.json | jq -s -c '
+        [.[] | (.usage // {})] as $u
+        | { prompt_tokens: ($u | map(.prompt_tokens // 0) | add),
+            completion_tokens: ($u | map(.completion_tokens // 0) | add),
+            total_tokens: ($u | map(.total_tokens // 0) | add),
+            prompt_cache_hit_tokens: ($u | map(.prompt_cache_hit_tokens // 0) | add),
+            prompt_cache_miss_tokens: ($u | map(.prompt_cache_miss_tokens // 0) | add) }' | tr -d '\r')"
+fi
+# Achados por ARQUIVO (--rawfile), nao por argv: fatiado, a soma das respostas pode passar do
+# limite de ~32 KB do argv no git-bash (a mesma licao do USER_MSG acima).
+printf '%s' "$FINDINGS" > "$FATIA_DIR/findings.txt"
+# --argjson aborta com valor vazio: telemetria nao pode derrubar o marcador.
+USAGE_JSON="${USAGE_JSON:-null}"
 
 # === LOG ===
 LOG_DIR=".deepseek/reviews"
@@ -349,14 +534,17 @@ mkdir -p "$LOG_DIR"
 # marcadores (TTL 5min) e travava o hook R11. Um arquivo sobrescrito => O(1).
 LOG_FILE="${LOG_DIR}/latest.jsonl"
 LOG_TMP="${LOG_DIR}/latest.jsonl.tmp"
-DIFF_LINES="$(echo "$DIFF" | wc -l | tr -d ' ')"
-printf '%s' "$RESPONSE" | jq -c \
+# Fatiado: UM latest.jsonl so, com os achados de todas as fatias e usage somado -- o hook le um
+# arquivo so, e um por fatia liberaria commit meio revisado.
+jq -n -c \
     --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg base "$BASE" \
     --argjson diff_lines "$DIFF_LINES" \
     --arg model "$MODEL" \
-    --arg findings "$FINDINGS" \
-    '{ timestamp: $timestamp, base: $base, diff_lines: $diff_lines, model: $model, usage: (.usage // null), findings: $findings }' \
+    --rawfile findings "$FATIA_DIR/findings.txt" \
+    --argjson usage "$USAGE_JSON" \
+    --argjson fatias "$N_CHAMADAS" \
+    '{ timestamp: $timestamp, base: $base, diff_lines: $diff_lines, model: $model, usage: $usage, findings: $findings, fatias: $fatias }' \
     | tr -d '\r' > "$LOG_TMP" && mv -f "$LOG_TMP" "$LOG_FILE"
 
 # === MARCADOR POR HASH DO DIFF (2026-08-19) ===
@@ -408,13 +596,22 @@ fi
     # DIFF_LINES com piso 0: `--argjson` exige JSON numerico valido e ABORTA o bloco se vier
     # vazio. No marcador acima isso falharia alto; aqui, com o `|| true`, falharia em SILENCIO
     # -- devolvendo exatamente a cegueira de custo que esta telemetria veio acabar.
-    printf '%s' "$RESPONSE" | jq -c \
-        --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        --arg model "$MODEL" \
-        --argjson diff_lines "${DIFF_LINES:-0}" \
-        '{timestamp: $timestamp, tool: "deepseek-review", provider: "deepseek",
-          model: $model, usage: .usage, diff_lines: $diff_lines}' \
-        >> "$SPEND_FILE"
+    # Uma linha por CHAMADA (fatia), com fatia/fatias/latency_ms; diff_lines e o da fatia. So
+    # chega aqui com todas as fatias ok: falha no meio sai antes, sem spend de sucesso.
+    SPEND_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    for ((I = 1; I <= N_CHAMADAS; I++)); do
+        jq -c \
+            --arg timestamp "$SPEND_TS" \
+            --arg model "$MODEL" \
+            --argjson diff_lines "${FAT_LINHAS[I-1]:-0}" \
+            --argjson fatia "$I" \
+            --argjson fatias "$N_CHAMADAS" \
+            --argjson latency_ms "${CH_LAT[I]:-0}" \
+            '{timestamp: $timestamp, tool: "deepseek-review", provider: "deepseek",
+              model: $model, usage: .usage, diff_lines: $diff_lines,
+              fatia: $fatia, fatias: $fatias, latency_ms: $latency_ms}' \
+            < "$FATIA_DIR/resp-$I.json" | tr -d '\r' >> "$SPEND_FILE"
+    done
 } 2>/dev/null || true
 
 # Auto-poda: so latest.jsonl fica (mecanismo novo). Marcadores <ts>.jsonl irmaos

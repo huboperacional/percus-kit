@@ -29,7 +29,12 @@ param(
     # 2026-09-14 (FR-001/002): precedencia parametro > env > padrao. Sem valor padrao no param de
     # proposito: $PSBoundParameters diz se o chamador passou.
     [int]$TimeoutSec,
-    [int]$BackoffSec
+    [int]$BackoffSec,
+    # 2026-09-15 (ponto 23): diff acima do teto e revisado em fatias por arquivo -- os achados
+    # saturam em ~2,6 por chamada (verbete achado-de-review-satura-com-o-tamanho-do-diff).
+    # Mesma precedencia do timeout: parametro > env > padrao.
+    [int]$MaxLinhasFatia,
+    [int]$MaxFatias
 )
 $ErrorActionPreference = "Stop"
 
@@ -120,6 +125,14 @@ if ($PSBoundParameters.ContainsKey('BackoffSec')) {
     if ($BackoffSec -lt 0) { [Console]::Error.WriteLine("[deepseek-review] ERRO: -BackoffSec precisa ser >= 0."); exit 2 }
     $backoffEfetivo = $BackoffSec
 } else { $backoffEfetivo = Get-InteiroDeEnv -Nome 'PERCUS_DEEPSEEK_BACKOFF_S' -Padrao 5 -Minimo 0 }
+if ($PSBoundParameters.ContainsKey('MaxLinhasFatia')) {
+    if ($MaxLinhasFatia -lt 200) { [Console]::Error.WriteLine("[deepseek-review] ERRO: -MaxLinhasFatia precisa ser >= 200."); exit 2 }
+    $maxLinhasFatiaEfetivo = $MaxLinhasFatia
+} else { $maxLinhasFatiaEfetivo = Get-InteiroDeEnv -Nome 'PERCUS_R11_MAX_LINHAS_FATIA' -Padrao 1500 -Minimo 200 }
+if ($PSBoundParameters.ContainsKey('MaxFatias')) {
+    if ($MaxFatias -lt 1) { [Console]::Error.WriteLine("[deepseek-review] ERRO: -MaxFatias precisa ser >= 1."); exit 2 }
+    $maxFatiasEfetivo = $MaxFatias
+} else { $maxFatiasEfetivo = Get-InteiroDeEnv -Nome 'PERCUS_R11_MAX_FATIAS' -Padrao 8 -Minimo 1 }
 
 # === COLLECT DIFF ===
 if ($Base) {
@@ -192,14 +205,14 @@ Foque em: bugs, regressões, violações do canon Percus ($faixaRegras), mock es
 NÃO aponte estilo subjetivo sem regra concreta. NÃO sugira refactor fora do diff. Se nada relevante, responda "Sem findings críticos."
 "@
 
-$userMsg = "AGENTS.md do projeto:`n$agents`n`n---`n`nGit diff:`n$diff"
-
+function New-CorpoRevisao {
+param([string]$Sistema, [string]$Usuario)
 $bodyObj = @{
     model       = $Model
     temperature = $Temperature
     messages    = @(
-        @{ role = "system"; content = $systemPrompt },
-        @{ role = "user"; content = $userMsg }
+        @{ role = "system"; content = $Sistema },
+        @{ role = "user"; content = $Usuario }
     )
 }
 # reasoning_effort (2026-08-19). Medido no mesmo prompt real de review (11 KB):
@@ -220,7 +233,99 @@ $body = $bodyObj | ConvertTo-Json -Depth 10 -Compress
 # === CRITICAL: PS 5.1 UTF-8 BUG FIX ===
 # PS 5.1 default encoding is UTF-16 LE. DeepSeek API expects UTF-8.
 # Use [System.Text.Encoding]::UTF8.GetBytes() to force UTF-8 body.
-$bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+# Virgula: devolve o byte[] inteiro, sem o pipeline desempacotar em N bytes.
+return ,([System.Text.Encoding]::UTF8.GetBytes($body))
+}
+
+# === FATIAMENTO POR ARQUIVO (2026-09-15, ponto 23) ===
+# Os achados saturam em ~2,6 por chamada (verbete achado-de-review-satura-com-o-tamanho-do-diff):
+# um diff de 5.000 linhas revisado de uma vez rende o mesmo que um de 1.500. Acima do teto o diff
+# e partido nas fronteiras `diff --git` e cada fatia vira uma chamada. Linhas contadas sobre o
+# MESMO texto que vai ao modelo ($diff), nao sobre os arquivos.
+function Test-CaminhoDeTeste {
+    param([string]$Caminho)
+    $nome = ($Caminho -split '/')[-1]
+    # Sem distinguir maiuscula: a convencao do kit e `x.tests.ps1`, mas o padrao do Pester em outros
+    # projetos e `X.Tests.ps1` -- case-sensitive mandaria o teste pro grupo de codigo (achado do R11
+    # desta mudanca). O awk do irmao .sh usa tolower() pelo mesmo motivo.
+    return (($nome -like '*.tests.ps1') -or ($nome -match '^test_.*\.py$') -or ($nome -match '_test\.py$') -or
+            ($nome -match '\.(test|spec)\.tsx?$') -or (('/' + $Caminho) -like '*/tests/*'))
+}
+
+function Split-DiffEmArquivos {
+    # So `diff --git ` no INICIO da linha abre arquivo novo: dentro de um .md a mesma string vem
+    # com prefixo +/-/espaco. Texto antes do 1o cabecalho (nao deveria existir) fica no 1o bloco.
+    param([string]$Texto)
+    $blocos = New-Object System.Collections.Generic.List[object]
+    $atual = $null
+    foreach ($l in ($Texto -split "`n")) {
+        $ehCabecalho = $l.StartsWith('diff --git ')
+        if ($null -eq $atual -or ($ehCabecalho -and $atual.TemCabecalho)) {
+            $atual = @{ Linhas = New-Object System.Collections.Generic.List[string]; Caminho = ''; TemCabecalho = $false; EhTeste = $false }
+            [void]$blocos.Add($atual)
+        }
+        if ($ehCabecalho) {
+            $atual.TemCabecalho = $true
+            $cab = $l.TrimEnd("`r")
+            $i = $cab.LastIndexOf(' b/')
+            if ($i -ge 0) { $atual.Caminho = $cab.Substring($i + 3) }
+            else {
+                $i = $cab.LastIndexOf(' "b/')
+                if ($i -ge 0) { $atual.Caminho = $cab.Substring($i + 4).TrimEnd('"') }
+            }
+            $atual.EhTeste = Test-CaminhoDeTeste -Caminho $atual.Caminho
+        }
+        [void]$atual.Linhas.Add($l)
+    }
+    return ,$blocos
+}
+
+function New-FatiasDoDiff {
+    # Codigo primeiro, teste depois, cada grupo na ordem do diff; fatia de teste nunca mistura
+    # codigo. Gulosa: fecha a fatia quando o proximo arquivo estouraria o teto. Arquivo sozinho
+    # maior que o teto vira fatia propria, sem corte.
+    param($Blocos, [int]$Teto)
+    $fatias = New-Object System.Collections.Generic.List[object]
+    foreach ($grupoTeste in @($false, $true)) {
+        $cur = $null
+        foreach ($b in $Blocos) {
+            if ($b.EhTeste -ne $grupoTeste) { continue }
+            $n = $b.Linhas.Count
+            if ($null -ne $cur -and ($cur.Linhas + $n) -gt $Teto) { [void]$fatias.Add($cur); $cur = $null }
+            if ($null -eq $cur) { $cur = @{ Linhas = 0; Blocos = New-Object System.Collections.Generic.List[object] } }
+            [void]$cur.Blocos.Add($b)
+            $cur.Linhas += $n
+        }
+        if ($null -ne $cur) { [void]$fatias.Add($cur) }
+    }
+    return ,$fatias
+}
+
+$diffLinhasTotal = ($diff -split "`n").Count
+$userMsg = "AGENTS.md do projeto:`n$agents`n`n---`n`nGit diff:`n$diff"
+# Uma chamada = @{ Corpo; Sufixo; Rotulo; Linhas }. Sem fatiar: UMA chamada com o corpo identico ao
+# de antes do fatiamento.
+$chamadas = New-Object System.Collections.Generic.List[object]
+if ($diffLinhasTotal -gt $maxLinhasFatiaEfetivo) {
+    $fatiasPlano = New-FatiasDoDiff -Blocos (Split-DiffEmArquivos -Texto $diff) -Teto $maxLinhasFatiaEfetivo
+    if ($fatiasPlano.Count -gt $maxFatiasEfetivo) {
+        [Console]::Error.WriteLine("[deepseek-review] WARN: diff de $diffLinhasTotal linhas precisaria de $($fatiasPlano.Count) fatias (> $maxFatiasEfetivo): revisado inteiro; achados saturam em ~2,6 por chamada -- considere dividir o commit.")
+    } elseif ($fatiasPlano.Count -gt 1) {
+        $nF = $fatiasPlano.Count
+        for ($iF = 0; $iF -lt $nF; $iF++) {
+            $f = $fatiasPlano[$iF]
+            $arqs = @($f.Blocos | ForEach-Object { $_.Caminho } | Where-Object { $_ }) -join ', '
+            $linhasF = New-Object System.Collections.Generic.List[string]
+            foreach ($b in $f.Blocos) { $linhasF.AddRange($b.Linhas) }
+            $sis = $systemPrompt + "`n`nEsta e a fatia $($iF + 1) de $nF (arquivos: $arqs). Revise so o que esta nela."
+            $usr = "AGENTS.md do projeto:`n$agents`n`n---`n`nGit diff:`n" + ($linhasF -join "`n")
+            [void]$chamadas.Add(@{ Corpo = (New-CorpoRevisao -Sistema $sis -Usuario $usr); Sufixo = " (fatia $($iF + 1)/$nF)"; Rotulo = "$($iF + 1)/$nF"; Arquivos = $arqs; Linhas = $f.Linhas })
+        }
+    }
+}
+if ($chamadas.Count -eq 0) {
+    [void]$chamadas.Add(@{ Corpo = (New-CorpoRevisao -Sistema $systemPrompt -Usuario $userMsg); Sufixo = ''; Rotulo = ''; Arquivos = ''; Linhas = $diffLinhasTotal })
+}
 
 # === CHAMADA COM TIMEOUT E EXATAMENTE 1 RETRY (2026-09-14, FR-001..005) ===
 # HttpClient e nao Invoke-RestMethod: no 5.1 o IRM lanca em 4xx/5xx e o corpo se perde, e em 2xx sem
@@ -317,19 +422,26 @@ function Get-VereditoTentativa {
 }
 
 [Console]::Error.WriteLine("[deepseek-review] timeout=${timeoutEfetivo}s backoff=${backoffEfetivo}s")
+[Console]::Error.WriteLine("[deepseek-review] max_linhas_fatia=$maxLinhasFatiaEfetivo max_fatias=$maxFatiasEfetivo diff_lines=$diffLinhasTotal chamadas=$($chamadas.Count)")
 $chaveApi = $env:DEEPSEEK_API_KEY
+
+# Uma chamada com timeout e exatamente 1 retry, e os portoes da resposta. Qualquer falha SAI do
+# script com o codigo de sempre (+ " (fatia i/n)" quando fatiado): nada abaixo -- latest.jsonl,
+# d-<hash>, spend -- e gravado. Fatia parcial nunca libera commit meio revisado.
+function Invoke-ChamadaRevisao {
+param([byte[]]$bodyBytes, [string]$Sufixo)
 $av = Get-VereditoTentativa -T (Invoke-TentativaDeepSeek -Uri $Endpoint -Corpo $bodyBytes -Chave $chaveApi -Timeout $timeoutEfetivo) -Chave $chaveApi
 if ($av.Veredito -eq 'retry') {
-    [Console]::Error.WriteLine("[deepseek-review] tentativa 1 falhou: $($av.Causa.Replace($chaveApi, '***')). Nova tentativa em ${backoffEfetivo}s.")
+    [Console]::Error.WriteLine("[deepseek-review] tentativa 1 falhou: $($av.Causa.Replace($chaveApi, '***')). Nova tentativa em ${backoffEfetivo}s.$Sufixo")
     Start-Sleep -Seconds $backoffEfetivo
     $av = Get-VereditoTentativa -T (Invoke-TentativaDeepSeek -Uri $Endpoint -Corpo $bodyBytes -Chave $chaveApi -Timeout $timeoutEfetivo) -Chave $chaveApi
     if ($av.Veredito -eq 'retry') {
-        [Console]::Error.WriteLine("[deepseek-review] PROVEDOR INDISPONIVEL apos retry: $($av.Causa.Replace($chaveApi, '***')). Nenhum marcador gravado (exit 4).")
+        [Console]::Error.WriteLine("[deepseek-review] PROVEDOR INDISPONIVEL apos retry: $($av.Causa.Replace($chaveApi, '***')). Nenhum marcador gravado (exit 4).$Sufixo")
         exit 4
     }
 }
 if ($av.Veredito -eq 'fatal') {
-    [Console]::Error.WriteLine("[deepseek-review] ERRO: $($av.Causa) -- nao recuperavel, sem nova tentativa. Nenhum marcador gravado (exit 1).")
+    [Console]::Error.WriteLine("[deepseek-review] ERRO: $($av.Causa) -- nao recuperavel, sem nova tentativa. Nenhum marcador gravado (exit 1).$Sufixo")
     exit 1
 }
 $response = $av.Resposta
@@ -345,7 +457,7 @@ $cls = Get-StatusResposta -Conteudo $findings `
                           -FinishReason $response.choices[0].finish_reason `
                           -Usage $response.usage
 if ($cls.Status -ne "ok") {
-    Write-Host "[deepseek-review] REVIEW NAO CONCLUIDA -- $($cls.Aviso)" -ForegroundColor Red
+    Write-Host "[deepseek-review] REVIEW NAO CONCLUIDA -- $($cls.Aviso)$Sufixo" -ForegroundColor Red
     Write-Host "[deepseek-review] O marcador NAO foi escrito: o commit segue bloqueado (R11)." -ForegroundColor Red
     Write-Host "[deepseek-review] Rode de novo. Se repetir, encolha o diff -- nao o teto." -ForegroundColor Yellow
     exit 3
@@ -364,11 +476,46 @@ if ($cls.Status -ne "ok") {
 $finish = "$($response.choices[0].finish_reason)"
 if ($finish -ne "stop") {
     $rotulo = if ([string]::IsNullOrWhiteSpace($finish)) { "<ausente>" } else { $finish }
-    Write-Host "[deepseek-review] REVIEW NAO CONCLUIDA -- finish_reason inesperado: '$rotulo'." -ForegroundColor Red
+    Write-Host "[deepseek-review] REVIEW NAO CONCLUIDA -- finish_reason inesperado: '$rotulo'.$Sufixo" -ForegroundColor Red
     Write-Host "[deepseek-review] Encerramento normal da DeepSeek e 'stop'. Qualquer outro valor" -ForegroundColor Red
     Write-Host "[deepseek-review] significa que a resposta nao terminou como deveria." -ForegroundColor Red
     Write-Host "[deepseek-review] O marcador NAO foi escrito: o commit segue bloqueado (R11)." -ForegroundColor Red
     exit 3
+}
+return $response
+}
+
+# Fatias em ordem: codigo antes de teste (New-FatiasDoDiff), entao as de teste so rodam depois de
+# todas as de codigo passarem -- a primeira falha sai do script.
+foreach ($ch in $chamadas) {
+    $swCh = [Diagnostics.Stopwatch]::StartNew()
+    $respCh = Invoke-ChamadaRevisao -bodyBytes $ch.Corpo -Sufixo $ch.Sufixo
+    $swCh.Stop()
+    $ch.LatenciaMs = [long]$swCh.Elapsed.TotalMilliseconds
+    $ch.Resposta = $respCh
+}
+$nChamadas = $chamadas.Count
+if ($nChamadas -eq 1) {
+    $response = $chamadas[0].Resposta
+    $findings = $response.choices[0].message.content
+    $usageTotal = $response.usage
+} else {
+    $travessao = [string][char]0x2014
+    $partes = New-Object System.Collections.Generic.List[string]
+    foreach ($ch in $chamadas) {
+        [void]$partes.Add("### Fatia $($ch.Rotulo) $travessao $($ch.Arquivos)`n`n" + $ch.Resposta.choices[0].message.content)
+    }
+    $findings = $partes -join "`n`n"
+    # Soma campo a campo; ausente conta 0 (sem `??`: roda no 5.1).
+    $usageTotal = [ordered]@{}
+    foreach ($campo in @('prompt_tokens', 'completion_tokens', 'total_tokens', 'prompt_cache_hit_tokens', 'prompt_cache_miss_tokens')) {
+        $soma = [long]0
+        foreach ($ch in $chamadas) {
+            $u = $ch.Resposta.usage
+            if ($null -ne $u) { $v = $u.$campo; if ($null -ne $v) { $soma += [long]$v } }
+        }
+        $usageTotal[$campo] = $soma
+    }
 }
 
 # === LOG ===
@@ -388,13 +535,16 @@ $logTmp  = Join-Path $logDir 'latest.jsonl.tmp'
 # por aqui -- so apareceu no painel da DeepSeek. Quem grava o veredito grava o preco dele.
 # Campos ausentes na resposta viram $null em vez de quebrar a escrita do marcador: este
 # arquivo e o que libera o commit (R11), e nao pode falhar por causa de telemetria.
+# Fatiado: UM latest.jsonl so, com os achados de todas as fatias e usage somado -- o hook le um
+# arquivo so (pre-commit-check.ps1), e um por fatia liberaria commit meio revisado.
 @{
     timestamp  = (Get-Date -Format 'o')
     base       = $Base
-    diff_lines = ($diff -split "`n").Count
+    diff_lines = $diffLinhasTotal
     model      = $Model
-    usage      = $response.usage
+    usage      = $usageTotal
     findings   = $findings
+    fatias     = $nChamadas
 } | ConvertTo-Json -Depth 5 -Compress | Out-File -FilePath $logTmp -Encoding utf8
 Move-Item -Path $logTmp -Destination $logFile -Force
 
@@ -475,18 +625,26 @@ try {
     # deslocamento neste fuso). Achado pelo R11 antes de commitar.
     $agoraUtc  = [DateTime]::UtcNow
     $spendFile = Join-Path $spendDir ($agoraUtc.ToString('yyyy-MM') + '.jsonl')
-    $linha = @{
-        timestamp  = $agoraUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
-        tool       = 'deepseek-review'
-        provider   = 'deepseek'
-        model      = $Model
-        usage      = $response.usage
-        diff_lines = ($diff -split "`n").Count
-    } | ConvertTo-Json -Depth 5 -Compress
-    # Uma linha por chamada, com \n no fim: append curto e a forma mais proxima de atomico que
-    # da pra ter sem lock. Se duas sessoes appendarem no mesmo instante e uma linha sair
-    # cortada, o leitor (parse_spend_file) pula a linha ruim em vez de perder o mes.
-    Add-Content -Path $spendFile -Value $linha -Encoding utf8
+    # Uma linha por CHAMADA (fatia), com fatia/fatias/latency_ms; diff_lines e o da fatia.
+    # So chega aqui com todas as fatias ok: falha no meio sai antes, sem spend de sucesso.
+    for ($iS = 0; $iS -lt $nChamadas; $iS++) {
+        $chS = $chamadas[$iS]
+        $linha = @{
+            timestamp  = $agoraUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
+            tool       = 'deepseek-review'
+            provider   = 'deepseek'
+            model      = $Model
+            usage      = $chS.Resposta.usage
+            diff_lines = $chS.Linhas
+            fatia      = ($iS + 1)
+            fatias     = $nChamadas
+            latency_ms = $chS.LatenciaMs
+        } | ConvertTo-Json -Depth 5 -Compress
+        # Uma linha por chamada, com \n no fim: append curto e a forma mais proxima de atomico que
+        # da pra ter sem lock. Se duas sessoes appendarem no mesmo instante e uma linha sair
+        # cortada, o leitor (parse_spend_file) pula a linha ruim em vez de perder o mes.
+        Add-Content -Path $spendFile -Value $linha -Encoding utf8
+    }
 } catch {
     # Silencio proposital -- ver comentario acima. A ausencia de telemetria nao pode custar
     # um commit.
