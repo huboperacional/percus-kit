@@ -27,6 +27,11 @@
 
 > Entradas desta seção ainda não têm número: a versão é atribuída no merge para a `main` (sem bump
 > em branch). Quem fizer o merge move a entrada para um `## Changelog vX.Y.Z` e bumpa.
+> O gate V2 exige que a versão avance sobre `origin/main` só em `main`, `master` ou HEAD destacado; em
+> branch de feature aceita a mesma versão de `origin/main` (o número é atribuído no merge) e continua
+> barrando versão atrasada e `CANON_VERSION.md` fora do índice ou removido.
+> Toda entrada declara "skill muda: não" ou "skill muda: sim — <arquivo>; só vale após push + autoUpdate"
+> (mudança em `plugin/percus-review/skills/` ou `commands/`).
 
 - **Fase 2, Lote D (T6+T7, ponto 26 e 27) — régua da suíte** (branch `worktree-fase2`): `scripts/rodar-suite.ps1`
   ganha `Pulou`/`NaoRodou`/`NomesPulados` por processo (Skipped/NotRun do Pester deixam de sumir do
@@ -99,6 +104,48 @@
   trap existente de `TMPDIR=$(mktemp -d)` em :184-185 não foi tocado — em vez de mesclar os dois traps, o
   `AUTH_FILE` é removido explicitamente antes dessa linha rodar. A varredura de texto e a asserção
   `deepseek-review-retry-sh.tests.ps1` foram estendidas para cobrir este arquivo também.
+  **T5c:** `plugin/percus-review/scripts/fact-check.sh` também passava `ANTHROPIC_API_KEY` no argv do `python3`
+  (achado da revisão da T5); o Python passa a ler só de `os.environ`. A varredura de texto do teste foi
+  alargada: em todo `*.sh` de `plugin/percus-review` e `scripts/`, linha que cita `DEEPSEEK_API_KEY`,
+  `GROQ_API_KEY`, `ANTHROPIC_API_KEY` ou `OPENAI_API_KEY` precisa casar uma forma da allowlist do teste,
+  senão fica vermelha com arquivo:linha.
+
+- **Fase 2, Lote E (T8, ponto 14) — `scripts/sdd-conferir.ps1`** (branch `worktree-fase2-t8`): confere um
+  intervalo de commits em uma chamada, uma linha por checagem (`OK|FALHA|AVISO <nome>: <detalhe>` + `RESUMO`):
+  árvore limpa, Base ancestral de Head, `.sh`/`.cmd` ASCII, `.sh` sem CR, `.ps1` alterado com BOM, mensagem
+  de commit e marcador R11 por hash de commit (só AVISO). Blobs lidos como bytes. Exits 0/1/2. Substitui as
+  7 conferências manuais de fim de tarefa SDD; `templates/DESPACHO_SUBAGENTE.template.md` aponta o uso no
+  bloco do controlador. skill muda: não.
+
+- **Fase 2, Lote E (T9, ponto 30) — `scripts/percus-worktree-limpar.ps1`** (branch `worktree-fase2-t9`):
+  sem `-Destravar`, lista cada worktree com branch, motivo da trava e estado do pid citado nela
+  (`vivo`/`morto`/`sem-pid`). Com `-Destravar <nome-ou-caminho>`, só faz `git worktree unlock` quando o pid da
+  trava não existe mais; pid vivo ou trava sem pid → exit 3; worktree não encontrado → exit 2. Nunca encerra
+  processo (encerrar `claude.exe`: descartado, sem mapa processo → worktree). Parágrafo em
+  `conhecimento/fazer/subagent-driven-worktree-nativo.md`. skill muda: não.
+
+- **Fase 2, Lote F (T11, ponto 32) — aviso de versão do `enforcement-health` diz o que está defasado**
+  (branch `worktree-fase2-h`): com a versão instalada diferente da do kit, o aviso passa a dizer que skills,
+  commands e REGISTRO de hooks ainda são os da versão instalada, que os hooks `.ps1` já vêm do kit pelo
+  trampolim, e o que fazer (push + autoUpdate, ou sessão nova depois dele). Só texto (stdout, ASCII). O verbete
+  `conhecimento/resolver/health-check-versao-vence-autoupdate.md` foi completado no mesmo sentido. skill muda: não.
+
+- **Fase 2, Lote H (T14) — `crud-evidence-warn` reconhece `UI-verified`** (branch `worktree-fase2-h`): o hook
+  (`.ps1` e `.sh`) deixa de avisar quando o commit traz `CRUD-verified:` **ou** `UI-verified:` com data e hora
+  (`YYYY-MM-DD HH:MM`). Uma regex só, idêntica nas duas camadas e sem distinção de caixa (o `.sh` antes
+  distinguia). **Muda comportamento:** trailer só com data (sem hora) passa a avisar, alinhado ao formato do
+  canon desde a 6.12. `01_REGRAS_INEGOCIAVEIS.md` perde a frase provisória "aviso falso e esperado ... 6.59.0".
+  Warn-only e `PERCUS_SKIP_CRUD_WARN` inalterados. **skill muda: sim — `skills/feature-flow/SKILL.md` (frase
+  provisória sobre `UI-verified` removida); só vale após push + autoUpdate.**
+
+- **Fase 2, Lote G (T12, ponto 31) — gate V2 aceita versão igual fora do branch principal** (branch
+  `worktree-fase2-t12`): `v2/gates/percus-gate.sh`, bloco 4, lê a ref completa com `git symbolic-ref -q HEAD`
+  (não `--short`: com uma tag `main`, o `--short` devolve `heads/main` e liberava commit na main sem bump —
+  achado da revisão, com teste). `refs/heads/main`/`refs/heads/master`, HEAD destacado ou valor inesperado →
+  regra estrita (`v_local > v_origin`); outro `refs/heads/*` → aceita `v_local = v_origin` e continua barrando
+  versão menor, arquivo fora do índice e remoção. A mensagem do branch principal cita a regra de feature.
+  Vale nesta máquina só depois do merge (o gate lê o `v2` da main). Enquanto o `origin/main` local estiver
+  atrás (sem push), o bloco 4 não barra commit nenhum na versão atual. skill muda: não.
 
 ---
 
