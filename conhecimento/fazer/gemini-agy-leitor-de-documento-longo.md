@@ -39,6 +39,16 @@ invalido; 3 = alguma fatia vazia/sem `result`/`escalate_admin`; 4 = `agy` ausent
 
 ### Armadilhas medidas nesta sessao
 
+- **Exit 0 NAO prova que o Gemini leu tudo: fatia grande trunca em SILENCIO.** Medido em 2026-09-15
+  (U2, reconciliacao de PLANO): uma fatia saiu com `status:SUCCESS` e exit 0 respondendo sobre **33 de
+  58** secoes, sem aviso nenhum. Nenhum campo do `.json` denuncia isso (`fatias_falhas` fica vazio). Quem
+  usa a saida como inventario TEM de conferir cobertura item a item contra a lista de entrada (secao,
+  capitulo, requisito) e refazer com `-Faixa` menor o que faltou. Nao confie em contagem de tokens nem
+  em `citacoes_total` como prova de cobertura.
+- **O Gemini so sabe o que esta na mensagem.** Ele afirma "falta X no kit" sobre coisas que existem fora
+  dos arquivos enviados (medido na U1: apontou N/A e cruzamento de campos que ja existiam). Toda
+  afirmacao sobre o estado do repositorio e' hipotese ate alguem abrir o arquivo.
+
 - **`ProcessStartInfo.ArgumentList` e' `$null` no .NET Framework do Windows PowerShell 5.1**
   ("Nao e' possivel chamar um metodo em uma expressao de valor nulo" ao dar `.Add()`). So existe de
   verdade em .NET Core/5+ (pwsh). A correcao e' montar a string `.Arguments` a mao, com a regra de
