@@ -7,8 +7,9 @@
 **Passos:**
 1. Rode o review **antes** do commit (R11 — hook bloqueia se não houver review nos últimos 5 min):
    `pwsh -File "${env:PERCUS_CANON_DIR}\scripts\percus-review-auto.ps1"` (ou `.sh` no Unix).
-2. Se o stderr trouxer `__PERCUS_NEEDS_CROSS_CLAUDE__`, dispare o subagent Sonnet e salve em
-   `.deepseek/reviews/<ts>-cross-claude.jsonl`.
+2. Se o stderr trouxer `__PERCUS_NEEDS_CROSS_CLAUDE__`, dispare o subagent Sonnet, grave os findings
+   num arquivo fora do repo e registre com `registrar-review` (`-Canal cross-claude`/`--canal
+   cross-claude`; a linha pronta já vem no marcador) para liberar o commit pelo hash do diff.
 3. Trate findings de bug/regressão antes de commitar; "preferência de estilo" pode ignorar (declare).
 4. Commit com trailer de autoria. Multi-linha em PowerShell: here-string single-quoted `@'...'@`.
 

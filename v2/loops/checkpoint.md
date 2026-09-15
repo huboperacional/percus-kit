@@ -1,6 +1,6 @@
 # Loop: checkpoint — fechar sessão sem perder contexto
 
-**Quando:** fim de milestone, contexto ficando grande, ou antes de `/clear`.
+**Quando:** só quando o operador pede: a palavra checkpoint, ou o pedido explícito de fechar ou limpar a sessão. Só o operador inicia checkpoint e manda abrir sessão nova; o agente não faz isso por conta própria (decisão do operador, 2026-09-14).
 
 **Por quê:** a sessão seguinte não herda sua memória — ela herda **os arquivos**.
 
@@ -25,7 +25,7 @@
 
 **5. Review + commit** dos artefatos.
 
-**6. Encerre em reset quando o hook mandar.** O `context-budget-guard` avisa quando o contexto vivo passa de ~150k, ou a sessão passa de 8h, ou o transcript retomado tem dias. Aí o checkpoint termina em **sessão nova**, não no commit: o bloco de retomada (≤15 linhas, ponteiro + próximo passo — os arquivos continuam sendo a fonte) é o que a sessão nova cola.
+**6. Sessão nova só se o operador pediu.** O `context-budget-guard` só informa o tamanho do contexto e a idade do transcript; ele não manda fazer checkpoint nem resetar. O checkpoint sempre termina entregando o bloco de retomada (≤15 linhas, ponteiro + próximo passo — os arquivos continuam sendo a fonte). Se o operador pediu checkpoint e clear, é isso que ele cola na sessão nova; sem esse pedido, o trabalho segue nesta sessão.
 
 ## Duas armadilhas que já custaram caro
 

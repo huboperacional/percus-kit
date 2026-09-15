@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.53.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.57.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -23,12 +23,14 @@
 
 ---
 
-## Pendente de versão — trilhos P / M / G (branch `worktree-trilhos-pmg`, 2026-09-14)
+## Pendente de versão
 
-> **Sem bump neste branch, de propósito.** Os branches `worktree-checkpoint-so-operador` (6.54.0),
-> `worktree-state-drift-nao-comparou` (6.54.0) e `worktree-plano-sync` (6.55.0) já disputam números. O número
-> desta mudança é atribuído **na hora do merge**, com `scripts/bump-canon.ps1`, na ordem que o operador
-> decidir. Os commits deste branch declaram o escape do gate de versão com esse motivo.
+> Entradas desta seção ainda não têm número: a versão é atribuída no merge para a `main` (sem bump
+> em branch). Quem fizer o merge move a entrada para um `## Changelog vX.Y.Z` e bumpa.
+
+### Trilhos P / M / G (branch `worktree-trilhos-pmg`, 2026-09-14)
+
+> Sem número ainda: atribuído no commit de correção desta mesma branch, depois do merge da `main` 6.57.0.
 
 **Problema.** Um ajuste em tela que já existia levou um dia inteiro (2026-09-14). Medido no mesmo dia:
 planos de 4.485–14.323 linhas com 71–83% de código colado (maio–julho: 700–1.000); "trivial" tinha quatro
@@ -57,11 +59,194 @@ completa: `D:\Claud Automations\.claude-home\plans\estamos-reestruturando-nosso-
   por limite de API, retomada respondendo a notificação antiga).
 
 **O que NÃO mudou nesta leva:** hooks e scripts. O `crud-evidence-warn` ainda não reconhece `UI-verified`
-(avisa, não bloqueia); R11 por lote já é aceito pelo hook por hash do diff, sem mudança de código. Fallback
-automático do R11, provider Gemini, telemetria e suíte ficam para as fases seguintes da revisão.
+(avisa, não bloqueia); R11 por lote já é aceito pelo hook por hash do diff, sem mudança de código.
 
-**Merge:** conflito esperado em `templates/CLAUDE.template.md` (linha de autonomia) com o branch do
-checkpoint, que também tira o checkpoint dessa frase; resolver ficando com o texto dos dois.
+---
+
+## Changelog v6.57.0 — 2026-09-15
+
+> Originalmente preparado como 6.54.0 no branch `worktree-checkpoint-so-operador`; renumerado no
+> merge porque a `main` já estava em 6.56.1.
+
+**Checkpoint e sessão nova passam a ser só do operador.** O `context-budget-guard` deixa de dar ordem e
+só informa o tamanho do contexto.
+
+**O defeito (medido em 2026-09-14):** uma sessão `claude-opus-5[1m]` (janela de 1M) estava com 244k
+tokens, 26% da janela. Ela fez checkpoint e mandou o operador abrir sessão nova sem ele pedir. O
+`model` gravado no transcript não traz `[1m]`, então o hook caiu no piso de 200k, passou dele e
+declarou a janela INDETERMINADA. Mesmo admitindo que não sabia se a sessão estava perto do teto, a
+mensagem terminava em "Acao: rode percus-review:checkpoint e encerre em RESET". A condição de
+transcript velho ordenava "Nao continue nela: abra sessao nova". E a skill `checkpoint` tinha o aviso
+do hook como gatilho, com reset obrigatório depois dele.
+
+**Decisão do operador:** só o operador inicia checkpoint e manda abrir sessão nova. O agente nunca faz
+isso por conta própria e, no máximo, menciona o número ao operador uma vez. É a mesma direção de
+2026-09-12, quando o aviso ao operador virou opcional porque ele vê o contexto no painel do VSCode.
+
+**Hook (`.ps1` e `.sh`, em paridade):**
+- Sai a linha "Acao: rode percus-review:checkpoint e encerre em RESET" nas duas variantes, e com ela
+  "Acima de ~Xk um resume futuro em janela ~Yk falha".
+- A idade do transcript só informa ("iniciado ha N dias -- e uma sessao retomada/velha") e não manda
+  mais abrir sessão nova.
+- Toda mensagem ao agente termina na mesma frase: "Isto e so informacao: decidir checkpoint ou sessao
+  nova e do operador. Voce NAO inicia checkpoint nem manda abrir sessao nova por conta propria; no
+  maximo mencione estes numeros ao operador uma vez."
+- O aviso opcional ao operador (`PERCUS_CTX_OPERADOR=1`) troca "Hora de checkpoint + sessao nova" por
+  "Checkpoint e sessao nova ficam a seu criterio".
+- **Ficam:** os níveis (75% e 90% da janela), o debounce de um aviso por nível, o texto do LIMITE DURO
+  e a ressalva do piso adivinhado. Eles dizem quando o hook fala e o que se sabe sobre o teto: são
+  informação, não ordem. Os invariantes das rodadas de R11 da janela descoberta continuam cobertos
+  pelos testes que já existiam.
+- A `_nota` do `hooks-manifest.json` ainda descrevia 150k/180k fixos e `PERCUS_CTX_HOURS=8h`, que
+  saiu na 6.52.0. Foi corrigida junto.
+- `context-budget-guard.tests.ps1` zera os `PERCUS_CTX_*` herdados e os restaura no fim. Com a
+  mitigação `PERCUS_CTX_WINDOW=1000000` no settings do usuário, os casos de 160k/185k ficavam mudos,
+  e o arquivo passava a medir o ambiente do runner em vez do hook.
+
+**Não resolve a janela.** O input dos hooks não traz o tamanho da janela; só o statusline recebe
+`context_window.context_window_size`. Sem `PERCUS_CTX_WINDOW`, uma sessão 1M continua indeterminada
+acima de 200k. A diferença é que isso agora só produz um número, e não uma ordem.
+
+**Skill `checkpoint`:** a `description` passa a ter só o operador como gatilho: a palavra checkpoint,
+em qualquer forma, ou o pedido explícito de fechar ou limpar a sessão. Saem, como gatilhos do agente,
+o fim de milestone, o aviso do hook, o contexto ficando grande e o aviso do PreCompact. O passo 5 só
+fala em sessão nova se o operador pediu ("checkpoint e clear") e não diz mais "Não retome o trabalho
+na sessão atual". A saída esperada perdeu "RESET OBRIGATÓRIO" e o `/{H}h`, que sobrou da 6.52.0. Os
+anti-padrões que mandavam fazer checkpoint proativo e resetar depois do aviso foram invertidos.
+
+**Texto do canon alinhado.** Seis lugares repetiam a política antiga:
+- `v2/loops/checkpoint.md`: o passo 6 mandava encerrar em reset quando o hook mandasse e ainda citava
+  o gatilho de 8h.
+- `templates/CLAUDE.template.md`: checkpoint estava na lista "rode sozinho" e, na tabela, como
+  "contexto cheio".
+- `templates/RESUME_PROMPT.template.md`: dizia que o prompt é gerado "ao fim de um milestone".
+- `01_REGRAS_INEGOCIAVEIS.md`: a R5 listava checkpoint entre os auto-triggers, e o item 4 da R23 o
+  tratava como rede de captura.
+- `comandos/SKILLS_VS_COMMANDS.md`: tinha "auto ao fim de marco" e "o agente invoca checkpoint".
+- `comandos/REORGANIZAR_PROJETO.md`: mandava rodar checkpoint "ao fim de milestone".
+
+Um teste novo varre esses arquivos pelas frases exatas para nenhuma voltar.
+
+**Testes:** 14 novos (6 no hook, nos dois runtimes; 6 nas portas da skill; 2 na varredura do canon) e
+1 reescrito. O teste de 3 dias exigia "sessao nova", ou seja, a própria ordem. Todos ficaram
+vermelhos antes do conserto. Suíte 729/6/8, contra 703/18/8
+no baseline, com o mesmo `PERCUS_CTX_WINDOW=1000000` herdado. Cada commit que leva código passou pelo R11.
+
+**Dívidas registradas (fora do escopo):**
+- Descobrir a janela pelo statusline, o único ponto que recebe `context_window.context_window_size`.
+  Sem isso, o hook segue indeterminado acima de 200k em sessão 1M sem `PERCUS_CTX_WINDOW`.
+- A mensagem do `pre-compact-checkpoint` (`.ps1:33`, `.sh:25`) ainda manda rodar `/checkpoint` como
+  slash, e esse slash não existe no ambiente do operador.
+- A base `conhecimento/` não foi revista à luz desta decisão (ex.:
+  `checkpoint-persiste-arquivos-nao-reseta-contexto`), nem `skills/consult-knowledge/SKILL.md:90`,
+  que chama a skill `checkpoint` de gate de captura. O `INDICE.md` gerado colide com mudança não
+  commitada de outra sessão no checkout principal.
+- O gate barra por `conhecimento/resolver/INDICE.md` desatualizado desde 9a23c82 (5 verbetes fora do
+  índice). Todos os commits desta versão declararam `PERCUS_GATE_OVERSIZE`, com a linha `Gate:` no
+  corpo.
+- Merge desta branch em `main` sem push ativa hook e canon novos nesta máquina na hora (trampolim via
+  `PERCUS_CANON_DIR`: `context-budget-guard.cmd:4-6`, `percus-dispatch-post.cmd:50-52` preferem o kit
+  apontado por `PERCUS_CANON_DIR` ao plugin instalado), mas a skill `checkpoint` continua vindo do
+  cache do plugin instalado (`plugins/cache/percus-tools/percus-review/6.53.0/skills/checkpoint/SKILL.md`
+  — ainda a versão anterior, com "quando o hook `context-budget-guard` avisar" como gatilho e o passo
+  5 tratando o reset como obrigatório). Até o push e o autoUpdate do plugin (ou `/reload-plugins`), o
+  agente convive com um hook que só informa e uma skill que ainda manda agir. O fechamento completo
+  desta dívida exige push da branch **e** o autoUpdate (ou reload) do plugin instalado.
+- O hook ainda dá ordem ao agente sobre a variável de ambiente: `context-budget-guard.ps1:248` e
+  `.sh:116` ("Defina PERCUS_CTX_WINDOW pra eu voltar a medir percentual"), `.ps1:268` e `.sh:129`
+  ("confira o painel de contexto e, se for o caso, sete PERCUS_CTX_WINDOW"). Essas linhas vão para o
+  `additionalContext` do agente, que não vê o painel do VSCode e poderia editar `settings.json`
+  sozinho. Uma versão futura deveria reformular as duas para "o operador pode definir..." nos dois
+  runtimes, sem tirar a métrica do hook.
+
+## Changelog v6.56.1 — 2026-09-15
+
+- **Hook git nativo híbrido não pula mais a lógica custom quando o R11 libera pelo hash.** O bloco
+  Percus de `plugin/percus-review/git-hooks/pre-commit.template.sh` fazia `exit 0` ao achar
+  `d-<hash>.jsonl` com review — em hook híbrido (bloco Percus + lógica após `PERCUS-MERGED-HOOK END`,
+  como o gate V2 em tiatendo, auth-service e Plexco Coach) o gate V2 deixava de rodar justamente nos
+  commits revisados. Defeito anterior à 6.56.0 (já existia em c144aaf); achado ao preparar a
+  reinstalação do hook nos projetos. Agora a aprovação por hash segue para depois do `END`, igual à
+  aprovação por `latest.jsonl`. Teste novo em `pre-commit-marcador-classificacao.tests.ps1`
+  ("git hibrido": hash/latest/placeholder seguem para o custom; marcador inválido bloqueia antes).
+- **Reinstalação:** use este template (6.56.1), não o da 6.56.0, ao atualizar o hook git dos projetos.
+
+## Changelog v6.56.0 — 2026-09-15
+
+> Números 6.54.0 e 6.55.0 pulados de propósito: estavam em uso nos branches ainda não mergeados
+> `worktree-checkpoint-so-operador` / `worktree-state-drift-nao-comparou` (6.54.0) e
+> `worktree-plano-sync` (6.55.0). Quem mergear esses branches renumera para a próxima versão livre.
+
+### R11 sem ponto único de falha (branch `worktree-r11-fallback`, spec `docs/superpowers/specs/2026-09-14-r11-sem-ponto-unico-design.md`)
+
+- **Cliente `deepseek-review.{ps1,sh}`:** timeout por chamada (padrão 180 s) e exatamente 1 retry
+  (backoff 5 s) em timeout/rede, 429, 5xx e 2xx sem `choices`; 4xx ≠ 429 sai exit 1 sem retry;
+  **exit 4** = provedor indisponível após retry. Corpo sem `choices` vai ao stderr (2 000 caracteres,
+  chave mascarada) e a `.deepseek/reviews/ultimo-erro.txt`. O `.sh` passa a gravar `model`/`usage`.
+- **Novo `registrar-review.{ps1,sh}`:** grava a review do subagente Cross-Claude em
+  `d-<hash>.jsonl` + `latest.jsonl` (hash igual ao do hook, gravação atômica com rollback, telemetria).
+- **Wrapper `percus-review-auto.{ps1,sh}`:** `reason` distingue exit 4; todas as emissões do marcador
+  `__PERCUS_NEEDS_CROSS_CLAUDE__` trazem a linha pronta do `registrar-review`; stderr do cliente visível.
+- **Hook `pre-commit-check.{ps1,sh}` + `git-hooks/pre-commit.template.sh`:** o marcador passa a ser
+  LIDO — só review com `findings` não vazio libera; placeholder libera por `latest.jsonl` ≤5 min com
+  aviso e linha em `.deepseek/reviews/deferidos.log`; hash do diff vazio (`e3b0c44298fc`) não conta.
+  **Projetos com o hook git instalado precisam reinstalar.** `/percus-review:install-git-hooks` (passo
+  "Replace", `plugin/percus-review/commands/install-git-hooks.md:122-123`) faz `cp` puro do template
+  — o template no CACHE do plugin chega em CRLF (verbete
+  `conhecimento/resolver/sh-do-plugin-no-cache-chega-com-crlf-e-o-hook-nativo-copia-assim.md`), então
+  a cópia crua nasce em CRLF em `.git/hooks/pre-commit`. Reinstale removendo o `\r`, não com o `cp` da
+  skill:
+  `tr -d '\r' < "${CLAUDE_PLUGIN_ROOT}/git-hooks/pre-commit.template.sh" > .git/hooks/pre-commit`
+  (mais `chmod +x .git/hooks/pre-commit` fora do Windows).
+- **Publicação:** mudança em `plugin/percus-review/hooks/` e `scripts/` do plugin exige publicação
+  (ver topo deste arquivo); o wrapper do kit aponta para a cópia do kit do `registrar-review` enquanto
+  o cache não a tiver.
+- **Condições de rollout:**
+  (a) exige push + `autoUpdate` do plugin para o cache pegar o hook/scripts novos (ver nota do topo
+  deste arquivo sobre gates vs. hooks);
+  (b) **merge para a `main` do kit ativa o hook `.ps1` NA HORA em toda sessão desta máquina** — o
+  `PERCUS_CANON_DIR` aponta pro checkout do kit, e o hook novo passa a valer no próximo commit de
+  qualquer projeto local, sem esperar publicação/autoUpdate (isso só governa o plugin em CACHE, usado
+  por máquinas remotas e pelo `.cmd`/registro). **Rollback:** `git revert` do commit de merge na
+  `main` do kit. **Escape de emergência enquanto reverte:** `PERCUS_HOOKS_DISABLED=1` (declarado em
+  voz alta; nunca use fora de uma reversão em andamento) — o hook já verifica essa variável
+  (`plugin/percus-review/hooks/pre-commit-check.ps1:135`, `pre-commit-check.sh:139`) e sai 0 sem
+  classificar nada;
+  (c) **SC-007 (latência):** medido nesta revisão — mediana **+29,9 ms** e **+47,3 ms** contra o teto
+  de 20 ms do critério original (dois runs, hook antigo vs. novo, mesmo processo de medição). O custo
+  só incide no caminho `git commit` (o hook sai cedo pra qualquer outro comando,
+  `plugin/percus-review/hooks/pre-commit-check.ps1:129`), concentrado no PRIMEIRO uso por processo
+  (~45–65 ms na 1ª chamada de `Get-ClasseMarcador`, ~2 ms nas seguintes; sem causa barata única — o
+  custo se espalha por `New-Object UTF8Encoding`, enumeração de `PSObject.Properties`, `Get-Item`, etc).
+  **Isto NÃO atende o SC-007 como escrito** (≤20 ms); é ~5–10% de um caminho que já paga ~420 ms de
+  partida do PowerShell 5.1 + `git diff`. **Aceito como está pelo operador no merge (2026-09-15)**; o
+  critério da spec não foi reescrito;
+  (d) projetos com o hook git nativo instalado precisam reinstalar (ponto acima);
+  (e) `.deepseek/reviews/deferidos.log` cresce **sem rotação** — é sinal de saúde do R11 (linhas
+  demais = commits liberando por placeholder em vez de review real), não um arquivo gerenciado: hoje
+  ninguém poda. Observar na primeira semana e decidir poda manual ou automática depois.
+- **Follow-ups após o merge (não bloqueiam; achados da revisão final, 2026-09-15):**
+  - `.sh` fecha (fail-closed) em vez de abrir quando o classificador awk não responde com
+    `review|placeholder|invalido` (saída vazia por awk não-GNU ausente/quebrado) — deveria emitir
+    `WARN: hook crashed, allowing commit` + exit 0, como o `.ps1` já faz.
+  - `registrar-review.ps1` escreve com `[Console]::Out` e troca `Console.OutputEncoding` do processo
+    chamador — quando invocado embutido (`$r = & registrar-review.ps1 ...`), a linha `hash=...` não é
+    capturável no `$r` (medido: `out=` vazio) e a sessão do chamador fica com a codificação trocada.
+  - Rollback de `registrar-review.{ps1,sh}` apaga também um `d-<hash>.jsonl` PRÉ-EXISTENTE (ex.: do
+    canal `dual` no mesmo diff) se a gravação do `latest` falhar depois — raro e inofensivo pro gate
+    (bloqueia, não libera), mas a mensagem de erro só descreve o que ESTA chamada gravou.
+  - `percus-milestone-review-auto.{ps1,sh}` ficou fora do novo contrato: sem motivo do exit 4 e sem a
+    linha pronta de `registrar-review` nas emissões do marcador (o marco não costuma gatear commit,
+    por isso ficou fora do escopo desta spec).
+  - Divergência de leniência JSON entre hosts: `ConvertFrom-Json` aceita aspas simples/comentários que
+    o awk recusa — nenhum escritor real produz isso hoje (809/809 marcadores reais concordam nos três
+    classificadores), só uma diferença de tolerância a documentar.
+  - Cliente `.sh` passa a chave da API como argumento de `curl`, visível na lista de processos do SO
+    enquanto a chamada dura — pré-existente, fora do diff desta feature.
+
+**Evidência:** suíte inteira 878/904 com as mesmas 18 falhas conhecidas da base; 809/809 marcadores
+reais desta máquina classificados igual em Windows PowerShell 5.1, pwsh 7 e awk (revisão final da
+branch, 2026-09-15).
 
 ## Changelog v6.53.0 — 2026-09-13
 

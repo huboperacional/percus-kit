@@ -188,7 +188,7 @@ já decidido — NUNCA um menu "(a)/(b)/(c) quem faz o quê".**
 
 **Filosofia (resolver o máximo sem perguntar):** confirmação é EXCEÇÃO, não default. **Resolva sozinho — NÃO
 peça permissão pra:**
-- Rodar review / conselho / testes / lint / build / checkpoint (passos internos; auto-trigger, ver R11).
+- Rodar review / conselho / testes / lint / build (passos internos; auto-trigger, ver R11). **Checkpoint fica fora desta lista:** só o operador inicia checkpoint e manda abrir sessão nova (decisão de 2026-09-14; skill `checkpoint`).
 - Limpar **lixo que VOCÊ criou nesta sessão**: scratchpad, worktrees temporários, arquivos efêmeros de
   plano/review, branches locais que você mesmo abriu. R5 **não se aplica a lixo auto-criado**.
 - Ler segredo do `.env` e usá-lo num deploy/`--env-add` **sem imprimi-lo** (operação de infra normal).
@@ -384,9 +384,9 @@ Wrapper resolve plugin instalado, dispatch DeepSeek (caso default) ou emite mark
 
 1. Antes de `git commit` que toca código: rodar wrapper auto-trigger
 2. Ler findings; processar críticos (corrigir antes do commit)
-3. Se marker `__PERCUS_NEEDS_CROSS_CLAUDE__` aparecer: dispatch Sonnet subagent IMEDIATAMENTE com prompt R11 cross-claude-review (revisar diff vs AGENTS.md). Salvar output em `.deepseek/reviews/<ts>-cross-claude.jsonl` para o hook validar.
+3. Se marker `__PERCUS_NEEDS_CROSS_CLAUDE__` aparecer: dispatch Sonnet subagent IMEDIATAMENTE com prompt R11 cross-claude-review (revisar diff vs AGENTS.md). Grave os findings dele num arquivo (a linha pronta com o comando já vem no próprio marcador) e registre com `registrar-review` (`-Canal cross-claude` / `--canal cross-claude`) para liberar o commit pelo hash do diff.
 4. Apresentar consolidado ao usuário, declarar em voz alta findings ignorados
-5. `git commit` (hooks Layer 1+2 já aprovam por TTL do review)
+5. `git commit` (hooks Layer 1+2 liberam pela review registrada com `registrar-review`; o placeholder sozinho libera só por 5 min)
 
 **Comandos manuais ainda válidos:**
 
@@ -507,7 +507,7 @@ Commitar e "rodar review depois" — derrota o propósito. Interceptar **antes**
 
 - Commit só de docs/config sem mudança de código (`*.md`, `*.yml`, `*.json` não-código)
 - Hot fix urgente em produção — corrige primeiro, abre TODO de "review retroativo" depois
-- DeepSeek API down → router faz fallback automático pra Cross-Claude (declarar em voz alta)
+- DeepSeek API down → o cliente `deepseek-review` faz **1 retry automático** (timeout 180 s, backoff 5 s; `PERCUS_DEEPSEEK_TIMEOUT_S`/`PERCUS_DEEPSEEK_BACKOFF_S`). Se o provedor seguir indisponível (exit 4), o wrapper grava placeholder e emite `__PERCUS_NEEDS_CROSS_CLAUDE__` com o comando pronto: a review do subagente Sonnet é registrada com `registrar-review` (`-Canal cross-claude` / `--canal cross-claude`) e libera o commit pelo hash do diff. O placeholder sozinho libera **só por 5 min**, com aviso e uma linha em `.deepseek/reviews/deferidos.log` (declarar em voz alta)
 - Plugin `@percus/review` indisponível — declarar e marcar TODO de "revisar retroativamente"
 
 ### Kit Percus (`percus-kit/`) — sem exceção a R11
@@ -930,7 +930,8 @@ versionada no git, consultável por **classe de sintoma**, sincroniza pra todas 
 2. `percus-gate.sh` bloco 2c barra referência ao caminho do monólito aposentado.
 3. Ao bater num erro conhecido, há evidência de consulta antes do debug (a skill loga / o agente declara).
 4. `CHECKLIST_ENCERRAR_SESSAO.md` tem o passo "problema novo resolvido virou verbete?"; a skill
-   `checkpoint` reforça (a captura não depende de memória — fica num gate que já roda).
+   `checkpoint` reforça quando o operador a pede. Ela deixou de ser gatilho automático em
+   2026-09-14, então não é rede: a captura continua sendo obrigação da sessão que resolveu.
 
 **Refs:**
 - Skill: `consult-knowledge` (`plugin/percus-review/skills/consult-knowledge/SKILL.md`) — invoca-se por linguagem natural, não por slash (ver `comandos/SKILLS_VS_COMMANDS.md`)

@@ -92,6 +92,25 @@ if [ ! -f "$ROUTER" ]; then
     exit 1
 fi
 
+# Comando de registro da review Cross-Claude (FR-008, 2026-09-14): copia do plugin instalado, ou a do
+# kit (onde este wrapper mora) se o cache ainda nao tem o comando.
+REGISTRAR="$CURRENT/scripts/registrar-review.sh"
+if [ ! -f "$REGISTRAR" ]; then
+    _KIT_DIR=$(cd "$(dirname "$0")/.." 2>/dev/null && { pwd -W 2>/dev/null || pwd; })
+    if [ -f "$_KIT_DIR/plugin/percus-review/scripts/registrar-review.sh" ]; then
+        REGISTRAR="$_KIT_DIR/plugin/percus-review/scripts/registrar-review.sh"
+    fi
+fi
+INSTRUCAO_REGISTRO=" Depois que o subagente responder, grave os findings dele num arquivo FORA do repo (ex.: com mktemp ou em \${TMPDIR:-/tmp}; nunca dentro do repo, senao muda o git diff HEAD e o hash registrado deixa de bater) e registre com registrar-review: bash '$REGISTRAR' --arquivo '<arquivo-dos-findings>' --canal cross-claude --modelo '<modelo-do-subagente>'. Sem esse registro o commit so passa pelo placeholder de 5 min."
+
+causa_falha_deepseek() {
+    if [ "$1" = "4" ]; then
+        printf 'provedor indispon\303\255vel ap\303\263s retry (exit 4)'
+    else
+        printf 'DeepSeek falhou (exit %s)' "$1"
+    fi
+}
+
 # === Run router ===
 ROUTER_ARGS="--json"
 if [ -n "$BASE" ]; then
@@ -230,15 +249,16 @@ fi
 case "$DECISION" in
     deepseek)
         # Captura output do reviewer pra passar pelo fact-check pipeline (F3)
-        REVIEW_OUTPUT=$(bash "$DEEPSEEK" $DEEPSEEK_ARGS 2>/dev/null)
-        if [ $? -ne 0 ]; then
+        REVIEW_OUTPUT=$(bash "$DEEPSEEK" $DEEPSEEK_ARGS)
+        DS_RC=$?
+        if [ "$DS_RC" -ne 0 ]; then
             # Mesmo fix dos branches dual/cross-claude/council: rota solo tambem nao pode
             # travar o commit inteiro so porque a chave DeepSeek caiu -- essa e a rota mais
             # comum do portfolio. Conselho 3/3 (deepseek+llama+cross-claude, consult
             # 2026-08-05) confirmou: escalar pra Cross-Claude via marker, nao bloquear.
-            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou -- registrando placeholder deferred pra nao travar o gate."
-            write_deferred_review_placeholder "deepseek" "decision=deepseek (rota solo), DeepSeek falhou -- provavel outage/API key invalida. Sem segunda perna de review por padrao nesta rota; escalado pra Cross-Claude."
-            >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: rota solo (decision=deepseek), DeepSeek indisponivel. DEVE dispatchar Sonnet subagent via Agent tool agora com prompt de review R11 (escopo: commit atual)."
+            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou (exit $DS_RC) -- registrando placeholder deferred pra nao travar o gate."
+            write_deferred_review_placeholder "deepseek" "decision=deepseek (rota solo), $(causa_falha_deepseek "$DS_RC") -- provavel outage/API key invalida. Sem segunda perna de review por padrao nesta rota; escalado pra Cross-Claude."
+            >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: rota solo (decision=deepseek), DeepSeek indisponivel. DEVE dispatchar Sonnet subagent via Agent tool agora com prompt de review R11 (escopo: commit atual).$INSTRUCAO_REGISTRO"
             exit 0
         fi
         run_fact_check "$REVIEW_OUTPUT"
@@ -246,20 +266,21 @@ case "$DECISION" in
 
     dual)
         # Captura output do reviewer pra passar pelo fact-check pipeline (F3)
-        REVIEW_OUTPUT=$(bash "$DEEPSEEK" $DEEPSEEK_ARGS 2>/dev/null)
-        if [ $? -ne 0 ]; then
+        REVIEW_OUTPUT=$(bash "$DEEPSEEK" $DEEPSEEK_ARGS)
+        DS_RC=$?
+        if [ "$DS_RC" -ne 0 ]; then
             # DeepSeek falhou (outage/API key invalida/etc.). ANTES: `exit 3` aqui matava
             # o wrapper inteiro sem gravar nada em .deepseek/reviews/ e sem emitir o marker
             # -- gate de 5min nunca achava registro pro caminho dual, forcando escape manual
             # em TODO commit sensivel. Fix: registra placeholder deferred e ainda sinaliza
             # Cross-Claude, pra R11 poder ser cumprido so pela perna que sobrou de pe.
-            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou -- registrando placeholder deferred pra nao travar o gate."
-            write_deferred_review_placeholder "dual" "decision=dual, DeepSeek falhou -- provavel outage/API key invalida. Registro parcial; Cross-Claude ainda precisa rodar (R11)."
-            >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual, DeepSeek indisponivel). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review."
+            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou (exit $DS_RC) -- registrando placeholder deferred pra nao travar o gate."
+            write_deferred_review_placeholder "dual" "decision=dual, $(causa_falha_deepseek "$DS_RC") -- provavel outage/API key invalida. Registro parcial; Cross-Claude ainda precisa rodar (R11)."
+            >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual, DeepSeek indisponivel). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review.$INSTRUCAO_REGISTRO"
             exit 0
         fi
         run_fact_check "$REVIEW_OUTPUT"
-        >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review."
+        >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review.$INSTRUCAO_REGISTRO"
         ;;
 
     council)
@@ -269,13 +290,14 @@ case "$DECISION" in
         # Encontrado em 2026-07-27 rodando o proprio gate sobre este commit.
         # Semantica identica a do .ps1: DeepSeek local + Llama via orchestrator + marker
         # pro agente completar a 3a perspectiva (Cross-Claude).
-        REVIEW_OUTPUT=$(bash "$DEEPSEEK" $DEEPSEEK_ARGS 2>/dev/null)
-        if [ $? -ne 0 ]; then
+        REVIEW_OUTPUT=$(bash "$DEEPSEEK" $DEEPSEEK_ARGS)
+        DS_RC=$?
+        if [ "$DS_RC" -ne 0 ]; then
             # Mesmo fix do caso "dual" acima: DeepSeek fora do ar nao pode matar o
             # wrapper inteiro antes de registrar nada e antes do marker -- Llama e
             # Cross-Claude ainda cobrem o conselho enquanto DeepSeek estiver indisponivel.
-            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou -- registrando placeholder deferred pra nao travar o gate."
-            write_deferred_review_placeholder "council" "decision=council, DeepSeek falhou -- provavel outage/API key invalida. Registro parcial; Llama/Cross-Claude cobrem o resto."
+            >&2 echo "[percus-review-auto] ERRO: deepseek-review.sh falhou (exit $DS_RC) -- registrando placeholder deferred pra nao travar o gate."
+            write_deferred_review_placeholder "council" "decision=council, $(causa_falha_deepseek "$DS_RC") -- provavel outage/API key invalida. Registro parcial; Llama/Cross-Claude cobrem o resto."
         else
             run_fact_check "$REVIEW_OUTPUT"
         fi
@@ -313,7 +335,7 @@ case "$DECISION" in
             fi
         fi
 
-        >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: decision=council (sensitive + grande/from-DS). DEVE dispatchar Sonnet subagent via Agent tool agora pra completar conselho 3-membros."
+        >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: decision=council (sensitive + grande/from-DS). DEVE dispatchar Sonnet subagent via Agent tool agora pra completar conselho 3-membros.$INSTRUCAO_REGISTRO"
         ;;
 
     cross-claude)
@@ -321,7 +343,7 @@ case "$DECISION" in
         # agente DEVE dispatchar Sonnet via Agent tool.
         # Nota: fact-check nao aplicavel aqui — sem output de reviewer local.
         write_deferred_review_placeholder "cross-claude" "decision=cross-claude (commit from DeepSeek). R11 anti auto-revisao -- so Sonnet revisa."
-        >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: commit veio de DeepSeek (decision=cross-claude). DEVE dispatchar Sonnet subagent via Agent tool agora -- DeepSeek NAO revisa proprio output (R11)."
+        >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: commit veio de DeepSeek (decision=cross-claude). DEVE dispatchar Sonnet subagent via Agent tool agora -- DeepSeek NAO revisa proprio output (R11).$INSTRUCAO_REGISTRO"
         ;;
 
     *)

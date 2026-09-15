@@ -57,7 +57,7 @@ dois-pontos dentro de um plugin; se o autocomplete não reconhecer `/council:*`,
 
 | Skill | User aciona dizendo… (o agente invoca via Skill tool) |
 |---|---|
-| `checkpoint` | "faça o checkpoint", "vamos fechar este milestone", ou auto ao fim de marco / antes de `/clear`/`/compact`. Sincroniza PLANO+HANDOFF+mock-audit, commita com review (R11), emite prompt de retomada. |
+| `checkpoint` | "faça o checkpoint", "checkpoint e clear", "fecha a sessão". **Só o operador aciona**: o agente não dispara sozinho, nem ao fim de marco nem por aviso de hook. Sincroniza PLANO+HANDOFF+mock-audit, commita com review (R11), emite prompt de retomada. |
 | `close-milestone` | "Fase X feita", "fechar Eixo Y". |
 | `feature-flow` | "iniciar feature/bugfix novo". Orquestra o workflow R1→R13. |
 | `consult-knowledge` | "o que já sabemos sobre X?", ou antes de debugar (R23). |
@@ -94,8 +94,10 @@ dois-pontos dentro de um plugin; se o autocomplete não reconhecer `/council:*`,
 
 **Exemplo genérico:** "Aguardando você rodar `/percus-review:checkpoint`." ou "rode `/percus-review:feature-flow`."
 
-**Correto:** o próprio agente invoca `checkpoint`/`feature-flow` via `Skill` tool quando vê a intenção
-(fim de milestone; iniciar feature). O user só descreve — o agente decide e executa.
+**Correto:** o próprio agente invoca `feature-flow` via `Skill` tool quando vê a intenção (iniciar
+feature). O user só descreve — o agente decide e executa. **Exceção: `checkpoint`.** Só o operador
+inicia checkpoint (dizendo a palavra, ou pedindo pra fechar a sessão); o agente invoca a skill quando
+ele pede, nunca por conta própria.
 
 ### ❌ Erro 2: confundir wrapper de implementador com revisor
 

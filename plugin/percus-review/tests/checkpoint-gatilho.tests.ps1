@@ -21,6 +21,18 @@ Describe "gatilho da skill checkpoint" {
         # A description e o que dispara a skill. Extrai so ela, do frontmatter YAML.
         $m = [regex]::Match($script:texto, '(?ms)^---\s*\r?\n.*?^description:\s*(?<d>.+?)\r?\n(?:^[a-z_]+:|^---)')
         $script:description = if ($m.Success) { $m.Groups['d'].Value } else { "" }
+
+        # Secao do markdown: do titulo (prefixo ASCII) ate o proximo titulo de nivel igual ou maior.
+        function Get-Secao {
+            param([string]$Prefixo)
+            $i = $script:texto.IndexOf($Prefixo, [StringComparison]::Ordinal)
+            if ($i -lt 0) { return "" }
+            $nivel = ([regex]::Match($Prefixo, '^#+')).Value.Length
+            $resto = $script:texto.Substring($i + $Prefixo.Length)
+            $mm = [regex]::Match($resto, '(?m)^#{1,' + $nivel + '} ')
+            if ($mm.Success) { return $Prefixo + $resto.Substring(0, $mm.Index) }
+            return $Prefixo + $resto
+        }
     }
 
     It "a skill existe" {
@@ -70,5 +82,99 @@ Describe "gatilho da skill checkpoint" {
         # checkpointar) ou travamento (nao checkpointar nunca).
         $script:texto | Should -Match '(?i)n[aã]o d[aá] pra terminar|n[aã]o for poss[ií]vel terminar|nao puder ser terminada' `
             -Because "tarefa que nao fecha tem que virar proximo-passo declarado, nao fingimento"
+    }
+
+    # Decisao do operador em 2026-09-14: so o operador inicia checkpoint e manda abrir sessao nova.
+    # Medido no mesmo dia: sessao com 244k tokens (26% de uma janela de 1M) recebeu do hook "rode
+    # percus-review:checkpoint e encerre em RESET", fez checkpoint e mandou o operador abrir sessao
+    # nova sem ele pedir. A skill obedecia por tres portas: o hook como gatilho na description, os
+    # gatilhos automaticos em "Quando rodar" e o reset obrigatorio do passo 5.
+
+    It "a description so tem o operador como gatilho (sem milestone, sem hook, sem contexto crescendo)" {
+        $script:description | Should -Not -Match '(?i)milestone|context-budget|contexto cresceu|contexto ficando grande' `
+            -Because "description e o que dispara a skill; gatilho que nao seja o operador vira checkpoint por conta propria"
+    }
+
+    It "a description diz que o agente nunca inicia checkpoint nem manda abrir sessao nova" {
+        $script:description | Should -Match '(?i)nunca inicia checkpoint por conta pr.pria'
+        $script:description | Should -Match '(?i)abrir sess.o nova sem o operador pedir'
+    }
+
+    It "Quando rodar lista so pedidos do operador" {
+        $s = Get-Secao '## Quando rodar'
+        $s.Length | Should -BeGreaterThan 100 -Because "anti-vacuidade: a secao tem que existir"
+        $s | Should -Not -Match '(?i)milestone|context-budget|contexto ficando grande|PreCompact|hook'
+        $s | Should -Match '(?i)checkpoint'
+        $s | Should -Match '(?i)fechar ou limpar a sess.o'
+    }
+
+    It "O que o agente NAO faz inclui iniciar checkpoint e mandar abrir sessao nova" {
+        $s = Get-Secao '## O que o agente'
+        $s.Length | Should -BeGreaterThan 100 -Because "anti-vacuidade"
+        $s | Should -Match '(?i)n.o inicia checkpoint por conta pr.pria'
+        $s | Should -Match '(?i)n.o manda abrir sess.o nova'
+    }
+
+    It "o passo 5 so fala de sessao nova quando o operador pediu" {
+        $s = Get-Secao '### 5.'
+        $s.Length | Should -BeGreaterThan 100 -Because "anti-vacuidade"
+        $s | Should -Not -Match '(?i)obrigat|n.o retome o trabalho' -Because "reset obrigatorio foi a porta que mandou abrir sessao nova sem pedido"
+        $s | Should -Match '(?i)operador pediu'
+    }
+
+    It "nenhum resto da politica antiga: reset obrigatorio, horas na saida, checkpoint proativo" {
+        $script:texto | Should -Not -Match 'RESET OBRIGAT'
+        $script:texto | Should -Not -Match '\{H\}h' -Because "hora de parede saiu da politica na 6.52.0 e sobrou na saida esperada"
+        $script:texto | Should -Not -Match '(?i)fa.a no milestone, proativo'
+        $script:texto | Should -Not -Match '(?i)checkpoint sem reset em sess.o avisada'
+        $script:texto | Should -Not -Match '(?i)\(agente\) roda isto'
+    }
+}
+
+# Decisao do operador em 2026-09-14: so o operador inicia checkpoint e manda abrir sessao nova.
+# A skill era so uma das portas. O canon repetia a politica antiga em seis lugares -- o loop, o
+# template do CLAUDE.md que vai pra todo projeto, o template do prompt de retomada, a R5, a R23 e
+# dois docs de comandos -- e o agente le esses textos no boot. Esta varredura prende as frases
+# exatas que davam checkpoint ao agente, para nenhuma voltar.
+Describe "canon nao da checkpoint ao agente" {
+
+    BeforeAll {
+        $script:raiz = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+        $script:proibidos = @(
+            @{ Arquivo = 'v2\loops\checkpoint.md';              Regex = '(?i)encerre em reset quando o hook';        Era = 'passo 6 mandava resetar quando o hook mandasse' }
+            @{ Arquivo = 'v2\loops\checkpoint.md';              Regex = '(?i)sess.o passa de 8h';                    Era = 'gatilho de 8h, removido na 6.52.0' }
+            @{ Arquivo = 'v2\loops\checkpoint.md';              Regex = '(?i)\*\*Quando:\*\* fim de milestone';     Era = 'milestone como gatilho do agente' }
+            @{ Arquivo = 'templates\CLAUDE.template.md';        Regex = '(?i)build/checkpoint sozinho';              Era = 'checkpoint na lista rode sozinho' }
+            @{ Arquivo = 'templates\CLAUDE.template.md';        Regex = '(?i)Sess.o terminando / contexto cheio';    Era = 'contexto cheio como gatilho do loop' }
+            @{ Arquivo = 'templates\RESUME_PROMPT.template.md'; Regex = '(?i)checkpoint` ao fim de um milestone';    Era = 'milestone como gatilho' }
+            @{ Arquivo = '01_REGRAS_INEGOCIAVEIS.md';           Regex = '(?i)build / checkpoint \(passos internos';  Era = 'checkpoint entre os auto-triggers da R5' }
+            @{ Arquivo = '01_REGRAS_INEGOCIAVEIS.md';           Regex = '(?i)a captura n.o depende de mem.ria';      Era = 'R23 contava com checkpoint automatico' }
+            @{ Arquivo = 'comandos\SKILLS_VS_COMMANDS.md';      Regex = '(?i)auto ao fim de marco';                  Era = 'checkpoint automatico no fim de marco' }
+            @{ Arquivo = 'comandos\SKILLS_VS_COMMANDS.md';      Regex = '(?i)invoca `checkpoint`/`feature-flow`';    Era = 'agente invocando checkpoint por conta propria' }
+            @{ Arquivo = 'comandos\REORGANIZAR_PROJETO.md';     Regex = '(?i)ao fim de milestone \(PreCompact';      Era = 'checkpoint ao fim de milestone' }
+        )
+
+        function Get-TextoCanon {
+            param([string]$Relativo)
+            $p = Join-Path $script:raiz $Relativo
+            if (-not (Test-Path -LiteralPath $p)) { return "" }
+            return [IO.File]::ReadAllText($p)
+        }
+    }
+
+    It "nenhum doc do canon repete a politica antiga de checkpoint" {
+        $achados = New-Object System.Collections.Generic.List[string]
+        foreach ($p in $script:proibidos) {
+            $txt = Get-TextoCanon $p.Arquivo
+            $txt.Length | Should -BeGreaterThan 200 -Because "anti-vacuidade: $($p.Arquivo) tem que existir e ter conteudo"
+            if ($txt -match $p.Regex) { $achados.Add("$($p.Arquivo): $($p.Era)") }
+        }
+        ($achados -join "`n") | Should -BeNullOrEmpty -Because "a politica antiga voltou"
+    }
+
+    It "o loop, o template do CLAUDE.md e a R5 dizem que so o operador inicia checkpoint" {
+        foreach ($a in @('v2\loops\checkpoint.md', 'templates\CLAUDE.template.md', '01_REGRAS_INEGOCIAVEIS.md')) {
+            Get-TextoCanon $a | Should -Match '(?i)s. o operador inicia checkpoint' -Because "$a tem que dizer de quem e a decisao"
+        }
     }
 }

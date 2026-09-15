@@ -9,8 +9,11 @@
 # (CONSTITUICAO Sec. 6): le a ultima `usage` que o harness gravou no transcript e avisa o agente
 # (additionalContext) e o operador (systemMessage) quando passa dos limiares.
 #
-# NAO bloqueia. Bloqueio em contexto vivo vira escape rotineiro, e escape rotineiro mata o
-# sinal -- foi o que o teto do CONTEXT.md provou. O que ele faz e nao deixar o agente NAO SABER.
+# NAO bloqueia e NAO ordena. Bloqueio em contexto vivo vira escape rotineiro, e escape rotineiro
+# mata o sinal -- foi o que o teto do CONTEXT.md provou. Ordem tambem nao (6.57.0): ate a 6.56.1
+# toda mensagem terminava em "rode checkpoint e encerre em RESET", e o agente obedecia mesmo com a
+# janela INDETERMINADA (244k de uma janela de 1M, 2026-09-14). O que ele faz e nao deixar o agente
+# NAO SABER. Decidir checkpoint e sessao nova e do operador, que ve o painel de contexto.
 #
 # Le por CAUDA (FileStream nos ultimos 256 KB): transcript real tem 5-8 MB e este hook roda a
 # CADA tool call. Get-Content inteiro aqui seria custo linear no tamanho da sessao, pago a cada
@@ -42,6 +45,7 @@
 # Quem fala com quem: o AGENTE sempre (additionalContext) -- ele nao ve painel de contexto, e foi
 # um agente que NAO SABIA que produziu a sessao de 610k. O OPERADOR so com PERCUS_CTX_OPERADOR=1:
 # ele ve o contexto no painel do VSCode e dispara o checkpoint na mao (decisao dele, 2026-09-12).
+# Nas duas mensagens o hook so INFORMA: checkpoint e sessao nova sao decisao dele (2026-09-14).
 # Escape: PERCUS_SKIP_CONTEXT_BUDGET=1 (o geral PERCUS_HOOKS_DISABLED e tratado no wrapper).
 # Falha graciosa: qualquer erro -> exit 0.
 
@@ -265,16 +269,16 @@ try {
         }
     }
     if ($condDias) {
-        $partes.Add("Este transcript foi iniciado ha $dias dias -- e uma sessao retomada/velha. Nao continue nela: abra sessao nova e cole o bloco de retomada do HANDOFF.")
+        $partes.Add("Este transcript foi iniciado ha $dias dias -- e uma sessao retomada/velha.")
     }
-    # A linha de acao tambem nao pode reafirmar o denominador que a 1a frase acabou de negar: dizer
-    # "eu nao sei a janela" e depois "resume em janela ~200k falha" e a certeza falsa de volta pela
-    # porta dos fundos (finding R11, 5a rodada).
-    if ($janelaIncerta) {
-        $partes.Add("Acao: rode percus-review:checkpoint e encerre em RESET (sessao nova + bloco de retomada). Checkpoint escreve arquivos; so o reset salva contexto.")
-    } else {
-        $partes.Add("Acao: rode percus-review:checkpoint e encerre em RESET (sessao nova + bloco de retomada). Checkpoint escreve arquivos; so o reset salva contexto. Acima de ~${kWarn}k um resume futuro em janela ~${kJanela}k falha.")
-    }
+    # SO INFORMA (decisao do operador, 2026-09-14). Ate a 6.56.1 aqui havia "Acao: rode
+    # percus-review:checkpoint e encerre em RESET" em TODO aviso, e a idade do transcript mandava
+    # "Nao continue nela: abra sessao nova". Com a janela INDETERMINADA o hook dizia que nao sabia se
+    # a sessao estava perto do teto e ordenava reset na frase seguinte. Medido: claude-opus-5[1m] a
+    # 244k (26% de 1M) fez checkpoint e mandou o operador abrir sessao nova sem ele pedir. A mesma
+    # frase fecha todos os caminhos (aviso, duro, indeterminada, dias) porque o agente repete o que
+    # le (licao da 6.52.0). Paridade com o .sh: mude os dois juntos.
+    $partes.Add("Isto e so informacao: decidir checkpoint ou sessao nova e do operador. Voce NAO inicia checkpoint nem manda abrir sessao nova por conta propria; no maximo mencione estes numeros ao operador uma vez.")
     $msgAgente = ($partes -join ' ')
     # O operador ve o contexto no painel do proprio VSCode e dispara o checkpoint na mao (decisao
     # dele, 2026-09-12) -- o aviso a ele era ruido duplicado. O aviso ao AGENTE fica: o agente nao
@@ -289,7 +293,8 @@ try {
         # ACABOU de declarar desconhecida ("105% da janela"), e o teste do agente nao pega isso
         # porque e outra mensagem (finding R11, 5a rodada)
         $pctTxt = if ($janelaIncerta) { "janela indeterminada" } else { "${pct}% da janela" }
-        $msgOperador = "[percus:hook context-budget-guard] contexto ~${k}k tokens ($pctTxt). Hora de checkpoint + sessao nova (veja o aviso ao agente)."
+        # informa e deixa a decisao com ele: "Hora de checkpoint" empurrava a mesma ordem que saiu do aviso ao agente (2026-09-14)
+        $msgOperador = "[percus:hook context-budget-guard] contexto ~${k}k tokens ($pctTxt). Checkpoint e sessao nova ficam a seu criterio."
     }
 
     # ---- log fail-loud (prova que disparou) ----

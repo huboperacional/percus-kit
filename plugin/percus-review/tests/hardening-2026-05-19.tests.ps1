@@ -66,7 +66,11 @@ Describe "Hardening 2026-05-19 — incidentes 2 (wrapper auto-edit) + 3 (hook cr
                 & git -C $repoB init -q
                 $reviewsB = Join-Path $repoB ".deepseek/reviews"
                 New-Item -ItemType Directory -Force -Path $reviewsB | Out-Null
-                "{}" | Out-File -Encoding utf8 -FilePath (Join-Path $reviewsB "fresh.jsonl")
+                # Conteudo de review VALIDO (FR-015, 2026-09-14): o hook passou a classificar o
+                # marcador pelo conteudo, nao so pela existencia/mtime -- "{}" nao tem
+                # findings nem placeholder e seria classificado invalido, quebrando este teste
+                # que verifica outra coisa (resolucao de repo target cross-repo).
+                '{"findings":"Sem findings criticos."}' | Out-File -Encoding utf8 -FilePath (Join-Path $reviewsB "fresh.jsonl")
                 $cmd = "git -C `"$repoB`" commit -m teste"
                 $rc = Invoke-Hook -command $cmd
                 $rc | Should -Be 0 -Because "commit em repoB com review fresco em repoB deve ser LIBERADO"
