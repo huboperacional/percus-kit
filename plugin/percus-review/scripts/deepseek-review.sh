@@ -86,22 +86,30 @@ done
 
 # === TIMEOUT E BACKOFF (2026-09-14, FR-001/002): flag > env > padrao ===
 e_inteiro() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; return 0; }
+# Fix round 1 (2026-09-14, achado da review): "08"/"09" sao digitos validos pra e_inteiro mas o
+# bash avalia -lt/-ge em contexto aritmetico, onde zero a esquerda vira octal -- "08" nao e octal
+# valido (digito 8) e o bash solta "value too great for base" no stderr, alem de a comparacao
+# falhar por acidente. 10#$v forca base 10 antes de qualquer comparacao/atribuicao.
 config_de_env() {  # $1 nome da var, $2 padrao, $3 minimo
-    local v="${!1:-}"
+    local v="${!1:-}" n
     if [[ -z "$v" ]]; then printf '%s' "$2"; return 0; fi
-    if e_inteiro "$v" && [[ "$v" -ge "$3" ]]; then printf '%s' "$v"; return 0; fi
+    if e_inteiro "$v"; then
+        n=$((10#$v))
+        if [[ "$n" -ge "$3" ]]; then printf '%s' "$n"; return 0; fi
+    fi
     echo "[deepseek-review] WARN: $1='$v' invalido -- usando padrao $2." >&2
     printf '%s' "$2"
 }
 if [[ -n "$TIMEOUT_ARG" ]]; then
-    if ! e_inteiro "$TIMEOUT_ARG" || [[ "$TIMEOUT_ARG" -lt 1 ]]; then echo "[deepseek-review] ERRO: --timeout precisa ser inteiro >= 1." >&2; exit 2; fi
-    TIMEOUT_S="$TIMEOUT_ARG"
+    if ! e_inteiro "$TIMEOUT_ARG"; then echo "[deepseek-review] ERRO: --timeout precisa ser inteiro >= 1." >&2; exit 2; fi
+    TIMEOUT_S=$((10#$TIMEOUT_ARG))
+    if [[ "$TIMEOUT_S" -lt 1 ]]; then echo "[deepseek-review] ERRO: --timeout precisa ser inteiro >= 1." >&2; exit 2; fi
 else
     TIMEOUT_S="$(config_de_env PERCUS_DEEPSEEK_TIMEOUT_S 180 1)"
 fi
 if [[ -n "$BACKOFF_ARG" ]]; then
     if ! e_inteiro "$BACKOFF_ARG"; then echo "[deepseek-review] ERRO: --backoff precisa ser inteiro >= 0." >&2; exit 2; fi
-    BACKOFF_S="$BACKOFF_ARG"
+    BACKOFF_S=$((10#$BACKOFF_ARG))
 else
     BACKOFF_S="$(config_de_env PERCUS_DEEPSEEK_BACKOFF_S 5 0)"
 fi
@@ -245,7 +253,7 @@ tentativa() {  # define TENT_VEREDITO (ok|retry|fatal) e TENT_CAUSA
         -H "Authorization: Bearer ${DEEPSEEK_API_KEY}" \
         -H "Content-Type: application/json; charset=utf-8" \
         --data-binary @- 2>"$CURL_ERR")" || rc=$?
-    status="$(printf '%s' "$status" | tr -d '\r')"
+    status="$(printf '%s' "$status" | tr -d '\r' || true)"
     if [[ $rc -ne 0 ]]; then
         TENT_VEREDITO=retry
         if [[ $rc -eq 28 ]]; then TENT_CAUSA="erro de rede/timeout: timeout de ${TIMEOUT_S}s"

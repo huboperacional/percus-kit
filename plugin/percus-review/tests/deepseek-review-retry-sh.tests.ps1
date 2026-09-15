@@ -172,6 +172,25 @@ Describe "deepseek-review.sh -- timeout, retry e provedor indisponivel" {
         $r.Requisicoes | Should -Be 0
     }
 
+    # Fix round 1 (2026-09-14, achado da review): "08"/"09" sao digitos validos mas o bash avalia
+    # -lt/-ge em contexto aritmetico, onde zero a esquerda vira octal invalido e solta "value too
+    # great for base" no stderr, alem de a comparacao falhar por acidente (aceita o que devia
+    # recusar, recusa o que devia aceitar). 10#$v normaliza antes de comparar/atribuir.
+    It "--timeout 08: trata como 8, sem erro aritmetico do bash no stderr" {
+        $r = Invoke-ComRoteiro -Roteiro @((New-RespostaFalsa -Corpo $script:ok)) -ArgsExtra @('--timeout', '08', '--backoff', '1')
+        $r.Code | Should -Be 0 -Because $r.Err
+        $r.Err | Should -Match ([regex]::Escape('[deepseek-review] timeout=8s backoff=1s'))
+        $r.Err | Should -Not -Match 'value too great for base'
+    }
+
+    It "env PERCUS_DEEPSEEK_TIMEOUT_S=08: timeout=8s, sem WARN e sem erro aritmetico do bash" {
+        $r = Invoke-ComRoteiro -Roteiro @((New-RespostaFalsa -Corpo $script:ok)) -ArgsExtra @() -Env @{ PERCUS_DEEPSEEK_TIMEOUT_S = '08' }
+        $r.Code | Should -Be 0 -Because $r.Err
+        $r.Err | Should -Match ([regex]::Escape('[deepseek-review] timeout=8s backoff=5s'))
+        $r.Err | Should -Not -Match 'WARN: PERCUS_DEEPSEEK_TIMEOUT_S'
+        $r.Err | Should -Not -Match 'value too great for base'
+    }
+
     It "emenda FR-011: repo sem commit (diff HEAD vazio) grava latest.jsonl mas NUNCA d-e3b0c44298fc.jsonl no .sh" {
         $r = Invoke-ComRoteiro -Roteiro @((New-RespostaFalsa -Corpo $script:ok)) -SemCommit
         $r.Code | Should -Be 0 -Because $r.Err
