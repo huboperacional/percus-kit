@@ -129,4 +129,26 @@ Describe "a" {
         } finally { Remove-Item Env:PERCUS_HOOKS_DISABLED -ErrorAction SilentlyContinue }
         $r.Exit | Should -Be 1 -Because $r.Saida
     }
+
+    It "-ManterEnv aceita valor unico com virgula (forma que -File entrega) e preserva as duas variaveis" {
+        $d = New-DirTeste
+        $f = Join-Path $d "a.tests.ps1"
+        @'
+Describe "a" {
+    It "nao ve PERCUS_A nem PERCUS_B do pai" {
+        $env:PERCUS_A | Should -BeNullOrEmpty
+        $env:PERCUS_B | Should -BeNullOrEmpty
+    }
+}
+'@ | Set-Content -Path $f -Encoding utf8
+        $env:PERCUS_A = "1"
+        $env:PERCUS_B = "1"
+        try {
+            $r = Invoke-RodarSuite -Dir $d -ArgsExtra @("-Processos", "1", "-ManterEnv", "PERCUS_A,PERCUS_B")
+        } finally {
+            Remove-Item Env:PERCUS_A -ErrorAction SilentlyContinue
+            Remove-Item Env:PERCUS_B -ErrorAction SilentlyContinue
+        }
+        $r.Exit | Should -Be 1 -Because $r.Saida
+    }
 }

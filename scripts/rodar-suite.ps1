@@ -49,6 +49,14 @@ param(
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# `pwsh -File rodar-suite.ps1 -ManterEnv A,B` chega como UM elemento so ("A,B"), nao dois --
+# medido 2026-09-15 (revisao da Fase 2 T13). Aceita tambem essa forma: valor unico com virgula
+# vira split por virgula + trim. Lista ja com 2+ elementos (`-ManterEnv A,B` via `&`/`-Command`)
+# passa direto.
+if ($ManterEnv.Count -eq 1 -and $ManterEnv[0] -match ',') {
+    $ManterEnv = @($ManterEnv[0].Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
 $raiz = Split-Path -Parent $PSScriptRoot
 Push-Location $raiz
 try {

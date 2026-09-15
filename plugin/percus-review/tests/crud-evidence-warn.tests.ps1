@@ -3,7 +3,7 @@
 #
 # Hook PreToolUse:Bash, WARN-ONLY (exit 0 sempre — nunca bloqueia).
 # Quando o staged diff de PLANO.md/HANDOFF.md ADICIONA uma feature em [5-T] e o
-# comando `git commit` NAO contem o trailer `CRUD-verified: YYYY-MM-DD`, avisa
+# comando `git commit` NAO contem o trailer `CRUD-verified: YYYY-MM-DD HH:MM`, avisa
 # (stderr + log .deepseek/crud-warn.log) que o ciclo F5 (R1) precisa ser confirmado.
 #
 # Sem promocao automatica warn->block (decisao do conselho registrada no plano

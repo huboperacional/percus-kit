@@ -13,8 +13,12 @@
 
   Saida de sucesso pelo pipeline: `$r = & registrar-review.ps1 ...` captura `hash=<h> latest=<c> d=<c>`.
   Embutido, nao altera [Console]::OutputEncoding do chamador; com -File, o stdout sai em UTF-8.
+  Chamado embutido via `-Command "& '...'"` num console que nao esta em UTF-8, a saida sai na
+  code page do console (nao em UTF-8) -- forma nao coberta pelo processo proprio acima.
 
-  Exit: 0 ok | 1 ambiente/hash vazio | 2 entrada recusada | 3 falha de gravacao (desfeita).
+  Exit: 0 ok | 1 ambiente/hash vazio | 2 entrada recusada | 3 falha de gravacao (restaura o
+  conteudo anterior do d-<hash>.jsonl pre-existente, remove o que nao existia antes, ou -- se a
+  restauracao tambem falhar -- avisa onde ficou o backup, sem apagar nada).
 
 .EXAMPLE
   & registrar-review.ps1 -Arquivo findings.txt -Canal cross-claude -Modelo claude-sonnet-5

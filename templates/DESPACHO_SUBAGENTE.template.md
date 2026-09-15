@@ -31,12 +31,13 @@ Contratos:
 3. Commit: `-m` em ASPAS SIMPLES; nunca crase nem `$nome` em `-m` com aspas duplas.
    Depois de commitar, confira `git log -1 --format=%B`. Amend é barrado pelo hook.
 4. R11 uma vez sobre o diff staged final (o hook aceita a review pelo hash de `git diff HEAD`);
-   trilhos P e M: wrapper com `-NoFactCheck` (`.sh`: `--no-fact-check`). Mudou arquivo depois da
+   trilhos P e M: wrapper com `-NoFactCheck` (`.sh`: `--no-fact-check`) — esse switch é do wrapper
+   `scripts/percus-review-auto.ps1`/`.sh`; o cliente `plugin/percus-review/scripts/deepseek-review.ps1`
+   não tem esse switch (chame-o sem ele). Mudou arquivo depois da
    review → review de novo. Se o wrapper emitir `__PERCUS_NEEDS_CROSS_CLAUDE__` ou reportar
    exit 4 do cliente (DeepSeek indisponível): PARE, não commite, reporte NEEDS_CONTEXT com o caminho do
    diff — o controlador faz a review Cross-Claude e registra com `registrar-review`.
    Achado crítico/importante aberto depois de 2 rodadas (P/M): pare e reporte; nunca commite.
-   Antes de aceitar o relatório, o controlador roda `scripts/sdd-conferir.ps1 -Base {sha-base} -Head {sha-final}` no worktree (uma chamada, uma linha por checagem) em vez das 7 conferências manuais de fim de tarefa.
 5. NUNCA dispare subagentes. Não faça merge nem push.
 6. Grave o relatório em {caminho absoluto}\{tarefa}-report.md ANTES de responder (limite de API
    já derrubou agente na mensagem final). Até ~150 linhas; evidência bruta (log de suíte, diff)
@@ -46,6 +47,10 @@ Contratos:
 Responda só com (até 15 linhas): Status (DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT),
 commits (sha + assunto), resumo de testes em 1 linha, preocupações, caminho do relatório.
 ```
+
+> Ação do controlador, fora do despacho ao implementador: antes de aceitar o relatório, rode
+> `scripts/sdd-conferir.ps1 -Base {sha-base} -Head {sha-final}` no worktree (uma chamada, uma linha
+> por checagem) em vez das 7 conferências manuais de fim de tarefa.
 
 ## Revisor (variação)
 
