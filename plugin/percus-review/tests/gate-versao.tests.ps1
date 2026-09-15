@@ -26,8 +26,12 @@ Describe "percus-gate.sh — bump de versao do kit" {
         function Cabecalho { param([string]$V) return "# Canon`n`n**Versao canonica em ``x``:** ``$V``  `n" }
 
         # Repo com CANON_VERSION.md commitado e ref origin/main apontando pra esse commit.
+        # -Branch fixa o branch atual: `git init` usa o init.defaultBranch da maquina (pode
+        # ser master), e o gate trata main/master/HEAD destacado diferente de branch de
+        # feature. Por isso a fixture faz `checkout -B` explicito em todo caso.
+        # -Branch "" deixa o HEAD destacado.
         function New-CanonRepo {
-            param([string]$Versao = "6.35.0", [switch]$SemCanon, [switch]$SemOrigin)
+            param([string]$Versao = "6.35.0", [switch]$SemCanon, [switch]$SemOrigin, [string]$Branch = "main")
             $dir = Join-Path ([IO.Path]::GetTempPath()) ("gate-versao-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
             New-Item -ItemType Directory -Path $dir -Force | Out-Null
             [void]$script:temps.Add($dir)
@@ -45,6 +49,11 @@ Describe "percus-gate.sh — bump de versao do kit" {
             & git -C $dir commit -q -m base 2>&1 | Out-Null
             if (-not $SemOrigin) {
                 & git -C $dir update-ref refs/remotes/origin/main HEAD 2>&1 | Out-Null
+            }
+            if ($Branch) {
+                & git -C $dir checkout -q -B $Branch 2>&1 | Out-Null
+            } else {
+                & git -C $dir checkout -q --detach 2>&1 | Out-Null
             }
             return $dir
         }
@@ -86,10 +95,68 @@ Describe "percus-gate.sh — bump de versao do kit" {
     }
 
     It "BARRA mudanca em plugin/ sem bump" {
-        $repo = New-CanonRepo -Versao "6.35.0"
+        $repo = New-CanonRepo -Versao "6.35.0" -Branch "main"
         Add-Staged -Repo $repo -Caminho "plugin/percus-review/hooks/x.ps1"
 
-        (Invoke-Gate -Repo $repo).Exit | Should -Be 1
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "no branch principal a regra exige avanco. Saida: $($r.Saida)"
+        # A mensagem ensina a saida legitima, para ninguem bumpar dentro de branch de feature.
+        $r.Saida | Should -Match ([regex]::Escape('(em branch de feature, igualdade e aceita: o numero e atribuido no merge)'))
+    }
+
+    It "BARRA mudanca sem bump em master (tambem branch principal)" {
+        $repo = New-CanonRepo -Versao "6.35.0" -Branch "master"
+        Add-Staged -Repo $repo -Caminho "plugin/percus-review/hooks/x.ps1"
+
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "master e branch principal. Saida: $($r.Saida)"
+    }
+
+    It "PASSA em branch de feature com mudanca em plugin/ na MESMA versao de origin/main" {
+        # O numero da versao e atribuido no merge; exigir bump dentro do branch faz
+        # branches paralelos brigarem pelo mesmo numero e conflitarem no CANON_VERSION.md.
+        $repo = New-CanonRepo -Versao "6.35.0" -Branch "feat-x"
+        Add-Staged -Repo $repo -Caminho "plugin/percus-review/hooks/x.ps1"
+
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 0 -Because "igualdade e aceita fora do branch principal. Saida: $($r.Saida)"
+    }
+
+    It "BARRA em branch de feature com versao local MENOR que origin/main" {
+        $repo = New-CanonRepo -Versao "6.36.0" -Branch "feat-x"
+        Set-Versao -Repo $repo -V "6.35.0"
+        Add-Staged -Repo $repo -Caminho "plugin/percus-review/hooks/x.ps1"
+
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "versao atrasada continua proibida em qualquer branch. Saida: $($r.Saida)"
+        $r.Saida | Should -Match '6\.35\.0'
+    }
+
+    It "BARRA em branch de feature quando CANON_VERSION.md saiu do indice" {
+        $repo = New-CanonRepo -Versao "6.35.0" -Branch "feat-x"
+        Add-Staged -Repo $repo -Caminho "plugin/percus-review/hooks/x.ps1"
+        & git -C $repo rm --cached -q -- CANON_VERSION.md 2>&1 | Out-Null
+
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "a igualdade nao abre a porta do arquivo fora do indice. Saida: $($r.Saida)"
+    }
+
+    It "BARRA em branch de feature quando CANON_VERSION.md e REMOVIDO no proprio commit" {
+        $repo = New-CanonRepo -Versao "6.35.0" -Branch "feat-x"
+        Add-Staged -Repo $repo -Caminho "plugin/percus-review/hooks/x.ps1"
+        & git -C $repo rm -q -- CANON_VERSION.md 2>&1 | Out-Null
+
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "remover o arquivo de versao continua barrado. Saida: $($r.Saida)"
+    }
+
+    It "BARRA com HEAD destacado e mudanca sem bump" {
+        # HEAD destacado nao tem nome de branch para provar que e feature: fica na regra estrita.
+        $repo = New-CanonRepo -Versao "6.35.0" -Branch ""
+        Add-Staged -Repo $repo -Caminho "plugin/percus-review/hooks/x.ps1"
+
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "HEAD destacado segue a regra do branch principal. Saida: $($r.Saida)"
     }
 
     It "BARRA mudanca em documento numerado do canon sem bump" {
