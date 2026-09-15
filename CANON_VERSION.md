@@ -39,6 +39,21 @@
   remove do `HKCU:\Environment` os `PERCUS_TESTE_*` cujo valor contém `percus-ren-` (vazamento de processo
   morto no meio de um teste). Lock por repositório: descartado (sem incidente medido). skill muda: não.
 
+- **Fase 2, Lote A (T1+T2, F-a e F-e) — causa por código de saída nos wrappers do DeepSeek**
+  (branch `worktree-fase2`): `scripts/percus-review-auto.ps1`/`.sh` — `Get-CausaFalhaDeepSeek`/
+  `causa_falha_deepseek` passam a distinguir exit 3 (`resposta inutilizável do DeepSeek: vazia,
+  cortada ou finish_reason inesperado`) e exit 1 (`erro não recuperável do DeepSeek: chave, crédito
+  ou requisição`), além do exit 4 já existente; o sufixo fixo "provável outage/API key inválida" sai
+  dos três pontos de chamada (deepseek/dual/council) e dos marcadores `__PERCUS_NEEDS_CROSS_CLAUDE__`
+  que citavam "DeepSeek indisponível". `scripts/percus-milestone-review-auto.ps1`/`.sh` — mesma
+  tabela de causas (função copiada, contrato preservado pelo teste em ambos os lados); o exit do
+  cliente é guardado em variável antes de qualquer outro comando; resolução do `registrar-review`
+  igual ao `percus-review-auto` (plugin instalado, senão cópia do kit); o marcador só ganha a
+  instrução de registro se houver diff pendente (`git diff HEAD --quiet`), senão emite
+  "Marco sem diff pendente: nao ha marcador R11 a registrar; guarde os findings no relatorio do
+  marco.". Testes: `New-PluginFalso` extraída para `tests/_plugin-review-falso.ps1` (reuso, sem
+  mudar comportamento) e novo `tests/percus-milestone-review-auto.tests.ps1`. skill muda: não.
+
 ---
 
 ## Changelog v6.58.0 — 2026-09-15

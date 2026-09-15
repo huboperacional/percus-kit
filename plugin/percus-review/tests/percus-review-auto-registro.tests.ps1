@@ -7,9 +7,12 @@ BeforeDiscovery {
     $script:casosPs1 = @(
         @{ Decisao = 'deepseek';     DsExit = 4; Placeholder = $true;  Motivo = 'retry' }
         @{ Decisao = 'deepseek';     DsExit = 1; Placeholder = $true;  Motivo = 'exit1' }
+        @{ Decisao = 'deepseek';     DsExit = 3; Placeholder = $true;  Motivo = 'exit3' }
         @{ Decisao = 'dual';         DsExit = 4; Placeholder = $true;  Motivo = 'retry' }
+        @{ Decisao = 'dual';         DsExit = 3; Placeholder = $true;  Motivo = 'exit3' }
         @{ Decisao = 'dual';         DsExit = 0; Placeholder = $false; Motivo = '' }
         @{ Decisao = 'council';      DsExit = 4; Placeholder = $true;  Motivo = 'retry' }
+        @{ Decisao = 'council';      DsExit = 1; Placeholder = $true;  Motivo = 'exit1' }
         @{ Decisao = 'cross-claude'; DsExit = 0; Placeholder = $true;  Motivo = '' }
     )
 }
@@ -17,6 +20,7 @@ BeforeDiscovery {
 Describe "percus-review-auto -- exit 4 e instrucao de registro" {
     BeforeAll {
         . (Join-Path $PSScriptRoot '_resolver-bash.ps1')
+        . (Join-Path $PSScriptRoot '_plugin-review-falso.ps1')
         $kit = (Resolve-Path (Join-Path (Join-Path $PSScriptRoot '..') '..')).Path
         $kit = Split-Path $kit -Parent
         $script:wrapPs1 = Join-Path (Join-Path $kit 'scripts') 'percus-review-auto.ps1'
@@ -28,24 +32,8 @@ Describe "percus-review-auto -- exit 4 e instrucao de registro" {
         $script:tmpBase = Join-Path ([IO.Path]::GetTempPath()) ("percus-auto-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
         New-Item -ItemType Directory -Force -Path $script:tmpBase | Out-Null
         $script:textoRetry = 'provedor indispon' + [char]0x00ED + 'vel ap' + [char]0x00F3 + 's retry'
-
-        function New-PluginFalso {
-            param([switch]$SemRegistrar)
-            $cfg = Join-Path $script:tmpBase ("cfg-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
-            $ver = $cfg
-            foreach ($p in @('plugins', 'cache', 'percus-tools', 'percus-review', '9.9.9', 'scripts')) { $ver = Join-Path $ver $p }
-            New-Item -ItemType Directory -Force -Path $ver | Out-Null
-            [IO.File]::WriteAllText((Join-Path (Split-Path $ver -Parent) 'plugin.json'), '{"version":"9.9.9"}', $script:u8)
-            [IO.File]::WriteAllText((Join-Path $ver 'review-router.ps1'), "param([switch]`$Json, [string]`$Base)`nWrite-Output `$env:FAKE_ROUTER_JSON`n", $script:u8bom)
-            [IO.File]::WriteAllText((Join-Path $ver 'deepseek-review.ps1'), "param([string]`$Base)`n[Console]::Error.WriteLine('[deepseek-review] tentativa 1 falhou: HTTP 503. Nova tentativa em 1s.')`nWrite-Output 'Sem findings criticos.'`nexit ([int]`$env:FAKE_DS_EXIT)`n", $script:u8bom)
-            [IO.File]::WriteAllText((Join-Path $ver 'review-router.sh'), "#!/usr/bin/env bash`nprintf '%s\n' `"`$FAKE_ROUTER_JSON`"`n", $script:u8)
-            [IO.File]::WriteAllText((Join-Path $ver 'deepseek-review.sh'), "#!/usr/bin/env bash`necho '[deepseek-review] tentativa 1 falhou: HTTP 503. Nova tentativa em 1s.' >&2`necho 'Sem findings criticos.'`nexit `"`${FAKE_DS_EXIT:-0}`"`n", $script:u8)
-            if (-not $SemRegistrar) {
-                [IO.File]::WriteAllText((Join-Path $ver 'registrar-review.ps1'), "# falso`n", $script:u8bom)
-                [IO.File]::WriteAllText((Join-Path $ver 'registrar-review.sh'), "#!/usr/bin/env bash`n", $script:u8)
-            }
-            return [pscustomobject]@{ Cfg = $cfg; Scripts = $ver }
-        }
+        $script:textoRespostaInutil = 'resposta inutiliz' + [char]0x00E1 + 'vel do DeepSeek'
+        $script:textoNaoRecuperavel = 'erro n' + [char]0x00E3 + 'o recuper' + [char]0x00E1 + 'vel do DeepSeek'
 
         function Invoke-Wrapper {
             param([ValidateSet('ps1','sh')][string]$Rt, $Plugin, [string]$Decisao, [int]$DsExit, [string]$PsHost = 'pwsh')
@@ -78,7 +66,7 @@ Describe "percus-review-auto -- exit 4 e instrucao de registro" {
     It "<Rt> | decision=<Decisao> | deepseek exit <DsExit>" -ForEach @(
         foreach ($c in $script:casosPs1) { foreach ($rt in @('ps1', 'sh')) { $x = $c.Clone(); $x.Rt = $rt; $x } }
     ) {
-        $pl = New-PluginFalso
+        $pl = New-PluginFalso -TmpBase $script:tmpBase
         $r = Invoke-Wrapper -Rt $Rt -Plugin $pl -Decisao $Decisao -DsExit $DsExit
         $r.Code | Should -Be 0 -Because $r.Err
         $r.Marcas.Count | Should -BeGreaterThan 0 -Because "toda rota desta tabela pede o subagente. stderr: $($r.Err)"
@@ -98,8 +86,19 @@ Describe "percus-review-auto -- exit 4 e instrucao de registro" {
         if ($Placeholder) {
             $r.Placeholder | Should -Not -BeNullOrEmpty
             $r.Placeholder.deferred | Should -BeTrue
-            if ($Motivo -eq 'retry') { $r.Placeholder.reason | Should -Match ([regex]::Escape($script:textoRetry)) }
-            if ($Motivo -eq 'exit1') { $r.Placeholder.reason | Should -Match '\(exit 1\)' }
+            if ($Motivo -eq 'retry') {
+                $r.Placeholder.reason | Should -Match ([regex]::Escape($script:textoRetry))
+                $r.Placeholder.reason | Should -Not -Match 'outage'
+            }
+            if ($Motivo -eq 'exit1') {
+                $r.Placeholder.reason | Should -Match ([regex]::Escape($script:textoNaoRecuperavel))
+                $r.Placeholder.reason | Should -Match '\(exit 1\)'
+                $r.Placeholder.reason | Should -Not -Match 'outage'
+            }
+            if ($Motivo -eq 'exit3') {
+                $r.Placeholder.reason | Should -Match ([regex]::Escape($script:textoRespostaInutil))
+                $r.Placeholder.reason | Should -Not -Match 'outage'
+            }
         } else {
             $r.Placeholder | Should -BeNullOrEmpty
         }
@@ -114,7 +113,7 @@ Describe "percus-review-auto -- exit 4 e instrucao de registro" {
             Set-ItResult -Skipped -Because "powershell.exe nao encontrado nesta maquina"
             return
         }
-        $pl = New-PluginFalso
+        $pl = New-PluginFalso -TmpBase $script:tmpBase
         $r = Invoke-Wrapper -Rt 'ps1' -Plugin $pl -Decisao 'deepseek' -DsExit 4 -PsHost 'powershell.exe'
         $r.Code | Should -Be 0 -Because $r.Err
         $r.Marcas.Count | Should -BeGreaterThan 0 -Because "toda rota desta tabela pede o subagente. stderr: $($r.Err)"
@@ -133,7 +132,7 @@ Describe "percus-review-auto -- exit 4 e instrucao de registro" {
     }
 
     It "<Rt>: plugin instalado sem registrar-review -> marcador aponta a copia do kit" -ForEach @(@{ Rt = 'ps1' }, @{ Rt = 'sh' }) {
-        $pl = New-PluginFalso -SemRegistrar
+        $pl = New-PluginFalso -TmpBase $script:tmpBase -SemRegistrar
         $r = Invoke-Wrapper -Rt $Rt -Plugin $pl -Decisao 'cross-claude' -DsExit 0
         $esperado = $script:registrarKitPs1
         if ($Rt -eq 'sh') { $esperado = ConvertTo-CaminhoBash ([IO.Path]::ChangeExtension($script:registrarKitPs1, '.sh')) }

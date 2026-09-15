@@ -55,24 +55,55 @@ if (-not $current) {
 
 $deepseekScript = Join-Path $current.FullName "scripts\deepseek-review.ps1"
 
+# Comando de registro da review Cross-Claude (FR-008): mesma resolucao do
+# percus-review-auto.ps1 -- prefere a copia do plugin instalado; cache ainda sem o
+# comando (plugin de versao anterior) -> copia do kit, que e onde este wrapper mora.
+$registrarScript = Join-Path $current.FullName "scripts\registrar-review.ps1"
+if (-not (Test-Path -LiteralPath $registrarScript)) {
+    $registrarKit = Join-Path (Split-Path $PSScriptRoot -Parent) "plugin\percus-review\scripts\registrar-review.ps1"
+    if (Test-Path -LiteralPath $registrarKit) { $registrarScript = $registrarKit }
+}
+$instrucaoRegistro = " Depois que o subagente responder, grave os findings dele num arquivo FORA do repo (ex.: em `$env:TEMP; nunca dentro do repo, senao muda o git diff HEAD e o hash registrado deixa de bater) e registre com registrar-review: & '$registrarScript' -Arquivo '<arquivo-dos-findings>' -Canal cross-claude -Modelo '<modelo-do-subagente>'. Pela ferramenta Bash, chame assim: pwsh -NoProfile -File '$registrarScript' -Arquivo '<arquivo-dos-findings>' -Canal cross-claude -Modelo '<modelo-do-subagente>'. Sem esse registro o commit so passa pelo placeholder de 5 min."
+
+function Get-CausaFalhaDeepSeek {
+    param([int]$Codigo)
+    if ($Codigo -eq 4) { return ('provedor indispon' + [char]0x00ED + 'vel ap' + [char]0x00F3 + 's retry (exit 4)') }
+    if ($Codigo -eq 3) { return ('resposta inutiliz' + [char]0x00E1 + 'vel do DeepSeek: vazia, cortada ou finish_reason inesperado (exit 3)') }
+    if ($Codigo -eq 1) { return ('erro n' + [char]0x00E3 + 'o recuper' + [char]0x00E1 + 'vel do DeepSeek: chave, cr' + [char]0x00E9 + 'dito ou requisi' + [char]0x00E7 + [char]0x00E3 + 'o (exit 1)') }
+    return "DeepSeek falhou (exit $Codigo)"
+}
+
+# Marcador so ganha a linha do registrar se houver diff pendente (git diff HEAD --quiet
+# devolve <>0 quando ha diferenca). Arvore limpa apos o merge do marco nao tem o que
+# registrar via hash de commit -- os findings vao no relatorio do marco, nao no marcador.
+$temDiff = $true
+try {
+    & git diff HEAD --quiet 2>$null
+    $temDiff = ($LASTEXITCODE -ne 0)
+} catch {
+    $temDiff = $true
+}
+$sufixoMarcador = if ($temDiff) { $instrucaoRegistro } else { " Marco sem diff pendente: nao ha marcador R11 a registrar; guarde os findings no relatorio do marco." }
+
 # === Marco e SEMPRE dual: DeepSeek + Sonnet (agente faz Sonnet via Agent tool) ===
 [Console]::Error.WriteLine("[percus-milestone-auto] base=$Base, escopo do marco")
 & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript -Base $Base
-if ($LASTEXITCODE -ne 0) {
-    # Mesmo fix do caso "dual" de percus-review-auto.ps1: DeepSeek fora do ar (outage/API
-    # key invalida) nao pode deixar o marco INTEIRO sem registro e sem marker -- marco e
-    # SEMPRE dual, entao este `exit 3` bloqueava 100% dos fechamentos de marco ate a
-    # chave ser restaurada, sem chance de Cross-Claude cobrir sozinho. Grava placeholder
-    # deferred em .deepseek/reviews/latest.jsonl ANTES do marker/sair, mesmo padrao do
-    # caso "cross-claude" de percus-review-auto.
-    [Console]::Error.WriteLine("[percus-milestone-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE) -- registrando placeholder deferred pra nao travar o gate.")
+$dsExit = $LASTEXITCODE
+if ($dsExit -ne 0) {
+    # Mesmo fix do caso "dual" de percus-review-auto.ps1: DeepSeek fora do ar nao pode
+    # deixar o marco INTEIRO sem registro e sem marker -- marco e SEMPRE dual, entao
+    # este `exit 3` bloqueava 100% dos fechamentos de marco ate a chave ser restaurada,
+    # sem chance de Cross-Claude cobrir sozinho. Grava placeholder deferred em
+    # .deepseek/reviews/latest.jsonl ANTES do marker/sair, mesmo padrao do caso
+    # "cross-claude" de percus-review-auto.
+    [Console]::Error.WriteLine("[percus-milestone-auto] ERRO: deepseek-review.ps1 falhou (exit $dsExit) -- registrando placeholder deferred pra nao travar o gate.")
     $reviewDir = ".deepseek\reviews"
     New-Item -ItemType Directory -Path $reviewDir -Force | Out-Null
     $logFile = Join-Path $reviewDir 'latest.jsonl'
     $logTmp  = Join-Path $reviewDir 'latest.jsonl.tmp'
     @{
         deferred    = $true
-        reason      = "decision=milestone-dual (base=$Base), DeepSeek falhou (exit $LASTEXITCODE) -- provavel outage/API key invalida. Registro parcial; Cross-Claude ainda precisa rodar (R11)."
+        reason      = "decision=milestone-dual (base=$Base), $(Get-CausaFalhaDeepSeek $dsExit). Registro parcial; Cross-Claude ainda precisa rodar (R11)."
         decision    = "milestone-dual"
         timestamp   = (Get-Date -Format 'o')
         placeholder = $true
@@ -80,10 +111,10 @@ if ($LASTEXITCODE -ne 0) {
     } | ConvertTo-Json -Compress | Set-Content -Path $logTmp -Encoding UTF8
     Move-Item -Path $logTmp -Destination $logFile -Force
     [Console]::Error.WriteLine("[percus-milestone-auto] placeholder escrito em $logFile (libera hook por TTL)")
-    [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: marco fechado (dual obrigatorio, DeepSeek indisponivel). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt de milestone-review (escopo: $Base..HEAD).")
+    [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: marco fechado (dual obrigatorio, $(Get-CausaFalhaDeepSeek $dsExit)). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt de milestone-review (escopo: $Base..HEAD)." + $sufixoMarcador)
     exit 0
 }
 
-[Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: marco fechado (dual obrigatorio). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt de milestone-review (escopo: $Base..HEAD).")
+[Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: marco fechado (dual obrigatorio). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt de milestone-review (escopo: $Base..HEAD)." + $sufixoMarcador)
 
 exit 0

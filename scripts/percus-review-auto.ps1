@@ -105,6 +105,8 @@ $instrucaoRegistro = " Depois que o subagente responder, grave os findings dele 
 function Get-CausaFalhaDeepSeek {
     param([int]$Codigo)
     if ($Codigo -eq 4) { return ('provedor indispon' + [char]0x00ED + 'vel ap' + [char]0x00F3 + 's retry (exit 4)') }
+    if ($Codigo -eq 3) { return ('resposta inutiliz' + [char]0x00E1 + 'vel do DeepSeek: vazia, cortada ou finish_reason inesperado (exit 3)') }
+    if ($Codigo -eq 1) { return ('erro n' + [char]0x00E3 + 'o recuper' + [char]0x00E1 + 'vel do DeepSeek: chave, cr' + [char]0x00E9 + 'dito ou requisi' + [char]0x00E7 + [char]0x00E3 + 'o (exit 1)') }
     return "DeepSeek falhou (exit $Codigo)"
 }
 
@@ -244,8 +246,8 @@ switch ($decision.decision) {
             # nao-sensiveis. Conselho 3/3 (deepseek+llama+cross-claude, consult 2026-08-05)
             # confirmou: escalar pra Cross-Claude via marker, nao bloquear.
             [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $dsExit) -- registrando placeholder deferred pra não travar o gate.")
-            Write-DeferredReviewPlaceholder -Decision "deepseek" -Reason "decision=deepseek (rota solo), $(Get-CausaFalhaDeepSeek $dsExit) -- provável outage/API key inválida. Sem segunda perna de review por padrão nesta rota; escalado pra Cross-Claude."
-            [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: rota solo (decision=deepseek), DeepSeek indisponível. DEVE dispatchar Sonnet subagent via Agent tool agora com prompt de review R11 (escopo: commit atual)." + $instrucaoRegistro)
+            Write-DeferredReviewPlaceholder -Decision "deepseek" -Reason "decision=deepseek (rota solo), $(Get-CausaFalhaDeepSeek $dsExit). Sem segunda perna de review por padrão nesta rota; escalado pra Cross-Claude."
+            [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: rota solo (decision=deepseek), $(Get-CausaFalhaDeepSeek $dsExit). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt de review R11 (escopo: commit atual)." + $instrucaoRegistro)
             break
         }
         # F3: fact-check pipeline obrigatorio
@@ -278,14 +280,14 @@ switch ($decision.decision) {
         }
         $dsExit = $LASTEXITCODE
         if ($dsExit -ne 0) {
-            # DeepSeek falhou (outage/API key inválida/etc.). ANTES: `exit 3` aqui matava
+            # DeepSeek falhou (indisponivel/API key invalida/etc.). ANTES: `exit 3` aqui matava
             # o wrapper inteiro sem gravar nada em .deepseek/reviews/ e sem emitir o marker
             # -- gate de 5min nunca achava registro pro caminho dual, forçando escape manual
             # em TODO commit sensível. Fix: registra placeholder deferred e ainda sinaliza
             # Cross-Claude, pra R11 poder ser cumprido só pela perna que sobrou de pé.
             [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $dsExit) -- registrando placeholder deferred pra não travar o gate.")
-            Write-DeferredReviewPlaceholder -Decision "dual" -Reason "decision=dual, $(Get-CausaFalhaDeepSeek $dsExit) -- provável outage/API key inválida. Registro parcial; Cross-Claude ainda precisa rodar (R11)."
-            [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual, DeepSeek indisponível). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review." + $instrucaoRegistro)
+            Write-DeferredReviewPlaceholder -Decision "dual" -Reason "decision=dual, $(Get-CausaFalhaDeepSeek $dsExit). Registro parcial; Cross-Claude ainda precisa rodar (R11)."
+            [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual, $(Get-CausaFalhaDeepSeek $dsExit)). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review." + $instrucaoRegistro)
             break
         }
         # F3: fact-check pipeline obrigatorio
@@ -336,7 +338,7 @@ switch ($decision.decision) {
             # wrapper inteiro antes de registrar nada e antes do marker -- Llama e
             # Cross-Claude ainda cobrem o conselho enquanto DeepSeek estiver indisponivel.
             [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $dsExit) -- registrando placeholder deferred pra não travar o gate.")
-            Write-DeferredReviewPlaceholder -Decision "council" -Reason "decision=council, $(Get-CausaFalhaDeepSeek $dsExit) -- provável outage/API key inválida. Registro parcial; Llama/Cross-Claude cobrem o resto."
+            Write-DeferredReviewPlaceholder -Decision "council" -Reason "decision=council, $(Get-CausaFalhaDeepSeek $dsExit). Registro parcial; Llama/Cross-Claude cobrem o resto."
         } else {
             # F3: fact-check pipeline obrigatorio
             $finalOutput = Invoke-FactCheck -ReviewOutput $reviewOutput
