@@ -6,6 +6,20 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from analyze_council_spend import parse_log_file, parse_log_data, compute_cost, render_markdown, aggregate
+import analyze_council_spend as acs
+
+
+@pytest.fixture(autouse=True)
+def _reset_estado_de_modulo():
+    """MODELOS_SEM_PRECO, SEM_TIMESTAMP e SEM_FUSO sao estado de MODULO (acumulam entre
+    chamadas de compute_cost, de proposito -- e o mecanismo que avisa o relatorio real). Em
+    teste isso vira vazamento entre casos se a ordem de execucao mudar; zera antes de CADA
+    teste."""
+    acs.MODELOS_SEM_PRECO.clear()
+    acs.SEM_TIMESTAMP = 0
+    acs.SEM_FUSO = 0
+    yield
+
 
 def test_parse_log_file_extracts_usage(tmp_path):
     log = tmp_path / "20260517-120000-consult.jsonl"
@@ -208,7 +222,13 @@ def test_le_spend_jsonl_com_varias_linhas(tmp_path):
     assert len(entries) == 2
     assert entries[0]["model"] == "deepseek-v4-flash"
     assert entries[0]["tokens_in"] == 1_000_000
-    assert compute_cost(entries[0]) == pytest.approx(0.14 + 0.28)
+    # Forma da tabela mudou (ponto 17, resto): deepseek-v4-flash agora tem vigencia por data.
+    # O timestamp "2026-08-19T08:00:00" e ANTERIOR ao periodo de setembro (vigente_desde
+    # 2026-09-15), entao usa o periodo de agosto (preco da memoria, medido contra fatura
+    # 2026-08-24): in_miss 0.22 + out 0.66 = 0.88. Sem prompt_cache_hit_tokens/miss no usage,
+    # compute_cost joga tudo em in_miss (erra pra cima). O timestamp e NAIVE (sem offset de
+    # fuso) -- pico nunca e aplicado (SEM_FUSO), mesmo caindo na janela 06-10h UTC de horario.
+    assert compute_cost(entries[0]) == pytest.approx(0.88)
 
 
 def test_spend_ignora_linha_corrompida_sem_perder_as_boas(tmp_path):
@@ -244,3 +264,154 @@ def test_spend_sem_usage_nao_inventa_token(tmp_path):
     log = d / "2026-08.jsonl"
     log.write_text('{"timestamp":"2026-08-19T08:00:00","model":"deepseek-v4-flash"}\n', encoding="utf-8")
     assert parse_spend_file(log) == []
+
+
+# --- preco com cache-hit, cache-miss e horario de pico (ponto 17, resto, T3 -----------------
+# Tabela sempre INJETADA (nunca PRICING_PER_MTOKEN real): preco real muda com o fornecedor, os
+# casos abaixo tem que continuar valendo o mesmo depois.
+
+_TABELA_TESTE = {
+    "modelo-teste": [{
+        "vigente_desde": "2026-01-01",
+        "in_hit": 0.007, "in_miss": 0.22, "out": 0.66,
+        "pico": {"mult": 2.0, "janelas_utc": [[1, 4]], "dias": [0, 1, 2, 3, 4]},
+        "fonte": "tabela de teste, nao e preco real",
+    }],
+}
+
+
+def test_cache_hit_miss_fora_de_pico():
+    """1M hit + 1M miss + 1M out, terca (weekday 1) 12:00 UTC -- fora da janela 01-04h."""
+    entry = {
+        "model": "modelo-teste",
+        "tokens_in_hit": 1_000_000, "tokens_in_miss": 1_000_000, "tokens_out": 1_000_000,
+        "timestamp": "2026-09-15T12:00:00Z",  # terca
+    }
+    assert compute_cost(entry, _TABELA_TESTE) == pytest.approx(0.887)
+
+
+def test_cache_hit_miss_em_pico_dobra():
+    """Mesma entry, mesmo dia (terca), mas 03:00 UTC cai em 01-04h -- dobra."""
+    entry = {
+        "model": "modelo-teste",
+        "tokens_in_hit": 1_000_000, "tokens_in_miss": 1_000_000, "tokens_out": 1_000_000,
+        "timestamp": "2026-09-15T03:00:00Z",
+    }
+    assert compute_cost(entry, _TABELA_TESTE) == pytest.approx(1.774)
+
+
+def test_pico_nao_vale_no_fim_de_semana():
+    """Mesmo horario (03:00 UTC), mas sabado (weekday 5) nao esta em `dias` -- sem pico."""
+    entry = {
+        "model": "modelo-teste",
+        "tokens_in_hit": 1_000_000, "tokens_in_miss": 1_000_000, "tokens_out": 1_000_000,
+        "timestamp": "2026-09-19T03:00:00Z",  # sabado
+    }
+    assert compute_cost(entry, _TABELA_TESTE) == pytest.approx(0.887)
+
+
+def test_sem_hit_miss_tudo_vai_pra_miss():
+    """So `tokens_in` (sem separar hit/miss) + 0 out: erra pra cima, tudo em in_miss."""
+    entry = {"model": "modelo-teste", "tokens_in": 1_000_000, "tokens_out": 0}
+    assert compute_cost(entry, _TABELA_TESTE) == pytest.approx(0.22)
+
+
+def test_sem_timestamp_sem_pico_e_conta_no_contador():
+    """timestamp ausente ou invalido: preco fica FORA de pico (nunca dobra por acaso) e o
+    contador SEM_TIMESTAMP registra o rastro -- silencio seria subestimar sem avisar."""
+    import analyze_council_spend as acs
+
+    acs.SEM_TIMESTAMP = 0
+    entry = {"model": "modelo-teste", "tokens_in": 1_000_000, "tokens_out": 0}  # sem timestamp
+    assert compute_cost(entry, _TABELA_TESTE) == pytest.approx(0.22)  # fora de pico
+    assert acs.SEM_TIMESTAMP == 1
+
+
+def test_gemini_agy_e_cota_custo_zero_e_fora_de_modelos_sem_preco():
+    """Canal de cota (Google AI Pro): modelo fora da tabela mas PROVIDER gemini-agy resolve
+    pra custo 0 -- e diferente de 'modelo desconhecido', entao nao entra em MODELOS_SEM_PRECO."""
+    from analyze_council_spend import MODELOS_SEM_PRECO
+
+    MODELOS_SEM_PRECO.clear()
+    tabela = {
+        "gemini-agy": [{
+            "vigente_desde": "2026-01-01",
+            "in_hit": 0.0, "in_miss": 0.0, "out": 0.0, "pico": None, "fonte": "teste",
+        }],
+    }
+    entry = {
+        "model": "gemini-3.1-pro-high", "provider": "gemini-agy",
+        "tokens_in": 1_000_000, "tokens_out": 1_000_000,
+    }
+    assert compute_cost(entry, tabela) == 0.0
+    assert "gemini-3.1-pro-high" not in MODELOS_SEM_PRECO
+    assert not MODELOS_SEM_PRECO
+
+
+# --- vigencia por data e fuso naive (decisao do controlador, rodada 2) ----------------------
+
+_TABELA_VIGENCIA = {
+    "modelo-vigente": [
+        {
+            "vigente_desde": "2026-08-15",
+            "in_hit": 0.007, "in_miss": 0.22, "out": 0.66, "pico": None,
+            "fonte": "periodo agosto (teste)",
+        },
+        {
+            "vigente_desde": "2026-09-15",
+            "in_hit": 0.003, "in_miss": 0.15, "out": 0.6, "pico": None,
+            "fonte": "periodo setembro (teste)",
+        },
+    ],
+}
+
+
+def test_vigencia_escolhe_periodo_de_agosto():
+    """Entry de agosto usa o preco de agosto, mesmo com o periodo de setembro na tabela."""
+    entry = {
+        "model": "modelo-vigente", "tokens_in": 1_000_000, "tokens_out": 1_000_000,
+        "timestamp": "2026-08-20T10:00:00Z",
+    }
+    assert compute_cost(entry, _TABELA_VIGENCIA) == pytest.approx(0.22 + 0.66)
+
+
+def test_vigencia_escolhe_periodo_de_setembro():
+    """Mesma entry, mesmo modelo, so a data muda -- preco de setembro (mais barato)."""
+    entry = {
+        "model": "modelo-vigente", "tokens_in": 1_000_000, "tokens_out": 1_000_000,
+        "timestamp": "2026-09-20T10:00:00Z",
+    }
+    assert compute_cost(entry, _TABELA_VIGENCIA) == pytest.approx(0.15 + 0.6)
+
+
+def test_vigencia_entrada_antes_do_primeiro_periodo_usa_o_primeiro():
+    """Timestamp anterior a qualquer vigente_desde conhecido: cai no primeiro periodo mesmo
+    assim -- nao existe preco antes da tabela comecar."""
+    entry = {
+        "model": "modelo-vigente", "tokens_in": 1_000_000, "tokens_out": 1_000_000,
+        "timestamp": "2026-01-01T10:00:00Z",
+    }
+    assert compute_cost(entry, _TABELA_VIGENCIA) == pytest.approx(0.22 + 0.66)
+
+
+def test_fuso_naive_nao_aplica_pico_e_conta_sem_fuso():
+    """Timestamp SEM offset (naive) e parseavel: a DATA ainda escolhe o periodo certo, mas
+    pico nunca e aplicado (hora sem fuso nao e confiavelmente UTC) -- e o contador SEM_FUSO
+    (distinto de SEM_TIMESTAMP) registra o caso."""
+    import analyze_council_spend as acs
+
+    tabela = {
+        "modelo-pico": [{
+            "vigente_desde": "2026-01-01",
+            "in_hit": 0.007, "in_miss": 0.22, "out": 0.66,
+            "pico": {"mult": 2.0, "janelas_utc": [[1, 4]], "dias": [0, 1, 2, 3, 4]},
+            "fonte": "teste",
+        }],
+    }
+    entry = {
+        "model": "modelo-pico", "tokens_in": 1_000_000, "tokens_out": 0,
+        "timestamp": "2026-09-15T03:00:00",  # terca, 03:00 -- cairia em pico SE tivesse fuso
+    }
+    assert compute_cost(entry, tabela) == pytest.approx(0.22)  # sem mult, apesar da hora
+    assert acs.SEM_FUSO == 1
+    assert acs.SEM_TIMESTAMP == 0

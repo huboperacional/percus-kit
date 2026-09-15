@@ -8,7 +8,7 @@ import argparse
 import json
 import re
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -17,30 +17,122 @@ from typing import Any, Iterable
 # Modelos APOSENTADOS ficam na tabela de proposito: log de marco/junho foi cobrado ao preco
 # daquela epoca, e apagar a linha faria o historico ser reprecificado (ou cair no fallback e
 # virar 0). Entrada nova nao substitui a velha -- acompanha.
+#
+# Forma do valor (desde ponto 17, resto): LISTA de periodos por modelo, ordenada por
+# `vigente_desde` (ISO "AAAA-MM-DD", UTC). Cada periodo e {"vigente_desde", "in_hit", "in_miss",
+# "out", "pico", "fonte"}. compute_cost() usa o ULTIMO periodo com vigente_desde <= data da
+# entry; entry anterior ao primeiro periodo cai no primeiro mesmo assim (nao existe preco antes
+# da tabela comecar). Isso existe porque o preco DeepSeek MUDOU entre a medicao da memoria
+# (2026-08-24) e a conferencia de hoje (2026-09-15) -- sem vigencia, reprecificar a tabela in
+# place teria recalculado logs de agosto com o preco de hoje, o mesmo defeito que a troca de
+# MODELO de 2026-07-24 ja causou uma vez (ver comentario de `groq-llama` abaixo).
+#
+# `in_hit`/`in_miss` existem porque a telemetria (prompt_cache_hit_tokens/prompt_cache_miss_tokens)
+# ja separa os dois e um unico `in` nao consegue representar a diferenca -- e ela e grande (hit
+# custa uma fracao de miss). Os tres (`in_hit`/`in_miss`/`out`) sao o preco PADRAO listado pela
+# pagina do fornecedor (a taxa fora de pico, quando ela documenta as duas). `pico` e
+# {"mult": float, "janelas_utc": [[h_ini,h_fim),...], "dias": [0..6, Monday=0]} ou None pra
+# periodo sem janela com preco diferente do padrao; `mult` = preco da janela / preco padrao (pode
+# ser > 1 ou < 1 -- aqui sempre > 1, mas o campo nao assume isso). `fonte` documenta onde o preco
+# foi conferido (URL + data, ou a medicao que sustenta um periodo historico) -- a tabela
+# versionada NAO e fonte, o fornecedor e (ver memoria `chave-openai-unica-em-25-projetos`, secao
+# DeepSeek, 2026-08-24).
 PRICING_PER_MTOKEN = {
-    "deepseek-v4-flash":       {"in": 0.14,  "out": 0.28},   # default desde 2026-08-15
-    "deepseek-v4-pro":         {"in": 0.435, "out": 0.87},   # default 2026-07-24..2026-08-15
-    "deepseek-chat":           {"in": 0.27,  "out": 1.10},   # descontinuado 2026-07-24
-    "llama-3.3-70b-versatile": {"in": 0.59,  "out": 0.79},   # decomissionado pela Groq ~2026-08
-    "openai/gpt-oss-120b":     {"in": 0.15,  "out": 0.60},   # default da perna Groq desde 2026-08-18
+    "deepseek-v4-flash": [
+        {
+            # Preco medido em 2026-08-24 contra fatura real (nao pagina) -- ver memoria. Peak
+            # (01-04h e 06-10h UTC, seg-sex) documentado la como exatamente o dobro do padrao.
+            "vigente_desde": "2026-08-15",  # data em que v4-flash virou modelo default do kit;
+            # a data exata em que ESTE preco comecou a valer nao e conhecida (so a da medicao).
+            "in_hit": 0.007, "in_miss": 0.22, "out": 0.66,
+            "pico": {"mult": 2.0, "janelas_utc": [[1, 4], [6, 10]], "dias": [0, 1, 2, 3, 4]},
+            "fonte": "memoria chave-openai-unica-em-25-projetos, medido contra fatura 2026-08-24",
+        },
+        {
+            # Conferido HOJE na pagina oficial: "Off-peak rates are exactly half of peak
+            # rates." e "Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through
+            # Friday (all other hours are off-peak)." -- preco caiu frente a memoria de agosto
+            # (hit 0.007->0.003, miss 0.22->0.15, out 0.66->0.6); pagina vence memoria.
+            "vigente_desde": "2026-09-15",  # data da CONFERENCIA, nao da mudanca de preco --
+            # a mudanca pode ter ocorrido em qualquer dia entre 2026-08-24 e hoje; desconhecido.
+            "in_hit": 0.003, "in_miss": 0.15, "out": 0.6,
+            "pico": {"mult": 2.0, "janelas_utc": [[1, 4], [6, 10]], "dias": [0, 1, 2, 3, 4]},
+            "fonte": "https://api-docs.deepseek.com/quick_start/pricing conferido 2026-09-15",
+        },
+    ],  # modelo listado na pagina como "deepseek-flash"; chave mantida porque e o nome que
+        # aparece nos logs/telemetria do kit.
+    "deepseek-v4-pro": [{
+        "vigente_desde": "2026-07-24",
+        "in_hit": 0.435, "in_miss": 0.435, "out": 0.87, "pico": None,
+        "fonte": "preco historico do kit (periodo anterior ao peak/off-peak, introduzido em "
+                 "2026-08-16) -- nao reprecificar com o valor atual da pagina oficial",
+    }],  # default 2026-07-24..2026-08-15
+    "deepseek-chat": [{
+        "vigente_desde": "2026-01-01",  # data anterior a qualquer log conhecido; modelo ja
+        # estava em producao antes disso, mas nao ha registro de quando o preco comecou a valer.
+        "in_hit": 0.27, "in_miss": 0.27, "out": 1.10, "pico": None,
+        "fonte": "preco historico do kit (modelo descontinuado, sem cache-hit/peak nessa epoca)",
+    }],  # descontinuado 2026-07-24
+    "llama-3.3-70b-versatile": [{
+        "vigente_desde": "2026-01-01",
+        "in_hit": 0.59, "in_miss": 0.59, "out": 0.79, "pico": None,
+        "fonte": "preco historico do kit (Groq, modelo decomissionado)",
+    }],  # decomissionado pela Groq ~2026-08
+    "openai/gpt-oss-120b": [{
+        "vigente_desde": "2026-08-18",
+        "in_hit": 0.15, "in_miss": 0.15, "out": 0.60, "pico": None,
+        "fonte": "preco do kit (perna Groq, sem cache-hit/peak documentado)",
+    }],  # default da perna Groq desde 2026-08-18
     # O alias `groq-llama` foi REMOVIDO em 2026-08-18, pela regra que este bloco ja aplicava aos
     # aliases `deepseek` e `cross-claude`: alias que resolve por PROVIDER so e seguro enquanto o
     # provider mapeia 1:1 num unico modelo. A justificativa antiga dizia, literalmente, "mapeia
     # 1:1 num unico modelo que nunca mudou de preco" -- e nesta data o provider trocou de modelo
     # (llama-3.3-70b-versatile -> openai/gpt-oss-120b) e de preco (0.59/0.79 -> 0.15/0.60).
     # Mantido, o alias precificaria run NOVO ao preco do modelo MORTO, 3,9x pra cima na entrada:
-    # exatamente o defeito de reprecificacao que este bloco existe pra impedir.
+    # exatamente o defeito de reprecificacao que este bloco existe pra impedir -- e o mesmo
+    # defeito que a vigencia por data, acima, resolve pra troca de PRECO (nao de modelo).
     # Consequencia deliberada: entrada de log sem campo `model` cai em MODELOS_SEM_PRECO, que e a
     # resposta honesta -- nao da pra saber qual dos dois rodou. Os wrappers emitem `model` no JSON
     # de resposta, entao isso so atinge log antigo, que e justamente o caso ambiguo.
-    "claude-haiku-4-5":        {"in": 1.00,  "out": 5.00},
+    "claude-haiku-4-5": [{
+        "vigente_desde": "2026-01-01",
+        "in_hit": 1.00, "in_miss": 1.00, "out": 5.00, "pico": None,
+        "fonte": "preco do kit (tabela regular Anthropic)",
+    }],
     # Sonnet 5 esta em preco promocional de $2/$10 ate 2026-08-31. A tabela usa o preco REGULAR
     # de proposito: medidor que subestima e o defeito que esta versao acabou de consertar, e a
     # promo expira sozinha. Ate la o relatorio superestima o Sonnet 5 em ate 50%.
-    "claude-sonnet-5":         {"in": 3.00,  "out": 15.00},
-    "claude-opus-5":           {"in": 5.00,  "out": 25.00},
-    "claude-sonnet-4-6":       {"in": 3.00,  "out": 15.00},
-    "claude-opus-4-7":         {"in": 5.00,  "out": 25.00},  # era 15/75 aqui -- 3x pra cima
+    "claude-sonnet-5": [{
+        "vigente_desde": "2026-01-01",
+        "in_hit": 3.00, "in_miss": 3.00, "out": 15.00, "pico": None,
+        "fonte": "preco do kit (tabela regular Anthropic, de proposito nao-promocional)",
+    }],
+    "claude-opus-5": [{
+        "vigente_desde": "2026-01-01",
+        "in_hit": 5.00, "in_miss": 5.00, "out": 25.00, "pico": None,
+        "fonte": "preco do kit (tabela regular Anthropic)",
+    }],
+    "claude-sonnet-4-6": [{
+        "vigente_desde": "2026-01-01",
+        "in_hit": 3.00, "in_miss": 3.00, "out": 15.00, "pico": None,
+        "fonte": "preco do kit (tabela regular Anthropic) -- so vale pro canal PAGO; via agy "
+                 "(provider gemini-agy) e cota, ver entrada 'gemini-agy' abaixo",
+    }],
+    "claude-opus-4-7": [{
+        "vigente_desde": "2026-01-01",
+        "in_hit": 5.00, "in_miss": 5.00, "out": 25.00, "pico": None,
+        "fonte": "preco do kit (tabela regular Anthropic)",
+    }],  # era 15/75 aqui -- 3x pra cima
+    # Canal de COTA (Google AI Pro, 18 meses, ja pago): gemini e claude-sonnet-4-6 chamados via
+    # essa assinatura tem custo marginal 0 -- nao e "modelo gratis", e "ja pago fora da API".
+    # Chave por PROVIDER de proposito (nao por modelo): o mesmo texto "claude-sonnet-4-6" tambem
+    # aparece no canal pago (cross-claude, entrada acima); e o provider que decide qual preco
+    # vale, nao o nome do modelo -- ver compute_cost().
+    "gemini-agy": [{
+        "vigente_desde": "2026-01-01",
+        "in_hit": 0.0, "in_miss": 0.0, "out": 0.0, "pico": None,
+        "fonte": "cota Google AI Pro",
+    }],
 }
 
 
@@ -126,7 +218,7 @@ def parse_spend_file(path: Path) -> list[dict[str, Any]]:
         if tokens_in is None and tokens_out is None:
             continue
         model = d.get("model") or ""
-        entries.append({
+        entry: dict[str, Any] = {
             "provider": d.get("provider") or model or "unknown",
             "model": model,
             # O modo identifica a FERRAMENTA, nao o modo do conselho: e isso que finalmente
@@ -137,7 +229,17 @@ def parse_spend_file(path: Path) -> list[dict[str, Any]]:
             "tokens_out": int(tokens_out or 0),
             "latency_ms": int(d.get("latency_ms") or 0),
             "source": str(path),
-        })
+        }
+        # Cache-hit/miss: a telemetria ja separa (`prompt_cache_hit_tokens` /
+        # `prompt_cache_miss_tokens`); guardados so quando presentes -- compute_cost() cai pro
+        # fallback (tudo em in_miss, erra pra cima) quando ausentes.
+        hit = usage.get("prompt_cache_hit_tokens")
+        miss = usage.get("prompt_cache_miss_tokens")
+        if hit is not None:
+            entry["tokens_in_hit"] = int(hit)
+        if miss is not None:
+            entry["tokens_in_miss"] = int(miss)
+        entries.append(entry)
     return entries
 
 
@@ -152,24 +254,143 @@ def _estimate_tokens(prompt: str, completion: str) -> tuple[int, int]:
 
 MODELOS_SEM_PRECO: set[str] = set()
 
+# Contador de entries sem timestamp NENHUM (ausente ou nao-parseavel): nao da pra escolher
+# periodo de vigencia nem janela de pico, entao a entry usa o periodo MAIS CARO entre os
+# vigentes do modelo (erra pra cima) e fica de fora de pico. O contador e o rastro pra isso nao
+# ficar calado. Reset em main() e nos testes que o leem, junto de MODELOS_SEM_PRECO -- mesmo
+# motivo: estado de modulo sobrevive entre relatorios/testes.
+SEM_TIMESTAMP: int = 0
 
-def compute_cost(entry: dict[str, Any]) -> float:
+# Contador de entries com timestamp PARSEAVEL mas sem offset de fuso (naive): a data ainda da
+# pra usar (escolhe o periodo de vigencia certo), mas a HORA nao e confiavelmente UTC, entao
+# pico nunca e aplicado (mult=1) -- dobrar por acaso seria pior que nao dobrar. Mesmo padrao de
+# reset que SEM_TIMESTAMP e MODELOS_SEM_PRECO.
+SEM_FUSO: int = 0
+
+
+def _em_pico(dt_utc: datetime, pico: dict[str, Any]) -> bool:
+    """True se `dt_utc` (UTC-aware) cai numa janela de pico (dia da semana + hora)."""
+    if dt_utc.weekday() not in pico.get("dias", []):
+        return False
+    hora = dt_utc.hour
+    for h_ini, h_fim in pico.get("janelas_utc", []):
+        if h_ini <= hora < h_fim:
+            return True
+    return False
+
+
+def _resolver_periodo(periodos: list[dict[str, Any]], data_iso: str | None) -> dict[str, Any]:
+    """Escolhe o periodo de vigencia certo pra uma data ISO ("AAAA-MM-DD") ou None.
+
+    Comparacao de string funciona pq "AAAA-MM-DD" ordena igual cronologicamente -- sem parsear
+    pra `date`. `data_iso=None` (sem timestamp nenhum) usa o periodo MAIS CARO (soma dos tres
+    precos-base, sem contar pico -- pico exige hora, que tambem falta aqui): erra pra cima,
+    mesma invariante do resto do modulo. Data anterior ao primeiro periodo conhecido cai no
+    primeiro periodo mesmo assim -- nao existe preco antes da tabela comecar.
+    """
+    if not periodos:
+        # Tabela corrompida ou entrada de teste equivocada (lista vazia em vez de period(o)s):
+        # nao ha preco nenhum pra devolver. Levanta em vez de IndexError opaco mais adiante --
+        # quem chama `compute_cost` com uma tabela assim tem um bug de dado, nao de runtime.
+        raise ValueError("_resolver_periodo recebeu lista de periodos vazia")
+    if data_iso is None:
+        return max(periodos, key=lambda p: p["in_hit"] + p["in_miss"] + p["out"])
+    candidatos = [p for p in periodos if p["vigente_desde"] <= data_iso]
+    if not candidatos:
+        # Anterior a QUALQUER vigente_desde conhecido: cai no mais antigo -- nao depende da
+        # tabela vir pre-ordenada, porque usa min() em vez de periodos[0].
+        return min(periodos, key=lambda p: p["vigente_desde"])
+    return max(candidatos, key=lambda p: p["vigente_desde"])
+
+
+def compute_cost(entry: dict[str, Any], tabela: dict[str, Any] | None = None) -> float:
     """Custo USD pra uma entry. Retorna 0 se modelo desconhecido -- e ANOTA o nome.
 
     O 0.0 calado e o que deixou a troca de modelo de 2026-07-24 passar tres semanas sem
     aparecer em relatorio nenhum: modelo fora da tabela nao custa zero, custa o-que-a-gente-
     nao-sabe. Quem consome este modulo tem que ler MODELOS_SEM_PRECO junto com o total.
+
+    `tabela` e injetavel pra teste (nunca a tabela real em pytest -- preco real muda e os
+    testes tem que continuar valendo o mesmo depois).
     """
+    global SEM_TIMESTAMP, SEM_FUSO
+    if tabela is None:
+        tabela = PRICING_PER_MTOKEN
     model = entry.get("model", "")
-    pricing = PRICING_PER_MTOKEN.get(model)
-    if pricing is None:
-        provider = entry.get("provider", "")
-        pricing = PRICING_PER_MTOKEN.get(provider)
-    if pricing is None:
-        MODELOS_SEM_PRECO.add(model or entry.get("provider", "") or "?")
+    provider = entry.get("provider", "")
+    # Canal de COTA (gemini-agy): o PROVIDER decide, nao o modelo -- o mesmo modelo
+    # (ex: claude-sonnet-4-6) tambem existe no canal pago, com preco != 0. Checado antes do
+    # lookup por modelo de proposito, e EXCLUSIVO: se a tabela nao tiver a chave "gemini-agy",
+    # cai direto em MODELOS_SEM_PRECO -- nunca em fallback pro lookup por modelo, que acharia o
+    # preco do canal PAGO e cobraria cota como dinheiro de verdade (o oposto do que essa
+    # entrada existe pra evitar).
+    if provider == "gemini-agy":
+        periodos = tabela.get("gemini-agy")
+    else:
+        periodos = tabela.get(model)
+        if periodos is None:
+            periodos = tabela.get(provider)
+    if periodos is None:
+        MODELOS_SEM_PRECO.add(model or provider or "?")
         return 0.0
-    return (entry["tokens_in"] / 1_000_000) * pricing["in"] + \
-           (entry["tokens_out"] / 1_000_000) * pricing["out"]
+
+    # Parse de timestamp: `Z` nao e aceito por `datetime.fromisoformat` antes do Python 3.11 --
+    # troca por `+00:00`. Naive (sem offset) e PARSEAVEL (da pra escolher periodo pela data),
+    # mas fica marcado como SEM_FUSO e nunca entra em pico -- a hora sozinha, sem fuso, nao da
+    # pra saber se cai numa janela UTC.
+    ts_str = entry.get("timestamp")
+    dt_utc: datetime | None = None
+    data_iso: str | None = None
+    if not ts_str or not isinstance(ts_str, str):
+        # not isinstance: log com `timestamp` nao-string (epoch numerico, por ex.) nao pode
+        # estourar `.replace`/`.fromisoformat` com TypeError e derrubar o relatorio inteiro --
+        # vira SEM_TIMESTAMP como qualquer outro timestamp inutilizavel, mesma invariante.
+        SEM_TIMESTAMP += 1
+    else:
+        try:
+            dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            dt = None
+        if dt is None:
+            SEM_TIMESTAMP += 1
+        elif dt.tzinfo is None:
+            SEM_FUSO += 1
+            data_iso = dt.date().isoformat()  # usavel pra vigencia; hora nao e usavel pra pico
+        else:
+            dt_utc = dt.astimezone(timezone.utc)
+            data_iso = dt_utc.date().isoformat()
+
+    pricing = _resolver_periodo(periodos, data_iso)
+
+    tokens_in_hit = entry.get("tokens_in_hit")
+    tokens_in_miss = entry.get("tokens_in_miss")
+    tokens_in_total = entry.get("tokens_in", 0)
+    if tokens_in_hit is None and tokens_in_miss is None:
+        # Sem telemetria de cache nenhuma: todo tokens_in vai pra miss (o preco mais caro) --
+        # erra pra cima, nunca pra baixo.
+        tokens_in_hit = 0
+        tokens_in_miss = tokens_in_total
+    else:
+        # So um dos dois veio (o outro None): a fatia que falta pra bater com tokens_in NAO
+        # pode sumir do custo -- vai pra miss (o preco mais caro), mesma invariante "erra pra
+        # cima" do caso sem telemetria nenhuma. max(0, ...) porque tokens_in pode nao bater
+        # exatamente com hit+miss (fontes diferentes) e negativo seria pior que zero.
+        tokens_in_hit = tokens_in_hit or 0
+        tokens_in_miss = tokens_in_miss or 0
+        faltante = tokens_in_total - tokens_in_hit - tokens_in_miss
+        if faltante > 0:
+            tokens_in_miss += faltante
+    tokens_out = entry.get("tokens_out", 0)
+
+    mult = 1.0
+    pico = pricing.get("pico")
+    if pico is not None and dt_utc is not None and _em_pico(dt_utc, pico):
+        mult = pico.get("mult", 1.0)
+
+    custo = (tokens_in_hit / 1_000_000) * pricing["in_hit"] + \
+            (tokens_in_miss / 1_000_000) * pricing["in_miss"] + \
+            (tokens_out / 1_000_000) * pricing["out"]
+    return custo * mult
 
 
 def aggregate(entries: Iterable[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
@@ -213,6 +434,18 @@ def render_markdown(agg: dict, entries: list, days: int) -> str:
         for m in sorted(MODELOS_SEM_PRECO):
             out.append(f"- `{m}`")
         out.append("")
+    if SEM_TIMESTAMP:
+        out.append("\n## AVISO -- entradas sem timestamp valido\n")
+        out.append(f"**{SEM_TIMESTAMP}** chamada(s) sem `timestamp` (ausente ou invalido): "
+                   "cobradas no periodo de vigencia de MAIOR preco-base (erra pra cima NA "
+                   "ESCOLHA DE PERIODO), mas pico NUNCA e aplicado por falta de hora confiavel "
+                   "-- pode SUBESTIMAR o total se a chamada real caiu numa janela de pico.\n")
+    if SEM_FUSO:
+        out.append("\n## AVISO -- entradas com timestamp sem fuso (naive)\n")
+        out.append(f"**{SEM_FUSO}** chamada(s) tinham `timestamp` parseavel mas sem offset de "
+                   "fuso: o periodo de vigencia foi escolhido pela data mesmo assim, mas pico "
+                   "NUNCA foi aplicado (hora sem fuso nao e confiavelmente UTC) -- pode "
+                   "SUBESTIMAR o total se a chamada real caiu numa janela de pico.\n")
     out.append("\n## Conclusao automatica\n")
     if total == 0:
         out.append("- Nenhum custo apurado. Possivel ausencia de logs no periodo.")
@@ -233,10 +466,13 @@ def render_markdown(agg: dict, entries: list, days: int) -> str:
 
 
 def main():
-    # MODELOS_SEM_PRECO e estado de MODULO: sem zerar aqui, um segundo relatorio no mesmo
-    # processo (ou o proximo teste do pytest) herda os modelos desconhecidos do anterior e
-    # acusa subestimacao num periodo que nao tem nenhuma.
+    # MODELOS_SEM_PRECO, SEM_TIMESTAMP e SEM_FUSO sao estado de MODULO: sem zerar aqui, um
+    # segundo relatorio no mesmo processo (ou o proximo teste do pytest) herda o estado do
+    # anterior e acusa subestimacao/contadores positivos num periodo que nao tem nenhuma.
+    global SEM_TIMESTAMP, SEM_FUSO
     MODELOS_SEM_PRECO.clear()
+    SEM_TIMESTAMP = 0
+    SEM_FUSO = 0
     p = argparse.ArgumentParser()
     p.add_argument("--root", default="D:/Claud Automations")
     p.add_argument("--days", type=int, default=30)
