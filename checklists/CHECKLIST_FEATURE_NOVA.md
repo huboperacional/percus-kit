@@ -1,6 +1,6 @@
 ---
 tipo: checklist-imperativo
-quando-usar: ao iniciar implementação de qualquer feature nova (não bug fix isolado)
+quando-usar: ao iniciar qualquer feature ou bugfix — o Passo 0 declara o trilho (P/M/G) e diz qual parte da checklist vale
 leitura: 2 min
 ultima-atualizacao: 2026-09-15
 ---

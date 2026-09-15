@@ -59,7 +59,7 @@ O despacho segue `templates/DESPACHO_SUBAGENTE.template.md` (contratos de suíte
 | Revisão final do branch | sonnet | sonnet | opus |
 | R11 Cross-Claude (quando o router pede) | sonnet | sonnet | sonnet |
 
-Modelo "Fable" tem limite semanal próprio: não usar em subagente de rotina.
+Modelo Claude Fable (`claude-fable-5-1`) tem limite semanal próprio: não usar em subagente de rotina.
 
 ### Conselho 3-membros (Fase 6)
 
