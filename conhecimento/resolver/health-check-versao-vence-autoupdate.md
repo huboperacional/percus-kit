@@ -27,7 +27,10 @@ launch que nada invalida depois — não há segundo aviso dizendo "pronto, alin
    kit pelo trampolim da v6.33.0 (`git pull` basta); só **hook novo ou matcher novo** exige
    publicação. Pra saber em qual caso você está, compare os registros:
    `diff "$PERCUS_CANON_DIR/plugin/percus-review/hooks/hooks.json" "<install>/hooks/hooks.json"`.
-   Idênticos = nada a publicar, independente do número da versão.
+   Idênticos = nada a publicar, independente do número da versão. **Skills e commands seguem a mesma
+   regra dos hooks .json — não do .ps1**: eles só passam a valer nesta máquina depois de push +
+   autoUpdate, mesmo que o arquivo já esteja atualizado no kit; os hooks `.ps1` são a exceção, porque
+   chegam pelo trampolim.
 
 **Prova estática que não dá falso verde:** pra saber qual `.ps1` roda de verdade, **leia o `.cmd`**,
 não o `.ps1` do cache — o wrapper tem a linha
