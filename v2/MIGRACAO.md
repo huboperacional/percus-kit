@@ -29,6 +29,34 @@ está preservada em `.archive/v2-experimento-standalone.bundle` — ver `.archiv
 | Infra e stack / tracking | **V1** (`02_…`, `03_…`) | ⏸️ aponta |
 | Auditorias e skills pontuais do plugin | **V1** | ⏸️ ferramenta, não é loop |
 
+## Quem manda em quê (por tema)
+
+**V1 manda na obrigação** — o quê, o R-número e o enforcement (hook, gate). **V2 manda no
+procedimento** — como fazer, os loops e o formato dos artefatos. Infra, stack, auth e tracking
+são só V1: o V2 tem ponteiro, não texto próprio.
+
+"Em conflito vence" diz qual texto seguir quando os dois lados divergem naquele tema. A
+divergência não se resolve aqui: ela vira item em "Ponteiro que falta" até ser corrigida no dono.
+Âncora de regra é o título (§ R11), nunca número de linha. Caminhos relativos à raiz do kit.
+Teste: `plugin/percus-review/tests/migracao-quem-manda.tests.ps1`.
+
+| Tema | Obrigação (V1, R-número e arquivo:âncora) | Procedimento (V2, arquivo) | Em conflito vence | Ponteiro que falta |
+|---|---|---|---|---|
+| Trilho P / M / G | R9 — `01_REGRAS_INEGOCIAVEIS.md` § R9, "Trilho P / M / G — critério único de tamanho" | `v2/CONSTITUICAO.md` §3 e §5 (aplicam o trilho, não o redefinem) | V1 | — |
+| Grilling | R9 — `01_REGRAS_INEGOCIAVEIS.md` § R9, tabela de etapas, linha "Brainstorming" | `v2/loops/grilling.md` + `v2/referencia/discovery-camadas.md` | V2 | roteador de `templates/CLAUDE.template.md` carrega o grilling para "intenção vaga" sem citar o trilho |
+| Spec | R9 — § R9, linha "Spec e spec-analyze"; `06_CONSELHO_PERCUS.md` § Modo 5; `templates/spec.template.md` | `v2/loops/spec.md` | V2 | `v2/loops/spec.md` não aponta `templates/spec.template.md` |
+| Conselho | R9 — § R9, "Conselho automático no trilho G"; R13; R20; `06_CONSELHO_PERCUS.md` § 5 modos operacionais | `v2/loops/conselho.md` | V2 | `v2/loops/conselho.md` não aponta `06_CONSELHO_PERCUS.md`; provedores do modo `analyze` divergem entre os dois |
+| TDD | R9 — § R9, "Skills do fluxo", linha "Testes" | `v2/loops/tdd.md` | V2 | R9 fala em "todo endpoint novo" e chama TDD opcional de anti-padrão; o loop cobre feature e bugfix e aceita pulo registrado |
+| Review | R11 — `01_REGRAS_INEGOCIAVEIS.md` § R11 (+ R9, linha "R11" da tabela de etapas) | `v2/loops/review.md` | V1 | loop não cita as exceções declaráveis da R11, o `-NoFactCheck` dos trilhos P/M nem o `registrar-review` |
+| Deploy | R24 — `01_REGRAS_INEGOCIAVEIS.md` § R24 (+ R5, autorização durável de deploy) | `v2/loops/deploy.md` | V1 | loop não aponta `comandos/DEPLOY.md` nem `conhecimento/fazer/deploy-vps.md` |
+| Checkpoint e HANDOFF | R8 — `01_REGRAS_INEGOCIAVEIS.md` § R8 (+ R2, "Onde atualizar") | `v2/loops/checkpoint.md` + `v2/artefatos/HANDOFF-FORMAT.md` | V2 | R8 e `templates/HANDOFF.template.md` pedem tabela de status espelhando o PLANO; o formato V2 só leva o que não está em `[5-T]` |
+| PLANO e status | R2 (+ R1, forma visual) — § R2; `05_FEATURE_TRACKING.md` § "Arquivos canônicos por projeto" | `v2/artefatos/PLANO-FORMAT.md` | V1 | formato V2 não cita a forma visual da R1 (`UI-verified`) |
+| Drift | R2 (hook `state-drift-check`); `plugin/percus-review/commands/drift-detect.md` (canon × projeto); `05_FEATURE_TRACKING.md` § "Drift detector" | `v2/loops/drift.md` (auditoria interna do canon) | V2 | homônimos sem ponteiro entre si; a checagem de índice do loop ainda é a do monólito |
+| Conhecimento | R23 — `01_REGRAS_INEGOCIAVEIS.md` § R23 | só ponteiro: `v2/referencia/conhecimento/README.md` | V1 | o ponteiro V2 ainda descreve o contrato do monólito (entrada manual no índice) |
+| ADR | `05_FEATURE_TRACKING.md` § "Princípios não-negociáveis" (item 2) e § "Quando criar ADR" | `v2/artefatos/ADR-FORMAT.md` | V1 | critério de abertura diverge: o V2 exige os três critérios juntos, o V1 lista cada um como suficiente |
+| CONTEXT (glossário) | — (só V2) | `v2/artefatos/CONTEXT-FORMAT.md` | V2 | — |
+| Infra, stack, auth e tracking | R6, R7, R18, R22; `02_INFRA_E_STACK_PERCUS.md`; `03_TRACKING_ATTRIBUITION.md` | só ponteiro: `v2/referencia/infra.md`, `v2/referencia/auth.md` | V1 | `v2/referencia/auth.md` e `v2/CONSTITUICAO.md` §7 vetam `localStorage` sem a exceção de SPA pura da R7 |
+
 ## Piloto-1 — tiatendo (FECHADO 2026-07-20, commit `70c9347`)
 
 | Métrica | Antes | Depois |
