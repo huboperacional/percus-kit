@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.56.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.56.1`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -31,6 +31,18 @@
 (nenhuma entrada)
 
 ---
+
+## Changelog v6.56.1 — 2026-09-15
+
+- **Hook git nativo híbrido não pula mais a lógica custom quando o R11 libera pelo hash.** O bloco
+  Percus de `plugin/percus-review/git-hooks/pre-commit.template.sh` fazia `exit 0` ao achar
+  `d-<hash>.jsonl` com review — em hook híbrido (bloco Percus + lógica após `PERCUS-MERGED-HOOK END`,
+  como o gate V2 em tiatendo, auth-service e Plexco Coach) o gate V2 deixava de rodar justamente nos
+  commits revisados. Defeito anterior à 6.56.0 (já existia em c144aaf); achado ao preparar a
+  reinstalação do hook nos projetos. Agora a aprovação por hash segue para depois do `END`, igual à
+  aprovação por `latest.jsonl`. Teste novo em `pre-commit-marcador-classificacao.tests.ps1`
+  ("git hibrido": hash/latest/placeholder seguem para o custom; marcador inválido bloqueia antes).
+- **Reinstalação:** use este template (6.56.1), não o da 6.56.0, ao atualizar o hook git dos projetos.
 
 ## Changelog v6.56.0 — 2026-09-15
 

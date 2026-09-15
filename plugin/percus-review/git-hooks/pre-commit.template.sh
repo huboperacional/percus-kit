@@ -158,6 +158,7 @@ else
         # Hash do ARQUIVO escrito por `git diff --output=`, nunca da saida capturada pelo shell:
         # shells diferentes decodificam diferente e o hash divergiria em silencio.
         RECUSADO=""
+        _PERCUS_OK_HASH=""
         if command -v sha256sum >/dev/null 2>&1; then
             TMP_DIFF="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-diff-$$")"
             git diff HEAD --output="$TMP_DIFF" 2>/dev/null || true
@@ -170,13 +171,16 @@ else
                 if [ -n "$H_MTIME" ] && [ $(( $(date +%s) - H_MTIME )) -le 86400 ]; then
                     _CLS=$(percus_classifica_marcador "$POR_HASH")
                     _CLASSE=$(printf '%s\n' "$_CLS" | sed -n 1p)
-                    if [ "$_CLASSE" = "review" ]; then exit 0; fi
+                    # Libera SEM exit 0: em hook hibrido a logica custom apos END (ex.: gate V2)
+                    # tem de rodar tambem quando o R11 aprova pelo hash (2026-09-15).
+                    if [ "$_CLASSE" = "review" ]; then _PERCUS_OK_HASH=1; fi
                     if [ "$_CLASSE" = "placeholder" ]; then _MOT="placeholder nao libera por hash"; else _MOT=$(printf '%s\n' "$_CLS" | sed -n 2p); fi
                     RECUSADO="d-$DIFF_HASH.jsonl recusado: $_MOT"
                 fi
             fi
         fi
 
+        if [ -z "$_PERCUS_OK_HASH" ]; then
         # Path FIXO latest.jsonl (2026-07-20): o wrapper sobrescreve sempre o
         # mesmo arquivo, entao o hook le UM path conhecido -- O(1), sem stat em N.
         # Compat: wrapper antigo deixou <ts>.jsonl -> fallback pega o mais novo.
@@ -227,6 +231,7 @@ else
             >&2 echo "Rode /percus-review:review de novo antes de commitar (R11)."
             exit 1
         fi
+        fi # _PERCUS_OK_HASH
     fi
 fi
 # === PERCUS-MERGED-HOOK END ===

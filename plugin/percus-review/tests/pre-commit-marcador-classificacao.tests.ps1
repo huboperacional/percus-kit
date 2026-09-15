@@ -142,6 +142,25 @@ Describe "hook pre-commit -- classificacao do marcador nas 3 camadas" {
         Remove-Item -Recurse -Force $script:tmpBase -ErrorAction SilentlyContinue
     }
 
+    It "git hibrido | <Onde> | <Caso>: R11 que libera segue para a logica custom apos END" -ForEach @(
+        @{ Onde = 'hash';   Caso = 'review';      Esperado = 7 }
+        @{ Onde = 'latest'; Caso = 'review';      Esperado = 7 }
+        @{ Onde = 'latest'; Caso = 'placeholder'; Esperado = 7 }
+        @{ Onde = 'hash';   Caso = 'nao-json';    Esperado = 1 }
+    ) {
+        # 2026-09-15: liberar pelo hash fazia `exit 0` dentro do bloco Percus e o gate V2 instalado
+        # depois do END nunca rodava nos projetos com hook hibrido (tiatendo, auth-service, Plexco Coach).
+        $hibrido = Join-Path $script:tmpBase ("hibrido-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
+        $texto = [IO.File]::ReadAllText($script:templateLF, $script:u8)
+        $fim = $texto.LastIndexOf('exit 0')
+        $texto = $texto.Substring(0, $fim) + "echo CUSTOM-RODOU >&2`nexit 7`n"
+        [IO.File]::WriteAllText($hibrido, $texto, $script:u8)
+        $repo = New-RepoMarcador -Caso $Caso -Onde $Onde
+        $r = Invoke-Camada -Camada 'git' -Repo $repo -Alternativo $hibrido
+        $r.Code | Should -Be $Esperado -Because "stderr: $($r.Err)"
+        if ($Esperado -eq 7) { $r.Err | Should -Match 'CUSTOM-RODOU' } else { $r.Err | Should -Not -Match 'CUSTOM-RODOU' }
+    }
+
     It "pre-condicao: Git Bash com jq, sha256sum e awk" {
         # Sem jq o pre-commit-check.sh libera tudo e as linhas sh passariam por vacuidade.
         $script:bash | Should -Not -BeNullOrEmpty
