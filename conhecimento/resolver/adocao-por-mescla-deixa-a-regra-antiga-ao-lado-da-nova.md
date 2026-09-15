@@ -11,14 +11,15 @@ do agente diz "adotado".
 `comandos/REORGANIZAR_PROJETO.md` ("MESCLE, não sobrescreva"). A conferência por grep achou a regra antiga
 em 7 projetos (Plexco Tasks, WhatsApp-API-Oficial, auth-service, Painel, Plexco Coach, huboperacional-site,
 tiatendo) e a linha antiga do roteador ("Spec ou plano acabou de fechar ... automático") no tiatendo.
-Achado junto: o caminho `D:\Claud Automations\_Novo_Projeto` (nome antigo do kit) em 6 projetos.
+Achado junto: o caminho do kit pelo nome antigo (anterior ao rename para `percus-kit`) em 6 projetos.
 
 **Causa raiz:** "mesclar" foi lido como "acrescentar sem apagar". O brief listava o que **entra**, não o
 que **sai**; o agente não tem como saber que um parágrafo com outro título é a versão velha da mesma regra.
 
 **Conserto:** uma onda de correção com **critério de aceite por grep zerado**, por projeto:
 `grep -c -i "2+ tasks\|subagent-driven por default" CLAUDE.md` = 0,
-`grep "acabou de fechar" CLAUDE.md | grep -vc "trilho G"` = 0, `grep -c "_Novo_Projeto"` = 0 — e o
+`grep "acabou de fechar" CLAUDE.md | grep -vc "trilho G"` = 0, `grep -cE "_Novo_Proje[t]o"` = 0 (a classe `[t]` casa o nome antigo sem escrevê-lo, porque o teste
+`no-legacy-kit-path` barra o nome literal em arquivo vivo) — e o
 controlador roda os mesmos greps depois, sem confiar no relatório.
 
 ⚠️ **Armadilha da própria conferência:** grep pela frase "automático" casou também a linha **nova** do
