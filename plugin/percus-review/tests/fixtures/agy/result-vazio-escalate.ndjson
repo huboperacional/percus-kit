@@ -1,0 +1,2 @@
+{"event":"init","conversation_id":"fixture-escalate-0001","init":{"model":"gemini-3.1-pro-high","cwd":"AGY_FALSO_CWD_PLACEHOLDER","tools":["view_file","grep_search"],"permission_mode":"request-review"}}
+{"event":"result","result":{"conversation_id":"fixture-escalate-0001","status":"SUCCESS","response":"","duration_seconds":39.8,"num_turns":1,"usage":{"input_tokens":27459,"output_tokens":1285,"thinking_tokens":990,"cache_read_tokens":48632,"total_tokens":28744},"denied_actions":[{"action":"escalate_admin","display_name":"Bash"}]}}

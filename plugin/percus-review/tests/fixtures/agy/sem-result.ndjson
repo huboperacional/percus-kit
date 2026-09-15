@@ -1,0 +1,1 @@
+{"event":"init","conversation_id":"fixture-sem-result-0001","init":{"model":"gemini-3.1-pro-high","cwd":"AGY_FALSO_CWD_PLACEHOLDER","tools":["view_file","grep_search"],"permission_mode":"request-review"}}
