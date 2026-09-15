@@ -7,8 +7,12 @@
   Existe porque, com a DeepSeek fora, o wrapper pedia o subagente mas nao havia jeito suportado de
   gravar o resultado: em 2026-09-14 o hash foi calculado a mao e o d-<hash>.jsonl escrito na unha.
   Hash IGUAL ao do hook (SHA-256 do arquivo de `git diff HEAD --output=`, 12 hex). Grava primeiro
-  d-<hash>.jsonl e depois latest.jsonl, cada um por arquivo temporario unico + troca, e desfaz o
-  que gravou se a segunda gravacao falhar.
+  d-<hash>.jsonl e depois latest.jsonl, cada um por arquivo temporario unico + troca. Se a segunda
+  gravacao falhar, desfaz a primeira: remove o d-<hash>.jsonl que nao existia antes ou restaura o
+  conteudo anterior do que ja existia (a mensagem do exit 3 diz qual).
+
+  Saida de sucesso pelo pipeline: `$r = & registrar-review.ps1 ...` captura `hash=<h> latest=<c> d=<c>`.
+  Embutido, nao altera [Console]::OutputEncoding do chamador; com -File, o stdout sai em UTF-8.
 
   Exit: 0 ok | 1 ambiente/hash vazio | 2 entrada recusada | 3 falha de gravacao (desfeita).
 
@@ -23,9 +27,42 @@ param(
     [string]$Repo = ""
 )
 # SEM $ErrorActionPreference='Stop': no 5.1 ele transforma stderr do git em excecao mesmo com 2>$null.
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $u8 = New-Object System.Text.UTF8Encoding($false)
 $ws = [char[]]@(32, 9, 10, 13)
+
+# Processo proprio (-File) x embutido (& script.ps1): pela linha de comando do processo, nao por $Host.Name
+# (ConsoleHost nos dois). Processo proprio: stdout em UTF-8 ate o fim. Embutido: a codificacao do chamador
+# fica como estava; so a leitura da saida do git e trocada, e desfeita logo depois.
+# So vale o script do -File (ou, sem -File, o primeiro .ps1 existente): um chamador `-File chamador.ps1
+# -Reg <este script>` tem o caminho deste script na linha de comando e continua sendo embutido.
+$processoProprio = $false
+$argsProc = @([Environment]::GetCommandLineArgs() | Select-Object -Skip 1)
+$scriptDoProcesso = $null
+for ($i = 0; $i -lt $argsProc.Count; $i++) {
+    if ([string]$argsProc[$i] -match '^[-/](f|fi|fil|file)$') {
+        if ($i + 1 -lt $argsProc.Count) { $scriptDoProcesso = [string]$argsProc[$i + 1] }
+        break
+    }
+    if ([string]$argsProc[$i] -match '^[-/](c|co|com|comm|comma|comman|command|e|ec|en|enc|encodedcommand)$') { break }
+    $cand = ([string]$argsProc[$i]).Trim('"', "'")
+    if ($cand -and -not $cand.StartsWith('-') -and $cand.EndsWith('.ps1', [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $cand -PathType Leaf)) {
+        $scriptDoProcesso = $cand
+        break
+    }
+}
+if ($scriptDoProcesso) {
+    $a = $scriptDoProcesso.Trim('"', "'")
+    try {
+        if ([string]::Equals([IO.Path]::GetFullPath($a), $PSCommandPath, [StringComparison]::OrdinalIgnoreCase)) { $processoProprio = $true }
+        elseif ([string]::Equals([IO.Path]::GetFileName($a), [IO.Path]::GetFileName($PSCommandPath), [StringComparison]::OrdinalIgnoreCase)) {
+            # O proprio script por outra grafia do caminho (ex.: nome 8.3 curto do %TEMP%).
+            $processoProprio = $true
+        }
+    } catch { }
+}
+if ($processoProprio) {
+    try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+}
 
 function Stop-Registro {
     param([int]$Codigo, [string]$Motivo)
@@ -33,13 +70,30 @@ function Stop-Registro {
     exit $Codigo
 }
 
+function Invoke-GitTexto {
+    # Saida de git em UTF-8 (caminho com acento). Embutido: troca a codificacao so durante a chamada.
+    param([string[]]$Argumentos)
+    $encAntes = $null
+    if (-not $processoProprio) {
+        try { $encAntes = [Console]::OutputEncoding; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { $encAntes = $null }
+    }
+    try {
+        $saida = & git @Argumentos 2>$null
+        $script:gitExit = $LASTEXITCODE
+        return $saida
+    } finally {
+        if ($null -ne $encAntes) { try { [Console]::OutputEncoding = $encAntes } catch { } }
+    }
+}
+
 function Write-Atomico {
     # Temporario unico por processo + troca: nunca ha conteudo parcial nem intercalado no destino.
-    param([string]$Destino, [string]$Conteudo)
+    param([string]$Destino, [string]$Conteudo, [byte[]]$Bytes)
     if (Test-Path -LiteralPath $Destino -PathType Container) { throw "destino e um diretorio: $Destino" }
     $tmp = "$Destino.$PID." + [Guid]::NewGuid().ToString('N').Substring(0, 8) + ".tmp"
     try {
-        [IO.File]::WriteAllText($tmp, $Conteudo, $u8)
+        if ($PSBoundParameters.ContainsKey('Bytes')) { [IO.File]::WriteAllBytes($tmp, $Bytes) }
+        else { [IO.File]::WriteAllText($tmp, $Conteudo, $u8) }
         if (Test-Path -LiteralPath $Destino -PathType Leaf) {
             [IO.File]::Replace($tmp, $Destino, [NullString]::Value)
         } else {
@@ -81,8 +135,9 @@ if ($texto.Contains('__PERCUS_NEEDS_CROSS_CLAUDE__')) { Stop-Registro 2 "o texto
 $baseDir = $Repo
 if (-not $baseDir) { $baseDir = (Get-Location).Path }
 if (-not (Test-Path -LiteralPath $baseDir -PathType Container)) { Stop-Registro 2 "diretorio do repo nao existe: '$baseDir'" }
-$top = & git -C $baseDir rev-parse --show-toplevel 2>$null
-if ($LASTEXITCODE -ne 0 -or -not $top) { Stop-Registro 2 "'$baseDir' nao e um repositorio git" }
+$script:gitExit = 1
+$top = Invoke-GitTexto @('-C', $baseDir, 'rev-parse', '--show-toplevel')
+if ($script:gitExit -ne 0 -or -not $top) { Stop-Registro 2 "'$baseDir' nao e um repositorio git" }
 $top = ([string]$top).Trim()
 $null = & git -C $top rev-parse --verify --quiet 'HEAD^{commit}' 2>$null
 if ($LASTEXITCODE -ne 0) { Stop-Registro 2 ('reposit' + [char]0x00F3 + 'rio sem commit') }
@@ -120,15 +175,50 @@ $json = [ordered]@{
     findings   = $texto
     canal      = $Canal
 } | ConvertTo-Json -Compress -Depth 3
-$gravados = New-Object System.Collections.Generic.List[string]
 try {
-    New-Item -ItemType Directory -Force -Path $reviewDir | Out-Null
-    Write-Atomico -Destino $dPath -Conteudo ($json + "`n"); $gravados.Add($dPath)
-    Write-Atomico -Destino $latestPath -Conteudo ($json + "`n"); $gravados.Add($latestPath)
+    New-Item -ItemType Directory -Force -Path $reviewDir -ErrorAction Stop | Out-Null
 } catch {
-    foreach ($g in $gravados) { Remove-Item -LiteralPath $g -Force -ErrorAction SilentlyContinue }
-    Stop-Registro 3 "falha ao gravar marcador ($($_.Exception.Message)) -- o que esta chamada gravou foi removido"
+    Stop-Registro 3 "nao consegui criar $reviewDir ($($_.Exception.Message)) -- nada gravado"
 }
+# d-<hash> pre-existente (ex.: review anterior do mesmo diff): copia antes de gravar, para restaurar e nao apagar.
+$backup = $null
+if (Test-Path -LiteralPath $dPath -PathType Leaf) {
+    $backup = "$dPath.$PID." + [Guid]::NewGuid().ToString('N').Substring(0, 8) + ".bak"
+    try { [IO.File]::Copy($dPath, $backup, $false) }
+    catch {
+        try { [IO.File]::Delete($backup) } catch { }
+        Stop-Registro 3 "nao consegui copiar o d-$hash.jsonl pre-existente ($($_.Exception.Message)) -- nada gravado"
+    }
+}
+$dGravado = $false
+try {
+    Write-Atomico -Destino $dPath -Conteudo ($json + "`n"); $dGravado = $true
+    Write-Atomico -Destino $latestPath -Conteudo ($json + "`n")
+} catch {
+    $erroGravacao = $_.Exception.Message
+    if (-not $dGravado) {
+        if ($backup) { try { [IO.File]::Delete($backup) } catch { } }
+        Stop-Registro 3 "falha ao gravar marcador ($erroGravacao) -- nada gravado"
+    }
+    if (-not $backup) {
+        Remove-Item -LiteralPath $dPath -Force -ErrorAction SilentlyContinue
+        Stop-Registro 3 "falha ao gravar marcador ($erroGravacao) -- d-$hash.jsonl nao existia antes e foi removido"
+    }
+    # Restauracao atomica; o backup so sai depois de conferido byte a byte no destino.
+    $restaurado = $false
+    try {
+        $anterior = [IO.File]::ReadAllBytes($backup)
+        Write-Atomico -Destino $dPath -Bytes $anterior
+        $atual = [IO.File]::ReadAllBytes($dPath)
+        $restaurado = ($atual.Length -eq $anterior.Length) -and ([Convert]::ToBase64String($atual) -ceq [Convert]::ToBase64String($anterior))
+    } catch { $restaurado = $false }
+    if ($restaurado) {
+        try { [IO.File]::Delete($backup) } catch { }
+        Stop-Registro 3 "falha ao gravar marcador ($erroGravacao) -- d-$hash.jsonl pre-existente restaurado ao conteudo anterior"
+    }
+    Stop-Registro 3 "falha ao gravar marcador ($erroGravacao) -- NAO consegui restaurar o d-$hash.jsonl pre-existente; o conteudo anterior esta em $backup"
+}
+if ($backup) { try { [IO.File]::Delete($backup) } catch { } }
 
 # --- telemetria: falha nao muda o exit ---
 try {
@@ -146,5 +236,6 @@ try {
     [IO.File]::AppendAllText((Join-Path $spendDir ($agora.ToString('yyyy-MM') + '.jsonl')), $linha + "`n", $u8)
 } catch { }
 
-[Console]::Out.WriteLine("hash=$hash latest=$latestPath d=$dPath")
+# Pipeline, nao [Console]::Out: `$r = & registrar-review.ps1 ...` captura a linha.
+Write-Output "hash=$hash latest=$latestPath d=$dPath"
 exit 0

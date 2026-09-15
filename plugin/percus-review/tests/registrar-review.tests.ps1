@@ -22,8 +22,8 @@ Describe "registrar-review -- registro da review Cross-Claude" {
         $script:acento = 'acentua' + [char]0x00E7 + [char]0x00E3 + 'o'
 
         function New-RepoReg {
-            param([switch]$SemCommit, [switch]$SemDiff)
-            $dir = Join-Path $script:tmpBase ("r-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
+            param([switch]$SemCommit, [switch]$SemDiff, [string]$Prefixo = 'r-')
+            $dir = Join-Path $script:tmpBase ($Prefixo + [Guid]::NewGuid().ToString('N').Substring(0,8))
             New-Item -ItemType Directory -Force -Path (Join-Path $dir 'sub') | Out-Null
             Push-Location $dir
             try {
@@ -184,8 +184,111 @@ Describe "registrar-review -- registro da review Cross-Claude" {
         New-Item -ItemType Directory -Force -Path (Join-Path $rev 'latest.jsonl') | Out-Null
         $r = Invoke-Registro -Rt $Rt -Repo $repo -Arquivo (New-Findings)
         $r.Code | Should -Be 3 -Because $r.Err
+        $r.Err | Should -Match 'nao existia antes e foi removido'
         @(Get-ChildItem $rev -File -Filter 'd-*').Count | Should -Be 0
         @(Get-ChildItem $rev -File -Filter '*.tmp').Count | Should -Be 0
+    }
+
+    It "<Rt>: d-HASH.jsonl pre-existente + falha no latest.jsonl -> exit 3 e o conteudo anterior e restaurado byte a byte" -ForEach $script:runtimes {
+        $repo = New-RepoReg
+        $rev = Join-Path (Join-Path $repo '.deepseek') 'reviews'
+        New-Item -ItemType Directory -Force -Path (Join-Path $rev 'latest.jsonl') | Out-Null
+        $dPath = Join-Path $rev ("d-" + (Get-DiffHash $repo).Hash + ".jsonl")
+        # BOM, byte invalido em UTF-8 e CRLF: so uma copia binaria sobrevive a ida e volta.
+        $anterior = [byte[]](@(0xEF, 0xBB, 0xBF) + $script:u8.GetBytes('{"findings":"review anterior"}') + @(0xFF, 0x0D, 0x0A))
+        [IO.File]::WriteAllBytes($dPath, $anterior)
+        $r = Invoke-Registro -Rt $Rt -Repo $repo -Arquivo (New-Findings -Texto "review nova`n")
+        $r.Code | Should -Be 3 -Because $r.Err
+        $r.Err | Should -Match 'restaurado'
+        Test-Path -LiteralPath $dPath -PathType Leaf | Should -BeTrue
+        [Convert]::ToBase64String([IO.File]::ReadAllBytes($dPath)) | Should -BeExactly ([Convert]::ToBase64String($anterior))
+        @(Get-ChildItem $rev -File | Where-Object { $_.Name -ne (Split-Path $dPath -Leaf) }).Count | Should -Be 0 -Because "sem .tmp nem .bak sobrando"
+    }
+
+    It "pwsh embutido: `$r = & registrar-review.ps1 captura a linha e nao altera [Console]::OutputEncoding do chamador" {
+        $repo = New-RepoReg -Prefixo ([string][char]0x00C1 + 'rea-teste-')
+        $esperado = Get-DiffHash $repo
+        $f = New-Findings
+        $encOriginal = [Console]::OutputEncoding
+        try {
+            [Console]::OutputEncoding = [Text.Encoding]::GetEncoding(28591)
+            $enc = [Console]::OutputEncoding.CodePage
+            $enc | Should -Be 28591 -Because "sem codificacao diferente de UTF-8 no chamador o teste nao mede nada"
+            $r = & $script:regPs1 -Arquivo $f -Canal 'cross-claude' -Repo $repo
+            $code = $LASTEXITCODE
+            $depois = [Console]::OutputEncoding.CodePage
+        } finally { [Console]::OutputEncoding = $encOriginal }
+        $code | Should -Be 0
+        $depois | Should -Be $enc
+        $linha = (@($r) -join "`n").Trim()
+        $linha | Should -Match ('^hash=' + $esperado.Hash + ' latest=\S.*latest\.jsonl d=\S.*d-' + $esperado.Hash + '\.jsonl$')
+        $linha | Should -Match ([regex]::Escape([string][char]0x00C1 + 'rea-teste-'))
+        $dCapturado = $linha -replace '^.* d=', ''
+        Test-Path -LiteralPath $dCapturado -PathType Leaf | Should -BeTrue -Because "o caminho capturado com acento aponta o arquivo gravado: $dCapturado"
+    }
+
+    It "powershell.exe (Windows PowerShell 5.1) embutido: captura a linha e nao altera [Console]::OutputEncoding do chamador" {
+        if (-not (Get-Command powershell.exe -ErrorAction SilentlyContinue)) {
+            Set-ItResult -Skipped -Because "powershell.exe nao encontrado nesta maquina"
+            return
+        }
+        $repo = New-RepoReg -Prefixo ([string][char]0x00C1 + 'rea-teste-')
+        $esperado = Get-DiffHash $repo
+        $f = New-Findings
+        $saida = Join-Path $script:tmpBase ("emb-" + [Guid]::NewGuid().ToString('N') + '.json')
+        $chamador = Join-Path $script:tmpBase ("chamador-" + [Guid]::NewGuid().ToString('N') + '.ps1')
+        $corpo = @(
+            'param([string]$Reg, [string]$Arq, [string]$Repo, [string]$Saida)'
+            '$falhouSet = ""'
+            'try { [Console]::OutputEncoding = [Text.Encoding]::GetEncoding(28591) } catch { $falhouSet = $_.Exception.Message }'
+            '$antes = [Console]::OutputEncoding.CodePage'
+            '$r = & $Reg -Arquivo $Arq -Canal cross-claude -Repo $Repo'
+            '$code = $LASTEXITCODE'
+            '$depois = [Console]::OutputEncoding.CodePage'
+            '$o = @{ antes = $antes; depois = $depois; code = $code; r = ((@($r) -join "`n").Trim()); falhouSet = $falhouSet } | ConvertTo-Json -Compress'
+            '[IO.File]::WriteAllText($Saida, $o, (New-Object Text.UTF8Encoding($false)))'
+        ) -join "`r`n"
+        [IO.File]::WriteAllText($chamador, $corpo, $script:u8)
+        $err = Join-Path $script:tmpBase ("err-" + [Guid]::NewGuid().ToString('N') + '.txt')
+        Push-Location $script:tmpBase
+        try { & powershell.exe -NoProfile -File $chamador -Reg $script:regPs1 -Arq $f -Repo $repo -Saida $saida 2>$err | Out-Null } finally { Pop-Location }
+        $errTxt = ''; if (Test-Path $err) { $errTxt = [IO.File]::ReadAllText($err, $script:u8) }
+        Test-Path -LiteralPath $saida | Should -BeTrue -Because $errTxt
+        $o = [IO.File]::ReadAllText($saida, $script:u8) | ConvertFrom-Json
+        $o.antes | Should -Be 28591 -Because "sem codificacao diferente de UTF-8 no chamador o teste nao mede nada ($($o.falhouSet))"
+        $o.code | Should -Be 0 -Because $errTxt
+        $o.depois | Should -Be $o.antes
+        $o.r | Should -Match ('^hash=' + $esperado.Hash + ' latest=\S.*latest\.jsonl d=\S.*d-' + $esperado.Hash + '\.jsonl$')
+        Test-Path -LiteralPath ($o.r -replace '^.* d=', '') -PathType Leaf | Should -BeTrue -Because "caminho capturado: $($o.r)"
+    }
+
+    It "powershell.exe (Windows PowerShell 5.1) -File com repo em pasta Area-teste: stdout em UTF-8 com o acento intacto" {
+        if (-not (Get-Command powershell.exe -ErrorAction SilentlyContinue)) {
+            Set-ItResult -Skipped -Because "powershell.exe nao encontrado nesta maquina"
+            return
+        }
+        $prefixo = [string][char]0x00C1 + 'rea-teste-'
+        $repo = New-RepoReg -Prefixo $prefixo
+        $esperado = Get-DiffHash $repo
+        $f = New-Findings
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = (Get-Command powershell.exe).Source
+        $psi.Arguments = '-NoProfile -File "' + $script:regPs1 + '" -Arquivo "' + $f + '" -Canal cross-claude'
+        $psi.WorkingDirectory = $repo
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.StandardOutputEncoding = $script:u8
+        $psi.StandardErrorEncoding = $script:u8
+        $p = [System.Diagnostics.Process]::Start($psi)
+        $tErr = $p.StandardError.ReadToEndAsync()
+        $out = $p.StandardOutput.ReadToEnd()
+        $p.WaitForExit()
+        $p.ExitCode | Should -Be 0 -Because $tErr.Result
+        $linha = $out.Trim()
+        $linha | Should -Match ('^hash=' + $esperado.Hash + ' latest=\S.*latest\.jsonl d=\S.*d-' + $esperado.Hash + '\.jsonl$')
+        $linha | Should -Match ([regex]::Escape($prefixo))
+        Test-Path -LiteralPath ($linha -replace '^.* d=', '') -PathType Leaf | Should -BeTrue -Because "caminho decodificado: $linha"
     }
 
     It "<Rt>: telemetria que falha nao muda o exit" -ForEach $script:runtimes {

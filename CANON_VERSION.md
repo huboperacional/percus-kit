@@ -54,6 +54,19 @@
   marco.". Testes: `New-PluginFalso` extraída para `tests/_plugin-review-falso.ps1` (reuso, sem
   mudar comportamento) e novo `tests/percus-milestone-review-auto.tests.ps1`. skill muda: não.
 
+- **Fase 2, Lote B (T3, F-b e F-d) — `registrar-review` capturável e rollback que preserva o
+  pré-existente** (branch `worktree-fase2`): `plugin/percus-review/scripts/registrar-review.ps1` emite
+  `hash=<h> latest=<caminho> d=<caminho>` pelo pipeline (`Write-Output`), então `$r = & registrar-review.ps1 ...`
+  captura a linha; CLI e exits 0/1/2/3 iguais. Embutido, não altera `[Console]::OutputEncoding` do
+  chamador (troca só durante o `git rev-parse --show-toplevel`, para caminho com acento, e desfaz);
+  rodando como `-File` em processo próprio (detectado pelo script do `-File` na linha de comando, não por
+  `$Host.Name`), o stdout continua em UTF-8. Rollback (`.ps1` e `.sh`): antes de gravar, copia o
+  `d-<hash>.jsonl` pré-existente; se o `latest.jsonl` falhar, restaura o conteúdo anterior byte a byte
+  (troca atômica; a cópia só sai depois de conferida) ou remove o arquivo que não existia, e a
+  mensagem do exit 3 diz `restaurado ao conteudo anterior` ou `nao existia antes e foi removido`.
+  Testes: +5 em `tests/registrar-review.tests.ps1` (pré-existente ps1/sh, embutido pwsh e 5.1 com pasta
+  `Área-teste`, `-File` 5.1 com stdout decodificado em UTF-8). skill muda: não.
+
 ---
 
 ## Changelog v6.58.0 — 2026-09-15

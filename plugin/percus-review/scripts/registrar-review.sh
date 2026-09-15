@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # registrar-review.sh -- registra no marcador R11 uma review feita fora do cliente DeepSeek
 # (ex.: subagente Cross-Claude). Hash igual ao do hook; grava d-<hash>.jsonl e depois latest.jsonl
-# por temporario unico + mv, e desfaz o que gravou se a segunda gravacao falhar.
+# por temporario unico + mv. Se a segunda gravacao falhar, remove o d-<hash>.jsonl que nao existia antes
+# ou restaura o conteudo anterior do que ja existia (a mensagem do exit 3 diz qual).
 #
 # Uso: bash registrar-review.sh --arquivo <findings> --canal cross-claude [--modelo <id>] [--repo <dir>]
 # Exit: 0 ok | 1 ambiente (jq/git/sha256sum) ou hash vazio | 2 entrada recusada | 3 falha de gravacao.
@@ -87,10 +88,29 @@ grava_atomico() {  # $1 origem pronta, $2 destino
 mkdir -p "$REV_DIR" 2>/dev/null || falha 3 "nao consegui criar $REV_DIR -- nada gravado"
 D_PATH="$REV_DIR/d-$HASH.jsonl"
 L_PATH="$REV_DIR/latest.jsonl"
+# d-<hash> pre-existente (ex.: review anterior do mesmo diff): copia em $TMPD (o trap remove) antes de
+# gravar, para restaurar em vez de apagar.
+D_PREV=""
+if [ -f "$D_PATH" ]; then
+    D_PREV="$TMPD/d-anterior.jsonl"
+    cp "$D_PATH" "$D_PREV" 2>/dev/null || falha 3 "nao consegui copiar o d-$HASH.jsonl pre-existente -- nada gravado"
+fi
 grava_atomico "$DOC" "$D_PATH" || falha 3 "falha ao gravar $D_PATH -- nada gravado"
 if ! grava_atomico "$DOC" "$L_PATH"; then
-    rm -f "$D_PATH"
-    falha 3 "falha ao gravar $L_PATH -- o d-$HASH.jsonl desta chamada foi removido"
+    if [ -z "$D_PREV" ]; then
+        rm -f "$D_PATH"
+        falha 3 "falha ao gravar $L_PATH -- d-$HASH.jsonl nao existia antes e foi removido"
+    fi
+    if grava_atomico "$D_PREV" "$D_PATH" && cmp -s "$D_PREV" "$D_PATH"; then
+        falha 3 "falha ao gravar $L_PATH -- d-$HASH.jsonl pre-existente restaurado ao conteudo anterior"
+    fi
+    # Restauracao nao conferida: a copia sai do $TMPD (que o trap apaga) antes de sair.
+    GUARDA="$D_PATH.$$.$RANDOM.bak"
+    if cp "$D_PREV" "$GUARDA" 2>/dev/null; then
+        falha 3 "falha ao gravar $L_PATH -- NAO consegui restaurar o d-$HASH.jsonl pre-existente; o conteudo anterior esta em $GUARDA"
+    fi
+    trap - EXIT
+    falha 3 "falha ao gravar $L_PATH -- NAO consegui restaurar o d-$HASH.jsonl pre-existente; o conteudo anterior esta em $D_PREV"
 fi
 
 {
