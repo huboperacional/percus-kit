@@ -564,16 +564,21 @@ if [ -n "$v_origin" ]; then
     # O avanco na main fica garantido pelo commit de bump da release, que este bloco checa
     # (merge sem conflito nao roda pre-commit; fast-forward nao roda hook nenhum).
     # tr -d do CR: no Git Bash a saida de git pode trazer CR no fim da linha.
-    branch_atual=$(git symbolic-ref --short -q HEAD 2>/dev/null | tr -d '\r')
+    # Ref COMPLETO, nao --short: com uma tag chamada main (ou master) no repo,
+    # --short desambigua o branch homonimo para heads/main, o case abaixo nao
+    # casa mais main e o commit cairia na regra relaxada dentro do proprio
+    # branch principal. O ref completo (refs/heads/main) nao sofre esse choque.
+    branch_atual=$(git symbolic-ref -q HEAD 2>/dev/null | tr -d '\r')
     case "$branch_atual" in
-      ''|main|master) branch_feature=0 ;;
-      *)              branch_feature=1 ;;
+      ''|refs/heads/main|refs/heads/master) branch_feature=0 ;;
+      *)                                    branch_feature=1 ;;
     esac
+    branch_nome=${branch_atual#refs/heads/}
     if [ -z "$v_local" ]; then
       violacao "CANON_VERSION.md sumiu do indice (rm/rm --cached) enquanto ha conteudo de kit staged -- o arquivo de versao e obrigatorio no canon"
     elif [ "$branch_feature" -eq 1 ]; then
       if [ "$(versao_avancou "$v_origin" "$v_local")" = "maior" ]; then
-        violacao "conteudo de kit staged no branch $branch_atual na versao $v_local, ATRAS da $v_origin de origin/main -- atualize o branch com origin/main (igualdade e aceita; atraso nao)"
+        violacao "conteudo de kit staged no branch $branch_nome na versao $v_local, ATRAS da $v_origin de origin/main -- atualize o branch com origin/main (igualdade e aceita; atraso nao)"
       fi
     elif [ "$(versao_avancou "$v_local" "$v_origin")" != "maior" ]; then
       # Exige AVANCO, nao apenas diferenca: repo atrasado em relacao ao remoto

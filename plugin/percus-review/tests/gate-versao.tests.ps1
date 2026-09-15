@@ -112,6 +112,34 @@ Describe "percus-gate.sh — bump de versao do kit" {
         $r.Exit | Should -Be 1 -Because "master e branch principal. Saida: $($r.Saida)"
     }
 
+    It "BARRA mudanca sem bump em main quando existe uma TAG chamada 'main' (ambiguidade do --short)" {
+        # git symbolic-ref --short desambigua nome homonimo: com uma tag "main" no
+        # repo, --short devolveria "heads/main" e o case pararia de casar 'main',
+        # deixando a regra relaxada valer dentro do proprio branch principal.
+        $repo = New-CanonRepo -Versao "6.35.0" -Branch "main"
+        & git -C $repo tag main 2>&1 | Out-Null
+        # Premissa do teste, verificada em vez de suposta: se o --short desta maquina
+        # NAO desambiguar, o teste vira vacuo (passaria mesmo sem o fix). Confirma que
+        # a ambiguidade realmente ocorre aqui antes de exercitar o gate.
+        $short = (& git -C $repo symbolic-ref --short HEAD 2>&1 | Out-String).Trim()
+        $short | Should -Be "heads/main" -Because "premissa do teste: --short precisa desambiguar a tag homonima nesta maquina"
+        Add-Staged -Repo $repo -Caminho "plugin/percus-review/hooks/x.ps1"
+
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "tag homonima nao pode abrir a regra relaxada na main. Saida: $($r.Saida)"
+    }
+
+    It "BARRA mudanca sem bump em master quando existe uma TAG chamada 'master' (ambiguidade do --short)" {
+        $repo = New-CanonRepo -Versao "6.35.0" -Branch "master"
+        & git -C $repo tag master 2>&1 | Out-Null
+        $short = (& git -C $repo symbolic-ref --short HEAD 2>&1 | Out-String).Trim()
+        $short | Should -Be "heads/master" -Because "premissa do teste: --short precisa desambiguar a tag homonima nesta maquina"
+        Add-Staged -Repo $repo -Caminho "plugin/percus-review/hooks/x.ps1"
+
+        $r = Invoke-Gate -Repo $repo
+        $r.Exit | Should -Be 1 -Because "tag homonima nao pode abrir a regra relaxada na master. Saida: $($r.Saida)"
+    }
+
     It "PASSA em branch de feature com mudanca em plugin/ na MESMA versao de origin/main" {
         # O numero da versao e atribuido no merge; exigir bump dentro do branch faz
         # branches paralelos brigarem pelo mesmo numero e conflitarem no CANON_VERSION.md.
