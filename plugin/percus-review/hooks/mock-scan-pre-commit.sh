@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hook pre-commit Percus mock-scan (R3) - Unix.
-# Skip explicito: commit message com 'MOCK-OK:' OU PERCUS_SKIP_MOCK_SCAN=1.
+# Skip explicito: 'MOCK-OK:' em qualquer -m ou no arquivo de -F OU PERCUS_SKIP_MOCK_SCAN=1.
 
 set -eo pipefail
 source "$(dirname "$0")/_helpers.sh"
@@ -15,15 +15,65 @@ command=$(echo "$stdin_data" | python3 -c "import sys,json; print(json.load(sys.
 [[ "$command" =~ git[[:space:]]+commit[[:space:]]+--amend[[:space:]]+--no-edit ]] && exit 0
 [[ -n "$PERCUS_HOOKS_DISABLED" || -n "$PERCUS_SKIP_MOCK_SCAN" ]] && exit 0
 
-# MOCK-OK escape on commit message
-if [[ "$command" =~ -m[[:space:]]+\"([^\"]+)\" ]]; then
-    [[ "${BASH_REMATCH[1]}" =~ MOCK-OK: ]] && exit 0
-fi
-if [[ "$command" =~ -m[[:space:]]+\'([^\']+)\' ]]; then
-    [[ "${BASH_REMATCH[1]}" =~ MOCK-OK: ]] && exit 0
-fi
-
 project_root=$(resolve_percus_project_root "$command")
+
+# Escape MOCK-OK: (T10, 2026-09-15) -- paridade com a perna .ps1, que e requisito
+# de seguranca: uma perna que libera onde a outra bloqueia e defeito.
+# Vale em QUALQUER -m "..."/-m '...' (todas as ocorrencias) ou nas primeiras
+# 64 KB do arquivo de -F <arq> / --file=<arq> / --file <arq>. Caminho relativo
+# resolve contra resolve_percus_project_root, nunca contra o pwd deste processo.
+# `-F -` (stdin), inexistente, diretorio ou ilegivel -> SEM escape.
+# `[[ =~ ]]` so pega a 1a ocorrencia: o laco consome o trecho casado e repete.
+# Casamento do escape igual ao .ps1 `(?i)\bMOCK-OK:`: sem caixa e com fronteira.
+percus_tem_escape() {
+    local txt="$1" rc=1
+    shopt -s nocasematch
+    [[ "$txt" =~ (^|[^[:alnum:]_])MOCK-OK: ]] && rc=0
+    shopt -u nocasematch
+    return $rc
+}
+
+escape=0
+re_msg_dq='-m[[:space:]]+"([^"]+)"'
+re_msg_sq=$'-m[[:space:]]+\'([^\']+)\''
+for re in "$re_msg_dq" "$re_msg_sq"; do
+    rest="$command"
+    while [[ $escape -eq 0 && "$rest" =~ $re ]]; do
+        # Copia ANTES de chamar percus_tem_escape: o `=~` dela sobrescreve o
+        # BASH_REMATCH, o resto nao encolhe e o laco nunca termina (medido).
+        casado="${BASH_REMATCH[0]}"
+        msg="${BASH_REMATCH[1]}"
+        rest="${rest#*"$casado"}"
+        percus_tem_escape "$msg" && escape=1
+    done
+done
+
+if [[ $escape -eq 0 ]]; then
+    # Grupos: 4 = entre aspas duplas, 5 = entre aspas simples, 6 = token nu.
+    re_arq=$'(^|[[:space:]])(-F[[:space:]]+|--file=|--file[[:space:]]+)("([^"]*)"|\'([^\']*)\'|([^[:space:]"\';&|]+))'
+    rest="$command"
+    while [[ $escape -eq 0 && "$rest" =~ $re_arq ]]; do
+        # Idem: copiar o BASH_REMATCH antes de qualquer outro `=~`.
+        casado="${BASH_REMATCH[0]}"
+        arq="${BASH_REMATCH[4]}${BASH_REMATCH[5]}${BASH_REMATCH[6]}"
+        # O 'x' repoe um caractere nao-espaco no lugar do fim do trecho casado:
+        # sem ele o `^` casaria no inicio do resto e aceitaria `-F "a"-F b`, que o
+        # .NET (fronteira real do comando) recusa.
+        rest="x${rest#*"$casado"}"
+        [[ -z "$arq" || "$arq" == "-" ]] && continue
+        if [[ ! ( "$arq" == /* || "$arq" == \\* || "$arq" =~ ^[A-Za-z]: ) ]]; then
+            arq="$project_root/$arq"
+        fi
+        [[ -f "$arq" ]] || continue
+        # head -c: nunca le o arquivo inteiro para a memoria. Falha de leitura
+        # (pipefail) -> sem escape. tr tira NUL, que o bash nao guarda em variavel.
+        trecho=$(head -c 65536 -- "$arq" 2>/dev/null | tr -d '\000') && rc_leitura=0 || rc_leitura=$?
+        [[ $rc_leitura -eq 0 ]] || continue
+        percus_tem_escape "$trecho" && escape=1
+    done
+fi
+[[ $escape -eq 1 ]] && exit 0
+
 [[ -d "$project_root/.git" ]] || exit 0
 
 files=$(get_percus_staged_files "$project_root" .py .ts .tsx .js .jsx .go .rs .java .css .html .vue .svelte .sql)

@@ -1,7 +1,7 @@
 #requires -Version 5.1
 # Hook pre-commit Percus mock-scan (R3).
 # Bloqueia commit se staged diff contem padroes de mock/placeholder.
-# Skip explicito: prefixar commit message com `MOCK-OK:` OU `$env:PERCUS_SKIP_MOCK_SCAN=1`.
+# Skip explicito: `MOCK-OK:` em qualquer -m ou no arquivo de -F OU `$env:PERCUS_SKIP_MOCK_SCAN=1`.
 # Falha graceful: qualquer erro -> exit 0.
 
 . "$PSScriptRoot\_helpers.ps1"
@@ -21,14 +21,54 @@ try {
     if ($command -match '\bgit\s+commit\s+--amend\s+--no-edit\b') { exit 0 }
     if ($env:PERCUS_HOOKS_DISABLED -or $env:PERCUS_SKIP_MOCK_SCAN) { exit 0 }
 
-    # Detect MOCK-OK: escape on commit message
-    # PowerShell: capture group with -match
-    $msgMatch = [regex]::Match($command, '-m\s+"([^"]+)"')
-    if ($msgMatch.Success -and $msgMatch.Groups[1].Value -match '(?i)\bMOCK-OK:') { exit 0 }
-    $msgMatch2 = [regex]::Match($command, "-m\s+'([^']+)'")
-    if ($msgMatch2.Success -and $msgMatch2.Groups[1].Value -match '(?i)\bMOCK-OK:') { exit 0 }
-
     $projectRoot = Resolve-PercusProjectRoot -Command $command
+
+    # Escape MOCK-OK: (T10, 2026-09-15). Vale em QUALQUER -m "..."/-m '...' (todas
+    # as ocorrencias, nao so a 1a) ou nas primeiras 64 KB do arquivo de
+    # -F <arq> / --file=<arq> / --file <arq>. Caminho relativo resolve contra a
+    # raiz do Resolve-PercusProjectRoot (o `cd <dir> &&` do comando), nunca contra
+    # o cwd deste processo. `-F -` (stdin), arquivo inexistente, diretorio ou
+    # ilegivel -> SEM escape: o scan segue. A leitura tem try PROPRIO: o catch
+    # geral la de baixo libera o commit, e uma excecao aqui nao pode virar escape.
+    # Paridade com mock-scan-pre-commit.sh e requisito de seguranca: uma perna
+    # que libera onde a outra bloqueia e defeito (tests\mock-scan.tests.ps1).
+    $reEscape = '(?i)\bMOCK-OK:'
+    $escape = $false
+    foreach ($reMsg in @('-m\s+"([^"]+)"', "-m\s+'([^']+)'")) {
+        foreach ($m in [regex]::Matches($command, $reMsg)) {
+            if ($m.Groups[1].Value -match $reEscape) { $escape = $true; break }
+        }
+        if ($escape) { break }
+    }
+    if (-not $escape) {
+        $reArq = '(?:^|\s)(?:-F\s+|--file=|--file\s+)(?:"([^"]*)"|''([^'']*)''|([^\s"'';&|]+))'
+        foreach ($m in [regex]::Matches($command, $reArq)) {
+            $arq = $null
+            foreach ($g in 1..3) { if ($m.Groups[$g].Success) { $arq = $m.Groups[$g].Value; break } }
+            if (-not $arq -or $arq -eq '-') { continue }
+            try {
+                if (-not [IO.Path]::IsPathRooted($arq)) { $arq = Join-Path $projectRoot $arq }
+                if (-not (Test-Path -LiteralPath $arq -PathType Leaf)) { continue }
+                $fs = [IO.File]::Open($arq, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+                try {
+                    $buf = New-Object byte[] 65536
+                    $lidos = 0
+                    while ($lidos -lt $buf.Length) {
+                        $n = $fs.Read($buf, $lidos, $buf.Length - $lidos)
+                        if ($n -le 0) { break }
+                        $lidos += $n
+                    }
+                } finally { $fs.Dispose() }
+                $texto = [Text.Encoding]::UTF8.GetString($buf, 0, $lidos)
+                if ($texto -match $reEscape) { $escape = $true; break }
+            } catch {
+                # ilegivel -> sem escape; o scan segue e decide.
+                continue
+            }
+        }
+    }
+    if ($escape) { exit 0 }
+
     if (-not (Test-Path (Join-Path $projectRoot ".git"))) { exit 0 }
 
     # Scan staged code files
