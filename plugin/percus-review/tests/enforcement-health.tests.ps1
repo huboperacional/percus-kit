@@ -66,13 +66,19 @@ Describe "enforcement-health -- diz se o enforcement esta ligado e de onde vem o
     It "DIRECAO NEGATIVA: versao instalada diferente da do kit e denunciada" {
         # Este caso apareceu sozinho durante a implementacao: o kit foi pra 6.34.0 com a 6.33.0
         # ainda instalada, e o health check acusou antes de qualquer teste pedir. Registrado como
-        # It proprio porque e o sintoma de "mudanca de REGISTRO ainda nao vale nesta maquina" --
+        # It proprio porque e o sintoma de "skills, commands e REGISTRO de hooks ainda sao os da
+        # versao instalada ate push + autoUpdate; hooks .ps1 ja vem do kit pelo trampolim" --
         # que e diferente de "codigo desatualizado", e o operador precisa saber qual dos dois e.
         $kit = (Resolve-Path (Join-Path $script:hooksDir ".." ".." "..")).Path
         $r = Invoke-Health -CanonDir $kit -ConfigDir (New-ConfigFalso -Versao "0.0.1-nao-existe")
         $r.Saida | Should -Match 'ATENCAO'
         $r.Saida | Should -Match 'versao instalada'
         $r.Saida | Should -Match 'REGISTRO'
+        # T11 (ponto 32): skill e command tambem ficam na versao instalada ate push + autoUpdate;
+        # so os hooks .ps1 chegam antes, pelo trampolim. O aviso tem de dizer os dois lados.
+        $r.Saida | Should -Match 'skills, commands' -Because 'skill mudada no kit nao vale antes do autoUpdate'
+        $r.Saida | Should -Match 'trampolim'
+        $r.Saida | Should -Match 'autoUpdate'
         $r.Exit  | Should -Be 0
     }
 

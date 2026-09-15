@@ -143,7 +143,7 @@ Quando o operador confirma o ciclo CRUD e voce vai marcar `[5-T]`, faca as TRES 
    ```
 
    (Em PowerShell, use o here-string single-quoted `@'...'@` se a mensagem tiver multiplas linhas.)
-3. O hook pre-commit `crud-evidence-warn` **avisa** (nao bloqueia) se voce marcar `[5-T]` sem o trailer (ainda nao reconhece `UI-verified`: na forma visual o aviso e esperado). Se o aviso aparecer e voce de fato rodou o ciclo, re-commite com o trailer. Se NAO rodou, reverta pra `[4-C]`.
+3. O hook pre-commit `crud-evidence-warn` **avisa** (nao bloqueia) se voce marcar `[5-T]` sem o trailer (ele reconhece `CRUD-verified:` e `UI-verified:` com data e hora `YYYY-MM-DD HH:MM`; trailer sem hora ainda gera aviso verdadeiro). Se o aviso aparecer e voce de fato rodou o ciclo, re-commite com o trailer. Se NAO rodou, reverta pra `[4-C]`.
 
 **Hooks de enforcement desta release (so observabilidade — sem promocao automatica warn->block):**
 - `crud-evidence-warn` (pre-commit, warn-only): avisa `[5-T]` adicionado sem trailer. Skip: `$env:PERCUS_SKIP_CRUD_WARN=1`.

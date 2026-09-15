@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Hook pre-commit Percus crud-evidence-warn (R2 / v6.12.0) - Unix. WARN-ONLY.
 # Avisa (nunca bloqueia) quando o staged diff de PLANO.md/HANDOFF.md adiciona uma
-# feature [5-T] sem o trailer 'CRUD-verified: YYYY-MM-DD' no commit.
+# feature [5-T] sem o trailer 'CRUD-verified: YYYY-MM-DD HH:MM' (ou 'UI-verified: ...') no commit.
 # Logica espelha o crud-evidence-warn.ps1 (primario, testado via Pester).
 # Skip: PERCUS_SKIP_CRUD_WARN=1. Falha graceful: erro -> exit 0.
 set +e
@@ -41,7 +41,7 @@ def clean(text):
     t = re.sub(r'`?\[[0-9A-Za-z-]+\]`?', '', t)
     for m in ['\U0001F3A8', '\U0001F916', '✓', '✅', '?', '!']:
         t = t.replace(m, '')
-    t = re.split(r'\s+(?:—|–|--)\s+', t, 1)[0]
+    t = re.split(r'\s+(?:—|–|--)\s+', t, maxsplit=1)[0]
     t = re.sub(r'^[-*]\s+', '', t)
     return re.sub(r'\s+', ' ', t.strip())
 
@@ -65,10 +65,12 @@ for f in tracking:
 
 if not hits:
     sys.exit(0)
-if re.search(r'CRUD-verified:\s*\d{4}-\d{2}-\d{2}', command):
+# MESMA regex do crud-evidence-warn.ps1 (sem distincao de caixa nos dois).
+TRAILER_REGEX = r'(?:CRUD|UI)-verified:[ \t]*\d{4}-\d{2}-\d{2}[ \t]+\d{2}:\d{2}'
+if re.search(TRAILER_REGEX, command, re.IGNORECASE):
     sys.exit(0)
 
-sys.stderr.write("[percus:warn crud-evidence] feature(s) marcada(s) [5-T] sem trailer 'CRUD-verified: YYYY-MM-DD' neste commit:\n")
+sys.stderr.write("[percus:warn crud-evidence] feature(s) marcada(s) [5-T] sem trailer 'CRUD-verified: YYYY-MM-DD HH:MM' (ou 'UI-verified: YYYY-MM-DD HH:MM') neste commit:\n")
 logf = None
 try:
     os.makedirs(os.path.join(root, '.deepseek'), exist_ok=True)
@@ -85,7 +87,7 @@ for f, name in hits:
             pass
 if logf:
     logf.close()
-sys.stderr.write("Confirme o ciclo CRUD com F5 (R1) OU adicione o trailer 'CRUD-verified: <data>' no commit.\n")
+sys.stderr.write("Confirme o ciclo CRUD com F5 (R1) OU adicione o trailer 'CRUD-verified: <data> <hora>' no commit (forma visual da R1: 'UI-verified: <data> <hora>').\n")
 sys.stderr.write("Silenciar: PERCUS_SKIP_CRUD_WARN=1 (warn-only -- nao bloqueia).\n")
 sys.exit(0)
 PYEOF

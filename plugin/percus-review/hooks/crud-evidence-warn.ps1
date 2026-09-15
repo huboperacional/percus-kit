@@ -3,7 +3,8 @@
 #
 # Avisa (NUNCA bloqueia) quando o staged diff de PLANO.md/HANDOFF.md ADICIONA uma
 # feature marcada [5-T] mas o `git commit` nao carrega o trailer
-# `CRUD-verified: YYYY-MM-DD`. O trailer e a evidencia, no historico git, de que o
+# `CRUD-verified: YYYY-MM-DD HH:MM` (ou `UI-verified: YYYY-MM-DD HH:MM`, forma visual
+# da R1). O trailer e a evidencia, no historico git, de que o
 # ciclo CRUD com F5 (R1) foi rodado de fato -- em vez de [4-C] arredondado pra [5-T].
 #
 # Decisao do conselho (plano v6.11->v7.0): warn-only, SEM promocao automatica
@@ -118,14 +119,17 @@ try {
     if ($hits.Count -eq 0) { exit 0 }
 
     # Trailer presente no commit message? Entao a evidencia foi declarada -> silencioso.
-    if ($command -match 'CRUD-verified:\s*\d{4}-\d{2}-\d{2}') { exit 0 }
+    # CRUD-verified (ciclo CRUD com F5) ou UI-verified (forma visual da R1, 6.58.0), com
+    # data e hora. MESMA regex no crud-evidence-warn.sh (sem distincao de caixa nos dois).
+    $trailerRegex = '(?:CRUD|UI)-verified:[ \t]*\d{4}-\d{2}-\d{2}[ \t]+\d{2}:\d{2}'
+    if ([regex]::IsMatch($command, $trailerRegex, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)) { exit 0 }
 
     # -- WARN (exit 0) --------------------------------------------------------
-    [Console]::Error.WriteLine("[percus:warn crud-evidence] feature(s) marcada(s) [5-T] sem trailer 'CRUD-verified: YYYY-MM-DD' neste commit:")
+    [Console]::Error.WriteLine("[percus:warn crud-evidence] feature(s) marcada(s) [5-T] sem trailer 'CRUD-verified: YYYY-MM-DD HH:MM' (ou 'UI-verified: YYYY-MM-DD HH:MM') neste commit:")
     foreach ($h in $hits) {
         [Console]::Error.WriteLine("  - `"$($h.Name)`" ($($h.File))")
     }
-    [Console]::Error.WriteLine("Confirme o ciclo CRUD com F5 (R1: criar/editar/deletar + refresh) OU adicione o trailer 'CRUD-verified: <data>' no commit.")
+    [Console]::Error.WriteLine("Confirme o ciclo CRUD com F5 (R1: criar/editar/deletar + refresh) OU adicione o trailer 'CRUD-verified: <data> <hora>' no commit (forma visual da R1: 'UI-verified: <data> <hora>').")
     [Console]::Error.WriteLine("Silenciar: `$env:PERCUS_SKIP_CRUD_WARN=1 (warn-only; este aviso NAO bloqueia o commit).")
 
     # Log pro soak (mede adesao real: quantas vezes warn disparou).
