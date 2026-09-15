@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.53.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.56.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -27,6 +27,16 @@
 
 > Entradas desta seção ainda não têm número: a versão é atribuída no merge para a `main` (sem bump
 > em branch). Quem fizer o merge move a entrada para um `## Changelog vX.Y.Z` e bumpa.
+
+(nenhuma entrada)
+
+---
+
+## Changelog v6.56.0 — 2026-09-15
+
+> Números 6.54.0 e 6.55.0 pulados de propósito: estavam em uso nos branches ainda não mergeados
+> `worktree-checkpoint-so-operador` / `worktree-state-drift-nao-comparou` (6.54.0) e
+> `worktree-plano-sync` (6.55.0). Quem mergear esses branches renumera para a próxima versão livre.
 
 ### R11 sem ponto único de falha (branch `worktree-r11-fallback`, spec `docs/superpowers/specs/2026-09-14-r11-sem-ponto-unico-design.md`)
 
@@ -70,8 +80,8 @@
   (~45–65 ms na 1ª chamada de `Get-ClasseMarcador`, ~2 ms nas seguintes; sem causa barata única — o
   custo se espalha por `New-Object UTF8Encoding`, enumeração de `PSObject.Properties`, `Get-Item`, etc).
   **Isto NÃO atende o SC-007 como escrito** (≤20 ms); é ~5–10% de um caminho que já paga ~420 ms de
-  partida do PowerShell 5.1 + `git diff`. Aceitar como está, ou reescrever o critério para "≤60 ms, só
-  no caminho de commit", é decisão do operador no merge — não estamos declarando aqui que passou;
+  partida do PowerShell 5.1 + `git diff`. **Aceito como está pelo operador no merge (2026-09-15)**; o
+  critério da spec não foi reescrito;
   (d) projetos com o hook git nativo instalado precisam reinstalar (ponto acima);
   (e) `.deepseek/reviews/deferidos.log` cresce **sem rotação** — é sinal de saúde do R11 (linhas
   demais = commits liberando por placeholder em vez de review real), não um arquivo gerenciado: hoje
@@ -95,10 +105,9 @@
   - Cliente `.sh` passa a chave da API como argumento de `curl`, visível na lista de processos do SO
     enquanto a chamada dura — pré-existente, fora do diff desta feature.
 
-**Medição de latência (SC-007) e classificação de 809 marcadores reais desta feature: ver
-`.superpowers/sdd/2026-09-14-r11-sem-ponto-unico/final-review.md`.**
-
----
+**Evidência:** suíte inteira 878/904 com as mesmas 18 falhas conhecidas da base; 809/809 marcadores
+reais desta máquina classificados igual em Windows PowerShell 5.1, pwsh 7 e awk (revisão final da
+branch, 2026-09-15).
 
 ## Changelog v6.53.0 — 2026-09-13
 

@@ -158,6 +158,9 @@ Todo FR vale para **`.ps1` e `.sh`** (paridade de comportamento, mensagens e exi
   `pre-commit-check.ps1` sobre o fixture `New-RepoComDiff` de
   `plugin/percus-review/tests/pre-commit-hash-validity.tests.ps1`, versão antiga e nova medidas no
   mesmo run e na mesma máquina; aceitável mediana(novo) − mediana(antigo) ≤ 20 ms.
+  **Não atingido — aceito pelo operador no merge (2026-09-15, v6.56.0):** medido +29,9 ms e +47,3 ms,
+  só no caminho `git commit` (o hook sai antes para qualquer outro comando); critério mantido como
+  escrito, com este registro de exceção.
 - **SC-008** — Suíte inteira verde, incluindo `ps51-compat` e checagem ASCII/LF dos `.sh`.
 
 ---
