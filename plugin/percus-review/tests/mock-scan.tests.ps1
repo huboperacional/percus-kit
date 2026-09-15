@@ -129,14 +129,25 @@ export const x = 1;
 # sob Git Bash): paridade e requisito de seguranca -- uma perna que libera onde a outra
 # bloqueia e defeito. Todo repo tem `FIXME ` staged, entao "sem escape" = exit 2.
 BeforeDiscovery {
+    # Fase 3 T7 (2026-09-15): corte de tempo recomendado pela revisao (loteF-T10-fix-review.md,
+    # Rodada 2, item 5). Medido: sem LC_ALL, o bash do hook ja roda em locale C (host desta
+    # maquina nao define LANG/LC_*), entao a perna "sh-gitbash-LC_ALL=C" cheia duplicava a
+    # "sh-gitbash" padrao nos 31 casos. Ela SAI como perna inteira; sobra so 1 caso de controle
+    # explicito sob LC_ALL=C mais abaixo (o corte UTF-8 do -F, onde o Importante 1 apareceu).
+    # A perna "sh-gitbash-LC_ALL=C.UTF-8" fica, mas roda so os casos com LocaleSensivel = $true
+    # (nao-ASCII, corte de 64 KB do comando/-F, BOM) -- os unicos onde locale muda o resultado.
+    # Toda perna .ps1 e a sh-gitbash padrao continuam rodando os 31 casos inteiros.
+    # R11 (risco 2): a "sh-gitbash" padrao roda sob QUALQUER locale que o host tiver (C aqui,
+    # mas C.UTF-8 ou outro num CI que defina LANG) -- e ela roda a tabela INTEIRA, entao um host
+    # com locale UTF-8 por padrao ja teria os casos LocaleSensivel exercitados sob UTF-8 nessa
+    # perna. O locale C fica coberto pelo caso de controle explicito, independente do host.
+    # Ou seja: host-nativo (qualquer locale) + C explicito + C.UTF-8 explicito = os 3 estados
+    # continuam cobertos, so nao mais como 5 pernas completas.
     $script:camadas = @(
         @{ Camada = 'ps1-pwsh' },
         @{ Camada = 'ps1-powershell.exe' },
         @{ Camada = 'sh-gitbash' },
-        # Re-revisao (Importante 1): com locale UTF-8 o token nu do -F parava em byte invalido
-        # e o .sh liberava onde o .ps1 bloqueia. A perna sh roda tambem com locale forcado.
-        @{ Camada = 'sh-gitbash-LC_ALL=C.UTF-8'; Locale = 'C.UTF-8' },
-        @{ Camada = 'sh-gitbash-LC_ALL=C'; Locale = 'C' }
+        @{ Camada = 'sh-gitbash-LC_ALL=C.UTF-8'; Locale = 'C.UTF-8' }
     )
     $okMsg = "fix: x`n`nMOCK-OK: motivo`n"
     $script:casos = @(
@@ -159,26 +170,26 @@ BeforeDiscovery {
         # Revisao da T10 (Importante 1): a busca olha so os primeiros 64 KB do comando e no
         # maximo 64 ocorrencias por regex. Cada limite tem o caso que bloqueia e o controle
         # logo abaixo dele que passa -- senao o vermelho poderia vir de outra coisa.
-        @{ Nome = 'MOCK-OK so depois dos 64 KB do comando bloqueia'; ArgsCommit = "-m '" + ('a' * 66000) + "' -m 'MOCK-OK: tarde demais'"; Esperado = 2 },
-        @{ Nome = 'controle: comando de 60 KB com MOCK-OK no fim passa'; ArgsCommit = "-m '" + ('a' * 60000) + "' -m 'MOCK-OK: dentro'"; Esperado = 0 },
+        @{ Nome = 'MOCK-OK so depois dos 64 KB do comando bloqueia'; ArgsCommit = "-m '" + ('a' * 66000) + "' -m 'MOCK-OK: tarde demais'"; Esperado = 2; LocaleSensivel = $true },
+        @{ Nome = 'controle: comando de 60 KB com MOCK-OK no fim passa'; ArgsCommit = "-m '" + ('a' * 60000) + "' -m 'MOCK-OK: dentro'"; Esperado = 0; LocaleSensivel = $true },
         @{ Nome = '65a ocorrencia de -m com MOCK-OK bloqueia (limite 64)'; ArgsCommit = ("-m 'a' " * 64) + "-m 'MOCK-OK: 65a'"; Esperado = 2 },
         @{ Nome = 'controle: 64a ocorrencia de -m com MOCK-OK passa'; ArgsCommit = ("-m 'a' " * 63) + "-m 'MOCK-OK: 64a'"; Esperado = 0 },
         @{ Nome = '65o -F com MOCK-OK bloqueia (limite 64)'; ArgsCommit = ('-F nao.txt ' * 64) + '-F msg.txt'; Arquivos = @{ 'msg.txt' = $okMsg }; Esperado = 2 },
         @{ Nome = 'controle: 64o -F com MOCK-OK passa'; ArgsCommit = ('-F nao.txt ' * 63) + '-F msg.txt'; Arquivos = @{ 'msg.txt' = $okMsg }; Esperado = 0 },
         # `-F msg.txt` cortado pela janela vira `-F msg`; o arquivo `msg` existe com MOCK-OK.
-        @{ Nome = '-F partido no corte dos 64 KB nao le o prefixo do caminho'; CorteF = $true; Arquivos = @{ 'msg' = $okMsg }; Esperado = 2 },
+        @{ Nome = '-F partido no corte dos 64 KB nao le o prefixo do caminho'; CorteF = $true; Arquivos = @{ 'msg' = $okMsg }; Esperado = 2; LocaleSensivel = $true },
         # Menor 2: nao-ASCII colado antes do MOCK-OK conta como letra nas duas pernas.
-        @{ Nome = '-F com acento colado (eMOCK-OK:) bloqueia nas duas'; ArgsCommit = '-F msg.txt'; Arquivos = @{ 'msg.txt' = "fix: x`n`n" + [char]0x00E9 + "MOCK-OK: colado`n" }; Esperado = 2 },
-        @{ Nome = '-F com travessao colado bloqueia nas duas'; ArgsCommit = '-F msg.txt'; Arquivos = @{ 'msg.txt' = "fix: x`n`n" + [char]0x2014 + "MOCK-OK: colado`n" }; Esperado = 2 },
-        @{ Nome = "-m com acento colado (eMOCK-OK:) bloqueia nas duas"; ArgsCommit = "-m '" + [char]0x00E9 + "MOCK-OK: colado'"; Esperado = 2 },
+        @{ Nome = '-F com acento colado (eMOCK-OK:) bloqueia nas duas'; ArgsCommit = '-F msg.txt'; Arquivos = @{ 'msg.txt' = "fix: x`n`n" + [char]0x00E9 + "MOCK-OK: colado`n" }; Esperado = 2; LocaleSensivel = $true },
+        @{ Nome = '-F com travessao colado bloqueia nas duas'; ArgsCommit = '-F msg.txt'; Arquivos = @{ 'msg.txt' = "fix: x`n`n" + [char]0x2014 + "MOCK-OK: colado`n" }; Esperado = 2; LocaleSensivel = $true },
+        @{ Nome = "-m com acento colado (eMOCK-OK:) bloqueia nas duas"; ArgsCommit = "-m '" + [char]0x00E9 + "MOCK-OK: colado'"; Esperado = 2; LocaleSensivel = $true },
         # Re-revisao (Importante 1). O arquivo `msg` (prefixo do caminho) existe com MOCK-OK;
         # `msgé.txt` nao existe. (a) corte dos 64 KB no MEIO do `é` (python em UTF-8: C3 dentro,
         # A9 fora); (b) sem corte, python em cp1252 (o `é` vira o byte E9 sozinho).
-        @{ Nome = '-F msg(e-acento).txt com corte de 64 KB no meio do acento bloqueia'; CorteAcento = $true; Arquivos = @{ 'msg' = $okMsg }; EnvCaso = @{ PYTHONUTF8 = '1' }; Esperado = 2 },
-        @{ Nome = '-F msg(e-acento).txt curto com python em cp1252 bloqueia'; ArgsCommit = '-F msg' + [char]0x00E9 + '.txt'; Arquivos = @{ 'msg' = $okMsg }; EnvCaso = @{ PYTHONUTF8 = $null }; Esperado = 2 },
-        @{ Nome = 'controle: -F msg(e-acento).txt existente com MOCK-OK passa'; ArgsCommit = '-F msg' + [char]0x00E9 + '.txt'; Arquivos = @{ ('msg' + [char]0x00E9 + '.txt') = $okMsg }; Esperado = 0 },
+        @{ Nome = '-F msg(e-acento).txt com corte de 64 KB no meio do acento bloqueia'; CorteAcento = $true; Arquivos = @{ 'msg' = $okMsg }; EnvCaso = @{ PYTHONUTF8 = '1' }; Esperado = 2; LocaleSensivel = $true },
+        @{ Nome = '-F msg(e-acento).txt curto com python em cp1252 bloqueia'; ArgsCommit = '-F msg' + [char]0x00E9 + '.txt'; Arquivos = @{ 'msg' = $okMsg }; EnvCaso = @{ PYTHONUTF8 = $null }; Esperado = 2; LocaleSensivel = $true },
+        @{ Nome = 'controle: -F msg(e-acento).txt existente com MOCK-OK passa'; ArgsCommit = '-F msg' + [char]0x00E9 + '.txt'; Arquivos = @{ ('msg' + [char]0x00E9 + '.txt') = $okMsg }; Esperado = 0; LocaleSensivel = $true },
         # Menor BOM:`Out-File -Encoding UTF8` do PS 5.1 grava BOM; ele nao pode esconder o MOCK-OK da 1a linha.
-        @{ Nome = '-F com BOM UTF-8 e MOCK-OK na 1a linha passa'; ArgsCommit = '-F bom.txt'; ArquivosBom = @{ 'bom.txt' = "MOCK-OK: gravado com BOM`n`nfix: x`n" }; Esperado = 0 }
+        @{ Nome = '-F com BOM UTF-8 e MOCK-OK na 1a linha passa'; ArgsCommit = '-F bom.txt'; ArquivosBom = @{ 'bom.txt' = "MOCK-OK: gravado com BOM`n`nfix: x`n" }; Esperado = 0; LocaleSensivel = $true }
     )
 }
 
@@ -266,7 +277,13 @@ Describe "mock-scan T10 -- MOCK-OK em qualquer -m e no arquivo de -F (<Camada>)"
         if ($Camada -like 'sh-gitbash*') { $script:bash | Should -Not -BeNullOrEmpty -Because 'Git Bash e a perna .sh; sem ele a paridade nao foi medida' }
     }
 
-    It "<Nome> -> exit <Esperado>" -ForEach $script:casos {
+    # Fase 3 T7: a perna C.UTF-8 so roda os casos marcados LocaleSensivel (locale e o unico
+    # motivo dela existir); as demais pernas (ps1-pwsh, ps1-powershell.exe, sh-gitbash padrao)
+    # rodam a tabela inteira -- contrato "todo caso roda em pelo menos pwsh + sh padrao".
+    It "<Nome> -> exit <Esperado>" -ForEach $(
+        if ($Camada -eq 'sh-gitbash-LC_ALL=C.UTF-8') { $script:casos | Where-Object { $_.LocaleSensivel } }
+        else { $script:casos }
+    ) {
         $repo = New-RepoT10 -Caso $_
         $trava = $null
         try {
@@ -298,5 +315,79 @@ Describe "mock-scan T10 -- MOCK-OK em qualquer -m e no arquivo de -F (<Camada>)"
         if ($Esperado -eq 2) {
             $r.Err | Should -Match 'mock/placeholder' -Because 'sem escape o bloqueio e o do scan, com a mensagem atual'
         }
+    }
+}
+
+# Fase 3 T7: controle explicito sob LC_ALL=C, recomendacao da revisao (loteF-T10-fix-review.md,
+# Rodada 2, item 5-a). A perna "sh-gitbash-LC_ALL=C" saiu como camada inteira porque duplicava a
+# "sh-gitbash" padrao nos 31 casos (o host desta maquina ja roda o bash do hook em locale C sem
+# LC_ALL definido). Este caso unico prova que o locale C explicito continua dando o resultado
+# certo no caso onde o Importante 1 apareceu (corte de 64 KB no meio do "e" acentuado do -F).
+Describe "mock-scan T10 -- controle explicito LC_ALL=C (corte UTF-8 do -F)" {
+    BeforeAll {
+        . (Join-Path $PSScriptRoot '_resolver-bash.ps1')
+        $script:u8 = New-Object System.Text.UTF8Encoding($false)
+        $hooks = Join-Path (Split-Path $PSScriptRoot -Parent) 'hooks'
+        $script:tmpBase = Join-Path ([IO.Path]::GetTempPath()) ('mockscan-t10c-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Force -Path $script:tmpBase | Out-Null
+        $shDir = Join-Path $script:tmpBase 'hooks-sh'
+        New-Item -ItemType Directory -Force -Path $shDir | Out-Null
+        Copy-SemCR (Join-Path $hooks 'mock-scan-pre-commit.sh') (Join-Path $shDir 'mock-scan-pre-commit.sh')
+        Copy-SemCR (Join-Path $hooks '_helpers.sh') (Join-Path $shDir '_helpers.sh')
+        $script:hookSh = ConvertTo-CaminhoBash (Join-Path $shDir 'mock-scan-pre-commit.sh')
+        $script:bash = Get-BashGit
+    }
+
+    AfterAll {
+        if ($script:tmpBase -and [IO.Directory]::Exists($script:tmpBase)) {
+            try { [IO.Directory]::Delete($script:tmpBase, $true) } catch { }
+        }
+    }
+
+    It "tem o runtime da perna" {
+        $script:bash | Should -Not -BeNullOrEmpty -Because 'Git Bash e a perna .sh; sem ele o controle nao foi medido'
+    }
+
+    It "-F msg(e-acento).txt com corte de 64 KB no meio do acento bloqueia sob LC_ALL=C" {
+        if (-not $script:bash) { Set-ItResult -Skipped -Because 'Git Bash ausente; sem ele o controle nao roda'; return }
+        # Mesmo caso da tabela principal (CorteAcento), reproduzido aqui porque variavel de
+        # BeforeDiscovery nao sobrevive a fase de Run do Pester -- os dados vem inline.
+        # R11: PYTHONUTF8=1 replicado do caso original -- e o que forca o python3 do Git Bash a
+        # imprimir o "e" acentuado em UTF-8 (C3 A9); sem isso o python3 pode usar cp1252 (E9
+        # sozinho) e o controle deixaria de exercitar o cenario de corte que ele diz reproduzir.
+        $repo = Join-Path $script:tmpBase ('r-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Force -Path $repo | Out-Null
+        & git -C $repo init -q 2>$null
+        [IO.File]::WriteAllText((Join-Path $repo 'x.py'), "# FIXME logica errada`n", $script:u8)
+        & git -C $repo add x.py 2>$null
+        [IO.File]::WriteAllText((Join-Path $repo 'msg'), ("fix: x`n`nMOCK-OK: motivo`n"), $script:u8)
+
+        # Revisao R11: o padding e calculado em BYTES (nao em .Length de caracteres), porque o
+        # caminho do repo temporario (Guid + prefixo do host) pode conter caractere nao-ASCII
+        # em algumas maquinas -- .Length em char desalinharia o corte de 64 KB em BYTES.
+        $prefixo = ('cd "' + (ConvertTo-CaminhoBash $repo) + '" && git ' + ('com' + 'mit') + ' ')
+        $cabecaBytes = [Text.Encoding]::UTF8.GetByteCount($prefixo + "-m '")
+        $caudaBytes = [Text.Encoding]::UTF8.GetByteCount("' -F msg")
+        $argsC = "-m '" + ('a' * (65535 - $cabecaBytes - $caudaBytes)) + "' -F msg" + [char]0x00E9 + '.txt'
+        $cmd = $prefixo + $argsC
+        $bytes = [Text.Encoding]::UTF8.GetBytes($cmd)
+        ($bytes[65534] -eq 0x67 -and $bytes[65535] -eq 0xC3 -and $bytes[65536] -eq 0xA9) | Should -BeTrue -Because 'o corte de 64 KB tem de cair no meio do e-acento'
+
+        $stdin = @{ tool_input = @{ command = $cmd } } | ConvertTo-Json -Compress
+        $stdin = [regex]::Replace($stdin, '[^\x00-\x7F]', [Text.RegularExpressions.MatchEvaluator] { param($c) '\u{0:x4}' -f [int][char]$c.Value })
+        $err = Join-Path $script:tmpBase ('err-' + [Guid]::NewGuid().ToString('N') + '.txt')
+        $antigoLc = $env:LC_ALL
+        $antigoPy = $env:PYTHONUTF8
+        $env:LC_ALL = 'C'
+        $env:PYTHONUTF8 = '1'
+        try {
+            $stdin | & $script:bash -c 'timeout 30 bash "$1"' _ $script:hookSh 2>$err | Out-Null
+            $code = $LASTEXITCODE
+        } finally { $env:LC_ALL = $antigoLc; $env:PYTHONUTF8 = $antigoPy }
+        $texto = ''
+        if (Test-Path -LiteralPath $err) { $texto = [IO.File]::ReadAllText($err) }
+        $code | Should -Not -Be 124 -Because "HOOK TRAVOU no controle LC_ALL=C: $texto"
+        $code | Should -Be 2 -Because "controle LC_ALL=C, stderr: $texto"
+        $texto | Should -Match 'mock/placeholder' -Because 'sem escape o bloqueio e o do scan, com a mensagem atual'
     }
 }
