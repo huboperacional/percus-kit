@@ -600,6 +600,7 @@
 - [Bot conversacional re-pergunta info que o cliente já deu FORA DE ORDEM (checkout/wizard)](parking-info-fora-de-ordem.md)
 - [Parser de dinheiro assume um idioma e lê mil vezes menos — `1.500` vira R$ 1,50](parser-de-dinheiro-assume-locale.md)
 - [Caminho de screenshot com data FIXA faz o run de hoje apagar a evidência de outro dia](pasta-de-evidencia-com-data-fixa-apaga-o-registro-de-outro-dia.md)
+- [Pasta criada por hook no diretório atual vira rota fantasma e quebra teste de navegação](pasta-de-hook-no-diretorio-atual-vira-rota-fantasma.md)
 - [Commit por pathspec de pasta esquece o arquivo irmão, e a conferência pela ausência do alheio não vê](pathspec-de-pasta-esquece-o-arquivo-irmao.md)
 - [Pathspec delimita arquivo, não hunk — e o limite aparece quando duas sessões editam o mesmo arquivo](pathspec-delimita-arquivo-nao-hunk.md)
 - [Espaçar disparo pausando ANTES do envio faz o worker dormir também na iteração que descobre a fila vazia — pause DEPOIS do envio confirmado](pausar-antes-do-envio-dorme-na-iteracao-que-descobre-fila-vazia.md)
