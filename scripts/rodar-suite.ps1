@@ -42,7 +42,9 @@
 param(
     [switch]$Afetados,
     [int]$Processos = 0,
-    [string[]]$Caminhos = @("plugin/percus-review/tests", "tools/__tests__")
+    [string[]]$Caminhos = @("plugin/percus-review/tests", "tools/__tests__"),
+    [switch]$MostrarPulados,
+    [string[]]$ManterEnv = @()
 )
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -52,7 +54,7 @@ Push-Location $raiz
 try {
     $arquivos = @()
     foreach ($c in $Caminhos) {
-        $p = Join-Path $raiz $c
+        if ([IO.Path]::IsPathRooted($c)) { $p = $c } else { $p = Join-Path $raiz $c }
         if (Test-Path $p) {
             $arquivos += (Get-ChildItem $p -Filter "*.tests.ps1" -File -Recurse | ForEach-Object { $_.FullName })
         }
@@ -118,17 +120,40 @@ try {
     # "one or more jobs are blocked waiting for user interaction" -- e travou em SILENCIO, sem
     # nenhum teste falhar. Processo separado com stdin fechado nao tem esse problema, e e o mesmo
     # isolamento que a execucao sequencial ja tinha.
-    $saidas = @()
-    $procs  = @()
+    # Todo arquivo temporario criado aqui embaixo entra nesta lista e sai no finally logo
+    # depois da coleta de resultados -- inclusive no caminho de excecao (JSON de um filho
+    # que nao parseia, WaitForExit que estoura), pra nao empilhar lixo em %TEMP% a cada
+    # execucao que aborta no meio.
+    $tempFiles = New-Object System.Collections.ArrayList
+
+    $manterJson = [IO.Path]::GetTempFileName()
+    [void]$tempFiles.Add($manterJson)
+    ($ManterEnv | ConvertTo-Json -Compress) | Set-Content -Path $manterJson -Encoding utf8
+
+    $saidas       = @()
+    $procs        = @()
+    $baldesPorSaida = @()
+    try {
     for ($i = 0; $i -lt $Processos; $i++) {
         $lista = @($baldes[$i])
         if ($lista.Count -eq 0) { continue }
         $arqJson = [IO.Path]::GetTempFileName()
         $outJson = [IO.Path]::GetTempFileName()
+        [void]$tempFiles.Add($arqJson)
+        [void]$tempFiles.Add($outJson)
         $saidas += $outJson
+        $baldesPorSaida += ,@($lista | ForEach-Object { Split-Path $_ -Leaf })
         ($lista | ConvertTo-Json -Compress) | Set-Content -Path $arqJson -Encoding utf8
         $script = @"
 `$ErrorActionPreference = 'Continue'
+`$manter = @(Get-Content -Raw '$manterJson' | ConvertFrom-Json)
+`$removidos = @()
+foreach (`$item in (Get-ChildItem Env:PERCUS_* -ErrorAction SilentlyContinue)) {
+    if (`$manter -notcontains `$item.Name) {
+        Remove-Item "Env:`$(`$item.Name)"
+        `$removidos += `$item.Name
+    }
+}
 `$arqs = Get-Content -Raw '$arqJson' | ConvertFrom-Json
 `$c = New-PesterConfiguration
 `$c.Run.Path = @(`$arqs)
@@ -136,10 +161,14 @@ try {
 `$c.Output.Verbosity = 'None'
 `$r = Invoke-Pester -Configuration `$c
 [pscustomobject]@{
-    Total  = `$r.TotalCount
-    Passou = `$r.PassedCount
-    Falhou = `$r.FailedCount
-    Nomes  = @(`$r.Failed | ForEach-Object { `$_.ExpandedPath })
+    Total        = `$r.TotalCount
+    Passou       = `$r.PassedCount
+    Falhou       = `$r.FailedCount
+    Pulou        = `$r.SkippedCount
+    NaoRodou     = `$r.NotRunCount
+    Nomes        = @(`$r.Failed | ForEach-Object { `$_.ExpandedPath })
+    NomesPulados = @(`$r.Skipped | ForEach-Object { `$_.ExpandedPath })
+    EnvRemovido  = @(`$removidos)
 } | ConvertTo-Json -Depth 5 | Set-Content -Path '$outJson' -Encoding utf8
 "@
         $b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
@@ -148,27 +177,49 @@ try {
     $procs | ForEach-Object { $_.WaitForExit() }
 
     $res = @()
-    foreach ($o in $saidas) {
+    $faltantes = @()
+    for ($i = 0; $i -lt $saidas.Count; $i++) {
+        $o = $saidas[$i]
+        $ok = $false
         if (Test-Path $o) {
             $conteudo = Get-Content -Raw $o -ErrorAction SilentlyContinue
-            if ($conteudo) { $res += ($conteudo | ConvertFrom-Json) }
-            Remove-Item $o -Force -ErrorAction SilentlyContinue
+            if ($conteudo) { $res += ($conteudo | ConvertFrom-Json); $ok = $true }
         }
+        if (-not $ok) { $faltantes += ,@{ Arquivos = $baldesPorSaida[$i] } }
     }
-    if ($res.Count -eq 0) {
-        # Zero resultado nao pode ser lido como zero falha: e o modo de falhar calado que este
-        # script inteiro existe pra nao criar.
-        Write-Host "[rodar-suite] ERRO: nenhum processo devolveu resultado -- rode sequencial pra ver o motivo."
+    } finally {
+        foreach ($t in $tempFiles) { Remove-Item $t -Force -ErrorAction SilentlyContinue }
+    }
+
+    if ($faltantes.Count -gt 0) {
+        # Um processo morto sem devolver nada nao pode ser lido como zero falha: e o modo de
+        # falhar calado que este script inteiro existe pra nao criar.
+        $listaArqs = ($faltantes | ForEach-Object { $_.Arquivos -join ", " }) -join " | "
+        Write-Host "[rodar-suite] ERRO: $($faltantes.Count) de $($saidas.Count) processo(s) nao devolveram resultado: $listaArqs"
         exit 1
     }
 
-    $total  = ($res | Measure-Object -Property Total  -Sum).Sum
-    $passou = ($res | Measure-Object -Property Passou -Sum).Sum
-    $falhou = ($res | Measure-Object -Property Falhou -Sum).Sum
-    $seg    = [Math]::Round(((Get-Date) - $inicio).TotalSeconds, 1)
+    $total    = ($res | Measure-Object -Property Total    -Sum).Sum
+    $passou   = ($res | Measure-Object -Property Passou   -Sum).Sum
+    $falhou   = ($res | Measure-Object -Property Falhou   -Sum).Sum
+    $pulou    = ($res | Measure-Object -Property Pulou    -Sum).Sum
+    $naoRodou = ($res | Measure-Object -Property NaoRodou -Sum).Sum
+    $seg      = [Math]::Round(((Get-Date) - $inicio).TotalSeconds, 1)
+
+    $envRemovido = @()
+    foreach ($r in $res) { foreach ($n in $r.EnvRemovido) { if ($envRemovido -notcontains $n) { $envRemovido += $n } } }
+    if ($envRemovido.Count -gt 0) {
+        Write-Host "[rodar-suite] env limpo no filho: $($envRemovido -join ', ')"
+    } else {
+        Write-Host "[rodar-suite] env limpo no filho: nenhum"
+    }
 
     Write-Host ""
-    Write-Host "[rodar-suite] $passou/$total em ${seg}s ($Processos processos)"
+    Write-Host "[rodar-suite] $passou/$total em ${seg}s ($Processos processos) -- pulados $pulou, nao rodados $naoRodou"
+    if ($MostrarPulados -and $pulou -gt 0) {
+        Write-Host "[rodar-suite] PULADOS ($pulou):"
+        foreach ($r in $res) { foreach ($n in $r.NomesPulados) { Write-Host "  - $n" } }
+    }
     if ($falhou -gt 0) {
         Write-Host "[rodar-suite] FALHAS ($falhou):"
         foreach ($r in $res) { foreach ($n in $r.Nomes) { Write-Host "  - $n" } }

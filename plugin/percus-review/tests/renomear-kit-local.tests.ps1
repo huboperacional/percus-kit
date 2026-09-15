@@ -39,6 +39,22 @@ Describe "renomear-kit-local.ps1" {
             Remove-ItemProperty -Path "HKCU:\Environment" -Name $Nome -ErrorAction SilentlyContinue
         }
 
+        # T7 (ponto 27): um processo morto no meio de um teste deixa a variavel PERCUS_TESTE_*
+        # presa no HKCU pra sempre -- o cleanup normal so roda no finally de cada It. Varredura
+        # por PREFIXO + valor "percus-ren-" (a pasta descartavel deste arquivo) pega o que
+        # sobrou de sessoes anteriores sem arriscar apagar variavel real de outro uso.
+        function Clear-VarTesteVazada {
+            $chave = Get-Item "HKCU:\Environment"
+            foreach ($nome in $chave.Property) {
+                if ($nome -notlike "PERCUS_TESTE_*") { continue }
+                $valor = (Get-ItemProperty -Path "HKCU:\Environment" -Name $nome -ErrorAction SilentlyContinue).$nome
+                if ($valor -is [string] -and $valor -like "*percus-ren-*") {
+                    Remove-ItemProperty -Path "HKCU:\Environment" -Name $nome -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        Clear-VarTesteVazada
+
         # Projeto irmao da pasta do kit, com o path do kit hardcodado num hook -- e a
         # forma real medida nos 4 projetos desta maquina.
         function New-Vizinho {
@@ -54,7 +70,10 @@ Describe "renomear-kit-local.ps1" {
         }
     }
 
-    AfterAll { foreach ($d in $script:temps) { Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue } }
+    AfterAll {
+        foreach ($d in $script:temps) { Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue }
+        Clear-VarTesteVazada
+    }
 
     It "renomeia a pasta e reescreve PERCUS_CANON_DIR" {
         $c = New-Cenario

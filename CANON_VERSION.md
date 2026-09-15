@@ -28,7 +28,16 @@
 > Entradas desta seção ainda não têm número: a versão é atribuída no merge para a `main` (sem bump
 > em branch). Quem fizer o merge move a entrada para um `## Changelog vX.Y.Z` e bumpa.
 
-(nenhuma entrada)
+- **Fase 2, Lote D (T6+T7, ponto 26 e 27) — régua da suíte** (branch `worktree-fase2`): `scripts/rodar-suite.ps1`
+  ganha `Pulou`/`NaoRodou`/`NomesPulados` por processo (Skipped/NotRun do Pester deixam de sumir do
+  relatório), a linha final vira `<passou>/<total> em <s>s (<n> processos) -- pulados <p>, nao rodados <q>`,
+  `-MostrarPulados` lista os nomes, um processo-filho morto sem devolver resultado é acusado por nome de
+  arquivo (`ERRO: <k> de <n> processo(s) nao devolveram resultado: <arquivos>`), e `-Caminhos` aceita
+  caminho absoluto. Novo `-ManterEnv`: o filho da suíte remove do próprio ambiente toda `PERCUS_*` não
+  listada antes de rodar o Pester (o pai fica intacto), e a saída anuncia `env limpo no filho: <nomes>`.
+  `plugin/percus-review/tests/renomear-kit-local.tests.ps1` ganha varredura no `BeforeAll`/`AfterAll` que
+  remove do `HKCU:\Environment` os `PERCUS_TESTE_*` cujo valor contém `percus-ren-` (vazamento de processo
+  morto no meio de um teste). Lock por repositório: descartado (sem incidente medido). skill muda: não.
 
 ---
 
