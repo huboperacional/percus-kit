@@ -36,6 +36,7 @@ Contratos:
    exit 4 do cliente (DeepSeek indisponível): PARE, não commite, reporte NEEDS_CONTEXT com o caminho do
    diff — o controlador faz a review Cross-Claude e registra com `registrar-review`.
    Achado crítico/importante aberto depois de 2 rodadas (P/M): pare e reporte; nunca commite.
+   Antes de aceitar o relatório, o controlador roda `scripts/sdd-conferir.ps1 -Base {sha-base} -Head {sha-final}` no worktree (uma chamada, uma linha por checagem) em vez das 7 conferências manuais de fim de tarefa.
 5. NUNCA dispare subagentes. Não faça merge nem push.
 6. Grave o relatório em {caminho absoluto}\{tarefa}-report.md ANTES de responder (limite de API
    já derrubou agente na mensagem final). Até ~150 linhas; evidência bruta (log de suíte, diff)
