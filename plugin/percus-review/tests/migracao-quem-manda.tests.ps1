@@ -47,14 +47,20 @@ Describe "v2/MIGRACAO.md -- quem manda em que (por tema)" {
             param([string]$KitRoot, [string]$Secao)
             $tabela = Get-TextoTabela -Secao $Secao
             $faltas = @()
+            # Pasta ausente NAO e' cobertura em dia: renomear v2/loops deixaria a varredura vazia e o
+            # teste verde guardando NADA (mesma classe de falso-verde do piso abaixo).
+            $vistos = 0
             foreach ($sub in @('loops', 'artefatos')) {
                 $dir = Join-Path (Join-Path $KitRoot 'v2') $sub
-                if (-not (Test-Path $dir)) { continue }
+                if (-not (Test-Path $dir)) { $faltas += "v2/$sub (pasta ausente -- renomeada?)"; continue }
                 foreach ($f in @(Get-ChildItem -Path $dir -Filter '*.md' -File | Sort-Object Name)) {
+                    $vistos++
                     $rel = "v2/$sub/$($f.Name)"
                     if (-not $tabela.Contains($rel)) { $faltas += $rel }
                 }
             }
+            # Piso: hoje sao 12 arquivos nas duas pastas; varredura curta e' varredura quebrada.
+            if ($vistos -lt 8) { $faltas += "varredura curta: so $vistos arquivo(s) .md em v2/loops+v2/artefatos" }
             return ,$faltas
         }
 
