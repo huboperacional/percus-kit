@@ -2,6 +2,12 @@
 
 `tags: deepseek, R11, review, pre-commit, hook, choices, null array, sobrecarga, falha silenciosa, cross-claude, R23`
 
+**Status: RESOLVIDO em 2026-09-14** pela feature `r11-sem-ponto-unico` (spec
+`docs/superpowers/specs/2026-09-14-r11-sem-ponto-unico-design.md`): o cliente passou a ter timeout e
+1 retry, mostra no stderr os primeiros 2 000 caracteres do corpo (chave mascarada), grava
+`.deepseek/reviews/ultimo-erro.txt` e sai **exit 4** sem marcador; a review Cross-Claude é gravada
+com `registrar-review`. O texto abaixo descreve o comportamento ANTERIOR, mantido como histórico.
+
 **Sintoma:** `scripts/deepseek-review.ps1` fica 10–15 min pendurado e termina com
 `[deepseek-review] ERRO: Cannot index into a null array.`, **exit 0**, e nenhum
 `.deepseek/reviews/*.jsonl` novo. O commit seguinte é barrado pelo `pre-commit-check` ("último
@@ -16,8 +22,8 @@ exceção de índice e esconde o corpo real.
 **O que fazer:**
 - Não confie no exit 0: confira se apareceu `.deepseek/reviews/d-<hash>.jsonl` / `latest.jsonl` novo.
 - Não insista mais de 2 vezes; confira se outras sessões estão rodando `deepseek-review` ao mesmo tempo.
-- Com autorização do operador, faça a review com um subagente Cross-Claude de verdade (lendo o
-  `git diff HEAD`) e grave o texto dela como marcador. O hash tem de sair do ARQUIVO de
-  `git diff HEAD --output=<tmp>` (SHA-256, 12 hex) — igual ao hook — senão não casa.
+- Com autorização do operador, faça a review com um subagente Cross-Claude e registre com
+  `registrar-review` (a linha pronta vem no marcador `__PERCUS_NEEDS_CROSS_CLAUDE__`); não calcule
+  hash à mão.
 - O marcador precisa existir ANTES da chamada do commit: o hook roda em PreToolUse.
-- Melhoria do kit pendente: logar o corpo da resposta quando `choices` vier nulo.
+- ~~Melhoria do kit pendente: logar o corpo da resposta quando `choices` vier nulo.~~ Feita (ver Status).

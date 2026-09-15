@@ -465,7 +465,7 @@ Commitar e "rodar review depois" — derrota o propósito. Interceptar **antes**
 
 - Commit só de docs/config sem mudança de código (`*.md`, `*.yml`, `*.json` não-código)
 - Hot fix urgente em produção — corrige primeiro, abre TODO de "review retroativo" depois
-- DeepSeek API down → router faz fallback automático pra Cross-Claude (declarar em voz alta)
+- DeepSeek API down → o cliente `deepseek-review` faz **1 retry automático** (timeout 180 s, backoff 5 s; `PERCUS_DEEPSEEK_TIMEOUT_S`/`PERCUS_DEEPSEEK_BACKOFF_S`). Se o provedor seguir indisponível (exit 4), o wrapper grava placeholder e emite `__PERCUS_NEEDS_CROSS_CLAUDE__` com o comando pronto: a review do subagente Sonnet é registrada com `registrar-review` (`-Canal cross-claude` / `--canal cross-claude`) e libera o commit pelo hash do diff. O placeholder sozinho libera **só por 5 min**, com aviso e uma linha em `.deepseek/reviews/deferidos.log` (declarar em voz alta)
 - Plugin `@percus/review` indisponível — declarar e marcar TODO de "revisar retroativamente"
 
 ### Kit Percus (`percus-kit/`) — sem exceção a R11

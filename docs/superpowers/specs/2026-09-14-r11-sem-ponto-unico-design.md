@@ -149,14 +149,15 @@ Todo FR vale para **`.ps1` e `.sh`** (paridade de comportamento, mensagens e exi
   marcador novo.
 - **SC-004** — Servidor que falha a 1ª e responde a 2ª: exit 0 e marcador gravado; tempo extra ≤
   backoff + timeout configurados (+1 s de folga). 401 e 404 simulados: exatamente 1 requisição, exit 1.
-- **SC-005** — Servidor que nunca responde, timeout 2 s e backoff 1 s: cliente termina em ≤ 6 s com
-  exit 4 (hoje trava indefinidamente).
+- **SC-005** — Servidor que nunca responde, timeout 2 s e backoff 1 s: o tempo do cliente ACIMA de
+  uma chamada normal medida no mesmo teste (a partida do processo `pwsh`/`bash` sozinha já consome
+  0,5–1,5 s e torna o absoluto instável) fica ≤ 6 s, com exit 4 (hoje trava indefinidamente).
 - **SC-006** — Fluxo US2 ponta a ponta em repo temporário: registro + commit liberado pelo hash com
   `latest.jsonl` envelhecido para 60 min; hash idêntico entre `.ps1` e `.sh` para diff com acentos.
 - **SC-007** — Latência do hook (não há benchmark hoje): mediana de 20 execuções do
   `pre-commit-check.ps1` sobre o fixture `New-RepoComDiff` de
   `plugin/percus-review/tests/pre-commit-hash-validity.tests.ps1`, versão antiga e nova medidas no
-  mesmo run e na mesma máquina; aceitável ≤ +20 ms.
+  mesmo run e na mesma máquina; aceitável mediana(novo) − mediana(antigo) ≤ 20 ms.
 - **SC-008** — Suíte inteira verde, incluindo `ps51-compat` e checagem ASCII/LF dos `.sh`.
 
 ---
@@ -197,9 +198,9 @@ Todo FR vale para **`.ps1` e `.sh`** (paridade de comportamento, mensagens e exi
   inteiro um objeto placeholder é recusado (FR-010).
 - Repositório sem commit: o registro recusa (exit 2, FR-010). O hook mantém o comportamento atual:
   `git diff HEAD` falha, a dispensa por extensão não se aplica, o arquivo temporário do diff fica vazio
-  e o hash calculado é o do arquivo vazio (`e3b0c44298fc`); sem `d-e3b0c44298fc.jsonl` que libere,
-  decide por `latest.jsonl` ≤5 min (FR-017). No hook git, `git diff --cached --quiet` roda contra a
-  árvore vazia e segue o mesmo caminho.
+  e o hash calculado é o do arquivo vazio (`e3b0c44298fc`); como hash vazio é **sem hash** (emenda
+  FR-016), o hook nem procura `d-e3b0c44298fc.jsonl` — decide direto por `latest.jsonl` ≤5 min
+  (FR-017). No hook git, `git diff --cached --quiet` roda contra a árvore vazia e segue o mesmo caminho.
 
 ---
 

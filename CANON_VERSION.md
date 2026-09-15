@@ -23,6 +23,37 @@
 
 ---
 
+## Pendente de versão
+
+> Entradas desta seção ainda não têm número: a versão é atribuída no merge para a `main` (sem bump
+> em branch). Quem fizer o merge move a entrada para um `## Changelog vX.Y.Z` e bumpa.
+
+### R11 sem ponto único de falha (branch `worktree-r11-fallback`, spec `docs/superpowers/specs/2026-09-14-r11-sem-ponto-unico-design.md`)
+
+- **Cliente `deepseek-review.{ps1,sh}`:** timeout por chamada (padrão 180 s) e exatamente 1 retry
+  (backoff 5 s) em timeout/rede, 429, 5xx e 2xx sem `choices`; 4xx ≠ 429 sai exit 1 sem retry;
+  **exit 4** = provedor indisponível após retry. Corpo sem `choices` vai ao stderr (2 000 caracteres,
+  chave mascarada) e a `.deepseek/reviews/ultimo-erro.txt`. O `.sh` passa a gravar `model`/`usage`.
+- **Novo `registrar-review.{ps1,sh}`:** grava a review do subagente Cross-Claude em
+  `d-<hash>.jsonl` + `latest.jsonl` (hash igual ao do hook, gravação atômica com rollback, telemetria).
+- **Wrapper `percus-review-auto.{ps1,sh}`:** `reason` distingue exit 4; todas as emissões do marcador
+  `__PERCUS_NEEDS_CROSS_CLAUDE__` trazem a linha pronta do `registrar-review`; stderr do cliente visível.
+- **Hook `pre-commit-check.{ps1,sh}` + `git-hooks/pre-commit.template.sh`:** o marcador passa a ser
+  LIDO — só review com `findings` não vazio libera; placeholder libera por `latest.jsonl` ≤5 min com
+  aviso e linha em `.deepseek/reviews/deferidos.log`; hash do diff vazio (`e3b0c44298fc`) não conta.
+  **Projetos com o hook git instalado precisam reinstalar** (`/percus-review:install-git-hooks`, com
+  `tr -d '\r'`) para ganhar a classificação.
+- **Publicação:** mudança em `plugin/percus-review/hooks/` e `scripts/` do plugin exige publicação
+  (ver topo deste arquivo); o wrapper do kit aponta para a cópia do kit do `registrar-review` enquanto
+  o cache não a tiver.
+- **Condições de rollout:** (a) exige push + `autoUpdate` do plugin para o cache pegar o hook/scripts
+  novos (ver nota do topo deste arquivo sobre gates vs. hooks); (b) projetos com o hook git nativo
+  instalado precisam reinstalar (ponto acima); (c) o sinal de saúde do R11 a observar depois do
+  rollout é o crescimento de `.deepseek/reviews/deferidos.log` — linhas demais indicam commits
+  liberando por placeholder em vez de review real.
+
+---
+
 ## Changelog v6.53.0 — 2026-09-13
 
 **Paridade `.sh` dos dois dispatchers.** Fecha o critério de pronto 4 da consolidação da cadeia de
