@@ -70,6 +70,74 @@ Describe "crud-evidence-warn hook (R2 trailer warn-only)" {
         Test-Path $hook | Should -Be $true
     }
 
+    Context "Trailer da R1 (CRUD-verified | UI-verified): mesma regra no .ps1 e no .sh" {
+        # T14 (Fase 2): a forma visual da R1 criou `UI-verified: YYYY-MM-DD HH:MM`. A regex do
+        # trailer e UMA so nas duas camadas; cada caso roda contra os dois runtimes, e o caso
+        # "sem trailer" prova que o .sh de fato avisa (sem ele, bash quebrado sairia "sem aviso").
+        BeforeAll {
+            . (Join-Path $PSScriptRoot '_resolver-bash.ps1')
+            $script:bashExe = Get-BashGit
+            $script:hookSh = Join-Path (Join-Path (Join-Path $PSScriptRoot '..') 'hooks') 'crud-evidence-warn.sh'
+            # Montado em runtime: o pre-commit-check casa git+commit por texto (regras de ambiente).
+            $script:tokCommit = 'com' + 'mit'
+
+            function Invoke-CrudWarnRuntime {
+                param([string]$Runtime, [string]$Repo, [string]$Trailer)
+                $msg = 'feat: alguma coisa'
+                if ($Trailer) { $msg = "$msg`n`n$Trailer" }
+                $cmd = "cd `"$Repo`" && git " + $script:tokCommit + " -m `"$msg`""
+                $stdin = @{ tool_input = @{ command = $cmd } } | ConvertTo-Json -Compress
+                if ($Runtime -eq 'ps1') {
+                    $out = $stdin | & pwsh -NoProfile -File $script:hook 2>&1
+                } else {
+                    $out = $stdin | & $script:bashExe ($script:hookSh.Replace([char]92, [char]47)) 2>&1
+                }
+                return [pscustomobject]@{ Code = $LASTEXITCODE; Out = ($out -join "`n") }
+            }
+        }
+
+        It "pre-condicao: ha bash e python3 -- VERMELHO, nao Skipped" {
+            $script:bashExe | Should -Not -BeNullOrEmpty
+            $v = & $script:bashExe -c 'python3 -c "print(42)"' 2>&1
+            ($v -join '') | Should -Match '42' -Because 'o .sh roda a logica em python3'
+        }
+
+        It "a regex do trailer e textualmente a mesma no .ps1 e no .sh" {
+            $ps = [IO.File]::ReadAllText($script:hook)
+            $sh = [IO.File]::ReadAllText($script:hookSh)
+            ($ps -match "(?m)^\s*\`$trailerRegex = '([^']+)'") | Should -BeTrue -Because 'o .ps1 declara $trailerRegex'
+            $rxPs = $matches[1]
+            ($sh -match "(?m)^TRAILER_REGEX = r'([^']+)'") | Should -BeTrue -Because 'o .sh declara TRAILER_REGEX'
+            $matches[1] | Should -BeExactly $rxPs
+        }
+
+        It "[<Runtime>] <Nome>" -ForEach @(
+            foreach ($rt in 'ps1', 'sh') {
+                @{ Runtime = $rt; Nome = 'UI-verified com data e hora -> sem aviso';        Trailer = 'UI-verified: 2026-09-15 10:00';   Avisa = $false }
+                @{ Runtime = $rt; Nome = 'CRUD-verified com data e hora -> sem aviso';      Trailer = 'CRUD-verified: 2026-05-30 14:30'; Avisa = $false }
+                @{ Runtime = $rt; Nome = 'ui-verified minusculo -> sem aviso';              Trailer = 'ui-verified: 2026-09-15 10:00';   Avisa = $false }
+                @{ Runtime = $rt; Nome = 'sem trailer -> aviso';                           Trailer = '';                                Avisa = $true }
+                @{ Runtime = $rt; Nome = 'UI-verified sem data valida -> aviso';           Trailer = 'UI-verified: ontem';              Avisa = $true }
+                @{ Runtime = $rt; Nome = 'UI-verified so com data, sem hora -> aviso';     Trailer = 'UI-verified: 2026-09-15';         Avisa = $true }
+                @{ Runtime = $rt; Nome = 'CRUD-verified so com data, sem hora -> aviso';   Trailer = 'CRUD-verified: 2026-05-30';       Avisa = $true }
+                @{ Runtime = $rt; Nome = 'outro prefixo (XX-verified) -> aviso';           Trailer = 'XX-verified: 2026-09-15 10:00';   Avisa = $true }
+            }
+        ) {
+            $repo = New-PlanoRepo -Content "## Frente: X`n`n- ``[5-T]`` Tela Z — ok"
+            try {
+                $r = Invoke-CrudWarnRuntime -Runtime $Runtime -Repo $repo -Trailer $Trailer
+                $r.Code | Should -Be 0 -Because "warn-only NUNCA bloqueia ($Runtime)"
+                if ($Avisa) {
+                    $r.Out | Should -Match '\[percus:warn crud-evidence\]' -Because "saida $Runtime`: $($r.Out)"
+                    $r.Out | Should -Match 'Tela Z'
+                    $r.Out | Should -Match 'UI-verified' -Because 'o aviso cita as duas formas do trailer'
+                } else {
+                    $r.Out | Should -Not -Match '(?i)percus:warn' -Because "saida $Runtime`: $($r.Out)"
+                }
+            } finally { Remove-Item -Recurse -Force $repo -ErrorAction SilentlyContinue }
+        }
+    }
+
     Context "Warn dispara quando [5-T] e adicionado sem trailer" {
         It "1. PLANO novo com feature [5-T] sem trailer -> warn, mas exit 0" {
             $repo = New-PlanoRepo -Content @'

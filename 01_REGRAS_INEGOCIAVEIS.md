@@ -122,7 +122,7 @@ git commit -m "fix(x): ajusta layout da tela Y" -m "UI-verified: 2026-05-30 14:3
 ```
 
 Dois hooks do plugin `percus-review` cuidam disso (sem promoção automática warn→block — decisão registrada no plano v6.11→v7.0):
-- **`crud-evidence-warn`** (pre-commit, **warn-only**): avisa quando um `[5-T]` é adicionado a `PLANO.md`/`HANDOFF.md` sem o trailer. Ainda não reconhece `UI-verified` e avisa também nesse caso: com `UI-verified` no commit, esse aviso é **falso e esperado** — ignore-o declarando, e **não** use `PERCUS_SKIP_CRUD_WARN=1` como resposta (o ajuste do hook está planejado para a 6.59.0). Não bloqueia. Skip (só fora desse caso): `PERCUS_SKIP_CRUD_WARN=1`.
+- **`crud-evidence-warn`** (pre-commit, **warn-only**): avisa quando um `[5-T]` é adicionado a `PLANO.md`/`HANDOFF.md` sem o trailer (`CRUD-verified` ou `UI-verified`, com data e hora). Não bloqueia. Skip: `PERCUS_SKIP_CRUD_WARN=1`.
 - **`state-drift-check`** (on-stop, **bloqueia**): impede encerrar a sessão se `docs/PLANO.md` (fonte da verdade) e `HANDOFF.md` divergem no status de alguma feature. Skip: `PERCUS_SKIP_DRIFT_CHECK=1` (declarar motivo em voz alta).
 
 A skill `percus-review:feature-flow` atualiza PLANO **e** HANDOFF na mesma operação ao marcar `[5-T]`, eliminando a classe de drift por origem.
