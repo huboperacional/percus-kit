@@ -175,8 +175,8 @@ Strings exatas. Teste de uma task pode afirmar string definida aqui.
 Marcador gravado: `{"timestamp","base":"","diff_lines":<n de bytes 0x0A do diff>,"model":<string|null>,"usage":null,"findings":<texto sem BOM>,"canal":<canal>}` + `\n`.
 
 **Wrapper:** texto de exit 4 no `reason`: `provedor indisponível após retry (exit 4)`; outro exit: `DeepSeek falhou (exit <n>)`. Instrução de registro anexada a TODO marcador `__PERCUS_NEEDS_CROSS_CLAUDE__`:
-- ps1: ` Depois que o subagente responder, grave os findings dele num arquivo e registre com registrar-review: & '<caminho absoluto>' -Arquivo '<arquivo-dos-findings>' -Canal cross-claude -Modelo '<modelo-do-subagente>'. Sem esse registro o commit so passa pelo placeholder de 5 min.`
-- sh: igual, com `bash '<caminho absoluto>' --arquivo '<arquivo-dos-findings>' --canal cross-claude --modelo '<modelo-do-subagente>'`.
+- ps1: ` Depois que o subagente responder, grave os findings dele num arquivo FORA do repo (ex.: em $env:TEMP; nunca dentro do repo, senao muda o git diff HEAD e o hash registrado deixa de bater) e registre com registrar-review: & '<caminho absoluto>' -Arquivo '<arquivo-dos-findings>' -Canal cross-claude -Modelo '<modelo-do-subagente>'. Pela ferramenta Bash, chame assim: pwsh -NoProfile -File '<caminho absoluto>' -Arquivo '<arquivo-dos-findings>' -Canal cross-claude -Modelo '<modelo-do-subagente>'. Sem esse registro o commit so passa pelo placeholder de 5 min.`
+- sh: igual, com `bash '<caminho absoluto>' --arquivo '<arquivo-dos-findings>' --canal cross-claude --modelo '<modelo-do-subagente>'` e "num arquivo FORA do repo (ex.: com mktemp ou em ${TMPDIR:-/tmp}; ...)".
 
 ---
 

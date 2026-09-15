@@ -101,7 +101,7 @@ if [ ! -f "$REGISTRAR" ]; then
         REGISTRAR="$_KIT_DIR/plugin/percus-review/scripts/registrar-review.sh"
     fi
 fi
-INSTRUCAO_REGISTRO=" Depois que o subagente responder, grave os findings dele num arquivo e registre com registrar-review: bash '$REGISTRAR' --arquivo '<arquivo-dos-findings>' --canal cross-claude --modelo '<modelo-do-subagente>'. Sem esse registro o commit so passa pelo placeholder de 5 min."
+INSTRUCAO_REGISTRO=" Depois que o subagente responder, grave os findings dele num arquivo FORA do repo (ex.: com mktemp ou em \${TMPDIR:-/tmp}; nunca dentro do repo, senao muda o git diff HEAD e o hash registrado deixa de bater) e registre com registrar-review: bash '$REGISTRAR' --arquivo '<arquivo-dos-findings>' --canal cross-claude --modelo '<modelo-do-subagente>'. Sem esse registro o commit so passa pelo placeholder de 5 min."
 
 causa_falha_deepseek() {
     if [ "$1" = "4" ]; then

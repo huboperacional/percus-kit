@@ -16,8 +16,11 @@ BeforeDiscovery {
         @{ Caso = 'acima-teto';     LiberaHash = $false; LiberaLatest = $false; Motivo = 'acima do teto (256 KB)' }
         @{ Caso = 'bom';            LiberaHash = $true;  LiberaLatest = $true;  Motivo = '' }
     )
+    # 'ps1-51' repete a mesma matriz do 'ps1', mas invocada sob Windows PowerShell 5.1
+    # (powershell.exe) -- runtime real dos hooks em producao (revisao final, I2: a matriz so
+    # exercitava pwsh 7). Skip visivel por caso quando a maquina nao tem powershell.exe.
     $script:matriz = @()
-    foreach ($cam in @('ps1', 'sh', 'git')) {
+    foreach ($cam in @('ps1', 'sh', 'git', 'ps1-51')) {
         foreach ($c in $casos) {
             foreach ($onde in @('hash', 'latest')) {
                 $lib = $c.LiberaLatest; if ($onde -eq 'hash') { $lib = $c.LiberaHash }
@@ -26,6 +29,11 @@ BeforeDiscovery {
             }
         }
     }
+    # Dados para os casos parametrizados por host (FR-019 e o caso do Minor 2).
+    $script:hostsFR019 = @(
+        @{ Rotulo = 'ps1 (pwsh 7)'; Chave = 'pwsh' }
+        @{ Rotulo = 'ps1 (powershell.exe 5.1)'; Chave = '51' }
+    )
 }
 
 Describe "hook pre-commit -- classificacao do marcador nas 3 camadas" {
@@ -41,8 +49,11 @@ Describe "hook pre-commit -- classificacao do marcador nas 3 camadas" {
         # Hook git instalado = template sem CR (procedimento do verbete de CRLF).
         $script:templateLF = Join-Path $script:tmpBase 'pre-commit'
         Copy-SemCR -Origem $script:template -Destino $script:templateLF
-        $script:bloqueio = @{ ps1 = 2; sh = 2; git = 1 }
+        $script:bloqueio = @{ ps1 = 2; sh = 2; git = 1; 'ps1-51' = 2 }
         $script:u8 = New-Object System.Text.UTF8Encoding($false)
+        # Resolvido uma vez: $null se a maquina nao tiver Windows PowerShell 5.1 instalado (fora do
+        # padrao em Windows 10/11, mas possivel). Casos 'ps1-51' e FR-019/Minor 2 pulam com Skip.
+        $script:ps51 = (Get-Command 'powershell.exe' -ErrorAction SilentlyContinue).Source
 
         function Get-DiffHash {
             param([string]$RepoDir)
@@ -68,6 +79,7 @@ Describe "hook pre-commit -- classificacao do marcador nas 3 camadas" {
                 'nao-json'       { return $script:u8.GetBytes('Sem findings criticos.') }
                 'acima-teto'     { return $script:u8.GetBytes('{"findings":"' + ('a' * 262200) + '"}') }
                 'bom'            { return [byte[]](@(0xEF, 0xBB, 0xBF) + $script:u8.GetBytes('{"findings":"Sem findings criticos."}')) }
+                'findings-data-iso' { return $script:u8.GetBytes('{"findings":"2026-09-14T10:00:00Z"}') }
             }
         }
 
@@ -109,8 +121,9 @@ Describe "hook pre-commit -- classificacao do marcador nas 3 camadas" {
             $cmd = 'cd "' + (ConvertTo-CaminhoBash $Repo) + '" && git com' + 'mit -m x'
             $payload = @{ tool_name = 'Bash'; tool_input = @{ command = $cmd } } | ConvertTo-Json -Compress
             $code = -1
-            if ($Camada -eq 'ps1') {
-                $payload | & pwsh -NoProfile -File $script:hookPs1 2>$err | Out-Null; $code = $LASTEXITCODE
+            if ($Camada -eq 'ps1' -or $Camada -eq 'ps1-51') {
+                $exe = 'pwsh'; if ($Camada -eq 'ps1-51') { $exe = $script:ps51 }
+                $payload | & $exe -NoProfile -File $script:hookPs1 2>$err | Out-Null; $code = $LASTEXITCODE
             } elseif ($Camada -eq 'sh') {
                 $alvo = $script:hookSh; if ($Alternativo) { $alvo = $Alternativo }
                 $payload | & $script:bash (ConvertTo-CaminhoBash $alvo) 2>$err | Out-Null; $code = $LASTEXITCODE
@@ -139,6 +152,7 @@ Describe "hook pre-commit -- classificacao do marcador nas 3 camadas" {
     }
 
     It "<Camada> | <Onde> | <Caso>" -ForEach $script:matriz {
+        if ($Camada -eq 'ps1-51' -and -not $script:ps51) { Set-ItResult -Skipped -Because "powershell.exe nao encontrado nesta maquina"; return }
         $repo = New-RepoMarcador -Caso $Caso -Onde $Onde
         $r = Invoke-Camada -Camada $Camada -Repo $repo
         if ($Libera) {
@@ -195,11 +209,37 @@ Describe "hook pre-commit -- classificacao do marcador nas 3 camadas" {
         (Invoke-Camada -Camada $Camada -Repo $repo).Code | Should -Be 0
     }
 
-    It "ps1: erro interno sai 0 com WARN no STDERR" {
-        $err = Join-Path $script:tmpBase 'warn.txt'
-        '{isto nao e json' | & pwsh -NoProfile -File $script:hookPs1 2>$err | Out-Null
+    It "<Rotulo>: erro interno sai 0 com WARN no STDERR (FR-019)" -ForEach $script:hostsFR019 {
+        $exe = $Chave
+        if ($Chave -eq '51') {
+            if (-not $script:ps51) { Set-ItResult -Skipped -Because "powershell.exe nao encontrado nesta maquina"; return }
+            $exe = $script:ps51
+        }
+        $err = Join-Path $script:tmpBase ("warn-" + [Guid]::NewGuid().ToString('N').Substring(0,6) + '.txt')
+        '{isto nao e json' | & $exe -NoProfile -File $script:hookPs1 2>$err | Out-Null
         $LASTEXITCODE | Should -Be 0
         ([IO.File]::ReadAllText($err)) | Should -Match '^\[percus:hook pre-commit\] WARN:'
+    }
+
+    It "<Camada>: findings com cara de data ISO diverge entre hosts (Minor 2 -- comportamento atual, sem mudar o hook)" -ForEach @(
+        @{ Camada = 'ps1' }
+        @{ Camada = 'ps1-51' }
+    ) {
+        if ($Camada -eq 'ps1-51' -and -not $script:ps51) { Set-ItResult -Skipped -Because "powershell.exe nao encontrado nesta maquina"; return }
+        # ConvertFrom-Json do pwsh 7 converte uma string com cara de data ISO-8601 em [DateTime];
+        # Windows PowerShell 5.1 mantem a string. O hook classifica pelo TIPO de `findings`, entao o
+        # mesmo marcador vira 'invalido: findings nao e string' em pwsh 7 e 'review' (libera) em 5.1.
+        # Sem efeito em producao (5.1 e o runtime real) e improvavel numa review de verdade; aqui so
+        # para documentar a divergencia (Minor 2 da revisao final) -- nao mexer no classificador por
+        # causa disto.
+        $repo = New-RepoMarcador -Caso 'findings-data-iso' -Onde 'hash'
+        $r = Invoke-Camada -Camada $Camada -Repo $repo
+        if ($Camada -eq 'ps1-51') {
+            $r.Code | Should -Be 0 -Because "5.1 mantem findings como string (ConvertFrom-Json nao converte). stderr: $($r.Err)"
+        } else {
+            $r.Code | Should -Be $script:bloqueio['ps1'] -Because "pwsh 7 converte a string ISO em [DateTime] -- findings deixa de ser string. stderr: $($r.Err)"
+            $r.Err | Should -Match 'findings nao e string'
+        }
     }
 
     It "o bloco awk e identico nos dois .sh" {

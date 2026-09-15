@@ -100,7 +100,7 @@ if (-not (Test-Path -LiteralPath $registrarScript)) {
     $registrarKit = Join-Path (Split-Path $PSScriptRoot -Parent) "plugin\percus-review\scripts\registrar-review.ps1"
     if (Test-Path -LiteralPath $registrarKit) { $registrarScript = $registrarKit }
 }
-$instrucaoRegistro = " Depois que o subagente responder, grave os findings dele num arquivo e registre com registrar-review: & '$registrarScript' -Arquivo '<arquivo-dos-findings>' -Canal cross-claude -Modelo '<modelo-do-subagente>'. Sem esse registro o commit so passa pelo placeholder de 5 min."
+$instrucaoRegistro = " Depois que o subagente responder, grave os findings dele num arquivo FORA do repo (ex.: em `$env:TEMP; nunca dentro do repo, senao muda o git diff HEAD e o hash registrado deixa de bater) e registre com registrar-review: & '$registrarScript' -Arquivo '<arquivo-dos-findings>' -Canal cross-claude -Modelo '<modelo-do-subagente>'. Pela ferramenta Bash, chame assim: pwsh -NoProfile -File '$registrarScript' -Arquivo '<arquivo-dos-findings>' -Canal cross-claude -Modelo '<modelo-do-subagente>'. Sem esse registro o commit so passa pelo placeholder de 5 min."
 
 function Get-CausaFalhaDeepSeek {
     param([int]$Codigo)

@@ -86,10 +86,14 @@ Describe "percus-review-auto -- exit 4 e instrucao de registro" {
         $caminho = Join-Path $pl.Scripts ("registrar-review." + $ext)
         if ($Rt -eq 'sh') { $caminho = ConvertTo-CaminhoBash $caminho }
         $flag = '-Canal cross-claude'; if ($Rt -eq 'sh') { $flag = '--canal cross-claude' }
+        $forado = 'FORA do repo'
+        $viaBash = 'pwsh -NoProfile -File'; if ($Rt -eq 'sh') { $viaBash = $null }
         foreach ($m in $r.Marcas) {
             $m | Should -Match 'registrar-review'
             $m.Contains($caminho) | Should -BeTrue -Because "caminho absoluto '$caminho' ausente em: $m"
             $m.Contains($flag) | Should -BeTrue
+            $m.Contains($forado) | Should -BeTrue -Because "instrucao deve dizer para gravar os findings fora do repo (senao muda o git diff HEAD): $m"
+            if ($viaBash) { $m.Contains($viaBash) | Should -BeTrue -Because "instrucao ps1 deve citar a chamada via ferramenta Bash: $m" }
         }
         if ($Placeholder) {
             $r.Placeholder | Should -Not -BeNullOrEmpty
@@ -119,6 +123,8 @@ Describe "percus-review-auto -- exit 4 e instrucao de registro" {
             $m | Should -Match 'registrar-review'
             $m.Contains($caminho) | Should -BeTrue -Because "caminho absoluto '$caminho' ausente em: $m"
             $m.Contains('-Canal cross-claude') | Should -BeTrue
+            $m.Contains('FORA do repo') | Should -BeTrue -Because "instrucao deve dizer para gravar os findings fora do repo: $m"
+            $m.Contains('pwsh -NoProfile -File') | Should -BeTrue -Because "instrucao ps1 deve citar a chamada via ferramenta Bash: $m"
         }
         $r.Placeholder | Should -Not -BeNullOrEmpty
         $r.Placeholder.deferred | Should -BeTrue
