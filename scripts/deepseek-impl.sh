@@ -141,8 +141,16 @@ LOG_FILE="$LOG_DIR/$TS.jsonl"
 
 echo "[deepseek-impl] Chamando $MODEL em $ENDPOINT..."
 
+# Chave FORA do argv do curl (Fase 2 T5b): mesma tecnica de plugin/percus-review/providers/deepseek.sh --
+# cabecalho num arquivo 600 lido com `-H @arquivo`, removido pelo trap. Sem fallback de nome previsivel.
+AUTH_FILE=$(mktemp "${TMPDIR:-/tmp}/percus-auth-XXXXXX" 2>/dev/null) || AUTH_FILE=""
+[[ -z "$AUTH_FILE" ]] && { echo "ERRO: nao consegui criar o arquivo temporario do cabecalho de autenticacao." >&2; exit 1; }
+trap 'rm -f "$AUTH_FILE" || true' EXIT
+chmod 600 "$AUTH_FILE" 2>/dev/null || true
+printf 'Authorization: Bearer %s\n' "${DEEPSEEK_API_KEY//$'\r'/}" > "$AUTH_FILE"
+
 RESPONSE=$(curl -sS --max-time 600 -X POST "$ENDPOINT" \
-    -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+    -H "@$AUTH_FILE" \
     -H "Content-Type: application/json" \
     -d "$PAYLOAD") || {
     echo "ERRO: falha na chamada DeepSeek" >&2
@@ -160,6 +168,10 @@ if [[ -z "$CONTENT" ]]; then
     echo "$RESPONSE" > "$LOG_FILE"
     exit 1
 fi
+
+# AUTH_FILE ja cumpriu o papel dele (curl acima); removido aqui porque o trap abaixo
+# (TMPDIR do parser de blocos) substitui este, e bash nao empilha trap do mesmo sinal.
+rm -f "$AUTH_FILE" 2>/dev/null || true
 
 jq -n --arg ts "$TS" --arg model "$MODEL" --arg task "$TASK" \
       --arg files "$FILES" --arg rules "$RULES" \

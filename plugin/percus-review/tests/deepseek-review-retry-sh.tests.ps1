@@ -292,11 +292,12 @@ Describe "deepseek-review.sh -- timeout, retry e provedor indisponivel" {
         @($r.SobrasAuth).Count | Should -Be 0
     }
 
-    It "F-f: nenhum .sh do plugin passa a chave como argumento (grep 'Bearer \$|x-api-key: \$' = 0) e os 4 usam -H @arquivo no trap" {
-        # Escopo: os .sh do PLUGIN (plugin/percus-review). O scripts/deepseek-impl.sh da raiz do kit
-        # tem a mesma classe e ficou fora da T5 -- registrado em CANON_VERSION.md "Pendente de versao".
+    It "F-f: nenhum .sh do plugin nem scripts/deepseek-impl.sh passa a chave como argumento (grep 'Bearer \$|x-api-key: \$' = 0) e todos usam -H @arquivo no trap" {
         $raiz = Split-Path $PSScriptRoot -Parent
-        $hits =@(Get-ChildItem -LiteralPath $raiz -Recurse -Filter '*.sh' -File | Select-String -Pattern 'Bearer \$|x-api-key: \$' | ForEach-Object { $_.Path + ':' + $_.LineNumber })
+        $kitRaiz = Split-Path (Split-Path $raiz -Parent) -Parent
+        $implSh = Join-Path $kitRaiz 'scripts\deepseek-impl.sh'
+        $hits = @(Get-ChildItem -LiteralPath $raiz -Recurse -Filter '*.sh' -File | Select-String -Pattern 'Bearer \$|x-api-key: \$' | ForEach-Object { $_.Path + ':' + $_.LineNumber })
+        $hits += @(Get-ChildItem -LiteralPath $implSh -File | Select-String -Pattern 'Bearer \$|x-api-key: \$' | ForEach-Object { $_.Path + ':' + $_.LineNumber })
         $hits.Count | Should -Be 0 -Because ($hits -join ', ')
         foreach ($rel in @('scripts/deepseek-review.sh', 'providers/deepseek.sh', 'providers/groq-llama.sh', 'providers/cross-claude.sh')) {
             $src = [IO.File]::ReadAllText((Join-Path $raiz $rel), $script:u8)
@@ -304,6 +305,10 @@ Describe "deepseek-review.sh -- timeout, retry e provedor indisponivel" {
             $src | Should -Match 'percus-auth-XXXXXX' -Because $rel
             $src | Should -Match "(?m)^trap '[^']*AUTH_FILE[^']*' EXIT" -Because "$rel remove o cabecalho no trap"
         }
+        $srcImpl = [IO.File]::ReadAllText($implSh, $script:u8)
+        $srcImpl.Contains('-H "@$AUTH_FILE"') | Should -BeTrue -Because "scripts/deepseek-impl.sh (anti-vacuidade)"
+        $srcImpl | Should -Match 'percus-auth-XXXXXX' -Because 'scripts/deepseek-impl.sh'
+        $srcImpl | Should -Match "(?m)^trap '[^']*AUTH_FILE[^']*' EXIT" -Because "scripts/deepseek-impl.sh remove o cabecalho no trap"
     }
 }
 

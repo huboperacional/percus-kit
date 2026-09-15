@@ -93,8 +93,12 @@
   `tests/_servidor-http-falso.ps1` grava o cabeçalho de cada pedido em `pedido-<n>.txt`
   (`Get-PedidoServidorFalso`). Testes: +6 em `tests/deepseek-review-retry-sh.tests.ps1` (CommandLine do
   `curl.exe` pendurado sem a chave pelo WMI + exit 4 sem sobra; cabeçalho no fio; varredura de texto
-  `Bearer \$|x-api-key: \$` = 0 nos `.sh` do plugin; os 3 providers contra o servidor falso). Fora do
-  escopo, mesma classe: `scripts/deepseek-impl.sh:145`. skill muda: não.
+  `Bearer \$|x-api-key: \$` = 0 nos `.sh` do plugin; os 3 providers contra o servidor falso). skill muda: não.
+  **T5b:** `scripts/deepseek-impl.sh`, que tinha ficado fora do escopo da T5 (raiz do kit, não
+  `plugin/percus-review`), recebeu a mesma técnica (mktemp + chmod 600 + printf + `-H @arquivo` + trap); o
+  trap existente de `TMPDIR=$(mktemp -d)` em :184-185 não foi tocado — em vez de mesclar os dois traps, o
+  `AUTH_FILE` é removido explicitamente antes dessa linha rodar. A varredura de texto e a asserção
+  `deepseek-review-retry-sh.tests.ps1` foram estendidas para cobrir este arquivo também.
 
 ---
 
