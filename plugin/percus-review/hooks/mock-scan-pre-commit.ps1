@@ -32,17 +32,42 @@ try {
     # geral la de baixo libera o commit, e uma excecao aqui nao pode virar escape.
     # Paridade com mock-scan-pre-commit.sh e requisito de seguranca: uma perna
     # que libera onde a outra bloqueia e defeito (tests\mock-scan.tests.ps1).
-    $reEscape = '(?i)\bMOCK-OK:'
+    # LIMITES (custo, revisao T10): so os primeiros 65536 caracteres do comando e no
+    # maximo 64 ocorrencias por regex; passou disso -> sem escape (o scan segue).
+    # Hook que estoura o timeout do Claude Code deixa o commit passar SEM scan.
+    # Unidade: aqui caracteres UTF-16; o .sh corta em BYTES da saida do python3.
+    # Byte >= unidade UTF-16, entao o .sh nunca ve MAIS texto que esta perna: com
+    # nao-ASCII perto do corte ele pode bloquear onde esta libera, nunca o contrario.
+    # Fronteira: `(?i)\bMOCK-OK:` do contrato, com um ajuste de paridade com o .sh:
+    # QUALQUER caractere nao-ASCII antes conta como letra (`eMOCK-OK:` com acento
+    # colado bloqueia), e a caixa e so ASCII ([Kk], nao o sinal Kelvin do .NET).
+    # \P{IsBasicLatin} = fora de U+0000-U+007F (fonte ASCII, sem \u literal).
+    $reEscape = '(?<![\w\P{IsBasicLatin}])[Mm][Oo][Cc][Kk]-[Oo][Kk]:'
+    $janela = 65536
+    $maxOcorr = 64
+    $cmdEsc = $command
+    $cmdTruncado = $false
+    if ($cmdEsc.Length -gt $janela) { $cmdEsc = $cmdEsc.Substring(0, $janela); $cmdTruncado = $true }
     $escape = $false
     foreach ($reMsg in @('-m\s+"([^"]+)"', "-m\s+'([^']+)'")) {
-        foreach ($m in [regex]::Matches($command, $reMsg)) {
-            if ($m.Groups[1].Value -match $reEscape) { $escape = $true; break }
+        $nOcorr = 0
+        foreach ($m in [regex]::Matches($cmdEsc, $reMsg)) {
+            if ($nOcorr -ge $maxOcorr) { break }
+            $nOcorr++
+            # [regex]::IsMatch e nao -match: o -match liga IgnoreCase e traria o Kelvin de volta.
+            if ([regex]::IsMatch($m.Groups[1].Value, $reEscape)) { $escape = $true; break }
         }
         if ($escape) { break }
     }
     if (-not $escape) {
         $reArq = '(?:^|\s)(?:-F\s+|--file=|--file\s+)(?:"([^"]*)"|''([^'']*)''|([^\s"'';&|]+))'
-        foreach ($m in [regex]::Matches($command, $reArq)) {
+        $nOcorr = 0
+        foreach ($m in [regex]::Matches($cmdEsc, $reArq)) {
+            if ($nOcorr -ge $maxOcorr) { break }
+            $nOcorr++
+            # Trecho que termina exatamente no corte da janela pode ser caminho
+            # partido (`-F msg` de `-F msg.txt`): sem escape.
+            if ($cmdTruncado -and ($m.Index + $m.Length) -ge $cmdEsc.Length) { continue }
             $arq = $null
             foreach ($g in 1..3) { if ($m.Groups[$g].Success) { $arq = $m.Groups[$g].Value; break } }
             if (-not $arq -or $arq -eq '-') { continue }
@@ -59,8 +84,12 @@ try {
                         $lidos += $n
                     }
                 } finally { $fs.Dispose() }
-                $texto = [Text.Encoding]::UTF8.GetString($buf, 0, $lidos)
-                if ($texto -match $reEscape) { $escape = $true; break }
+                # Pula um BOM UTF-8 inicial (Out-File -Encoding UTF8 do PS 5.1 grava BOM):
+                # o GetString devolveria U+FEFF, que conta como letra colada no MOCK-OK:.
+                $ini = 0
+                if ($lidos -ge 3 -and $buf[0] -eq 0xEF -and $buf[1] -eq 0xBB -and $buf[2] -eq 0xBF) { $ini = 3 }
+                $texto = [Text.Encoding]::UTF8.GetString($buf, $ini, $lidos - $ini)
+                if ([regex]::IsMatch($texto, $reEscape)) { $escape = $true; break }
             } catch {
                 # ilegivel -> sem escape; o scan segue e decide.
                 continue
@@ -126,7 +155,7 @@ try {
     Write-PercusBlock -HookName 'mock-scan' -Lines (@(
         "encontrados $($findings.Count)+ padrao(es) de mock/placeholder em arquivos staged (R3)."
     ) + $findings + @(
-        "Remova o mock OU use commit message comecando com 'MOCK-OK: <motivo>' pra pular.",
+        "Remova o mock OU ponha 'MOCK-OK: <motivo>' em qualquer -m (qualquer posicao) ou no arquivo de -F (primeiras 64 KB) pra pular.",
         "Skip permanente: `$env:PERCUS_SKIP_MOCK_SCAN=1 (declarar motivo em voz alta)."
     ))
     exit 2

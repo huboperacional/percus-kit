@@ -17,9 +17,16 @@ paridade testada em `plugin/percus-review/tests/mock-scan.tests.ps1` sob pwsh, p
 
 - O hook lê a **string do comando** Bash. O escape vale se `MOCK-OK:` (sem caixa, com fronteira de
   palavra antes) aparecer em **qualquer** `-m "..."` ou `-m '...'`, em todas as ocorrências.
+  Letra acentuada ou qualquer outro caractere não-ASCII colado antes (`éMOCK-OK:`) conta como
+  letra: sem fronteira, sem escape.
 - Também vale se aparecer nas **primeiras 64 KB** do arquivo de `-F <arq>`, `--file=<arq>` ou
   `--file <arq>`. O caminho pode vir entre aspas e com espaço (`-F "a b.txt"`). Se for relativo, ele
-  resolve contra a raiz que o hook tira do `cd <dir> &&` do comando, não contra o cwd do hook.
+  resolve contra a raiz que o hook tira do `cd <dir> &&` do comando. **Sem `cd` no comando**, a raiz
+  é o diretório corrente do processo do hook (`pwd` no `.sh`, `Get-Location` no `.ps1`), que é o da
+  sessão do agente, e não o repo de um `git -C`. Nesse caso o `-F` relativo procura no lugar errado e
+  fica sem escape: sem `cd`, passe o caminho **absoluto**.
+- A busca olha só os **primeiros 64 KB do comando** e no máximo **64 ocorrências de cada forma**
+  (`-m "..."`, `-m '...'` e `-F`/`--file`). `MOCK-OK:` depois disso não conta. Isso só pesa em comando gigante (heredoc antes do commit).
 - **Sem escape** (o scan segue e bloqueia se houver mock) com `-F -` (stdin), com arquivo inexistente,
   com diretório, com arquivo ilegível (travado por outro processo) e com `MOCK-OK:` depois de 64 KB.
 - Mensagem por heredoc/stdin continua invisível: não há `-m` nem arquivo na linha de comando.
@@ -37,8 +44,8 @@ corpo explicando o que o commit faz
 ```
 
 **Alternativa com `-m`:** um `-m` por parágrafo, com o `MOCK-OK:` em qualquer um deles (não precisa
-mais ser o 1º nem ter aspas duplas). Aspas simples no `-m` seguem sendo a regra de commit (contrato 3 do
-despacho). Motivo em ASCII, sem aspas do mesmo tipo dentro do parágrafo (o `[^']+`/`[^"]+` para na
+mais ser o 1º nem ter aspas duplas). Prefira aspas simples no `-m`: dentro delas o shell não expande `$` nem
+crase. Motivo em ASCII, sem aspas do mesmo tipo dentro do parágrafo (o `[^']+`/`[^"]+` para na
 primeira).
 
 ⚠️ **`PERCUS_SKIP_MOCK_SCAN=1` prefixado no seu comando também não resolve:** o hook roda em
