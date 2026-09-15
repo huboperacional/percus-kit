@@ -556,12 +556,34 @@ if [ -n "$v_origin" ]; then
     # CANON_VERSION.md deixaria o commit entrar com conteudo novo em versao
     # velha, que e exatamente o estado que este gate existe para impedir.
     v_local=$(git show :CANON_VERSION.md 2>/dev/null | versao_do_cabecalho)
+    # Branch de feature x branch principal. O numero da versao e atribuido no MERGE:
+    # exigir bump dentro do branch faz branches paralelos brigarem pelo mesmo numero e
+    # conflitarem no CANON_VERSION.md. Fora de main/master, IGUALDADE com origin/main e
+    # aceita; versao ATRASADA, arquivo fora do indice e remocao continuam barrados.
+    # HEAD destacado (symbolic-ref vazio) nao prova que e feature: fica na regra estrita.
+    # O avanco na main fica garantido pelo commit de bump da release, que este bloco checa
+    # (merge sem conflito nao roda pre-commit; fast-forward nao roda hook nenhum).
+    # tr -d do CR: no Git Bash a saida de git pode trazer CR no fim da linha.
+    # Ref COMPLETO, nao --short: com uma tag chamada main (ou master) no repo,
+    # --short desambigua o branch homonimo para heads/main, o case abaixo nao
+    # casa mais main e o commit cairia na regra relaxada dentro do proprio
+    # branch principal. O ref completo (refs/heads/main) nao sofre esse choque.
+    branch_atual=$(git symbolic-ref -q HEAD 2>/dev/null | tr -d '\r')
+    case "$branch_atual" in
+      ''|refs/heads/main|refs/heads/master) branch_feature=0 ;;
+      *)                                    branch_feature=1 ;;
+    esac
+    branch_nome=${branch_atual#refs/heads/}
     if [ -z "$v_local" ]; then
       violacao "CANON_VERSION.md sumiu do indice (rm/rm --cached) enquanto ha conteudo de kit staged -- o arquivo de versao e obrigatorio no canon"
+    elif [ "$branch_feature" -eq 1 ]; then
+      if [ "$(versao_avancou "$v_origin" "$v_local")" = "maior" ]; then
+        violacao "conteudo de kit staged no branch $branch_nome na versao $v_local, ATRAS da $v_origin de origin/main -- atualize o branch com origin/main (igualdade e aceita; atraso nao)"
+      fi
     elif [ "$(versao_avancou "$v_local" "$v_origin")" != "maior" ]; then
       # Exige AVANCO, nao apenas diferenca: repo atrasado em relacao ao remoto
       # tambem esta commitando conteudo novo numa versao ja publicada.
-      violacao "conteudo de kit staged na versao $v_local, que nao avanca sobre a $v_origin de origin/main -- rode scripts/bump-canon.ps1 <nova-versao> antes de commitar"
+      violacao "conteudo de kit staged na versao $v_local, que nao avanca sobre a $v_origin de origin/main -- rode scripts/bump-canon.ps1 <nova-versao> antes de commitar (em branch de feature, igualdade e aceita: o numero e atribuido no merge)"
     fi
   fi
 fi
