@@ -55,7 +55,13 @@ printf '%s' "$SYSTEM_PROMPT" > "$SYS_FILE"
 printf '%s' "$USER_PROMPT"   > "$USR_FILE"
 # trap DEPOIS das atribuicoes: registrado antes, ele referenciaria $SYS_FILE/$USR_FILE
 # ainda vazios, e uma saida precoce chamaria `rm -f ""`.
-trap 'rm -f "$BODY_FILE" "$SYS_FILE" "$USR_FILE"' EXIT
+# Chave FORA do argv do curl (2026-09-15, F-f): mesma tecnica do deepseek-review.sh -- cabecalho
+# num arquivo 600 lido com `-H @arquivo`, removido pelo trap. Sem fallback de nome previsivel.
+AUTH_FILE=$(mktemp "${TMPDIR:-/tmp}/percus-auth-XXXXXX" 2>/dev/null) || AUTH_FILE=""
+trap 'rm -f "$BODY_FILE" "$SYS_FILE" "$USR_FILE" ${AUTH_FILE:+"$AUTH_FILE"} || true' EXIT
+[[ -z "$AUTH_FILE" ]] && { echo "[groq-llama-provider] nao consegui criar o arquivo temporario do cabecalho de autenticacao." >&2; exit 1; }
+chmod 600 "$AUTH_FILE" 2>/dev/null || true
+printf 'Authorization: Bearer %s\n' "${GROQ_API_KEY//$'\r'/}" > "$AUTH_FILE"
 jq -n \
     --arg model "$MODEL" \
     --argjson temp "$TEMPERATURE" \
@@ -66,7 +72,7 @@ jq -n \
 
 START_MS=$(date +%s%3N)
 RESP=$(curl -s --max-time 60 -X POST "$ENDPOINT" \
-    -H "Authorization: Bearer $GROQ_API_KEY" \
+    -H "@$AUTH_FILE" \
     -H "Content-Type: application/json; charset=utf-8" \
     --data-binary "@$BODY_FILE" || echo "")
 END_MS=$(date +%s%3N)

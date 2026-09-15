@@ -129,7 +129,13 @@ printf '%s' "$SYSTEM_PROMPT" > "$SYS_FILE"
 printf '%s' "$USER_PROMPT"   > "$USR_FILE"
 # trap DEPOIS das atribuicoes: registrado antes, ele referenciaria $SYS_FILE/$USR_FILE
 # ainda vazios, e uma saida precoce chamaria `rm -f ""`.
-trap 'rm -f "$BODY_FILE" "$SYS_FILE" "$USR_FILE"' EXIT
+# Chave FORA do argv do curl (2026-09-15, F-f): mesma tecnica do deepseek-review.sh -- cabecalho
+# num arquivo 600 lido com `-H @arquivo`, removido pelo trap. Sem fallback de nome previsivel.
+AUTH_FILE=$(mktemp "${TMPDIR:-/tmp}/percus-auth-XXXXXX" 2>/dev/null) || AUTH_FILE=""
+trap 'rm -f "$BODY_FILE" "$SYS_FILE" "$USR_FILE" ${AUTH_FILE:+"$AUTH_FILE"} || true' EXIT
+[[ -z "$AUTH_FILE" ]] && { echo "[cross-claude-provider] nao consegui criar o arquivo temporario do cabecalho de autenticacao." >&2; exit 1; }
+chmod 600 "$AUTH_FILE" 2>/dev/null || true
+printf 'x-api-key: %s\n' "${ANTHROPIC_API_KEY//$'\r'/}" > "$AUTH_FILE"
 # 🔴 EFFORT E O QUE IMPEDE A RESPOSTA DE SAIR VAZIA. Medido em 2026-08-17, mesmo
 # prompt, tres vezes:
 #   sem controle -> output_tokens=16000, stop_reason=max_tokens, 0 char de texto, 153s
@@ -207,7 +213,7 @@ START_MS=$(date +%s%3N)
 # 2026-08-16 no lado DeepSeek, mesma classe). Subir o teto sem subir o timeout so troca
 # "resposta vazia" por "erro de rede" -- o defeito muda de nome e continua.
 RESP=$(curl -s --max-time 180 -X POST "$ENDPOINT" \
-    -H "x-api-key: $ANTHROPIC_API_KEY" \
+    -H "@$AUTH_FILE" \
     -H "anthropic-version: 2023-06-01" \
     -H "Content-Type: application/json" \
     --data-binary "@$BODY_FILE" || echo "")

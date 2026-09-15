@@ -35,7 +35,11 @@ Describe "deepseek-review.sh -- timeout, retry e provedor indisponivel" {
 
         function Invoke-Cliente {
             param([string]$Repo, [string]$Url, [string[]]$ArgsExtra = @(), [hashtable]$Env = @{})
-            $envTotal = @{ DEEPSEEK_API_KEY = $script:chave; PERCUS_DEEPSEEK_TIMEOUT_S = $null; PERCUS_DEEPSEEK_BACKOFF_S = $null; DEEPSEEK_ENDPOINT = $null }
+            # TMPDIR proprio por chamada: e onde o cliente cria o percus-auth-* (F-f), e o teste
+            # confere que nada sobra ali depois da saida, qualquer que seja o codigo.
+            $tmpCall = Join-Path $script:tmpBase ("t-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
+            New-Item -ItemType Directory -Force -Path $tmpCall | Out-Null
+            $envTotal = @{ DEEPSEEK_API_KEY = $script:chave; PERCUS_DEEPSEEK_TIMEOUT_S = $null; PERCUS_DEEPSEEK_BACKOFF_S = $null; DEEPSEEK_ENDPOINT = $null; TMPDIR = $tmpCall }
             foreach ($k in $Env.Keys) { $envTotal[$k] = $Env[$k] }
             $antigos = Set-EnvTemporario $envTotal
             $err = Join-Path $script:tmpBase ("err-" + [Guid]::NewGuid().ToString('N') + '.txt')
@@ -50,7 +54,8 @@ Describe "deepseek-review.sh -- timeout, retry e provedor indisponivel" {
             $rev = Join-Path (Join-Path $Repo '.deepseek') 'reviews'
             $marcadores = @()
             if (Test-Path $rev) { $marcadores = @(Get-ChildItem $rev -Filter '*.jsonl' | ForEach-Object { $_.Name }) }
-            return [pscustomobject]@{ Code = $code; Err = $texto; Out = ($out -join "`n"); Segundos = $sw.Elapsed.TotalSeconds; Marcadores = $marcadores; Rev = $rev }
+            $sobras = @(Get-ChildItem -LiteralPath $tmpCall -Filter 'percus-auth-*' -Force | ForEach-Object { $_.Name })
+            return [pscustomobject]@{ Code = $code; Err = $texto; Out = ($out -join "`n"); Segundos = $sw.Elapsed.TotalSeconds; Marcadores = $marcadores; Rev = $rev; SobrasAuth = $sobras }
         }
 
         function Invoke-ComRoteiro {
@@ -60,6 +65,9 @@ Describe "deepseek-review.sh -- timeout, retry e provedor indisponivel" {
                 $repo = New-RepoCliente -SemCommit:$SemCommit
                 $r = Invoke-Cliente -Repo $repo -Url $srv.Url -ArgsExtra $ArgsExtra -Env $Env
                 $r | Add-Member -NotePropertyName Requisicoes -NotePropertyValue (Get-ContagemServidorFalso $srv)
+                $pedidos = @()
+                for ($i = 1; $i -le $r.Requisicoes; $i++) { $pedidos += ,(Get-PedidoServidorFalso $srv $i) }
+                $r | Add-Member -NotePropertyName Pedidos -NotePropertyValue $pedidos
                 return $r
             } finally { Stop-ServidorFalso $srv }
         }
@@ -79,6 +87,7 @@ Describe "deepseek-review.sh -- timeout, retry e provedor indisponivel" {
         $j.model | Should -Be 'deepseek-v4-flash'
         $j.usage.completion_tokens | Should -Be 7
         $j.findings | Should -Match 'Sem findings criticos'
+        @($r.SobrasAuth).Count | Should -Be 0 -Because "F-f: o arquivo do cabecalho sai no trap (exit 0)"
     }
 
     It "1a falha por <Nome>, 2a responde: exit 0, 2 requisicoes, aviso de retry, tempo extra <= backoff+timeout+1s" -ForEach @(
@@ -104,6 +113,8 @@ Describe "deepseek-review.sh -- timeout, retry e provedor indisponivel" {
         $r.Requisicoes | Should -Be 2
         $r.Err | Should -Match 'PROVEDOR INDISPONIVEL apos retry: HTTP 500'
         @($r.Marcadores).Count | Should -Be 0
+        @($r.SobrasAuth).Count | Should -Be 0 -Because "F-f: o arquivo do cabecalho sai no trap tambem no exit 4"
+        foreach ($p in $r.Pedidos) { $p | Should -Match ('(?m)^Authorization: Bearer ' + [regex]::Escape($script:chave) + "`r$") -Because "a 2a tentativa reusa o mesmo cabecalho" }
     }
 
     It "SC-003: 2xx sem choices (5 KB com a chave) nas 2 tentativas -> 2000 caracteres mascarados, exit 4 no .sh" {
@@ -127,6 +138,7 @@ Describe "deepseek-review.sh -- timeout, retry e provedor indisponivel" {
         $r.Err | Should -Match "HTTP $Status -- nao recuperavel"
         $r.Err.Contains($script:chave) | Should -BeFalse
         @($r.Marcadores).Count | Should -Be 0
+        @($r.SobrasAuth).Count | Should -Be 0 -Because "F-f: o arquivo do cabecalho sai no trap tambem no exit 1"
     }
 
     It "5xx e depois 401: para no 401 com exit 1" {
@@ -223,5 +235,120 @@ Describe "deepseek-review.sh -- timeout, retry e provedor indisponivel" {
             $t = [IO.File]::ReadAllText((Join-Path (Join-Path (Join-Path $repo '.deepseek') 'reviews') 'ultimo-erro.txt'), $script:u8)
             $t.Substring($t.IndexOf("---`n") + 4) | Should -BeExactly $esperado -Because $repo
         }
+    }
+
+    # F-f (2026-09-15): a chave ia em `-H "Authorization: Bearer <chave>"`, legivel na linha de
+    # comando do curl.exe por qualquer processo do usuario. Prova REAL: o curl fica pendurado no
+    # servidor falso e o Pester le a CommandLine dele pelo WMI enquanto a chamada esta viva.
+    It "F-f: durante a chamada pendurada nenhum curl.exe tem a chave na CommandLine; exit 4 sem sobra de percus-auth-*" {
+        $srv = Start-ServidorFalso -Roteiro @((New-RespostaFalsa -Pendurar))
+        $proc = $null; $vistos = @(); $code = $null; $sobras = @(); $textoErr = ''
+        try {
+            $repo = New-RepoCliente
+            $tmpCall = Join-Path $script:tmpBase ("t-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
+            New-Item -ItemType Directory -Force -Path $tmpCall | Out-Null
+            $errArq = Join-Path $script:tmpBase ("err-" + [Guid]::NewGuid().ToString('N') + '.txt')
+            $outArq = Join-Path $script:tmpBase ("out-" + [Guid]::NewGuid().ToString('N') + '.txt')
+            $antigos = Set-EnvTemporario @{ DEEPSEEK_API_KEY = $script:chave; PERCUS_DEEPSEEK_TIMEOUT_S = $null; PERCUS_DEEPSEEK_BACKOFF_S = $null; DEEPSEEK_ENDPOINT = $null; TMPDIR = $tmpCall }
+            try {
+                $cmd = "bash '" + $script:clienteSh + "' --endpoint '" + $srv.Url + "' --timeout 3 --backoff 1"
+                # Aspas manuais: Start-Process junta ArgumentList com espaco sem citar.
+                $proc = Start-Process -FilePath $script:bash -ArgumentList @('-c', ('"' + $cmd + '"')) -WorkingDirectory $repo -PassThru -NoNewWindow -RedirectStandardError $errArq -RedirectStandardOutput $outArq
+                $null = $proc.Handle  # PS 5.1: sem pegar o handle antes, ExitCode sai vazio
+                $marcaUrl = '127.0.0.1:' + $srv.Porta + '/'
+                $limite = (Get-Date).AddSeconds(5)
+                while ($vistos.Count -eq 0 -and (Get-Date) -lt $limite) {
+                    $vistos = @(Get-CimInstance Win32_Process -Filter "Name='curl.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($marcaUrl) } | ForEach-Object { $_.CommandLine })
+                    if ($vistos.Count -eq 0) { Start-Sleep -Milliseconds 100 }
+                }
+                $proc.WaitForExit(30000) | Should -BeTrue -Because "3 s + 1 s + 3 s cabem folgados em 30 s"
+                $code = $proc.ExitCode
+                $sobras = @(Get-ChildItem -LiteralPath $tmpCall -Filter 'percus-auth-*' -Force | ForEach-Object { $_.Name })
+                if (Test-Path -LiteralPath $errArq) { $textoErr = [IO.File]::ReadAllText($errArq, $script:u8) }
+            } finally {
+                Restore-EnvTemporario $antigos
+                if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+            }
+        } finally { Stop-ServidorFalso $srv }
+        $vistos.Count | Should -BeGreaterThan 0 -Because "anti-vacuidade: o curl pendurado tem de ser visto pelo WMI ($textoErr)"
+        foreach ($linha in $vistos) {
+            $linha.Contains($script:chave) | Should -BeFalse -Because "a chave nao pode estar no argv do curl: $linha"
+            $linha | Should -Match 'percus-auth-' -Because "o cabecalho vem do arquivo temporario (-H @arquivo)"
+        }
+        $code | Should -Be 4 -Because $textoErr
+        $sobras.Count | Should -Be 0 -Because "o trap EXIT remove o arquivo do cabecalho tambem no exit 4"
+    }
+
+    It "F-f: 200 ok -> o servidor recebe 'Authorization: Bearer <chave>' uma vez, sem \r extra mesmo com a chave vinda com \r" {
+        # Afere o RESULTADO no fio. Sabotagem medida em 2026-09-15: sem o strip de \r no script o
+        # teste continua verde, porque o curl 8.18 apara o \r ao ler `-H @arquivo`. O strip do
+        # script e defesa contra outro curl; este teste pega regressao do conjunto, nao do strip.
+        $r = Invoke-ComRoteiro -Roteiro @((New-RespostaFalsa -Corpo $script:ok)) -Env @{ DEEPSEEK_API_KEY = ($script:chave + "`r") }
+        $r.Code | Should -Be 0 -Because $r.Err
+        $r.Requisicoes | Should -Be 1
+        $r.Pedidos[0] | Should -Match ('(?m)^Authorization: Bearer ' + [regex]::Escape($script:chave) + "`r$") -Because "a linha tem de terminar em CRLF do curl, sem \r da chave"
+        [regex]::Matches($r.Pedidos[0], '(?im)^Authorization:').Count | Should -Be 1
+        $r.Pedidos[0] | Should -Match '(?im)^Content-Type: application/json; charset=utf-8\r$'
+        @($r.SobrasAuth).Count | Should -Be 0
+    }
+
+    It "F-f: nenhum .sh do plugin passa a chave como argumento (grep 'Bearer \$|x-api-key: \$' = 0) e os 4 usam -H @arquivo no trap" {
+        # Escopo: os .sh do PLUGIN (plugin/percus-review). O scripts/deepseek-impl.sh da raiz do kit
+        # tem a mesma classe e ficou fora da T5 -- registrado em CANON_VERSION.md "Pendente de versao".
+        $raiz = Split-Path $PSScriptRoot -Parent
+        $hits =@(Get-ChildItem -LiteralPath $raiz -Recurse -Filter '*.sh' -File | Select-String -Pattern 'Bearer \$|x-api-key: \$' | ForEach-Object { $_.Path + ':' + $_.LineNumber })
+        $hits.Count | Should -Be 0 -Because ($hits -join ', ')
+        foreach ($rel in @('scripts/deepseek-review.sh', 'providers/deepseek.sh', 'providers/groq-llama.sh', 'providers/cross-claude.sh')) {
+            $src = [IO.File]::ReadAllText((Join-Path $raiz $rel), $script:u8)
+            $src.Contains('-H "@$AUTH_FILE"') | Should -BeTrue -Because "$rel (anti-vacuidade)"
+            $src | Should -Match 'percus-auth-XXXXXX' -Because $rel
+            $src | Should -Match "(?m)^trap '[^']*AUTH_FILE[^']*' EXIT" -Because "$rel remove o cabecalho no trap"
+        }
+    }
+}
+
+Describe "providers .sh -- chave fora do argv do curl (F-f)" {
+    BeforeAll {
+        . (Join-Path $PSScriptRoot '_resolver-bash.ps1')
+        . (Join-Path $PSScriptRoot '_servidor-http-falso.ps1')
+        $script:provDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'providers'
+        $script:bash = Get-BashGit
+        $script:chave = 'sk-teste-FALSA-0123456789abcdef'
+        $script:u8 = New-Object System.Text.UTF8Encoding($false)
+        $script:tmpBase = Join-Path ([IO.Path]::GetTempPath()) ("percus-prv-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
+        New-Item -ItemType Directory -Force -Path $script:tmpBase | Out-Null
+    }
+
+    AfterAll {
+        Remove-Item -Recurse -Force $script:tmpBase -ErrorAction SilentlyContinue
+    }
+
+    It "<Prov>.sh: '<Cab><chave>' chega ao servidor sem \r extra, status ok, sem sobra de percus-auth-*" -ForEach @(
+        @{ Prov = 'deepseek';     VarChave = 'DEEPSEEK_API_KEY';  Cab = 'Authorization: Bearer '; Corpo = '{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1}}' }
+        @{ Prov = 'groq-llama';   VarChave = 'GROQ_API_KEY';      Cab = 'Authorization: Bearer '; Corpo = '{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1}}' }
+        @{ Prov = 'cross-claude'; VarChave = 'ANTHROPIC_API_KEY'; Cab = 'x-api-key: ';            Corpo = '{"model":"m","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1,"output_tokens":1}}' }
+    ) {
+        $dir = Join-Path $script:tmpBase ("p-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
+        $tmpCall = Join-Path $dir 'tmp'
+        New-Item -ItemType Directory -Force -Path $tmpCall | Out-Null
+        [IO.File]::WriteAllText((Join-Path $dir 'prompt.txt'), 'pergunta de teste', $script:u8)
+        $err = Join-Path $dir 'err.txt'
+        $srv = Start-ServidorFalso -Roteiro @((New-RespostaFalsa -Corpo $Corpo))
+        try {
+            $envT = @{ TMPDIR = $tmpCall; DEEPSEEK_API_KEY = $null; GROQ_API_KEY = $null; ANTHROPIC_API_KEY = $null }
+            $envT[$VarChave] = $script:chave + "`r"
+            $antigos = Set-EnvTemporario $envT
+            try {
+                $cmd = "cd '" + (ConvertTo-CaminhoBash $dir) + "' && bash '" + (ConvertTo-CaminhoBash (Join-Path $script:provDir "$Prov.sh")) + "' --prompt-file prompt.txt --endpoint '" + $srv.Url + "'"
+                $out = & $script:bash -c $cmd 2>$err
+                $code = $LASTEXITCODE
+            } finally { Restore-EnvTemporario $antigos }
+            $pedido = Get-PedidoServidorFalso $srv 1
+        } finally { Stop-ServidorFalso $srv }
+        $textoErr = ''; if (Test-Path -LiteralPath $err) { $textoErr = [IO.File]::ReadAllText($err, $script:u8) }
+        $code | Should -Be 0 -Because $textoErr
+        (($out -join "`n") | ConvertFrom-Json).status | Should -Be 'ok' -Because ($out -join "`n")
+        $pedido | Should -Match ('(?m)^' + [regex]::Escape($Cab + $script:chave) + "`r$")
+        @(Get-ChildItem -LiteralPath $tmpCall -Filter 'percus-auth-*' -Force).Count | Should -Be 0
     }
 }

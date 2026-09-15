@@ -53,6 +53,14 @@ while ($true) {
                 if ($ms.Length - ($fimCab + 4) -ge $tam) { break }
             }
         }
+        # Cabecalho recebido em pedido-<n>.txt (bytes crus, CRLF preservado): e assim que o teste
+        # prova que o Authorization chegou, sem a chave passar pelo argv do cliente.
+        $bytesPedido = $ms.ToArray()
+        $fimGravar = $bytesPedido.Length
+        if ($fimCab -ge 0) { $fimGravar = $fimCab + 4 }
+        $cabPedido = New-Object byte[] $fimGravar
+        [Array]::Copy($bytesPedido, $cabPedido, $fimGravar)
+        [IO.File]::WriteAllBytes((Join-Path $Dir ("pedido-" + $n + ".txt")), $cabPedido)
         if ($item.pendurar) { [void]$pendurados.Add($cli); continue }
         $corpo = $u8.GetBytes([string]$item.corpo)
         $cab = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 $($item.status) Falso`r`nContent-Type: application/json`r`nContent-Length: $($corpo.Length)`r`nConnection: close`r`n`r`n")
@@ -86,6 +94,14 @@ function Get-ContagemServidorFalso {
     $arq = Join-Path $Servidor.Dir 'contador.txt'
     if (-not (Test-Path -LiteralPath $arq)) { return 0 }
     return [int]([IO.File]::ReadAllText($arq).Trim())
+}
+
+function Get-PedidoServidorFalso {
+    # Cabecalho cru do pedido <N> (1 = primeira conexao), ou $null se ele nao chegou.
+    param($Servidor, [int]$N = 1)
+    $arq = Join-Path $Servidor.Dir ("pedido-" + $N + ".txt")
+    if (-not (Test-Path -LiteralPath $arq)) { return $null }
+    return [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($arq))
 }
 
 function Stop-ServidorFalso {

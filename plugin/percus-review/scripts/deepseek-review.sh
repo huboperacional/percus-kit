@@ -215,7 +215,23 @@ ${DIFF}"
 USER_MSG_FILE="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-usermsg-$$.txt")"
 RESP_FILE="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-resp-$$.json")"
 CURL_ERR="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/percus-curlerr-$$.txt")"
-trap 'rm -f "$USER_MSG_FILE" "$RESP_FILE" "$CURL_ERR"' EXIT
+# CHAVE FORA DO ARGV (2026-09-15, F-f): `-H "Authorization: Bearer <chave>"` punha a chave na
+# linha de comando do curl.exe, legivel por qualquer processo do usuario (Get-CimInstance
+# Win32_Process, ps). O cabecalho vai num arquivo 600 lido com `-H @arquivo`. Sem fallback de
+# nome previsivel: se o mktemp falhar, para. `--config -` nao serve aqui: o stdin ja e o corpo.
+# `-H @arquivo` exige curl >= 7.55.0 (2017); o Git for Windows e o curl 8.18 desta maquina atendem.
+AUTH_FILE="$(mktemp "${TMPDIR:-/tmp}/percus-auth-XXXXXX" 2>/dev/null)" || AUTH_FILE=""
+# `|| true`: sob set -e um rm que falhasse dentro do trap trocaria o codigo de saida (exit 4 etc.).
+trap 'rm -f "$USER_MSG_FILE" "$RESP_FILE" "$CURL_ERR" ${AUTH_FILE:+"$AUTH_FILE"} || true' EXIT
+if [[ -z "$AUTH_FILE" ]]; then
+    echo "[deepseek-review] ERRO: nao consegui criar o arquivo temporario do cabecalho de autenticacao." >&2
+    exit 1
+fi
+chmod 600 "$AUTH_FILE" 2>/dev/null || true
+# printf e builtin (a chave nao vira argv de processo nenhum). \r tirado por defesa: o curl 8.18
+# desta maquina ja apara o \r ao ler `-H @arquivo` (medido 2026-09-15), mas isso e do curl, nao
+# nosso -- chave vinda com \r nao pode depender da versao dele para nao virar "Bearer x\r".
+printf 'Authorization: Bearer %s\n' "${DEEPSEEK_API_KEY//$'\r'/}" > "$AUTH_FILE"
 printf '%s' "$USER_MSG" > "$USER_MSG_FILE"
 
 BODY="$(jq -n \
@@ -250,7 +266,7 @@ tentativa() {  # define TENT_VEREDITO (ok|retry|fatal) e TENT_CAUSA
     : > "$RESP_FILE"
     status="$(printf '%s' "$BODY" | curl -sS -o "$RESP_FILE" -w '%{http_code}' --max-time "$TIMEOUT_S" \
         -X POST "$ENDPOINT" \
-        -H "Authorization: Bearer ${DEEPSEEK_API_KEY}" \
+        -H "@$AUTH_FILE" \
         -H "Content-Type: application/json; charset=utf-8" \
         --data-binary @- 2>"$CURL_ERR")" || rc=$?
     status="$(printf '%s' "$status" | tr -d '\r' || true)"

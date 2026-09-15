@@ -82,6 +82,20 @@
   6.56.1; a mudança no template só chega a eles numa reinstalação futura do
   `/percus-review:install-git-hooks` (o `.sh` do PreToolUse chega pelo republish do plugin). skill muda: não.
 
+- **Fase 2, Lote C (T5, F-f) — chave da API fora da linha de comando do `curl`** (branch `worktree-fase2`):
+  `plugin/percus-review/scripts/deepseek-review.sh` e os providers `providers/deepseek.sh`,
+  `providers/groq-llama.sh` e `providers/cross-claude.sh` deixam de passar `Authorization: Bearer <chave>` /
+  `x-api-key: <chave>` como argumento do `curl` (legível por qualquer processo do usuário em
+  `Win32_Process.CommandLine`/`ps`). O cabeçalho vai num `mktemp "${TMPDIR:-/tmp}/percus-auth-XXXXXX"` com
+  `chmod 600`, escrito por `printf` builtin (com `\r` retirado da chave), lido com `-H @arquivo` e removido pelo
+  `trap ... EXIT` (inclusive exit 1/4 e no retry, que reusa o mesmo arquivo); sem nome previsível de fallback —
+  se o `mktemp` falhar, o script para com exit 1. `-H @arquivo` exige curl >= 7.55.0. O corpo segue por `--data-binary @-`/`@arquivo`.
+  `tests/_servidor-http-falso.ps1` grava o cabeçalho de cada pedido em `pedido-<n>.txt`
+  (`Get-PedidoServidorFalso`). Testes: +6 em `tests/deepseek-review-retry-sh.tests.ps1` (CommandLine do
+  `curl.exe` pendurado sem a chave pelo WMI + exit 4 sem sobra; cabeçalho no fio; varredura de texto
+  `Bearer \$|x-api-key: \$` = 0 nos `.sh` do plugin; os 3 providers contra o servidor falso). Fora do
+  escopo, mesma classe: `scripts/deepseek-impl.sh:145`. skill muda: não.
+
 ---
 
 ## Changelog v6.58.0 — 2026-09-15
