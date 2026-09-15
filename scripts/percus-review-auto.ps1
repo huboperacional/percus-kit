@@ -31,7 +31,8 @@
 
 .NOTES
   Exit codes: 0 = success (inclui deepseek-review falho -- placeholder deferred gravado,
-  ver marker __PERCUS_NEEDS_CROSS_CLAUDE__ no stderr), 1 = plugin não encontrado, 2 = router falhou
+  ver marker __PERCUS_NEEDS_CROSS_CLAUDE__ no stderr), 1 = plugin não encontrado, 2 = router falhou.
+  O marker __PERCUS_NEEDS_CROSS_CLAUDE__ traz junto o comando registrar-review pronto (FR-008).
 #>
 [CmdletBinding()]
 param(
@@ -89,6 +90,22 @@ $factCheckScript = Join-Path $current.FullName "scripts\fact-check.ps1"
 if (-not (Test-Path $routerScript)) {
     [Console]::Error.WriteLine("[percus-review-auto] ERRO: review-router.ps1 ausente em $($current.FullName)\scripts\")
     exit 1
+}
+
+# Comando de registro da review Cross-Claude (FR-008, 2026-09-14). Prefere a copia do plugin
+# instalado; cache ainda sem o comando (plugin de versao anterior) -> copia do kit, que e onde este
+# wrapper mora. Sem isto o agente despachava o subagente e nao tinha como gravar o resultado.
+$registrarScript = Join-Path $current.FullName "scripts\registrar-review.ps1"
+if (-not (Test-Path -LiteralPath $registrarScript)) {
+    $registrarKit = Join-Path (Split-Path $PSScriptRoot -Parent) "plugin\percus-review\scripts\registrar-review.ps1"
+    if (Test-Path -LiteralPath $registrarKit) { $registrarScript = $registrarKit }
+}
+$instrucaoRegistro = " Depois que o subagente responder, grave os findings dele num arquivo e registre com registrar-review: & '$registrarScript' -Arquivo '<arquivo-dos-findings>' -Canal cross-claude -Modelo '<modelo-do-subagente>'. Sem esse registro o commit so passa pelo placeholder de 5 min."
+
+function Get-CausaFalhaDeepSeek {
+    param([int]$Codigo)
+    if ($Codigo -eq 4) { return ('provedor indispon' + [char]0x00ED + 'vel ap' + [char]0x00F3 + 's retry (exit 4)') }
+    return "DeepSeek falhou (exit $Codigo)"
 }
 
 # === Fact-check pipeline helper ===
@@ -201,18 +218,34 @@ switch ($decision.decision) {
         $deepseekArgs = @()
         if ($Base) { $deepseekArgs += @("-Base", $Base) }
         # Captura output do reviewer pra passar pelo fact-check pipeline (F3)
-        $reviewOutput = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs 2>&1 |
-            Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } |
-            Out-String
-        if ($LASTEXITCODE -ne 0) {
+        # No Windows PowerShell 5.1, $ErrorActionPreference='Stop' (herdado do topo do script)
+        # transforma QUALQUER linha de stderr do processo nativo em erro terminante assim que ela
+        # entra no pipeline -- mesmo so repassando via 2>&1 pra um ForEach-Object (ver
+        # conhecimento/resolver/erroractionpreference-stop-e-herdado-e-transforma-stderr-nativo-em-excecao.md).
+        # Sob pwsh (Core) isso nao acontecia; achado rodando este wrapper sob powershell.exe.
+        $eapAnterior = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $reviewOutput = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs 2>&1 |
+                ForEach-Object {
+                    # stderr do cliente (aviso de retry, 2000 caracteres do corpo, exit 4) vai para o
+                    # stderr do wrapper; antes era descartado e o agente so via "falhou".
+                    if ($_ -is [System.Management.Automation.ErrorRecord]) { [Console]::Error.WriteLine("$_") } else { $_ }
+                } |
+                Out-String
+        } finally {
+            $ErrorActionPreference = $eapAnterior
+        }
+        $dsExit = $LASTEXITCODE
+        if ($dsExit -ne 0) {
             # Mesmo fix dos branches dual/cross-claude/council: rota solo tambem nao pode
             # travar o commit inteiro so porque a chave DeepSeek caiu -- essa e a rota mais
             # comum do portfolio, entao `exit 3` aqui derrubava o review de TODOS os commits
             # nao-sensiveis. Conselho 3/3 (deepseek+llama+cross-claude, consult 2026-08-05)
             # confirmou: escalar pra Cross-Claude via marker, nao bloquear.
-            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE) -- registrando placeholder deferred pra não travar o gate.")
-            Write-DeferredReviewPlaceholder -Decision "deepseek" -Reason "decision=deepseek (rota solo), DeepSeek falhou (exit $LASTEXITCODE) -- provável outage/API key inválida. Sem segunda perna de review por padrão nesta rota; escalado pra Cross-Claude."
-            [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: rota solo (decision=deepseek), DeepSeek indisponível. DEVE dispatchar Sonnet subagent via Agent tool agora com prompt de review R11 (escopo: commit atual).")
+            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $dsExit) -- registrando placeholder deferred pra não travar o gate.")
+            Write-DeferredReviewPlaceholder -Decision "deepseek" -Reason "decision=deepseek (rota solo), $(Get-CausaFalhaDeepSeek $dsExit) -- provável outage/API key inválida. Sem segunda perna de review por padrão nesta rota; escalado pra Cross-Claude."
+            [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: rota solo (decision=deepseek), DeepSeek indisponível. DEVE dispatchar Sonnet subagent via Agent tool agora com prompt de review R11 (escopo: commit atual)." + $instrucaoRegistro)
             break
         }
         # F3: fact-check pipeline obrigatorio
@@ -225,24 +258,40 @@ switch ($decision.decision) {
         $deepseekArgs = @()
         if ($Base) { $deepseekArgs += @("-Base", $Base) }
         # Captura output do reviewer pra passar pelo fact-check pipeline (F3)
-        $reviewOutput = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs 2>&1 |
-            Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } |
-            Out-String
-        if ($LASTEXITCODE -ne 0) {
+        # No Windows PowerShell 5.1, $ErrorActionPreference='Stop' (herdado do topo do script)
+        # transforma QUALQUER linha de stderr do processo nativo em erro terminante assim que ela
+        # entra no pipeline -- mesmo so repassando via 2>&1 pra um ForEach-Object (ver
+        # conhecimento/resolver/erroractionpreference-stop-e-herdado-e-transforma-stderr-nativo-em-excecao.md).
+        # Sob pwsh (Core) isso nao acontecia; achado rodando este wrapper sob powershell.exe.
+        $eapAnterior = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $reviewOutput = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs 2>&1 |
+                ForEach-Object {
+                    # stderr do cliente (aviso de retry, 2000 caracteres do corpo, exit 4) vai para o
+                    # stderr do wrapper; antes era descartado e o agente so via "falhou".
+                    if ($_ -is [System.Management.Automation.ErrorRecord]) { [Console]::Error.WriteLine("$_") } else { $_ }
+                } |
+                Out-String
+        } finally {
+            $ErrorActionPreference = $eapAnterior
+        }
+        $dsExit = $LASTEXITCODE
+        if ($dsExit -ne 0) {
             # DeepSeek falhou (outage/API key inválida/etc.). ANTES: `exit 3` aqui matava
             # o wrapper inteiro sem gravar nada em .deepseek/reviews/ e sem emitir o marker
             # -- gate de 5min nunca achava registro pro caminho dual, forçando escape manual
             # em TODO commit sensível. Fix: registra placeholder deferred e ainda sinaliza
             # Cross-Claude, pra R11 poder ser cumprido só pela perna que sobrou de pé.
-            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE) -- registrando placeholder deferred pra não travar o gate.")
-            Write-DeferredReviewPlaceholder -Decision "dual" -Reason "decision=dual, DeepSeek falhou (exit $LASTEXITCODE) -- provável outage/API key inválida. Registro parcial; Cross-Claude ainda precisa rodar (R11)."
-            [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual, DeepSeek indisponível). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review.")
+            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $dsExit) -- registrando placeholder deferred pra não travar o gate.")
+            Write-DeferredReviewPlaceholder -Decision "dual" -Reason "decision=dual, $(Get-CausaFalhaDeepSeek $dsExit) -- provável outage/API key inválida. Registro parcial; Cross-Claude ainda precisa rodar (R11)."
+            [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual, DeepSeek indisponível). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review." + $instrucaoRegistro)
             break
         }
         # F3: fact-check pipeline obrigatorio
         $finalOutput = Invoke-FactCheck -ReviewOutput $reviewOutput
         Write-Output $finalOutput
-        [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review.")
+        [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: pasta sensitive detectada (decision=dual). DEVE dispatchar Sonnet subagent via Agent tool agora com prompt R11 cross-claude-review." + $instrucaoRegistro)
     }
 
     "cross-claude" {
@@ -253,7 +302,7 @@ switch ($decision.decision) {
         # Nota: fact-check nao aplicavel aqui — nao ha output de reviewer local; Sonnet
         # subagent (dispatched via Agent tool) e responsavel por validar seus proprios findings.
         Write-DeferredReviewPlaceholder -Decision $decision.decision -Reason "decision=cross-claude (commit from DeepSeek). R11 anti auto-revisao -- so Sonnet revisa."
-        [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: commit veio de DeepSeek (decision=cross-claude). DEVE dispatchar Sonnet subagent via Agent tool agora -- DeepSeek NAO revisa proprio output (R11).")
+        [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: commit veio de DeepSeek (decision=cross-claude). DEVE dispatchar Sonnet subagent via Agent tool agora -- DeepSeek NAO revisa proprio output (R11)." + $instrucaoRegistro)
     }
 
     "council" {
@@ -263,15 +312,31 @@ switch ($decision.decision) {
         $deepseekArgs = @()
         if ($Base) { $deepseekArgs += @("-Base", $Base) }
         # Captura output do reviewer pra passar pelo fact-check pipeline (F3)
-        $reviewOutput = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs 2>&1 |
-            Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } |
-            Out-String
-        if ($LASTEXITCODE -ne 0) {
+        # No Windows PowerShell 5.1, $ErrorActionPreference='Stop' (herdado do topo do script)
+        # transforma QUALQUER linha de stderr do processo nativo em erro terminante assim que ela
+        # entra no pipeline -- mesmo so repassando via 2>&1 pra um ForEach-Object (ver
+        # conhecimento/resolver/erroractionpreference-stop-e-herdado-e-transforma-stderr-nativo-em-excecao.md).
+        # Sob pwsh (Core) isso nao acontecia; achado rodando este wrapper sob powershell.exe.
+        $eapAnterior = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $reviewOutput = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $deepseekScript @deepseekArgs 2>&1 |
+                ForEach-Object {
+                    # stderr do cliente (aviso de retry, 2000 caracteres do corpo, exit 4) vai para o
+                    # stderr do wrapper; antes era descartado e o agente so via "falhou".
+                    if ($_ -is [System.Management.Automation.ErrorRecord]) { [Console]::Error.WriteLine("$_") } else { $_ }
+                } |
+                Out-String
+        } finally {
+            $ErrorActionPreference = $eapAnterior
+        }
+        $dsExit = $LASTEXITCODE
+        if ($dsExit -ne 0) {
             # Mesmo fix do caso "dual" acima: DeepSeek fora do ar nao pode matar o
             # wrapper inteiro antes de registrar nada e antes do marker -- Llama e
             # Cross-Claude ainda cobrem o conselho enquanto DeepSeek estiver indisponivel.
-            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $LASTEXITCODE) -- registrando placeholder deferred pra não travar o gate.")
-            Write-DeferredReviewPlaceholder -Decision "council" -Reason "decision=council, DeepSeek falhou (exit $LASTEXITCODE) -- provável outage/API key inválida. Registro parcial; Llama/Cross-Claude cobrem o resto."
+            [Console]::Error.WriteLine("[percus-review-auto] ERRO: deepseek-review.ps1 falhou (exit $dsExit) -- registrando placeholder deferred pra não travar o gate.")
+            Write-DeferredReviewPlaceholder -Decision "council" -Reason "decision=council, $(Get-CausaFalhaDeepSeek $dsExit) -- provável outage/API key inválida. Registro parcial; Llama/Cross-Claude cobrem o resto."
         } else {
             # F3: fact-check pipeline obrigatorio
             $finalOutput = Invoke-FactCheck -ReviewOutput $reviewOutput
@@ -321,7 +386,7 @@ switch ($decision.decision) {
             }
         }
 
-        [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: decision=council (sensitive + grande/from-DS). DEVE dispatchar Sonnet subagent via Agent tool agora pra completar conselho 3-membros.")
+        [Console]::Error.WriteLine("__PERCUS_NEEDS_CROSS_CLAUDE__: decision=council (sensitive + grande/from-DS). DEVE dispatchar Sonnet subagent via Agent tool agora pra completar conselho 3-membros." + $instrucaoRegistro)
     }
 
     default {
