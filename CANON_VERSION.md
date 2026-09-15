@@ -67,6 +67,21 @@
   Testes: +5 em `tests/registrar-review.tests.ps1` (pré-existente ps1/sh, embutido pwsh e 5.1 com pasta
   `Área-teste`, `-File` 5.1 com stdout decodificado em UTF-8). skill muda: não.
 
+- **Fase 2, Lote C (T4, F-c) — classificador `.sh` que não responde avisa e libera (paridade FR-019)**
+  (branch `worktree-fase2`): quando a 1ª linha do classificador do marcador não é `review`,
+  `placeholder` nem `invalido` (awk ausente ou quebrado), `plugin/percus-review/hooks/pre-commit-check.sh`
+  deixa de dar `BLOCK: marcador ... invalido:` com motivo vazio e sai 0 com
+  `[percus:hook pre-commit] WARN: hook crashed, allowing commit. Error: classificador do marcador nao respondeu`
+  (mesmo prefixo do `.ps1`); `plugin/percus-review/git-hooks/pre-commit.template.sh` avisa
+  `[percus:hook pre-commit native] WARN: classificador do marcador nao respondeu, liberando commit` e
+  **segue** para a lógica custom após o END (hook híbrido). No caminho por hash, classe vazia não gera
+  mais `recusado:` com motivo vazio: cai no caminho do `latest` (que ainda bloqueia pelo tempo se o
+  `latest` tiver mais de 5 min). A mudança fica fora do bloco `percus-classifica-marcador` (contrato das
+  3 camadas intacto). Testes: +8 em `tests/pre-commit-marcador-classificacao.tests.ps1` com um `awk`
+  quebrado à frente do PATH. **Projetos:** o template do hook git foi reinstalado em 13 projetos na
+  6.56.1; a mudança no template só chega a eles numa reinstalação futura do
+  `/percus-review:install-git-hooks` (o `.sh` do PreToolUse chega pelo republish do plugin). skill muda: não.
+
 ---
 
 ## Changelog v6.58.0 — 2026-09-15

@@ -237,8 +237,13 @@ if command -v sha256sum >/dev/null 2>&1; then
       _CLS=$(percus_classifica_marcador "$POR_HASH")
       _CLASSE=$(printf '%s\n' "$_CLS" | sed -n 1p)
       if [ "$_CLASSE" = "review" ]; then exit 0; fi
-      if [ "$_CLASSE" = "placeholder" ]; then _MOT="placeholder nao libera por hash"; else _MOT=$(printf '%s\n' "$_CLS" | sed -n 2p); fi
-      RECUSADO="d-$DIFF_HASH.jsonl recusado: $_MOT"
+      # Classe fora do contrato (classificador nao respondeu) nao vira "recusado:" com motivo
+      # vazio: cai no caminho do latest, que avisa e libera (F-c, paridade FR-019).
+      if [ "$_CLASSE" = "placeholder" ]; then
+        RECUSADO="d-$DIFF_HASH.jsonl recusado: placeholder nao libera por hash"
+      elif [ "$_CLASSE" = "invalido" ]; then
+        RECUSADO="d-$DIFF_HASH.jsonl recusado: $(printf '%s\n' "$_CLS" | sed -n 2p)"
+      fi
     fi
   fi
 fi
@@ -282,6 +287,13 @@ if [ "$_CLASSE" = "placeholder" ]; then
   echo "[percus:hook pre-commit] AVISO: commit SEM review real -- liberado por placeholder deferido ($(basename "$LATEST"), decision=$_DEC). Registre a review Cross-Claude com registrar-review." >&2
   { printf '{"timestamp":"%s","camada":"pretooluse","repo":"%s","decision":"%s","reason":"%s"}\n' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(percus_json_escapa "$REPO_ROOT")" "$_DEC" "$_REA" >> "$REVIEW_DIR/deferidos.log"; } 2>/dev/null || true
+  exit 0
+fi
+# F-c (2026-09-15): 1a linha fora de review|placeholder|invalido = o classificador nao respondeu
+# (awk ausente/quebrado). Erro interno do hook, nao veredito sobre o marcador: avisa e libera,
+# com o mesmo prefixo do WARN do pre-commit-check.ps1 (FR-019).
+if [ "$_CLASSE" != "invalido" ]; then
+  echo "[percus:hook pre-commit] WARN: hook crashed, allowing commit. Error: classificador do marcador nao respondeu" >&2
   exit 0
 fi
 echo "[percus:hook pre-commit] BLOCK: marcador $(basename "$LATEST") invalido: $(printf '%s\n' "$_CLS" | sed -n 2p)" >&2

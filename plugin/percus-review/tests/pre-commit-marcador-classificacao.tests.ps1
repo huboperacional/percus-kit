@@ -115,22 +115,42 @@ Describe "hook pre-commit -- classificacao do marcador nas 3 camadas" {
             return $dir
         }
 
+        # F-c (2026-09-15): diretorio com um `awk` quebrado para ir a frente do PATH. Quando o
+        # programa contem o texto do classificador ('findings nao e string'), sai 0 sem imprimir
+        # nada -- o classificador "nao responde"; nos demais casos delega ao awk real.
+        function New-DirAwkQuebrado {
+            $dir = Join-Path $script:tmpBase ("awk-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            $real = (& $script:bash -c 'command -v awk' 2>$null | Select-Object -First 1).Trim()
+            $corpo = "#!/bin/sh`ncase `"`$*`" in`n  *'findings nao e string'*) exit 0 ;;`nesac`nexec '" + $real + "' `"`$@`"`n"
+            [IO.File]::WriteAllText((Join-Path $dir 'awk'), $corpo, $script:u8)
+            return $dir
+        }
+
         function Invoke-Camada {
-            param([string]$Camada, [string]$Repo, [string]$Alternativo = '')
+            param([string]$Camada, [string]$Repo, [string]$Alternativo = '', [string]$DirPathExtra = '')
             $err = Join-Path $script:tmpBase ("err-" + [Guid]::NewGuid().ToString('N') + '.txt')
             $cmd = 'cd "' + (ConvertTo-CaminhoBash $Repo) + '" && git com' + 'mit -m x'
             $payload = @{ tool_name = 'Bash'; tool_input = @{ command = $cmd } } | ConvertTo-Json -Compress
+            # PATH em formato Bash (/c/...): 'C:/...' partiria no ':' separador. Sem aspas duplas no
+            # argumento nativo -- atribuicao em bash nao sofre word-split.
+            $prefixo = ''
+            if ($DirPathExtra) { $prefixo = "PATH=`$(cygpath -u '" + (ConvertTo-CaminhoBash $DirPathExtra) + "'):`$PATH; export PATH; " }
             $code = -1
             if ($Camada -eq 'ps1' -or $Camada -eq 'ps1-51') {
                 $exe = 'pwsh'; if ($Camada -eq 'ps1-51') { $exe = $script:ps51 }
                 $payload | & $exe -NoProfile -File $script:hookPs1 2>$err | Out-Null; $code = $LASTEXITCODE
             } elseif ($Camada -eq 'sh') {
                 $alvo = $script:hookSh; if ($Alternativo) { $alvo = $Alternativo }
-                $payload | & $script:bash (ConvertTo-CaminhoBash $alvo) 2>$err | Out-Null; $code = $LASTEXITCODE
+                if ($prefixo) {
+                    $payload | & $script:bash -c ($prefixo + "exec bash '" + (ConvertTo-CaminhoBash $alvo) + "'") 2>$err | Out-Null; $code = $LASTEXITCODE
+                } else {
+                    $payload | & $script:bash (ConvertTo-CaminhoBash $alvo) 2>$err | Out-Null; $code = $LASTEXITCODE
+                }
             } else {
                 $alvo = $script:templateLF; if ($Alternativo) { $alvo = $Alternativo }
                 Push-Location $Repo
-                try { & $script:bash -c ("sh '" + (ConvertTo-CaminhoBash $alvo) + "'") 2>$err | Out-Null; $code = $LASTEXITCODE } finally { Pop-Location }
+                try { & $script:bash -c ($prefixo + "sh '" + (ConvertTo-CaminhoBash $alvo) + "'") 2>$err | Out-Null; $code = $LASTEXITCODE } finally { Pop-Location }
             }
             $texto = ''
             if (Test-Path $err) { $texto = [IO.File]::ReadAllText($err, $script:u8) }
@@ -238,6 +258,61 @@ Describe "hook pre-commit -- classificacao do marcador nas 3 camadas" {
         '{isto nao e json' | & $exe -NoProfile -File $script:hookPs1 2>$err | Out-Null
         $LASTEXITCODE | Should -Be 0
         ([IO.File]::ReadAllText($err)) | Should -Match '^\[percus:hook pre-commit\] WARN:'
+    }
+
+    It "<Camada> | <Onde>: classificador que nao responde avisa e libera (F-c, paridade FR-019)" -ForEach @(
+        @{ Camada = 'sh';  Onde = 'latest' }
+        @{ Camada = 'git'; Onde = 'latest' }
+        @{ Camada = 'sh';  Onde = 'hash' }
+        @{ Camada = 'git'; Onde = 'hash' }
+    ) {
+        # Antes (6.56.1) a classe vazia caia no BLOCK "marcador invalido: " com motivo vazio, e no
+        # caminho por hash gerava "recusado: " vazio. O .ps1 ja abria com WARN (pre-commit-check.ps1:292).
+        $repo = New-RepoMarcador -Caso 'review' -Onde $Onde
+        if ($Onde -eq 'hash') {
+            # latest fresco: a classe vazia do hash tem de cair no caminho do latest.
+            (Get-Item (Join-Path (Join-Path (Join-Path $repo '.deepseek') 'reviews') 'latest.jsonl')).LastWriteTime = Get-Date
+        }
+        $r = Invoke-Camada -Camada $Camada -Repo $repo -DirPathExtra (New-DirAwkQuebrado)
+        $r.Code | Should -Be 0 -Because "stderr: $($r.Err)"
+        if ($Camada -eq 'sh') {
+            $r.Err | Should -Match '^\[percus:hook pre-commit\] WARN: hook crashed, allowing commit\. Error: classificador do marcador nao respondeu'
+        } else {
+            $r.Err | Should -Match ([regex]::Escape('[percus:hook pre-commit native] WARN: classificador do marcador nao respondeu, liberando commit'))
+        }
+        $r.Err | Should -Not -Match 'recusado'
+        $r.Err | Should -Not -Match 'BLOCK'
+    }
+
+    It "<Camada>: classificador que nao responde no hash, com latest velho, bloqueia pelo TEMPO sem 'recusado' vazio (F-c)" -ForEach @(
+        @{ Camada = 'sh' }, @{ Camada = 'git' }
+    ) {
+        $repo = New-RepoMarcador -Caso 'review' -Onde 'hash'
+        $r = Invoke-Camada -Camada $Camada -Repo $repo -DirPathExtra (New-DirAwkQuebrado)
+        $r.Code | Should -Be $script:bloqueio[$Camada] -Because "stderr: $($r.Err)"
+        $r.Err  | Should -Match 'max 5'
+        $r.Err  | Should -Not -Match 'recusado'
+    }
+
+    It "git hibrido: classificador que nao responde avisa e SEGUE para a logica custom (F-c)" {
+        $hibrido = Join-Path $script:tmpBase ("hibrido-fc-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
+        $texto = [IO.File]::ReadAllText($script:templateLF, $script:u8)
+        $fim = $texto.LastIndexOf('exit 0')
+        $texto = $texto.Substring(0, $fim) + "echo CUSTOM-RODOU >&2`nexit 7`n"
+        [IO.File]::WriteAllText($hibrido, $texto, $script:u8)
+        $repo = New-RepoMarcador -Caso 'review' -Onde 'latest'
+        $r = Invoke-Camada -Camada 'git' -Repo $repo -Alternativo $hibrido -DirPathExtra (New-DirAwkQuebrado)
+        $r.Code | Should -Be 7 -Because "stderr: $($r.Err)"
+        $r.Err  | Should -Match 'WARN: classificador do marcador nao respondeu'
+        $r.Err  | Should -Match 'CUSTOM-RODOU'
+    }
+
+    It "fixture: o awk quebrado de fato silencia o classificador e delega o resto" {
+        $dir = ConvertTo-CaminhoBash (New-DirAwkQuebrado)
+        $s = & $script:bash -c ("PATH=`$(cygpath -u '" + $dir + "'):`$PATH; export PATH; printf 'delegou\n' | awk '{print}'; awk 'BEGIN{print 12345} # findings nao e string' </dev/null; echo fim") 2>&1 | Out-String
+        $s | Should -Match 'delegou'
+        $s | Should -Not -Match '12345'
+        $s | Should -Match 'fim'
     }
 
     It "<Camada>: findings com cara de data ISO diverge entre hosts (Minor 2 -- comportamento atual, sem mudar o hook)" -ForEach @(

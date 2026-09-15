@@ -174,8 +174,13 @@ else
                     # Libera SEM exit 0: em hook hibrido a logica custom apos END (ex.: gate V2)
                     # tem de rodar tambem quando o R11 aprova pelo hash (2026-09-15).
                     if [ "$_CLASSE" = "review" ]; then _PERCUS_OK_HASH=1; fi
-                    if [ "$_CLASSE" = "placeholder" ]; then _MOT="placeholder nao libera por hash"; else _MOT=$(printf '%s\n' "$_CLS" | sed -n 2p); fi
-                    RECUSADO="d-$DIFF_HASH.jsonl recusado: $_MOT"
+                    # Classe fora do contrato (classificador nao respondeu) nao vira "recusado:"
+                    # com motivo vazio: cai no caminho do latest, que avisa e libera (F-c).
+                    if [ "$_CLASSE" = "placeholder" ]; then
+                        RECUSADO="d-$DIFF_HASH.jsonl recusado: placeholder nao libera por hash"
+                    elif [ "$_CLASSE" = "invalido" ]; then
+                        RECUSADO="d-$DIFF_HASH.jsonl recusado: $(printf '%s\n' "$_CLS" | sed -n 2p)"
+                    fi
                 fi
             fi
         fi
@@ -225,11 +230,15 @@ else
             _TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr -d '\r')
             { printf '{"timestamp":"%s","camada":"git-hook","repo":"%s","decision":"%s","reason":"%s"}\n' \
                 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(percus_json_escapa "$_TOP")" "$_DEC" "$_REA" >> "$REVIEW_DIR/deferidos.log"; } 2>/dev/null || true
-        elif [ "$_CLASSE" != "review" ]; then
+        elif [ "$_CLASSE" = "invalido" ]; then
             >&2 echo "[percus:hook pre-commit native] BLOCK: marcador $(basename "$LATEST") invalido: $(printf '%s\n' "$_CLS" | sed -n 2p)"
             [ -n "$RECUSADO" ] && >&2 echo "  recusado: $RECUSADO"
             >&2 echo "Rode /percus-review:review de novo antes de commitar (R11)."
             exit 1
+        elif [ "$_CLASSE" != "review" ]; then
+            # F-c (2026-09-15): o classificador nao respondeu (awk ausente/quebrado). Erro interno,
+            # nao veredito: avisa e SEGUE -- sem exit 0 aqui, a logica custom apos END tem de rodar.
+            >&2 echo "[percus:hook pre-commit native] WARN: classificador do marcador nao respondeu, liberando commit"
         fi
         fi # _PERCUS_OK_HASH
     fi
