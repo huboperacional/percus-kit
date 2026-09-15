@@ -221,6 +221,7 @@
 - [`docker exec` sem `-i` engole o stdin — e vazio parece resposta](docker-exec-stdin.md)
 - [`docker service inspect | grep VAR` confirma que a CHAVE existe, não que o VALOR é não-vazio — integração ficou meses no-op silencioso](docker-inspect-presente-nao-e-valor.md)
 - [`docker ps --filter name=X` casa por SUBSTRING — pega sidecar cujo nome começa com X](docker-ps-filter-name-substring-match.md)
+- [`docker rmi` da imagem de rollback falha com "container is using its referenced image" mesmo com o serviço em outra imagem](docker-rmi-barrado-por-tarefa-parada-do-swarm.md)
 - [Docker secret provisionado NÃO vira env var sozinho pra um script avulso — só a app com `secrets_dir` faz essa ponte](docker-secret-nao-vira-env-var-sozinho-em-script-avulso.md)
 - [`docker stack` não lê o `.env`, e `${VAR:?msg}` com hífen na mensagem vira DEFAULT — renderize e compare com o spec vivo antes do deploy](docker-stack-nao-le-env-e-hifen-no-interrogacao-vira-default.md)
 - [`iptables DOCKER-USER` bloqueando 100% do tráfego externo pra uma porta publicada, sem exceção nenhuma (nem pro seu próprio serviço)](docker-user-drop-total-sem-excecao.md)
