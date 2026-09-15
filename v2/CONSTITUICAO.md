@@ -29,6 +29,8 @@ Cada artefato tem **um** dono. Reforço é ponteiro, nunca cópia.
 
 Esses quatro **são** a leitura de retomada. Não existe "texto pra colar": quem fecha a sessão atualiza os arquivos, quem abre lê os arquivos.
 
+V1 × V2, tema a tema (quem manda na obrigação, quem manda no procedimento): `MIGRACAO.md` § "Quem manda em quê (por tema)".
+
 ## 3. Gates que sempre valem
 
 - **Review antes de commit** — você dispara sozinho, sem pedir (`loops/review.md`).
