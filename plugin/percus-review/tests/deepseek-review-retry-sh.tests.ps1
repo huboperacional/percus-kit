@@ -292,13 +292,100 @@ Describe "deepseek-review.sh -- timeout, retry e provedor indisponivel" {
         @($r.SobrasAuth).Count | Should -Be 0
     }
 
-    It "F-f: nenhum .sh do plugin nem scripts/deepseek-impl.sh passa a chave como argumento (grep 'Bearer \$|x-api-key: \$' = 0) e todos usam -H @arquivo no trap" {
+    It "F-f: nenhuma linha logica (apos juntar continuacao por barra) de .sh em plugin/percus-review e scripts/ do kit passa DEEPSEEK_API_KEY/GROQ_API_KEY/ANTHROPIC_API_KEY/OPENAI_API_KEY como argumento de comando externo, e os 4 providers + deepseek-impl.sh usam -H @arquivo no trap" {
         $raiz = Split-Path $PSScriptRoot -Parent
         $kitRaiz = Split-Path (Split-Path $raiz -Parent) -Parent
         $implSh = Join-Path $kitRaiz 'scripts\deepseek-impl.sh'
-        $hits = @(Get-ChildItem -LiteralPath $raiz -Recurse -Filter '*.sh' -File | Select-String -Pattern 'Bearer \$|x-api-key: \$' | ForEach-Object { $_.Path + ':' + $_.LineNumber })
-        $hits += @(Get-ChildItem -LiteralPath $implSh -File | Select-String -Pattern 'Bearer \$|x-api-key: \$' | ForEach-Object { $_.Path + ':' + $_.LineNumber })
-        $hits.Count | Should -Be 0 -Because ($hits -join ', ')
+        $scriptsDir = Join-Path $kitRaiz 'scripts'
+
+        # Allowlist documentada (F-f, 2026-09-15, correcao do Importante 1 da revisao T5): uma linha
+        # que cita $DEEPSEEK_API_KEY/$GROQ_API_KEY/$ANTHROPIC_API_KEY/$OPENAI_API_KEY (com ou sem
+        # ${...}) so passa se for:
+        #   a) teste `-z`/`-n` do bash (nao entrega a chave a lugar nenhum, so pergunta se esta vazia);
+        #   b) `printf ... > "$AUTH_FILE"` (grava o cabecalho no arquivo 600 lido com `-H @arquivo`,
+        #      nunca no argv de um processo);
+        #   c) atribuicao pura a outra variavel via SUBSTITUICAO de parametro do bash (`nome=
+        #      "${OUTRA//busca/troca}"`, ex.: mascara pra log), sem nenhum comando externo na
+        #      linha. Exige `//` no meio: uma copia crua tipo `AUTH="${DEEPSEEK_API_KEY}"` (sem
+        #      substituicao) NAO entra aqui de proposito -- vira alias que escaparia do grep de
+        #      cabecalho abaixo (ele so pega os 2 formatos literais que conhece) e sairia livre
+        #      pra virar `-H "X-Outro: $AUTH"` sem o nome canonico na linha;
+        #   d) prefixo de atribuicao ESCOPADA ao comando (`VAR="${VAR:-}" python3 ...`, o padrao do
+        #      fact-check.sh): so conta como permitido se TODAS as ocorrencias da variavel na linha
+        #      ficam antes do nome do comando de risco (curl/python3/python/node/jq) -- ou seja, na
+        #      atribuicao, nunca depois dele como argumento. A chave assim vai pro ambiente do
+        #      processo filho (nao pro argv), com escopo so daquele comando, nao do shell inteiro.
+        # Atribuicao/`export`/mensagem que cita so o NOME sem `$` fica fora do escopo do grep abaixo
+        # (que exige `$`), entao nao precisa entrar na allowlist.
+        # Linhas continuadas por `\` (curl multi-linha nos 4 providers/deepseek-impl.sh) sao juntadas
+        # numa linha logica antes de avaliar: um `-H` sabotado na linha de continuacao nao tem "curl"
+        # na mesma linha FISICA e escaparia de um grep ingenuo.
+        $varAlt = 'DEEPSEEK_API_KEY|GROQ_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY'
+        $scanRe = [regex]('\$\{?(?:' + $varAlt + ')(?::-[^}]*)?\}?')
+        $allowZN = [regex]('-[zn]\s+"?\$\{?(?:' + $varAlt + ')(?::-[^}]*)?\}?"?')
+        $allowAuthFile = [regex]'^\s*printf\b.*>\s*"\$AUTH_FILE"\s*$'
+        $allowAssign = [regex]'^\s*[A-Za-z_][A-Za-z0-9_]*="\$\{.*//.*\}"\s*$'
+        $riscoCmd = [regex]'\b(curl|python3|python|node|jq)\b'
+        $prefixoAtribuicao = [regex]'^(?:\s*[A-Za-z_][A-Za-z0-9_]*="[^"]*")+\s*$'
+
+        # Complementar ao scan por NOME de variavel acima: grep pelo formato do cabecalho HTTP
+        # (`Bearer $`/`x-api-key: $`), que pega vazamento por qualquer nome de variavel -- inclusive
+        # um alias indireto tipo `AUTH_TOKEN="$DEEPSEEK_API_KEY"` seguido de `curl -H "x-api-key:
+        # $AUTH_TOKEN"`, que o scan por nome fixo (so os 4 nomes canonicos) nao pegaria. Roda no
+        # MESMO loop que pula comentario (abaixo), senao um `# -H "x-api-key: $TOKEN"` de
+        # documentacao vira falso positivo.
+        $cabecalhoRe = [regex]'Bearer \$|x-api-key: \$'
+
+        $arquivos = @(Get-ChildItem -LiteralPath $raiz -Recurse -Filter '*.sh' -File)
+        $arquivos += @(Get-ChildItem -LiteralPath $scriptsDir -Recurse -Filter '*.sh' -File)
+
+        $violacoes = New-Object System.Collections.Generic.List[string]
+        $hitsCabecalho = New-Object System.Collections.Generic.List[string]
+        foreach ($arq in $arquivos) {
+            $linhas = [IO.File]::ReadAllLines($arq.FullName)
+            $i = 0
+            while ($i -lt $linhas.Count) {
+                $linhaInicio = $i + 1
+                $logica = $linhas[$i]
+                if ($logica.TrimStart().StartsWith('#')) {
+                    # Linha 100% comentario (prosa): fica fora dos dois scans, senao um `$VAR` ou um
+                    # `-H "x-api-key: $TOKEN"` citado como exemplo na documentacao vira falso
+                    # positivo. Continuacao por `\` nao se aplica a comentario.
+                    $i++
+                    continue
+                }
+                while ($logica.TrimEnd().EndsWith('\') -and ($i + 1) -lt $linhas.Count) {
+                    $logica = $logica.TrimEnd().TrimEnd('\') + ' ' + $linhas[$i + 1]
+                    $i++
+                }
+                if ($cabecalhoRe.IsMatch($logica)) {
+                    $hitsCabecalho.Add("$($arq.FullName):$linhaInicio")
+                }
+                if ($scanRe.IsMatch($logica)) {
+                    $trim = $logica.Trim()
+                    $cmdMatch = $riscoCmd.Match($logica)
+                    if ($cmdMatch.Success) {
+                        # Comando de risco na linha: so permitido se TODA ocorrencia da variavel
+                        # fica antes dele (prefixo `VAR="..."`), nunca depois (como argumento).
+                        $todasAntes = $true
+                        foreach ($m in $scanRe.Matches($logica)) {
+                            if ($m.Index -ge $cmdMatch.Index) { $todasAntes = $false }
+                        }
+                        $prefixo = $logica.Substring(0, $cmdMatch.Index)
+                        $permitido = $todasAntes -and $prefixoAtribuicao.IsMatch($prefixo)
+                    } else {
+                        $permitido = $allowZN.IsMatch($logica) -or $allowAuthFile.IsMatch($trim) -or $allowAssign.IsMatch($trim)
+                    }
+                    if (-not $permitido) {
+                        $violacoes.Add("$($arq.FullName):$linhaInicio")
+                    }
+                }
+                $i++
+            }
+        }
+        $hitsCabecalho.Count | Should -Be 0 -Because ($hitsCabecalho -join ', ')
+        $violacoes.Count | Should -Be 0 -Because ($violacoes -join ', ')
+
         foreach ($rel in @('scripts/deepseek-review.sh', 'providers/deepseek.sh', 'providers/groq-llama.sh', 'providers/cross-claude.sh')) {
             $src = [IO.File]::ReadAllText((Join-Path $raiz $rel), $script:u8)
             $src.Contains('-H "@$AUTH_FILE"') | Should -BeTrue -Because "$rel (anti-vacuidade)"

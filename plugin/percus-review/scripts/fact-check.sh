@@ -89,7 +89,13 @@ fi
 
 # === Parse e fact-check via Python inline ===
 # Python 3 disponivel na maioria dos ambientes Linux/macOS Percus
-python3 - "$FINDINGS_RAW" "$ANTHROPIC_API_KEY" <<'PYEOF'
+# A chave nunca vai no argv (legivel via CommandLine/ps por outros processos do
+# usuario): o Python le so de os.environ. Passa via prefixo de atribuicao (escopo
+# so deste comando, nao `export` -- que propagaria a chave pro ambiente do shell
+# inteiro e de todo processo filho seguinte, nao so o python3 desta linha).
+# "${ANTHROPIC_API_KEY:-}" sob 'set -u': continua vazio se nao veio do .env nem
+# do ambiente do chamador.
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}" python3 - "$FINDINGS_RAW" <<'PYEOF'
 import sys
 import re
 import json
@@ -98,7 +104,7 @@ import urllib.request
 import urllib.error
 
 findings_raw = sys.argv[1] if len(sys.argv) > 1 else ""
-api_key = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("ANTHROPIC_API_KEY", "")
+api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # Parse findings [SEV: risco|bug]
 # v6.14.0: bloco vai ate o proximo [SEV: risco|bug] ou fim (\Z), com .*? sob
