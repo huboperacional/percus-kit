@@ -37,3 +37,9 @@ achado pelo revisor de code-quality da Task 4 ("plan file não existe em lugar n
 deste worktree"), corrigido commitando o plano no meio da execução; o bloqueio de `cd` foi pego
 direto pela mensagem de erro do harness ao tentar `finishing-a-development-branch` sem
 `ExitWorktree`.
+
+Pra diagnosticar worktrees travados (trava de `git worktree lock` deixada por sessão morta) antes
+de decidir merge/remove, use `D:\Claud Automations\percus-kit\scripts\percus-worktree-limpar.ps1`:
+sem `-Destravar` lista cada worktree com branch, motivo da trava e se o pid citado na trava ainda
+está vivo; com `-Destravar <nome-ou-caminho>` só destrava quando o pid da trava não existe mais —
+nunca mata processo, e recusa (exit 3) se o pid estiver vivo ou a trava não tiver pid.
