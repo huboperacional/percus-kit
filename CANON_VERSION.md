@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.58.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.59.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -32,6 +32,54 @@
 > barrando versão atrasada e `CANON_VERSION.md` fora do índice ou removido.
 > Toda entrada declara "skill muda: não" ou "skill muda: sim — <arquivo>; só vale após push + autoUpdate"
 > (mudança em `plugin/percus-review/skills/` ou `commands/`).
+
+(nenhuma entrada pendente)
+
+---
+
+## Changelog v6.59.0 — 2026-09-15
+
+### Fase 2 — ambiente, suíte e follow-ups da 6.56 (branch `worktree-fase2`)
+
+**Pontos desta leva:** 14 (T8), 26 (T6; lock por repositório descartado), 27 (T7), 28 (T10; script
+`percus-commit` descartado), 30 (T9; encerrar `claude.exe` descartado), 31 (T12; varredura de branches e órfão
+`canon-version-check` descartados), 32 (T11), follow-ups F-a..F-f da 6.56 (T1–T5, mais T5b/T5c) e o trailer
+`UI-verified` prometido pela 6.58.0 (T14). **Descartados com medição:** 22 (a porta de 30 s do
+`percus-dispatch-post` já corta ~63% de 11.679 chamadas; filtrar por ferramenta cegaria o guard para Read).
+**29:** coberto pela Fase 0 (contratos 1, 6 e 7 do template de despacho). Plano:
+`D:\Claud Automations\.claude-home\plans\2026-09-15-fase2-plano-contrato.md`; revisão final do branch:
+`D:\Claud Automations\.claude-home\plans\2026-09-15-fase2\branch-final-review.md`.
+
+**skill muda: sim — `skills/feature-flow/SKILL.md` (T14); só vale após push + autoUpdate.**
+
+**Como chega.**
+- **(a) Nesta máquina, no merge na `main`:** o trampolim `.ps1` (`PERCUS_CANON_DIR`) passa a rodar na hora
+  `crud-evidence-warn.ps1` (T14), `enforcement-health.ps1` (T11) e `mock-scan-pre-commit.ps1` (T10). O gate V2
+  (T12) vale pelo `v2` da main (`PERCUS_CANON_V2_DIR`). Scripts do kit chamados pelo caminho do kit
+  (`rodar-suite`, `sdd-conferir`, `percus-worktree-limpar`, `deepseek-impl.sh`, `percus-review-auto.*`,
+  `percus-milestone-review-auto.*`), o `01_REGRAS`, o template de despacho e os verbetes também valem na hora.
+- **(b) Só depois de push + autoUpdate (e sessão nova):** a skill `feature-flow` (T14) e os scripts do plugin que
+  os wrappers resolvem **do cache instalado**: `registrar-review.ps1/.sh` (T3), `deepseek-review.sh`,
+  `fact-check.sh` e `providers/*.sh` sem chave no argv (T5/T5c), `pre-commit-check.sh` (T4, sessões Unix) e o
+  `mock-scan-pre-commit.sh`. Até lá, o `registrar-review` que o marcador do wrapper cita nesta máquina é o da 6.56.1.
+- **(c) Só com reinstalação do hook git em cada projeto** (`/percus-review:install-git-hooks`; 13 projetos na
+  6.56.1): `pre-commit.template.sh` (T4). Push e autoUpdate não chegam lá.
+- **(d) Gate de versão em branch (T12):** enquanto o `origin/main` local estiver em 6.56.1, o bloco 4 não barra
+  commit nenhum em 6.58/6.59; a regra só volta a morder depois do push.
+
+**Limitações conhecidas (registradas, não corrigidas):** `rodar-suite` acusa balde morto só na linha `ERRO`
+(fail-closed, fora da soma); marcador de marco ignora arquivo não rastreado (o hash do registrar também);
+`.bak` órfão do `registrar-review` só na falha dupla; caminho "NAO consegui restaurar" sem teste; `-H @arquivo`
+exige **curl ≥ 7.55.0**; espera de 5 s do teste WMI conta desde o `Start-Process` (pode ficar vermelha sob carga);
+`crud-evidence-warn` não lê trailer em arquivo de `-F` (aviso falso, igual à base); `mock-scan` casa `-F <arq>`
+citado dentro do texto de outro `-m`; `mock-scan.sh` com emoji no comando e `python3` do Git Bash sai 0 sem
+scan (pré-existente); worktree sem `.git/worktrees/<wt>/percus-v2-dir` bloqueia o gate com mensagem;
+`sdd-conferir` só enxerga marcador R11 do próprio worktree. **Processo:** os commits G da onda paralela (T10, T12,
+T14) tiveram R11 DeepSeek **sem fact-check** (despacho mandava `-NoFactCheck` ao cliente, que não tem o switch; e o
+fact-check do wrapper deu "Unexpected character" no JSON — a investigar); a revisão opus de cada tarefa fez a
+checagem de fatos. T10 teve assento Cross-Claude registrado por `registrar-review`.
+
+**Suíte do branch integrado (antes da T10):** 1017/1030, 8 pulados com motivo, 5 falhas de ambiente conhecidas.
 
 - **Fase 2, Lote D (T6+T7, ponto 26 e 27) — régua da suíte** (branch `worktree-fase2`): `scripts/rodar-suite.ps1`
   ganha `Pulou`/`NaoRodou`/`NomesPulados` por processo (Skipped/NotRun do Pester deixam de sumir do
@@ -114,8 +162,8 @@
   intervalo de commits em uma chamada, uma linha por checagem (`OK|FALHA|AVISO <nome>: <detalhe>` + `RESUMO`):
   árvore limpa, Base ancestral de Head, `.sh`/`.cmd` ASCII, `.sh` sem CR, `.ps1` alterado com BOM, mensagem
   de commit e marcador R11 por hash de commit (só AVISO). Blobs lidos como bytes. Exits 0/1/2. Substitui as
-  7 conferências manuais de fim de tarefa SDD; `templates/DESPACHO_SUBAGENTE.template.md` aponta o uso no
-  bloco do controlador. skill muda: não.
+  7 conferências manuais de fim de tarefa SDD; `templates/DESPACHO_SUBAGENTE.template.md` aponta o uso para o
+  controlador (fora do bloco copiado para o implementador). skill muda: não.
 
 - **Fase 2, Lote E (T9, ponto 30) — `scripts/percus-worktree-limpar.ps1`** (branch `worktree-fase2-t9`):
   sem `-Destravar`, lista cada worktree com branch, motivo da trava e estado do pid citado nela
@@ -146,6 +194,28 @@
   versão menor, arquivo fora do índice e remoção. A mensagem do branch principal cita a regra de feature.
   Vale nesta máquina só depois do merge (o gate lê o `v2` da main). Enquanto o `origin/main` local estiver
   atrás (sem push), o bloco 4 não barra commit nenhum na versão atual. skill muda: não.
+
+- **Fase 2, Lote F (T10, ponto 28) — `MOCK-OK:` em qualquer `-m` e no arquivo de `-F`** (branch
+  `worktree-fase2-t10`): `plugin/percus-review/hooks/mock-scan-pre-commit.ps1`/`.sh`. O escape vale em todas as
+  ocorrências de `-m "..."`/`-m '...'` e nas primeiras 64 KB do arquivo de `-F <arq>`/`--file=<arq>`/`--file <arq>`
+  (aspas e espaço aceitos; relativo resolve contra o `cd` do comando, senão contra o cwd do hook; BOM UTF-8 do
+  arquivo é pulado). Sem escape, e o scan bloqueia: `-F -`, arquivo inexistente/diretório/ilegível e `MOCK-OK:`
+  além de 64 KB. **Teto de custo:** a busca olha só os primeiros 64 KB do comando e no máximo 64 ocorrências de
+  cada forma (antes, 100 KB custavam 43 s no `.sh`, e hook que estoura o timeout libera sem scan); agora 1 MB
+  leva ≤1,8 s no `.sh` e ≤0,9 s no `.ps1`. Casamento igual nas duas camadas: sem caixa (ASCII), com fronteira
+  antes, não-ASCII colado conta como letra (`éMOCK-OK:` bloqueia). Janela em caracteres no `.ps1` e em bytes no
+  `.sh` (o `.sh` só pode ser mais estrito); o caminho do `-F` é casado com `LC_ALL=C` local, então locale UTF-8
+  não parte o caminho (achado Cross-Claude: corte no meio de `é` liberava). Mensagem de bloqueio cita `-m` em
+  qualquer posição e `-F`. Teste: tabela única de 31 casos em 5 pernas (pwsh, powershell.exe, Git Bash padrão,
+  `LC_ALL=C.UTF-8` e `LC_ALL=C`), perna sh com `timeout 30` (laço infinito vira vermelho); o arquivo leva ~214 s.
+  Verbete `conhecimento/fazer/mock-ok-no-corpo.md` corrigido: `-F` é o caminho seguro. skill muda: não.
+
+- **T13 — Menores deferidos da revisão final:** `registrar-review.ps1` documenta no `.DESCRIPTION` a saída de
+  `-Command "& '...'"` em console não UTF-8 e o exit 3 real (restaura, remove ou avisa o backup); comentário do
+  teste do `crud-evidence-warn` alinhado ao trailer com hora; o contrato 4 de
+  `templates/DESPACHO_SUBAGENTE.template.md` diz que `-NoFactCheck` é do wrapper `scripts/percus-review-auto.ps1`
+  (o cliente `deepseek-review.ps1` não tem o switch); `rodar-suite.ps1 -ManterEnv` aceita também um valor único
+  com vírgula (a forma que `pwsh -File` entrega), com teste. skill muda: não.
 
 ---
 
