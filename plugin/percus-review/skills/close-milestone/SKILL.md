@@ -1,11 +1,13 @@
 ---
 name: close-milestone
-description: Use when explicitly declaring a numbered Percus phase or epic feature group closed (e.g. "Fase X concluida", "fechar milestone", "marcar Eixo Y"). Runs /percus-review:milestone-review checklist and marks ✓ in PLANO/HANDOFF. Do NOT trigger for routine commits or task completions — only for formal milestone closure.
+description: Use only in trilho G (R9) when explicitly declaring a numbered Percus phase or epic feature group closed — trilhos P/M have no milestone and no ✓ (e.g. "Fase X concluida", "fechar milestone", "marcar Eixo Y"). Runs /percus-review:milestone-review checklist and marks ✓ in PLANO/HANDOFF. Do NOT trigger for routine commits or task completions — only for formal milestone closure.
 ---
 
 # Percus Close Milestone
 
 Quando declarar marco fechado (fim de Fase X numerada, fim de feature em épico, ou "pronto, próxima etapa"), use este fluxo antes de marcar ✓.
+
+**Só trilho G (R9).** Trilhos P e M não têm marco nem ✓: a entrega fecha em `[5-T]` com a R11 do diff final (e, no M, a revisão final sonnet). Não invoque esta skill nem marque ✓ numa entrega P/M.
 
 ## Fluxo
 

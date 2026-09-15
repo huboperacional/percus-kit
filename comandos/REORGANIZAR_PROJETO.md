@@ -56,6 +56,11 @@ PASSO 2 — Adotar as diretivas vigentes (ler a fonte no canon e aplicar o que f
 - R10/R11/R13 (baseline Fase 4): design v0/shadcn; review cross-provider antes de commit E no marco;
   routing Claude/DeepSeek/revisores. Ver 01_REGRAS + 04_MODEL_ROUTING.
 - Trilho P / M / G (R9): toda feature declara o trilho. Gate [S] só no trilho G → spec.md (template) + /clarify (≤5) + /percus-review:spec-analyze ANTES de [0]. (06_CONSELHO Modo 5)
+  COPIE para o CLAUDE.md do projeto, de ${env:PERCUS_CANON_DIR}/templates/CLAUDE.template.md: o parágrafo
+  "Trilhos P e M — este arquivo tem precedência sobre as skills upstream" (com os 3 itens), o parágrafo
+  "Uma frente por sessão", a linha do roteador "Spec ou plano do trilho G" e o bloco "Critério de pronto"
+  com a forma visual (UI-verified). Precedência sobre skill só vale escrita no CLAUDE.md/AGENTS.md do
+  projeto, não no canon. No AGENTS.md, copie as linhas R1 e R9 da tabela de AGENTS.template.md.
 - R23: consultar ${env:PERCUS_CANON_DIR}/conhecimento/resolver/ antes de debugar; registrar após (skill consult-knowledge).
 - R24: deploy ao milestone/fim-do-dia/sob-demanda, NÃO per-feature (comandos/DEPLOY.md, smoke+rollback).
 - Checkpoint: só quando o operador pede (a palavra checkpoint, em linguagem natural, não slash); o agente não inicia nem manda abrir sessão nova. PreCompact é backstop.
@@ -116,7 +121,7 @@ PASSO B — Diretiva project-facing nova: deploy opt-in (build Docker frio/lento
 
 PASSO B2 — Diretivas de AUTONOMIA (v6.29.0) — aplica a TODO projeto:
 - O canon agora manda o agente RESOLVER O MÁXIMO SEM PERGUNTAR (menos confirmação boba): review/conselho/
-  testes/build rodam sozinhos; conselho automático ao finalizar spec/plano; paralelismo é o default;
+  testes/build rodam sozinhos; conselho automático ao finalizar spec/plano do trilho G (R9); paralelismo é o default;
   lixo AUTO-CRIADO limpa sem perguntar; deploy/mutação-de-prod é autônomo (autorização durável); confirmar
   só destruição irreversível de dados, e como pergunta BINÁRIA (nunca menu a/b/c).
 - Adotar: copie a seção "## Autonomia" de ${env:PERCUS_CANON_DIR}/templates/CLAUDE.template.md pro CLAUDE.md

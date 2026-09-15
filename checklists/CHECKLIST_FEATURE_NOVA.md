@@ -2,7 +2,7 @@
 tipo: checklist-imperativo
 quando-usar: ao iniciar implementação de qualquer feature nova (não bug fix isolado)
 leitura: 2 min
-ultima-atualizacao: 2026-06-25
+ultima-atualizacao: 2026-09-15
 ---
 
 # CHECKLIST — Feature Nova
@@ -27,25 +27,25 @@ Na primeira resposta, declare **Trilho P, M ou G** e a estimativa, pela tabela �
 (`01_REGRAS_INEGOCIAVEIS.md`, "Trilho P / M / G"). Use a checklist do trilho; o **fluxo principal completo
 abaixo é o do trilho G**.
 
-### Checklist do trilho P (tela, função ou endpoint que já existe; até ~5 arquivos; nada do G)
+### Checklist do trilho P (tela, função ou endpoint que já existe; até ~5 arquivos; não muda o que grava em dado do operador; nada do G)
 
-1. Declare "Trilho P" + estimativa.
-2. Mini-spec de 3 linhas no PLANO (o quê / por quê / critério de pronto) e lista de tarefas.
-3. Implemente (inline ou um implementador); teste onde há lógica; `scripts/rodar-suite.ps1 -Afetados`.
-4. R11 uma vez, sobre o diff staged final; commit.
-5. R1 na forma que cabe (visual ou CRUD), confirmada pelo operador → `[5-T]`, com PLANO e HANDOFF juntos.
+1. Declare "Trilho P" + estimativa; brainstorming pelo caminho **Bounded** (design curto no chat + aprovação).
+2. Mini-spec de 3 linhas no PLANO (o quê / por quê / critério de pronto) e lista de tarefas em formato de contrato (até 1 página).
+3. Implemente (um implementador ou inline para a lista inteira); teste onde há lógica; `scripts/rodar-suite.ps1 -Afetados`.
+4. R11 uma vez, sobre o diff staged final (wrapper com `-NoFactCheck`); até 2 rodadas de conserto — crítico/importante ainda aberto → pare e promova o trilho, nunca commite; commit.
+5. R1 na forma que cabe (visual `UI-verified` ou CRUD `CRUD-verified`), confirmada pelo operador → `[5-T]` (sem `✓`), com PLANO e HANDOFF juntos.
 
-### Checklist do trilho M (feature nova sem nada do G)
+### Checklist do trilho M (feature nova, ou mudança no que grava dado do operador, sem nada do G)
 
 1. Declare "Trilho M" + estimativa.
-2. Brainstorming pelo caminho **Bounded** (design no chat, sem spec file).
+2. Brainstorming pelo caminho **Bounded** por precedência do canon, mesmo sem fluxo existente (design curto no chat + aprovação, sem spec file).
 3. Tarefa visual: decisões fechadas + mockup/tabela **antes** do plano (R10).
-4. Mini-spec no PLANO + **plano de contrato** (até ~600 linhas; código só em armadilha concreta).
+4. Mini-spec no PLANO + **plano de contrato** (formato na R9, até ~500 linhas).
 5. G-DELEGA por tarefa (abaixo).
-6. Lotes de 2–4 tarefas por implementador; TDD em endpoint novo; `-Afetados` por lote.
-7. R11 + revisão por lote (sonnet); até 2 rodadas de conserto.
+6. Lotes de 2–4 tarefas por implementador (despacho por `templates/DESPACHO_SUBAGENTE.template.md`); TDD em endpoint novo; `-Afetados` por lote.
+7. Um commit por lote: R11 sobre o diff staged do lote (wrapper com `-NoFactCheck`) + revisão por lote (sonnet); até 2 rodadas de conserto — crítico/importante ainda aberto → pare e promova o trilho, nunca commite.
 8. Revisão final do branch (sonnet) + suíte inteira uma vez.
-9. R1 (CRUD; visual se não persiste dado) → `[5-T]`, com PLANO e HANDOFF juntos.
+9. R1 (CRUD; visual se não persiste dado) → `[5-T]` (sem `✓`), com PLANO e HANDOFF juntos.
 
 ---
 
@@ -55,7 +55,7 @@ abaixo é o do trilho G**.
 
 5-10 min antes de qualquer código. Explora 2-3 abordagens com tradeoffs. Usuário escolhe.
 
-No trilho G, caminho **Architectural**. (Trilhos P e M usam Spike e Bounded — ver checklists do Passo 0.)
+No trilho G, caminho **Architectural**. (Trilhos P e M usam Bounded — ver checklists do Passo 0; Spike só para pergunta de viabilidade.)
 
 ### 2. Exploração — `Explore` (subagent)
 
@@ -63,10 +63,7 @@ Se vai mexer em código que você não escreveu nesta sessão, lance `Explore` a
 
 ### 3. Plano — `superpowers:writing-plans`
 
-Obrigatório se a feature:
-- Toca 3+ arquivos
-- Cria schema novo
-- Tem 3+ subtarefas independentes
+Só no trilho G. P e M usam o plano de contrato da R9 (P até 1 página; M até ~500 linhas), não este passo.
 
 Plano escrito ≠ plano mental. Reduz drift no meio da execução.
 
@@ -80,7 +77,7 @@ Feature do **trilho G** (R9) passa por spec antes de virar `[0]`:
 4. `/percus-review:spec-analyze <spec.md>` (conselho Modo 5; 2 providers default, 3 se sensível/`--deep`).
 5. **VEREDITO PRONTA** → cole na §8 da spec, segue pro passo 4. **BLOQUEADA** → corrige e re-roda.
 
-**Feature trivial** pula este gate: declare mini-spec de 3 linhas no PLANO (o quê / por quê / critério de pronto).
+**Trilhos P e M** pulam este gate: declare mini-spec de 3 linhas no PLANO (o quê / por quê / critério de pronto).
 
 ### 4. Adicionar ao `docs/PLANO.md`
 
@@ -145,9 +142,11 @@ Adicione a feature na frente correta, status `[0]` (precedido por `[S]` se passo
 
 ---
 
-## Gate de marco — antes de declarar feature pronta OU avançar de fase
+## Gate de marco (trilho G) — antes de declarar feature pronta OU avançar de fase
 
-### G-MARCO. Review cross-provider do escopo do marco (R11, OBRIGATÓRIO)
+> Só trilho G. Trilhos P e M não têm marco nem `✓`: fecham em `[5-T]` com a R11 do diff final (e, no M, a revisão final sonnet) — R9.
+
+### G-MARCO. Review cross-provider do escopo do marco (R11, OBRIGATÓRIO no trilho G)
 
 Antes de declarar a feature em `[5-T]` **ou** antes de seguir pra próxima fase numerada de um plano em execução, rodar:
 
@@ -223,7 +222,7 @@ Antes do `git commit`, atualize:
 
 - **Trilho P ou M** (R9): use a checklist curta do Passo 0, não o fluxo principal.
 
-- **Bug fix em código existente** que não muda comportamento de feature: pode pular brainstorming/plano. Ainda precisa TDD se mexer em endpoint, e ainda precisa atualizar HANDOFF.
+- **Bug fix em código existente**: é trilho P (ou M/G pela tabela da R9) — segue a checklist do trilho, com brainstorming Bounded curto. Ainda precisa TDD se mexer em endpoint, e ainda precisa atualizar HANDOFF.
 - **Refactor sem mudança funcional**: pode pular tracking `[0]→[5-T]`. Ainda precisa code-review.
 - **Hot fix em produção**: protocolo separado — corrige primeiro, documenta depois, mas declare em voz alta o que está sendo pulado.
 
@@ -237,4 +236,4 @@ Antes do `git commit`, atualize:
 - ❌ "TDD pra esse endpoint pequeno é overkill" → endpoint pequeno hoje vira regressão amanhã.
 - ❌ "Code review em commit pequeno é overkill" → pequeno não é o critério; sensibilidade é.
 - ❌ "Vou commitar e rodar `/percus-review:review` depois" → derrota o propósito. Antes do commit, sempre.
-- ❌ "Termino a fase inteira e rodo review só no fim do épico" → marco intermediário tem gate próprio (G-MARCO). Erros se acumulam.
+- ❌ "Termino a fase inteira e rodo review só no fim do épico" → no trilho G, marco intermediário tem gate próprio (G-MARCO). Erros se acumulam.

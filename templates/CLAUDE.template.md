@@ -26,7 +26,7 @@ carrega **só o loop da situação**. Invariantes: `${env:PERCUS_CANON_DIR}/v2/C
 |---|---|
 | Feature/pedido novo, intenção ainda vaga | `v2/loops/grilling.md` |
 | Intenção clara → escrever requisito | `v2/loops/spec.md` |
-| Spec ou plano acabou de fechar | `v2/loops/conselho.md` (automático, não pergunte) |
+| Spec ou plano do **trilho G** acabou de fechar (P/M: só se o operador pedir) | `v2/loops/conselho.md` (no G, automático, não pergunte) |
 | Vai começar a implementar | `v2/loops/tdd.md` |
 | Vai commitar | `v2/loops/review.md` |
 | Marco pronto pra prod | `v2/loops/deploy.md` |
@@ -117,7 +117,9 @@ alembic upgrade head
 
 ## Critério de "pronto" para qualquer feature
 
-Ciclo CRUD testado: **criar → F5 → editar → F5 → deletar → F5**, tudo persistindo no banco.
+Ciclo CRUD testado: **criar → F5 → editar → F5 → deletar → F5**, tudo persistindo no banco (trailer `CRUD-verified`).
+**Forma visual** só quando a mudança não cria, edita nem apaga dado (layout, texto, filtro de exibição): tela real
+conferida pelo operador depois de F5, trailer `UI-verified: YYYY-MM-DD HH:MM`.
 Build passando não conta. Tela abrindo não conta. Endpoint OK no Postman não conta.
 
 Detalhes em `01_REGRAS_INEGOCIAVEIS.md` R1 (na pasta `percus-kit`).
@@ -131,7 +133,7 @@ Tags: `[0]` planejado · `[1-S]` schema · `[2-E]` endpoint · `[3-H]` hook · `
 Marcações visuais (acumulam, ortogonais à tag):
 - `🎨` draft de design aprovado (v0.dev/shadcn) · `🎨?` precisa draft antes de sair de `[0]`
 - `🤖` implementação delegada ao DeepSeek (R13)
-- `✓` revisor cross-provider aprovou no marco (R11) — adicionar quando review de marco passou
+- `✓` revisor cross-provider aprovou no marco (R11) — **só trilho G**, adicionar quando review de marco passou; P e M fecham em `[5-T]` sem `✓`
 
 ## Regra de mock
 
@@ -145,9 +147,12 @@ Ver `checklists/CHECKLIST_FEATURE_NOVA.md` (na pasta `percus-kit`).
 
 Resumo: **declare o trilho P / M / G** (R9) → brainstorming pelo caminho do trilho → plano (P: lista de tarefas; M: plano de contrato; G: plano completo) → TDD → execução vertical [0]→[5-T] → `/percus-review:review` → commit.
 
-**Plano de contrato nos trilhos P e M (tem precedência sobre `superpowers:writing-plans`):** cada tarefa leva arquivos, assinaturas, casos de teste (entrada → saída), critério de pronto e armadilhas; código só onde há armadilha concreta. Proibido colar spec inteira ou repetir código entre tarefas.
+**Trilhos P e M — este arquivo tem precedência sobre as skills upstream** (a `using-superpowers` dá precedência ao CLAUDE.md do projeto):
+- `superpowers:brainstorming`: P e M usam o caminho **Bounded** (design curto no chat + aprovação, sem spec file), mesmo quando a feature M não tem fluxo existente; sobe para Architectural só ao achar item do G, não por dúvida. G usa Architectural. Spike só para pergunta de viabilidade.
+- `superpowers:writing-plans`: P = lista de tarefas em formato de contrato, até 1 página; M = **plano de contrato** até ~500 linhas. Cada tarefa leva arquivos, assinaturas, casos de teste (entrada → saída), critério de pronto e armadilhas; código só onde há armadilha concreta. Proibido colar spec inteira ou repetir código entre tarefas.
+- `superpowers:subagent-driven-development`: P = um implementador (ou inline) para a lista inteira; M = lotes de 2–4 tarefas, **uma revisão por lote**, até **2 rodadas** de conserto, revisão final **sonnet** — não a revisão por tarefa, as 5 rodadas nem a revisão final no modelo mais capaz da skill. Depois das 2 rodadas com achado crítico/importante aberto: pare e promova o trilho; nunca commite. Despacho pelo `templates/DESPACHO_SUBAGENTE.template.md` do kit.
 
-**Uma frente por sessão.** A próxima frente é planejada em sessão nova ou depois que a atual estiver no ar. Estourou 2× a estimativa → pare e replaneje com o operador.
+**Uma frente por sessão.** A próxima frente é planejada em sessão nova ou depois que a atual estiver no ar. Paralelismo vale dentro da frente (backend e frontend da mesma feature); frentes diferentes vão em abas separadas. Estourou 2× a estimativa → pare e replaneje com o operador.
 
 ## Autonomia — resolva o máximo sem perguntar (R5, R9, R11)
 
@@ -164,7 +169,7 @@ O operador quer que você **resolva o máximo possível sozinho**. Confirmação
 
 Review é obrigatório em **dois momentos:**
 1. Antes de cada commit que muda código — `/percus-review:review` (router auto)
-2. Ao concluir cada marco de plano — `/percus-review:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo)
+2. Ao concluir cada marco de plano do **trilho G** — `/percus-review:milestone-review --base <commit-inicio-marco>` (DeepSeek + Cross-Claude duplo). P e M não têm marco (R9)
 
 **Matriz de roteamento automática (`/percus-review:review`):**
 
@@ -183,9 +188,9 @@ Override manual: `/percus-review:deepseek-review`, `/percus-review:cross-claude-
 3. Preferência de estilo → ignorar é OK, declarar em voz alta
 
 Sem review rodado nos últimos 5 minutos antes do commit = não pode commitar.
-Sem milestone-review do escopo do marco = marco não está concluído.
+Sem milestone-review do escopo do marco = marco (trilho G) não está concluído.
 
-**Após review aprovar o marco:** adicionar marcação `✓` nas features afetadas em `docs/PLANO.md` e `HANDOFF.md`.
+**Após review aprovar o marco (trilho G):** adicionar marcação `✓` nas features afetadas em `docs/PLANO.md` e `HANDOFF.md`.
 
 ### Workflow de commit do agente (auto-trigger v5.1.0+)
 
@@ -197,7 +202,7 @@ Agente Claude Code AUTO-DISPARA review antes de qualquer `git commit` que ele me
    ```
    pwsh -NoProfile -ExecutionPolicy Bypass -File "${env:PERCUS_CANON_DIR}\scripts\percus-review-auto.ps1"
    ```
-   (ou `.sh` em Unix; passe `-Base <ref>` se for review de escopo)
+   (ou `.sh` em Unix; passe `-Base <ref>` se for review de escopo). **Trilhos P e M:** acrescente `-NoFactCheck` (`.sh`: `--no-fact-check`) — fact-check F3 só no trilho G.
 
 2. **Ler findings DeepSeek** retornados pelo wrapper. Tratar críticos (corrigir antes do commit).
 

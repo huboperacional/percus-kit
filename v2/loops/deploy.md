@@ -6,7 +6,7 @@
 
 ## Antes de subir
 
-1. O que vai está `[5-T]` e passou no review de marco.
+1. O que vai está `[5-T]` e passou no review de marco (trilho G), ou está `[5-T]` com R11 no diff final (trilhos P e M, R9).
 2. Você sabe a **versão atual** — sem ela não existe rollback.
 3. Migration envolvida? `downgrade` testado em dev **antes**.
 

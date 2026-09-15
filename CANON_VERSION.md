@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.57.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.58.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -28,40 +28,77 @@
 > Entradas desta seção ainda não têm número: a versão é atribuída no merge para a `main` (sem bump
 > em branch). Quem fizer o merge move a entrada para um `## Changelog vX.Y.Z` e bumpa.
 
-### Trilhos P / M / G (branch `worktree-trilhos-pmg`, 2026-09-14)
+(nenhuma entrada)
 
-> Sem número ainda: atribuído no commit de correção desta mesma branch, depois do merge da `main` 6.57.0.
+---
+
+## Changelog v6.58.0 — 2026-09-15
+
+### Trilhos P / M / G — processo proporcional ao tamanho da mudança (branch `worktree-trilhos-pmg`)
 
 **Problema.** Um ajuste em tela que já existia levou um dia inteiro (2026-09-14). Medido no mesmo dia:
 planos de 4.485–14.323 linhas com 71–83% de código colado (maio–julho: 700–1.000); "trivial" tinha quatro
 definições diferentes no canon; `spec-analyze` e `council-pre-mortem` rodavam automaticamente em qualquer
 tamanho; o fechamento de duas frentes consumiu ~2,0 M tokens em 45 subagentes (5 em opus). Revisão
 completa: `D:\Claud Automations\.claude-home\plans\estamos-reestruturando-nosso-padr-o-curious-gosling.md`
-(pontos 1–6, 9, 10, 12, 13, 15, 16, 21 e 29 desta leva).
+(pontos 1–6, 9, 10, 12, 13, 15, 16, 21 e 29 desta leva). Revisão final da branch:
+`D:\Claud Automations\.claude-home\plans\2026-09-15-fase0-revisao-final.md` (C1–C2, I1–I9 corrigidos nesta versão).
 
 **O que mudou (só texto do canon, nenhum código):**
-- **R9:** critério único de tamanho — trilho **P** (mexe no que já existe, até ~5 arquivos, nada sensível),
-  **M** (feature nova sem nada sensível), **G** (schema, auth, pagamento, dado do operador, pasta sensível,
-  hook/canon, deploy). O agente declara o trilho e a estimativa na primeira resposta; nunca rebaixa. Tabela
-  do que cada trilho exige: caminho do brainstorming, spec, plano, pre-mortem, execução, revisão, R11,
-  rodadas de conserto, revisão final, fact-check, marco, suíte e forma da R1.
-- **Plano de contrato** nos trilhos P e M, com precedência sobre o default de `superpowers:writing-plans`:
-  arquivos, assinaturas, casos de teste, critério de pronto e armadilhas; código só em armadilha concreta.
-- **Uma frente por sessão** e **decisões visuais antes do plano**.
-- **R1:** forma visual para mudança que não grava dado (`UI-verified`).
-- **06 (Modos 3 e 5):** `council-pre-mortem` e `spec-analyze` automáticos só no trilho G.
-- **`feature-flow`, `CHECKLIST_FEATURE_NOVA`, `USANDO_SUPERPOWERS`, `CLAUDE.template`:** passam a referenciar
-  o trilho; checklists curtas para P (5 itens) e M (9 itens).
+- **R9:** critério único de tamanho — trilho **P** (mexe no que já existe, até ~5 arquivos, não muda o que é
+  gravado em dado do operador, nada do G), **M** (feature nova, ou mudança no que o código grava em dado do
+  operador, sem nada do G), **G** (schema/migration; mudança destrutiva ou que reescreve dado já gravado; auth,
+  identidade, pagamento; permissão/papel/tenant (R7.6); integração que envia, cobra ou publica (R5, R20);
+  segredo/`.env*` (R4); tracking ou dado pessoal (R18); caminho sensível do baseline do router ou do
+  `.percus-review.json`; hook/gate/plugin/canon; deploy/infra). **Dado do operador** = dado persistido do
+  operador ou dos clientes dele: alterar o que o código grava é no mínimo M; destruir ou reescrever o já
+  gravado é G. O agente declara o trilho e a estimativa na primeira resposta; nunca rebaixa. Tabela do que
+  cada trilho exige por etapa.
+- **Teto de consertos em P/M:** 2 rodadas; achado crítico/importante ainda aberto → parar e promover o
+  trilho, nunca commitar.
+- **Brainstorming por trilho** (caminhos da skill upstream): P e M → **Bounded** (no M por precedência
+  declarada do canon, mesmo sem fluxo existente); G → **Architectural**; **Spike** só para pergunta de
+  viabilidade.
+- **Precedência sobre as skills upstream** nos trilhos P e M, escrita no `CLAUDE.template` (onde a
+  `using-superpowers` a reconhece): `brainstorming`, `writing-plans` (plano de contrato; P até 1 página, M até
+  ~500 linhas, alinhado ao gatilho de 500 do `pre-plan-exit`) e `subagent-driven-development` (lotes de 2–4,
+  uma revisão por lote, 2 rodadas, revisão final sonnet). `AGENTS.template` ganha as linhas R1 (forma visual) e
+  R9 para o revisor.
+- **Uma frente por sessão** (paralelismo dentro da frente; frentes diferentes em abas) e **decisões visuais
+  antes do plano**.
+- **R1:** forma visual para mudança que não grava dado (`UI-verified`), agora coerente no
+  `CLAUDE.template` ("pronto"), `AGENTS.template`, R2 (`[5-T]` e trailer) e Gate R1 do `feature-flow`.
+- **Marco por trilho:** só G tem marco, `milestone-review` duplo e `✓`; P e M fecham em `[5-T]` com R11 (M
+  com revisão final sonnet). Alinhados: R2 (`✓`), R11, anti-padrões 13/18, `CHECKLIST_FEATURE_NOVA` (Gate de
+  marco), `feature-flow`, `v2/artefatos/PLANO-FORMAT.md`, `v2/loops/deploy.md`, skill `close-milestone`.
+- **Conselho automático só no trilho G:** 06 (Modos 3 e 5), R9, `CLAUDE.template` (autonomia e roteador de
+  loops), `v2/CONSTITUICAO.md` e `v2/loops/conselho.md`.
+- **Fact-check F3 só no G:** fluxo P/M manda chamar o wrapper com `-NoFactCheck` (`.sh`: `--no-fact-check`) —
+  R9/R11, `CLAUDE.template`, `feature-flow`, checklists, despacho. **Fact-check agrupado descartado: mexe no
+  wrapper e no conselho para ganho não medido.**
+- **Limiares antigos removidos:** "3+ arquivos"/"3+ subtarefas" e "feature trivial" no CHECKLIST; título da R9
+  "subagent-driven por DEFAULT" virou "Execução segue o trilho".
 - **`04_MODEL_ROUTING`:** modelo por papel de subagente em cada trilho; haiku em re-revisão escopada pequena
   de P/M; opus só em plano e revisão final do G.
-- **Novo `templates/DESPACHO_SUBAGENTE.template.md`:** despacho em até 40 linhas com os contratos que evitam
-  os incidentes de 2026-09-14 (suíte em background que morre, `cd` herdado, crase no `-m`, relatório perdido
-  por limite de API, retomada respondendo a notificação antiga).
+- **Novo `templates/DESPACHO_SUBAGENTE.template.md`**, citado pela R9, `feature-flow`, `04_MODEL_ROUTING` e
+  checklist M: suíte em primeiro plano sem chamada acima de 10 min (`-Afetados` na tarefa, suíte inteira do
+  controlador); subagente nunca despacha subagente — se o wrapper emitir `__PERCUS_NEEDS_CROSS_CLAUDE__` ou
+  exit 4, para e reporta, e o controlador faz a review Cross-Claude e registra com `registrar-review`;
+  relatório gravado antes de responder, até ~150 linhas, também na variação do revisor.
 
 **O que NÃO mudou nesta leva:** hooks e scripts. O `crud-evidence-warn` ainda não reconhece `UI-verified`
-(avisa, não bloqueia); R11 por lote já é aceito pelo hook por hash do diff, sem mudança de código.
+(avisa, não bloqueia); o comentário de cabeçalho do `spec-analyze-check.ps1` ainda cita a regra antiga (texto,
+não lógica); o limiar de 500 linhas do `pre-plan-exit` fica como está. R11 por lote já é aceito pelo hook por
+hash do diff, com `registrar-review` no canal Cross-Claude (6.56), sem mudança de código.
 
----
+**Como chega aos projetos:**
+- **Textos do canon** (`01`–`06`, `v2/`, `templates/`, `checklists/`, `comandos/`): valem na hora nesta máquina
+  pelo `PERCUS_CANON_DIR`, assim que o merge chega à `main` do checkout principal.
+- **Skills do plugin** (`feature-flow`, `close-milestone`): só depois do push do kit + `autoUpdate` do plugin
+  (ou reload). Até lá o agente pode ler a skill antiga no cache.
+- **`CLAUDE.md`/`AGENTS.md` dos projetos existentes:** só recebem a precedência sobre as skills upstream
+  rodando `comandos/REORGANIZAR_PROJETO.md` (PASSO 2 manda copiar os parágrafos). Projeto novo recebe pelo
+  template.
 
 ## Changelog v6.57.0 — 2026-09-15
 

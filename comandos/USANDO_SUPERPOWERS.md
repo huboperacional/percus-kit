@@ -2,7 +2,7 @@
 tipo: guia-rapido
 quando-usar: consulta de skills superpowers a serem usadas em projetos Percus
 leitura: 2 min
-ultima-atualizacao: 2026-05-03
+ultima-atualizacao: 2026-09-15
 ---
 
 # Usando Superpowers em Percus
@@ -16,9 +16,9 @@ ultima-atualizacao: 2026-05-03
 
 | Skill | Disparar quando | Ganho |
 |---|---|---|
-| `superpowers:brainstorming` | Toda feature, antes de qualquer código — caminho Spike (P), Bounded (M) ou Architectural (G) | Evita retrabalho de premissa errada |
+| `superpowers:brainstorming` | Toda feature, antes de qualquer código — caminho Bounded (P e M, por precedência do canon) ou Architectural (G); Spike só para pergunta de viabilidade | Evita retrabalho de premissa errada |
 | `superpowers:writing-plans` | Trilho G. Em M, plano de contrato (R9); em P, lista de tarefas | Plano salvo + revisado, executável depois |
-| `superpowers:subagent-driven-development` | Trilho G (uma tarefa por implementador) e M (lotes de 2–4 tarefas) | -60% contexto principal, paralelismo |
+| `superpowers:subagent-driven-development` | Trilho G (uma tarefa por implementador). Em M (lotes de 2–4 tarefas, uma revisão por lote, 2 rodadas, revisão final sonnet) a R9 tem precedência sobre a skill | -60% contexto principal, paralelismo |
 | `superpowers:test-driven-development` | Endpoint novo / função pura nova | Testes antes do código (R1) |
 | `superpowers:systematic-debugging` | Bug ou teste quebrado | Causa raiz, não workaround |
 | `superpowers:requesting-code-review` | Antes de commitar diff > 500 linhas | Cobertura redundante ao `/percus-review:review` |
@@ -40,7 +40,7 @@ ultima-atualizacao: 2026-05-03
 | Skill | Disparar quando |
 |---|---|
 | `percus-review:feature-flow` | Toda feature ou bugfix — começa declarando o trilho P / M / G (R9) |
-| `percus-review:close-milestone` | Antes de marcar ✓ no PLANO (fechar marco) |
+| `percus-review:close-milestone` | Trilho G: antes de marcar ✓ no PLANO (fechar marco). P e M não levam ✓ |
 
 ### Fase 6+ (NOVAS — após bump pra plugin v6.0.0)
 
@@ -54,7 +54,7 @@ ultima-atualizacao: 2026-05-03
 | `percus-review:security-audit` | Auditoria opt-in de pasta auth | Checklist guiado por R14/R15/R16/R17/R18/R19 |
 | **Conselho expandido (3-membros)** | | |
 | `council:consult` | Pré-`AskUserQuestion` em decisão design/naming/pattern | 3 perspectivas + síntese (reduz fricção) |
-| `council:pre-mortem` | Plano > 500 linhas, antes de ExitPlanMode | Risco crítico × probabilidade (bloqueia se 2+ apontam mesmo risco) |
+| `council:pre-mortem` | Trilho G, ao fechar o plano (automático; hook também dispara em plano > 500 linhas antes de ExitPlanMode). P/M só a pedido | Risco crítico × probabilidade (bloqueia se 2+ apontam mesmo risco) |
 | `council:brainstorm` | Sessão `superpowers:brainstorming` (opt-in) | Conselho opina junto a cada `AskUserQuestion` do Claude |
 | `council:drift-detect` | Investigar divergência cross-projeto de feature | Lê catalog-info.yaml + ADRs + commits, lista divergências |
 

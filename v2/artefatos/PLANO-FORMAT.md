@@ -14,7 +14,7 @@
 | `[3-H]` | hook |
 | `[4-C]` | componente |
 | `[5-T]` | **ciclo testado** — ponta a ponta, verificado |
-| `✓` | marco aprovado pelo revisor cross-provider |
+| `✓` | marco aprovado pelo revisor cross-provider — só trilho G (R9); P e M fecham em `[5-T]` sem `✓` |
 
 Marcadores auxiliares: `🎨` draft de design aprovado · `🎨?` precisa de draft antes de `[1-S]` · `🤖` implementado via DeepSeek.
 

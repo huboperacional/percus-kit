@@ -104,7 +104,7 @@ dado, vale o ciclo CRUD completo — a forma visual não é atalho para feature 
 | `[2-E]` | Endpoint | Rota responde 2xx em curl/log (verificar com curl) |
 | `[3-H]` | Hook | Frontend chama o endpoint sem erro (verificar com network tab) |
 | `[4-C]` | Componente | Tela renderiza dado real do banco (verificar olhando a tela) |
-| `[5-T]` | Testado | R1 cumprida (ciclo CRUD com F5) |
+| `[5-T]` | Testado | R1 cumprida (ciclo CRUD com F5, ou forma visual da R1 se a mudança não grava dado) |
 
 **Onde atualizar:** `docs/PLANO.md` do projeto (fonte da verdade) E `HANDOFF.md` ao encerrar sessão.
 
@@ -112,16 +112,17 @@ dado, vale o ciclo CRUD completo — a forma visual não é atalho para feature 
 
 **Regra de profundidade > largura:** Não inicie feature nova enquanto outra da mesma frente estiver entre `[1-S]` e `[3-H]`. Não acumule features pela metade.
 
-### Evidência de `[5-T]`: trailer `CRUD-verified` (enforcement v6.12.0+)
+### Evidência de `[5-T]`: trailer `CRUD-verified` ou `UI-verified` (enforcement v6.12.0+)
 
-O commit que transiciona uma feature para `[5-T]` **SHOULD** conter o trailer `CRUD-verified: YYYY-MM-DD HH:MM` — a prova, no histórico git, de que o ciclo CRUD com F5 (R1) foi rodado de fato, não arredondado de `[4-C]`.
+O commit que transiciona uma feature para `[5-T]` **SHOULD** conter o trailer `CRUD-verified: YYYY-MM-DD HH:MM` — a prova, no histórico git, de que o ciclo CRUD com F5 (R1) foi rodado de fato, não arredondado de `[4-C]`. Na forma visual da R1 (mudança que não grava dado), o trailer é `UI-verified: YYYY-MM-DD HH:MM`.
 
 ```
 git commit -m "feat(x): finaliza feature Y" -m "CRUD-verified: 2026-05-30 14:32"
+git commit -m "fix(x): ajusta layout da tela Y" -m "UI-verified: 2026-05-30 14:32"
 ```
 
 Dois hooks do plugin `percus-review` cuidam disso (sem promoção automática warn→block — decisão registrada no plano v6.11→v7.0):
-- **`crud-evidence-warn`** (pre-commit, **warn-only**): avisa quando um `[5-T]` é adicionado a `PLANO.md`/`HANDOFF.md` sem o trailer. Não bloqueia. Skip: `PERCUS_SKIP_CRUD_WARN=1`.
+- **`crud-evidence-warn`** (pre-commit, **warn-only**): avisa quando um `[5-T]` é adicionado a `PLANO.md`/`HANDOFF.md` sem o trailer. Ainda não reconhece `UI-verified` (avisa também nesse caso; ajuste do hook fica para a Fase 2). Não bloqueia. Skip: `PERCUS_SKIP_CRUD_WARN=1`.
 - **`state-drift-check`** (on-stop, **bloqueia**): impede encerrar a sessão se `docs/PLANO.md` (fonte da verdade) e `HANDOFF.md` divergem no status de alguma feature. Skip: `PERCUS_SKIP_DRIFT_CHECK=1` (declarar motivo em voz alta).
 
 A skill `percus-review:feature-flow` atualiza PLANO **e** HANDOFF na mesma operação ao marcar `[5-T]`, eliminando a classe de drift por origem.
@@ -135,7 +136,7 @@ Marcações são metadata visual — vão ANTES da tag de status no PLANO. Acumu
 | `🎨` | Draft de design aprovado (v0.dev export, shadcn add, ou wireframe) | Em features visuais — **obrigatório** antes de sair de `[0]` (R10) |
 | `🎨?` | Feature visual sem draft — BLOQUEADA em `[0]` | Ao classificar feature visual ainda não desenhada (R10) |
 | `🤖` | Implementação delegada ao DeepSeek (R13) | Em qualquer fase `[1-S]→[5-T]` onde o trabalho foi feito via wrapper `deepseek-impl` |
-| `✓` | Reviewer aprovou no marco (não no commit individual) | Em features cujo escopo de marco passou por `/percus-review:milestone-review --base <commit>` ou `/percus-review:review` aprovado pré-commit (R11) |
+| `✓` | Reviewer aprovou no marco (não no commit individual) — **só trilho G** (R9); P e M fecham em `[5-T]` sem `✓` | Em features do trilho G cujo escopo de marco passou por `/percus-review:milestone-review --base <commit>` (R11) |
 
 **Exemplo de PLANO com marcações compostas:**
 ```
@@ -299,32 +300,38 @@ Spec completa: [`PADRAO_AUTH_SERVICE.md`](PADRAO_AUTH_SERVICE.md) + [`docs/super
 
 | Trilho | Critério |
 |---|---|
-| **P** | Mexe em tela, função ou endpoint que **já existe**; até ~5 arquivos; **nenhum** item do G |
-| **M** | Feature nova (tela, endpoint ou função nova), **sem** nenhum item do G |
-| **G** | Qualquer um destes: schema ou migration; auth, identidade ou pagamento; gravação ou apagamento em dado do operador; pasta sensível (`.percus-review.json`); hook, gate, plugin ou canon Percus; deploy ou infra |
+| **P** | Mexe em tela, função ou endpoint que **já existe**; até ~5 arquivos; **não** muda o que é gravado em dado do operador; **nenhum** item do G |
+| **M** | Feature nova (tela, endpoint ou função nova), **ou** mudança que altera o que o código grava em dado do operador (CRUD novo ou corrigido), **sem** nenhum item do G |
+| **G** | Qualquer um destes: schema ou migration; mudança destrutiva ou que reescreve dado do operador já gravado (backfill, apagamento em massa, `UPDATE`/`DELETE` fora do fluxo normal da feature); auth, identidade ou pagamento; permissão, papel ou isolamento de tenant (R7.6); integração externa que envia mensagem/e-mail, cobra ou publica (R5, R20); segredo, credencial ou `.env*` (R4); tracking, cookies ou dado pessoal (R18); caminho sensível do baseline do router (`plugin/percus-review/scripts/sensitive-paths.txt`: `auth/`, `payment*/`, `migrations/`, `credentials/`, `.env*`, `alembic/versions/`, `api/vN/internal`, `infra/*.yaml`, `config.py` de `backend/`/`app/`, `services/{auth,payment,notification,webhook}/`) **ou** dos `sensitivePatterns` do `.percus-review.json` do projeto; hook, gate, plugin ou canon Percus (regras `0[1-6]_*.md`, `v2/`, `templates/`, `checklists/`, `comandos/`, `plugin/`, `scripts/` — `conhecimento/` e `docs/handoffs/` ficam fora); deploy ou infra |
 
+- **Dado do operador** = dado persistido do operador ou dos clientes dele (banco de produção, storage, CRM ou planilha de cliente). Alterar o que o código grava nesse dado é no mínimo **M**; destruir ou reescrever o que já está gravado é **G**.
 - O agente declara o trilho e a estimativa **na primeira resposta** da feature (ex.: "Trilho P: ajuste de layout na tela X, 3 arquivos, meio dia"). Dúvida entre dois trilhos se resolve pelo critério da tabela, não por "segurança". O operador pode promover; o agente promove sozinho ao descobrir um item do G no meio. Nunca rebaixa.
 - "Trivial", "não-trivial" e os limiares de 2+/3+ arquivos ou tasks que aparecem em outros documentos do canon **ficam substituídos** por esta tabela.
+- **Teto de consertos em P/M:** depois das 2 rodadas, se ainda houver achado crítico ou importante aberto (revisão da tarefa/lote, revisão final ou R11), **pare e promova o trilho** (ou leve ao operador). **Nunca commite com achado crítico ou importante aberto.**
 
 | Etapa | P | M | G |
 |---|---|---|---|
-| Brainstorming (`superpowers:brainstorming`) | caminho **Spike** (2–3 frases, sem spec) | caminho **Bounded** (design no chat, sem spec file) | caminho **Architectural** |
+| Brainstorming (`superpowers:brainstorming`) | caminho **Bounded** (design curto no chat + aprovação, sem spec file e sem plano-documento) | caminho **Bounded** por precedência deste canon, mesmo sem fluxo existente (design curto no chat + aprovação, sem spec file) | caminho **Architectural** |
 | Spec e `spec-analyze` | mini-spec de 3 linhas no PLANO; sem analyze | mini-spec no PLANO; analyze só se o operador pedir | spec completa + `spec-analyze` automático |
-| Plano | lista de tarefas de até 1 página | **plano de contrato** (abaixo), até ~600 linhas | plano completo (`superpowers:writing-plans`) |
+| Plano | lista de tarefas em formato de contrato, até 1 página | **plano de contrato** (abaixo), até ~500 linhas | plano completo (`superpowers:writing-plans`) |
 | `council-pre-mortem` | não | só se o operador pedir | automático |
-| Execução | uma tarefa: inline ou um implementador | lotes de 2–4 tarefas por implementador | uma tarefa por implementador (`subagent-driven-development`) |
+| Execução | um implementador (ou inline) para a lista inteira | lotes de 2–4 tarefas por implementador | uma tarefa por implementador (`subagent-driven-development`) |
 | Revisão de tarefa | não (só a final) | uma por lote | uma por tarefa |
-| R11 (review cross-provider) | uma vez, sobre o diff staged final | uma por lote, sobre o diff staged do lote | por commit |
-| Rodadas de conserto por achado | até 2 | até 2 | até 5 |
+| R11 (review cross-provider) | uma vez, sobre o diff staged final | um commit por lote, R11 sobre o diff staged do lote | por commit |
+| Rodadas de conserto por achado | até 2 (depois: pare e promova) | até 2 (depois: pare e promova) | até 5 |
 | Revisão final do branch | sonnet | sonnet | opus |
-| Fact-check F3 dos findings | não | não | sim |
-| Marco (`milestone-review`) | não há marco | a revisão final fecha o marco | duplo (R11) |
-| Suíte de testes | `rodar-suite.ps1 -Afetados` por tarefa; inteira uma vez no fim | idem, por lote | inteira no fim de cada marco |
+| Fact-check F3 dos findings | não (wrapper com `-NoFactCheck` / `--no-fact-check`) | não (idem) | sim |
+| Marco (`milestone-review`) e `✓` | não há marco nem `✓`; fecha em `[5-T]` com R11 | não há `✓`; a revisão final sonnet fecha a entrega em `[5-T]` com R11 | duplo (R11) + `close-milestone` → `✓` |
+| Suíte de testes | `rodar-suite.ps1 -Afetados` por tarefa; inteira uma vez no fim | idem, por lote | `-Afetados` por tarefa; inteira no fim de cada marco |
 | Verificação de feito (R1) | forma visual ou CRUD, conforme R1 | CRUD; visual se não persiste dado | CRUD |
 
-**Plano de contrato (trilhos P e M).** Esta regra tem precedência sobre o default da skill `superpowers:writing-plans` — a própria `using-superpowers` dá precedência a instrução do projeto sobre skill. Cada tarefa leva: arquivos a tocar; assinaturas e interfaces; casos de teste (entrada → saída esperada); critério de pronto; armadilhas conhecidas. **Código só onde há armadilha concreta** (compatibilidade PS 5.1, regex, encoding, SQL delicado). Proibido colar a spec inteira ou repetir código entre tarefas. Motivo medido em 2026-09-14: planos de 4.485–14.323 linhas com 71–83% de código colado; o revisor lia o código duas vezes e cada mudança de escopo reescrevia milhares de linhas.
+**Brainstorming por trilho.** Os caminhos são os da seção "Three Paths" da skill `superpowers:brainstorming`. **Spike** é só para pergunta de viabilidade ("dá pra fazer X?"), em qualquer trilho — o produto é uma resposta e o código fica descartável; manter o código vira pedido novo, classificado pelo trilho. No trilho M, esta regra **tem precedência** sobre a classificação da skill ("sem fluxo existente não é bounded") e sobre o ratchet "na dúvida, o caminho mais pesado": feature M usa Bounded; o que sobe para Architectural é descobrir um item do G, não a dúvida.
 
-**Uma frente por sessão.** Uma frente ativa por sessão; a próxima é planejada em sessão nova ou depois que a atual estiver no ar. Estourou 2× a estimativa declarada → parar e replanejar com o operador, em vez de insistir.
+**Plano de contrato (trilhos P e M).** Esta regra tem precedência sobre o default da skill `superpowers:writing-plans` — a própria `using-superpowers` dá precedência a instrução do projeto sobre skill. Teto: P até 1 página; M até ~500 linhas (o hook `pre-plan-exit` dispara o pre-mortem acima de 500 — plano P/M que chega lá está no trilho errado). Cada tarefa leva: arquivos a tocar; assinaturas e interfaces; casos de teste (entrada → saída esperada); critério de pronto; armadilhas conhecidas. **Código só onde há armadilha concreta** (compatibilidade PS 5.1, regex, encoding, SQL delicado). Proibido colar a spec inteira ou repetir código entre tarefas. Motivo medido em 2026-09-14: planos de 4.485–14.323 linhas com 71–83% de código colado; o revisor lia o código duas vezes e cada mudança de escopo reescrevia milhares de linhas.
+
+**Execução P/M tem precedência sobre `superpowers:subagent-driven-development`.** Nos trilhos P e M valem a execução e a revisão do respectivo trilho nesta tabela (P: um implementador ou inline, só a revisão final; M: lotes de 2–4 com uma revisão por lote), as 2 rodadas de conserto e a revisão final sonnet — não a revisão por tarefa, as 5 rodadas, a revisão final no modelo mais capaz nem a restrição de lote da skill. Todo despacho de subagente (implementador ou revisor) usa `templates/DESPACHO_SUBAGENTE.template.md`.
+
+**Uma frente por sessão.** Uma frente ativa por sessão; a próxima é planejada em sessão nova ou depois que a atual estiver no ar. Paralelismo vale **dentro** da frente (backend e frontend da mesma feature); frentes diferentes vão em abas separadas (`comandos/COMANDO_FRENTES_PARALELAS.md`). Estourou 2× a estimativa declarada → parar e replanejar com o operador, em vez de insistir.
 
 **Decisões visuais antes do plano.** Em tarefa visual M ou G, mockup ou tabela aprovados e uma lista de "decisões fechadas" (até 10 linhas) vêm **antes** do plano; mudança depois do plano pronto vira fatia nova no PLANO, não reescrita. Em P, o loop de feedback é a tela real (R10, "iteração rápida sobre tela existente").
 
@@ -333,25 +340,26 @@ Spec completa: [`PADRAO_AUTH_SERVICE.md`](PADRAO_AUTH_SERVICE.md) + [`docs/super
 | Fase | Skill | Disparo |
 |------|-------|---------|
 | Início orquestrado | `percus-review:feature-flow` | **Toda feature/bugfix** — começa pelo trilho; substitui carregar R1+R9+R11+R13 separadamente |
-| Brainstorming | `superpowers:brainstorming` | Antes de qualquer código, pelo caminho do trilho (Spike / Bounded / Architectural) |
+| Brainstorming | `superpowers:brainstorming` | Antes de qualquer código, pelo caminho do trilho (P e M: Bounded; G: Architectural; Spike só para pergunta de viabilidade) |
 | Exploração | `Explore` (subagent) | Código desconhecido em projeto grande |
 | Plano | `superpowers:writing-plans` | Trilho G (em M, plano de contrato; em P, lista de tarefas) |
-| Execução paralela | `superpowers:subagent-driven-development` | Trilho G por tarefa; trilho M por lote de 2–4 tarefas; trilho P inline ou um implementador |
+| Execução paralela | `superpowers:subagent-driven-development` | Trilho G por tarefa; trilho M por lote de 2–4 tarefas; trilho P inline ou um implementador (P/M: precedência deste canon sobre a skill; despacho por `templates/DESPACHO_SUBAGENTE.template.md`) |
 | Paralelização B/F | `superpowers:dispatching-parallel-agents` | Backend + Frontend, ou quaisquer frentes disjuntas |
 | Testes | `superpowers:test-driven-development` | **Todo endpoint novo** — vitest antes do código |
 | Debug | `superpowers:systematic-debugging` | Qualquer bug ou teste quebrado |
-| Revisão | `superpowers:requesting-code-review` | Em background antes do commit |
+| Revisão | `superpowers:requesting-code-review` | Antes do commit, conforme o trilho (primeiro plano — nunca em background) |
 | Finalização | `superpowers:verification-before-completion` | Antes de marcar `[5-T]` |
-| Marco | `percus-review:close-milestone` | Antes de marcar `✓` no PLANO (fechar fase/feature/épico) |
+| Marco | `percus-review:close-milestone` | Trilho G: antes de marcar `✓` no PLANO (fechar fase/feature/épico). P e M não levam `✓` |
 
 **Paralelismo é o DEFAULT — sempre busque maximizar trabalho em paralelo:** subagents pra tasks
 independentes, frentes disjuntas, e **múltiplos tool calls concorrentes numa só mensagem** quando não há
 dependência entre eles. Serial só quando há dependência real (B precisa do output de A). **Deixar de
 paralelizar quando cabia = anti-padrão** — custa tempo e contexto do operador.
 
-**Executar plano é subagent-driven por DEFAULT — não pergunte "subagent ou inline" (pergunta boba):**
+**Execução segue o trilho — não pergunte "subagent ou inline" (pergunta boba):**
 trilho G → um subagente por task, revisa entre tasks; trilho M → um subagente por lote de 2–4 tasks, uma
-revisão por lote; trilho P → inline ou um implementador, sem revisão por tarefa. Perguntar como executar
+revisão por lote; trilho P → inline ou um implementador, sem revisão por tarefa. Despacho de subagente
+sempre pelo `templates/DESPACHO_SUBAGENTE.template.md`. Perguntar como executar
 quando o trilho já decide = a mesma trava-boba que R5 combate.
 
 **Conselho automático no trilho G (não pede permissão):** ao finalizar uma **spec** → o agente roda
@@ -375,7 +383,7 @@ kit-level antes de qualquer `git commit` que ele mesmo for executar via Bash too
 nada ao operador. **❌ Anti-padrão proibido: pedir "rode `/percus-review:review` no chat" ou "pode rodar o
 review?" — isso é ERRO.** O agente roda o wrapper ele mesmo, sempre. Wrapper:
 
-- Pre-commit: `pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-review-auto.ps1"` (ou `.sh` em Unix)
+- Pre-commit: `pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-review-auto.ps1"` (ou `.sh` em Unix). Trilhos P e M: acrescente `-NoFactCheck` (`.sh`: `--no-fact-check`) — fact-check F3 só no trilho G (R9)
 - Marco: `pwsh -File "${env:PERCUS_CANON_DIR}/scripts/percus-milestone-review-auto.ps1" -Base <commit-inicio-marco>`
 
 Wrapper resolve plugin instalado, dispatch DeepSeek (caso default) ou emite marker `__PERCUS_NEEDS_CROSS_CLAUDE__` no stderr quando decisão exige Cross-Claude (pasta sensível, marco, ou commit de DeepSeek). Agente lê marker → dispatch Sonnet subagent via Agent tool → consolida findings → decide commit.
@@ -440,7 +448,7 @@ Hook Layer 1+2 continua sendo backstop final — se agente esquecer auto-trigger
 **Regra:** Rodar review cross-provider em **dois momentos** obrigatórios. Reviewer é decidido pelo router automático ou forçado manualmente.
 
 - **Pre-commit:** `/percus-review:review` (router auto — escolhe DeepSeek, Cross-Claude ou duplo conforme contexto)
-- **Marco:** `/percus-review:milestone-review --base <commit-de-inicio-do-marco>` (DeepSeek + Cross-Claude duplo, sempre)
+- **Marco (trilho G):** `/percus-review:milestone-review --base <commit-de-inicio-do-marco>` (DeepSeek + Cross-Claude duplo, sempre). Trilhos P e M não têm marco: a entrega fecha com a R11 do diff final (e, no M, a revisão final sonnet) — R9
 - **Override manual:** `/percus-review:deepseek-review` ou `/percus-review:cross-claude-review` quando quiser forçar canal específico
 
 ### Matriz de roteamento automática (`/percus-review:review`)
@@ -473,7 +481,7 @@ Justificativa do design: dois provedores diferentes (DeepSeek Inc + Anthropic) c
 ### Quando dispara
 
 1. **Antes de cada `git commit`** que muda código (não vale para commits só de docs/configs).
-2. **Ao concluir cada marco** de plano em execução — fim de fase numerada (Fase 1, Fase 2…), conclusão de feature dentro de épico, ou ponto onde o agente diria *"pronto, próxima etapa"*. O escopo da revisão de marco é o **conjunto** de mudanças do marco (não só do último diff).
+2. **Ao concluir cada marco** de plano em execução do **trilho G** — fim de fase numerada (Fase 1, Fase 2…), conclusão de feature dentro de épico, ou ponto onde o agente diria *"pronto, próxima etapa"*. O escopo da revisão de marco é o **conjunto** de mudanças do marco (não só do último diff).
 
 ### Setup primeira vez
 
@@ -1022,12 +1030,12 @@ num umbrella único. Princípio declarado pelo operador: "reforço = apontamento
 10. ❌ Reaproveitar JWT_SECRET de outro domínio
 11. ❌ Commitar sem rodar `/percus-review:review` antes (R11)
 12. ❌ Manter `AGENTS.md` desatualizado em relação ao `CLAUDE.md` — reviewer revisa com regra defasada
-13. ❌ Avançar marco sem `/percus-review:milestone-review --base <commit>` do escopo do marco (R11 ampliada)
+13. ❌ Avançar marco do trilho G sem `/percus-review:milestone-review --base <commit>` do escopo do marco (R11 ampliada)
 14. ❌ Rodar DeepSeek em `--apply` direto sem dry-run (R13)
 15. ❌ Delegar pra DeepSeek tasks em pasta sensível (auth/payment/migrations) ou sem plano explícito (R13)
 16. ❌ Aplicar saída DeepSeek sem trailer `Co-implemented-by: deepseek-v4` no commit (R13 + R11) — router não detecta auto-revisão
 17. ❌ Executar fora do que o trilho pede (R9): tarefa por tarefa com revisão individual em trilho P/M, ou plano G serial sem `superpowers:subagent-driven-development` — desperdiça tempo e contexto num sentido ou no outro
-18. ❌ Editar PLANO.md adicionando ✓ sem invocar `percus-review:close-milestone` antes (R11 ampliada)
+18. ❌ Editar PLANO.md adicionando ✓ sem invocar `percus-review:close-milestone` antes, ou pôr ✓ em entrega de trilho P/M (R11 ampliada, R9)
 19. ❌ Refresh JWT stateless (sem family invalidation) — token roubado vale TTL inteiro sem revogação (R7)
 20. ❌ Reimplementar magic-link no projeto em vez de consumir `/auth/magic/*` do auth-service (R17)
 21. ❌ Acoplar tracking SDK (`?ref=`, cookies de marketing) à lib de auth (R18)

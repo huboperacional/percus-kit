@@ -1,11 +1,11 @@
 # Loop: conselho — validação plural
 
-**Quando — automático, sem pedir permissão:**
+**Quando — automático, sem pedir permissão, conforme o trilho P / M / G (R9):**
 
 | Gatilho | Modo |
 |---|---|
-| Spec fechada | `analyze` — devolve PRONTA / AJUSTAR / BLOQUEADA |
-| Plano fechado, antes de implementar | `pre-mortem` — "se isso falhar em 30 dias, por quê?" |
+| Spec fechada — **trilho G** (P/M: só se o operador pedir) | `analyze` — devolve PRONTA / AJUSTAR / BLOQUEADA |
+| Plano fechado, antes de implementar — **trilho G** (P/M: só se o operador pedir) | `pre-mortem` — "se isso falhar em 30 dias, por quê?" |
 | Decisão reversível de design, naming ou pattern | `consult` |
 | Diff antes de commit | `review` — ver `loops/review.md` |
 

@@ -32,7 +32,7 @@ Esses quatro **são** a leitura de retomada. Não existe "texto pra colar": quem
 ## 3. Gates que sempre valem
 
 - **Review antes de commit** — você dispara sozinho, sem pedir (`loops/review.md`).
-- **Conselho ao fechar spec e ao fechar plano** — automático, sem perguntar (`loops/conselho.md`).
+- **Conselho ao fechar spec e ao fechar plano no trilho G (R9)** — automático, sem perguntar (`loops/conselho.md`). Trilhos P e M: só se o operador pedir.
 - **Verificação antes de declarar pronto** — evidência observada, nunca asserção. "Deve funcionar" não fecha nada.
 - **Consulte o conhecimento antes de debugar; registre depois** (`referencia/conhecimento/`).
 

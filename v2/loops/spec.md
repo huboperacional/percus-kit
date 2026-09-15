@@ -25,7 +25,7 @@ Variações: `ENQUANTO <estado> ... DEVE ...` (condição de estado) · `DEVE SE
 
 ## Ao fechar
 
-**Rode o conselho automaticamente** (`loops/conselho.md`, modo `analyze`). Sem pedir permissão.
+**Rode o conselho automaticamente** (`loops/conselho.md`, modo `analyze`) — esta spec é do trilho G. Sem pedir permissão.
 
 O veredito volta como `PRONTA | AJUSTAR | BLOQUEADA`:
 

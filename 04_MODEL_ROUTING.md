@@ -48,6 +48,7 @@ A partir da Fase 6, o roteamento ganha **camada explícita de Haiku 4.5** pra ta
 
 Todo despacho declara `model:` explicitamente — sem isso o subagente herda o modelo da sessão, em geral o
 mais caro. Tabela medida contra o fechamento de 2026-09-14 (45 subagentes, ~2,0 M tokens, 5 em opus).
+O despacho segue `templates/DESPACHO_SUBAGENTE.template.md` (contratos de suíte, R11, relatório e retomada).
 
 | Papel | Trilho P | Trilho M | Trilho G |
 |---|---|---|---|

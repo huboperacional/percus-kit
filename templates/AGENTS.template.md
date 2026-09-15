@@ -46,7 +46,8 @@ Versão completa: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md`
 
 | Regra | O que apontar |
 |---|---|
-| R1 — feito = ciclo CRUD | Diff que declara "feito" sem evidência de teste manual/automatizado do ciclo |
+| R1 — feito = ciclo CRUD (ou forma visual) | Diff que declara "feito" sem evidência do ciclo CRUD (`CRUD-verified`). Mudança que não cria, edita nem apaga dado usa a forma visual da R1 (`UI-verified`: tela real conferida pelo operador) — não apontar como violação; apontar `UI-verified` em diff que grava dado |
+| R9 — trilho P / M / G | Trilhos P e M seguem o `CLAUDE.md` do projeto, que tem precedência sobre `superpowers:brainstorming`, `writing-plans` e `subagent-driven-development` (Bounded; P = lista de tarefas, um implementador ou inline, R11 única no diff final; M = plano de contrato, lotes de 2–4 com uma revisão por lote; nos dois, até 2 rodadas, revisão final sonnet, sem `✓`). Apontar: diff P/M que toca item do G sem promover o trilho; commit com achado crítico/importante aberto; `✓` em entrega P/M |
 | R2 — tracking `[0]→[5-T]` | Endpoint adicionado sem update no `docs/PLANO.md`, ou pulou etapas |
 | R3 — zero mock escondido | `toast.success("Salvo!")` sem `await` em chamada de API real; falta de banner MODO DEMO |
 | R6 — banco novo por projeto | Hardcode de `DATABASE_URL` apontando pra DB de outro projeto; chave Redis sem prefixo |
