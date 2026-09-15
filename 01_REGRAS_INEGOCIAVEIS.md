@@ -342,9 +342,9 @@ Wrapper resolve plugin instalado, dispatch DeepSeek (caso default) ou emite mark
 
 1. Antes de `git commit` que toca código: rodar wrapper auto-trigger
 2. Ler findings; processar críticos (corrigir antes do commit)
-3. Se marker `__PERCUS_NEEDS_CROSS_CLAUDE__` aparecer: dispatch Sonnet subagent IMEDIATAMENTE com prompt R11 cross-claude-review (revisar diff vs AGENTS.md). Salvar output em `.deepseek/reviews/<ts>-cross-claude.jsonl` para o hook validar.
+3. Se marker `__PERCUS_NEEDS_CROSS_CLAUDE__` aparecer: dispatch Sonnet subagent IMEDIATAMENTE com prompt R11 cross-claude-review (revisar diff vs AGENTS.md). Grave os findings dele num arquivo (a linha pronta com o comando já vem no próprio marcador) e registre com `registrar-review` (`-Canal cross-claude` / `--canal cross-claude`) para liberar o commit pelo hash do diff.
 4. Apresentar consolidado ao usuário, declarar em voz alta findings ignorados
-5. `git commit` (hooks Layer 1+2 já aprovam por TTL do review)
+5. `git commit` (hooks Layer 1+2 liberam pela review registrada com `registrar-review`; o placeholder sozinho libera só por 5 min)
 
 **Comandos manuais ainda válidos:**
 

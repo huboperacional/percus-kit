@@ -25,7 +25,7 @@ Via Bash tool, rode:
 pwsh -NoProfile -ExecutionPolicy Bypass -File "${env:PERCUS_CANON_DIR}\scripts\percus-milestone-review-auto.ps1" -Base <commit-inicio-marco>
 ```
 
-(ou `.sh` em Unix). Wrapper roda DeepSeek do escopo do marco e emite marker `__PERCUS_NEEDS_CROSS_CLAUDE__` no stderr. Você (agente) lê o marker e dispatch Sonnet subagent via Agent tool com prompt R11 cross-claude-review do mesmo escopo. Salva findings do Sonnet em `.deepseek/reviews/<ts>-cross-claude-milestone.jsonl`.
+(ou `.sh` em Unix). Wrapper roda DeepSeek do escopo do marco e emite marker `__PERCUS_NEEDS_CROSS_CLAUDE__` no stderr. Você (agente) lê o marker e dispatch Sonnet subagent via Agent tool com prompt R11 cross-claude-review do mesmo escopo. O wrapper de marco ainda não anexa a linha pronta de registro (isso só vale para `percus-review-auto`, não para `percus-milestone-review-auto`); monte você mesmo: grave os findings do Sonnet num arquivo fora do repo e registre com `registrar-review -Arquivo '<arquivo>' -Canal cross-claude` (`--arquivo`/`--canal` no `.sh`) para liberar o commit do marco pelo hash do diff.
 
 Apresente consolidado dos dois reviews ao usuário.
 
