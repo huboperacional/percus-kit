@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Inventario deterministico de secoes de um PLANO.md, e arquivamento byte a byte.

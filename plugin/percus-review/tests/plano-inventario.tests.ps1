@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Prova COMPORTAMENTAL de scripts\plano-inventario.ps1: roda o script de verdade
 # sobre PLANOs temporarios (e um repo git temporario) e afere JSON de saida e
 # bytes dos arquivos resultantes -- inclui o modo arquivar, byte a byte.
