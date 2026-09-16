@@ -7,7 +7,8 @@ ultima-atualizacao: 2026-09-15
 
 # CHECKLIST — Feature Nova
 
-> **Execute na ordem.** Cada passo tem gate verificável. Se pular, declare em voz alta o porquê.
+> **Execute na ordem.** Cada passo tem gate verificável. Se pular um item, registre `N/A: <motivo>` no
+> PLANO ou na mensagem de commit — item sem marca e sem motivo escrito continua sendo item esquecido.
 
 ---
 
@@ -99,8 +100,8 @@ Adicione a feature na frente correta, status `[0]` (precedido por `[S]` se passo
 
 **Se TODOS forem ✅:** delegação é regra, não exceção. Siga o playbook "Como delegar" em `04_MODEL_ROUTING.md` (6 passos, sempre dry-run primeiro).
 
-**Se algum critério falhou:** implementação fica com o Claude. Declare em voz alta o motivo:
-> "Mantendo implementação local porque {decisão arquitetural | pasta sensível | escopo > 3 arquivos sem padrão | task ambígua}."
+**Se algum critério falhou:** implementação fica com o Claude. Registre no PLANO ou no commit:
+> `N/A: implementação local — {decisão arquitetural | pasta sensível | escopo > 3 arquivos sem padrão | task ambígua}`
 
 **Após delegação (se aplicável):** retornar pra este checklist no passo de execução com o output já aplicado, e seguir normalmente até G1 + G-MARCO.
 

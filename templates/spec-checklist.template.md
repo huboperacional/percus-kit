@@ -2,7 +2,9 @@
 
 > Equivalente ao `requirements.md` do spec-kit. Roda **antes** do `/percus-review:spec-analyze` como
 > auto-validação rápida (o que dá pra checar no olho) — o analyze faz a detecção semântica/cross-artifact.
-> Marque cada item. Se algum falhar, conserte a spec antes de avançar pro analyze.
+> Marque cada item. Se algum falhar, conserte a spec antes de avançar pro analyze. Item que não se
+> aplica a esta feature não fica em branco: marque e escreva `N/A: <motivo>` ao lado — item sem marca
+> e sem motivo continua sendo item esquecido.
 
 ## Completude
 
