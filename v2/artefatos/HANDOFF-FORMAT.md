@@ -36,7 +36,8 @@
 
 ## Regras
 
-- **Só features fora de `[5-T]`** entram em "Em obra". Feature pronta vive no `PLANO`, não aqui.
+- **A tabela espelha o status do `docs/PLANO.md`** — é obrigação da R8 (`01_REGRAS_INEGOCIAVEIS.md` § "R8. Sessão sem HANDOFF é débito técnico"), e quem manda na obrigação é o V1 (`../MIGRACAO.md` § "Quem manda em quê (por tema)"). As linhas **fora de `[5-T]`** são as que levam "o que falta"; feature já `[5-T]` entra só como linha de estado — o detalhe dela vive no `PLANO`.
+  > Tensão registrada (2026-09-16): este formato preferia omitir `[5-T]` para manter o HANDOFF curto. Não vira regra: se o espelho ameaçar as 150 linhas, o excesso está no `PLANO`, não no campo.
 - **Reescreva, não acrescente.** O campo "Estado agora" é substituído a cada checkpoint — não recebe parágrafo novo embaixo do anterior.
 - **Sem seção de histórico.** Se sentir falta dela, o conteúdo é histórico: mova para `docs/historico/`.
 

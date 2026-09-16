@@ -7,14 +7,21 @@ A base de "já vimos esse problema" **continua no V1** — é o que melhor funci
 
 ## Contrato de um verbete (vale já, e o gate cobra)
 
-Se você registrar conhecimento aqui — ou lá — cada entrada precisa de:
+**Um arquivo por verbete** — `resolver/<slug>.md`, e o nome do arquivo **é** o slug. A obrigação
+(quando registrar, o que é Forbidden) é da R23: `${env:PERCUS_CANON_DIR}/01_REGRAS_INEGOCIAVEIS.md`
+§ "R23. Base de conhecimento — consultar antes de resolver, registrar depois". Cada arquivo precisa de:
 
-1. `## Sintoma curto {#ancora-kebab}`
+1. `## Sintoma curto {#slug}` — a âncora casa com o nome do arquivo
 2. Linha `` `tags: ...` `` com termos independentes de idioma — **sem ela a busca não acha o verbete**
-3. Entrada no índice: `- [Sintoma](#ancora-kebab)`
-4. Corpo: **Sintoma · Causa raiz · Solução · Ref**
+3. Corpo: **Sintoma · Causa raiz · Solução · Ref**
 
-`gates/percus-gate.sh` bloqueia commit com verbete órfão do índice ou sem `tags:`. Os dois defeitos já aconteceram de verdade — 11 verbetes num único dia.
+**Consulta é `grep` de tags**, não leitura do índice: `grep -l "tags:.*<termo>" resolver/*.md`.
+**`INDICE.md` é gerado** por `scripts/gerar-indice-conhecimento.ps1` — editar à mão é Forbidden pela
+R23, e o hook `knowledge-write-guard` recusa.
+
+`gates/percus-gate.sh` bloqueia commit com verbete sem `tags:`, com slug fora do nome do arquivo, com
+link morto para outro verbete, ou com verbete fora do `INDICE.md` — nesse último caso a correção é
+**regerar** o índice, nunca editá-lo. Os defeitos já aconteceram de verdade — 11 verbetes num dia.
 
 ## Quando esta pasta deixa de ser ponteiro
 
