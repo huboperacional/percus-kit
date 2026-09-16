@@ -163,6 +163,27 @@ Em modo **Hybrid merge**, adicionar nota:
 Hook custom existente preservado. Sua lógica (typecheck, lint, etc.) roda DEPOIS do bloco Percus -- se review faltar, Percus bloqueia primeiro e custom nem executa.
 ```
 
+## Passo 8 — Instalar também o `pre-push` (R20, camada 2)
+
+O `pre-push` exige `.percus/acao-externa-autorizada.json` válido (criado por `scripts/autorizar-acao-externa.ps1` depois da confirmação explícita do operador, janela de 60 min) em **todo** push, qualquer que seja a grafia do comando, e grava a auditoria em `.percus/autorizacoes-usadas.jsonl` com `origem:"pre-push"`, remoto e refs. Sem autorização, autorização inválida/expirada/ilegível ou falha ao gravar a auditoria → push bloqueado. Não há escape por variável de ambiente.
+
+A instalação é determinística, por script (mesmo padrão deste comando: `core.hooksPath`, marcadores BEGIN/END, híbrido, `.bak`):
+
+```bash
+sh "${CLAUDE_PLUGIN_ROOT}/git-hooks/instalar-pre-push.sh" "<raiz do repo>"
+```
+
+| Hook `pre-push` existente | Modo | Resultado |
+|---|---|---|
+| ausente | NOVO | template puro |
+| com marcadores BEGIN/END | GERIDO | troca só o bloco Percus; sufixo custom preservado |
+| custom em sh/bash | HIBRIDO | shebang + bloco Percus + corpo custom (roda depois, recebe stdin e args) |
+| custom em outra linguagem | RECUSA (exit 3) | nada muda; reporte ao operador |
+
+Hook existente que muda vai antes para `pre-push.bak` (ou `pre-push.bak.<epoch>` se já houver `.bak`). Re-rodar sem mudança não cria backup.
+
+**Limite declarado:** `git push --no-verify`, `git -c core.hooksPath=<outro> push`, `GIT_CONFIG_COUNT/KEY/VALUE` apontando `core.hooksPath` e `git send-pack` não executam o `pre-push`. A camada 1 (`external-action-guard`) continua existindo para barrar essas formas. O hook também não prova QUEM escreveu o JSON de autorização: quem tem escrita em `.percus/` consegue criá-lo (risco aceito do desenho R20 em lote, ver `docs/superpowers/specs/2026-08-06-r20-autorizacao-lote-design.md`). A linha de auditoria registra autorização concedida no momento do hook, não push concluído: se um custom híbrido ou o remoto recusarem depois, a linha fica.
+
 ## Notas
 
 - Hook nativo é POSIX sh self-contained — não depende de path do plugin, funciona mesmo se plugin for desinstalado.
