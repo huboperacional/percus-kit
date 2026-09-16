@@ -45,7 +45,7 @@
 # (percus_pp_*) sao redefinidas abaixo, mas tambem entram aqui para nao rodar a versao importada
 # antes da definicao.
 unset -f awk sed grep tr cat wc head cut sort printf echo date git mkdir mv rm cp read test '[' \
-    command sleep ls stat dirname basename env sh true false : \
+    command sleep ls stat dirname basename env sh true false pwd : \
     percus_pp_bloqueia percus_pp_awk percus_pp_json_escapa percus_pp_mascara_url 2>/dev/null || :
 # <<< percus-pp-blinda-ambiente
 
@@ -179,21 +179,23 @@ percus_pp_mascara_url() {
     printf '%s' "$1" | sed 's#://[^/@[:space:]]*@#://***@#g'
 }
 
-# RAIZ DA AUTORIZACAO a partir do REPOSITORIO publicado, nao da work tree nem de um git dir apontado
-# pelo chamador (C1 da revisao de ataque). `--show-toplevel` obedece GIT_WORK_TREE/--work-tree, e
-# `--git-common-dir` obedece GIT_DIR/--git-dir: qualquer um deixa o chamador escolher a pasta lida, e
-# uma autorizacao forjada num repo sintetico (`GIT_DIR=<forja>/.git git push`) publicaria este
-# remoto. Por isso, ANTES de resolver, LIMPAMOS as variaveis que desviam a descoberta e deixamos o
-# git redescobrir a partir do cwd -- que o git FIXA no topo da arvore de trabalho ao chamar o hook.
-# Assim GIT_DIR/GIT_WORK_TREE forjados (e --git-dir/--work-tree, que o git repassa via essas vars ao
-# hook) nao mudam a raiz. Limpamos so no ambiente DESTE hook; o `git push` pai segue com o que tinha.
-# Em WORKTREE o common-dir aponta o `.git` PRINCIPAL, entao a autorizacao mora SEMPRE na raiz
-# principal (no kit: D:\Claud Automations\percus-kit\.percus\), inclusive para push disparado de um
-# worktree -- o mesmo lugar que a camada 1 le pelo cwd da sessao.
-unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES 2>/dev/null || :
-# `--path-format=absolute` exige git >= 2.31; vazio -> fail-closed (bloqueia todo push), com dica.
+# RAIZ DA AUTORIZACAO a partir do REPOSITORIO que esta sendo publicado (C1/C1-bis das revisoes de
+# ataque). O git, ao chamar o hook, exporta GIT_DIR = o git dir do repo EMPURRADO -- e esse GIT_DIR e
+# a unica fonte confiavel. O cwd NAO e: com `--git-dir`/`GIT_DIR` explicito o hook roda no cwd de
+# quem chamou (medido: PWD=<cwd do chamador>), entao redescobrir pelo cwd leria a autorizacao de
+# outro repo (`cd <repo com auth> && git --git-dir=<outro>/.git push` passava na rodada 2). Por isso
+# GIT_DIR FICA; tiramos so o que desvia a resolucao para outra pasta sem ser o repo empurrado:
+# GIT_WORK_TREE (work tree forjada), GIT_COMMON_DIR (common dir de outro repo) e afins. Um GIT_DIR
+# apontando OUTRO repo com hook e autorizacao proprios publica aquele repo com a autorizacao dele --
+# e a classe declarada "copia/outro .git", nao furo: autorizacao em A nunca publica B.
+# Em WORKTREE o common-dir aponta o `.git` PRINCIPAL: a autorizacao mora SEMPRE na raiz principal
+# (no kit: D:\Claud Automations\percus-kit\.percus\), inclusive para push de worktree.
+unset GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES 2>/dev/null || :
 _pp_gitdir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null | tr -d '\r')
-[ -n "$_pp_gitdir" ] || percus_pp_bloqueia "nao consegui resolver o git dir (git rev-parse --path-format=absolute --git-common-dir; requer git >= 2.31)"
+if [ -z "$_pp_gitdir" ]; then
+    _pp_gv=$(git --version 2>/dev/null | tr -d '\r')
+    percus_pp_bloqueia "nao consegui resolver o git dir do repo empurrado (git rev-parse --path-format=absolute --git-common-dir falhou; cwd=$(pwd), GIT_DIR=${GIT_DIR:-<vazio>}, ${_pp_gv:-git indisponivel}; --path-format exige git >= 2.31)"
+fi
 # So o pai de um git dir que termina em `/.git` e uma raiz de checkout (repo normal e worktree, cujo
 # common-dir e o `.git` PRINCIPAL). Submodulo (common-dir `.../.git/modules/<n>`) e repo bare nao
 # terminam em `/.git`: neste hook eles NAO sao suportados e ficam fail-closed (bloqueiam) -- e o lado

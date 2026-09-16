@@ -461,6 +461,11 @@ Describe "pre-push nativo -- R20 camada 2" {
             @{ Rot = '-c core.worktree';       Cmd = 'git -C "{TRAB}" -c core.worktree="{FORJA}" push origin main' }
             @{ Rot = '--git-dir de cwd=forja'; Cmd = 'cd "{FORJA}" && git --git-dir="{TRAB}/.git" push origin main' }
             @{ Rot = 'GIT_DIR+GIT_WORK_TREE';  Cmd = 'cd "{FORJA}" && GIT_DIR="{TRAB}/.git" GIT_WORK_TREE="{FORJA}" git push origin main' }
+            # C1-bis (rodada 3): cwd = OUTRO repo com autorizacao valida, alvo = TRAB via git dir.
+            @{ Rot = 'E1 cwd=outro(auth) --git-dir=trab';         Cmd = 'cd "{OUTRO}" && git --git-dir="{TRAB}/.git" push origin main' }
+            @{ Rot = 'E2 cwd=outro(auth) GIT_DIR=trab';           Cmd = 'cd "{OUTRO}" && GIT_DIR="{TRAB}/.git" git push origin main' }
+            @{ Rot = 'E5 cwd=outro --git-dir=trab --work-tree=outro'; Cmd = 'cd "{OUTRO}" && git --git-dir="{TRAB}/.git" --work-tree="{OUTRO}" push origin main' }
+            @{ Rot = 'E9 GIT_COMMON_DIR=outro/.git';              Cmd = 'GIT_COMMON_DIR="{OUTRO}/.git" git -C "{TRAB}" push origin main' }
         ) {
             $tb = ConvertTo-CaminhoBash $script:cRaiz.Trab
             $corpo = $Cmd.Replace('{TRAB}', $tb).Replace('{OUTRO}', (ConvertTo-CaminhoBash $script:c1Outro)).Replace('{FORJA}', (ConvertTo-CaminhoBash $script:c1Forja))
@@ -473,23 +478,46 @@ Describe "pre-push nativo -- R20 camada 2" {
             (Get-LinhasAuditoria $script:c1Outro).Count | Should -Be 0
         }
 
-        It "GIT_DIR apontando forja com hook e .percus valido nao publica (raiz vem do cwd)" {
-            # Repo sintetico completo: hook instalado, .percus valido, origin -> o remoto-alvo.
-            $forja = Join-Path $script:cRaiz.Dir 'forja'
+        # Rodada 3: o que importa e "autorizacao em A nao publica B" (casos E acima). Um GIT_DIR que
+        # aponta OUTRO repo com hook e autorizacao PROPRIOS publica aquele repo com a autorizacao
+        # dele -- classe declarada "copia/outro .git", nao furo. Aqui: o uso LEGITIMO de
+        # --git-dir/--work-tree rodado de fora tem de PASSAR com a autorizacao no repo certo, e a
+        # auditoria cai nele (nunca no cwd).
+        It "<Rot> passa com autorizacao no repo empurrado e audita nele" -ForEach @(
+            @{ Rot = 'D1 cwd=pasta com JSON forjado, --git-dir+--work-tree=trab'; Cmd = 'cd "{FORJA}" && git --git-dir="{TRAB}/.git" --work-tree="{TRAB}" push origin main' }
+            @{ Rot = 'D2 cwd=outro repo, --git-dir+--work-tree=trab';            Cmd = 'cd "{OUTRO}" && git --git-dir="{TRAB}/.git" --work-tree="{TRAB}" push origin main' }
+            @{ Rot = 'D3 GIT_DIR+GIT_WORK_TREE=trab de cwd=pasta';                Cmd = 'cd "{FORJA}" && GIT_DIR="{TRAB}/.git" GIT_WORK_TREE="{TRAB}" git push origin main' }
+        ) {
+            Set-Auth $script:cRaiz.Trab '{"id":"do-trab","motivo":"m","timestamp_unix":{AGORA-5}}'
+            $tb = ConvertTo-CaminhoBash $script:cRaiz.Trab
+            $corpo = $Cmd.Replace('{TRAB}', $tb).Replace('{OUTRO}', (ConvertTo-CaminhoBash $script:c1Outro)).Replace('{FORJA}', (ConvertTo-CaminhoBash $script:c1Forja))
+            $novo = Add-Commit $script:cRaiz.Trab
+            $r = Invoke-Sh $script:cRaiz.Dir $corpo
+            $r.Exit | Should -Be 0 -Because $r.Saida
+            ((& git -C $script:cRaiz.Remoto rev-parse refs/heads/main) | Out-String).Trim() | Should -Be $novo
+            $linhas = Get-LinhasAuditoria $script:cRaiz.Trab
+            $linhas.Count | Should -Be 1
+            ($linhas[0] | ConvertFrom-Json).id | Should -Be 'do-trab'
+            (Get-LinhasAuditoria $script:c1Outro).Count | Should -Be 0
+        }
+
+        It "classe declarada: GIT_DIR de outro repo com hook e auth PROPRIOS publica aquele repo e audita nele, nunca no cwd" {
+            $forja = Join-Path $script:cRaiz.Dir 'forja-repo'
             $null = & git init -q -b main $forja 2>&1
             $null = Invoke-G $forja @('config', 'user.name', 'x'); $null = Invoke-G $forja @('config', 'user.email', 'x@x')
-            $null = Invoke-G $forja @('remote', 'add', 'origin', (ConvertTo-CaminhoBash $script:cRaiz.Remoto))
             Copy-SemCR -Origem $script:template -Destino (Join-Path (Join-Path (Join-Path $forja '.git') 'hooks') 'pre-push')
-            Set-Auth $forja '{"id":"forja","motivo":"m","timestamp_unix":{AGORA-5}}'
+            Set-Auth $forja '{"id":"da-forja","motivo":"m","timestamp_unix":{AGORA-5}}'
             [IO.File]::WriteAllText((Join-Path $forja 'f'), 'z', $script:u8); $null = Invoke-G $forja @('add', '-A'); $null = Invoke-G $forja @($script:cm, '-q', '-m', 'f')
-            # cwd = o repo REAL (sem .percus); GIT_DIR aponta a forja.
-            $antes = Get-RefsRemoto $script:cRaiz.Remoto
-            $corpo = "GIT_DIR=`"" + (ConvertTo-CaminhoBash (Join-Path $forja '.git')) + "`" git push `"" + (ConvertTo-CaminhoBash $script:cRaiz.Remoto) + "`" main:main --force"
+            $shaForja = ((& git -C $forja rev-parse HEAD) | Out-String).Trim()
+            # cwd = trab (sem auth); empurra a forja para um ref proprio do remoto.
+            $corpo = "GIT_DIR=`"" + (ConvertTo-CaminhoBash (Join-Path $forja '.git')) + "`" git push `"" + (ConvertTo-CaminhoBash $script:cRaiz.Remoto) + "`" main:refs/heads/forja"
             $r = Invoke-Sh $script:cRaiz.Trab $corpo
-            $r.Exit | Should -Not -Be 0 -Because $r.Saida
-            $r.Saida | Should -Match 'BLOCK \(R20\)'
-            Get-RefsRemoto $script:cRaiz.Remoto | Should -Be $antes
-            (Get-LinhasAuditoria $forja).Count | Should -Be 0
+            $r.Exit | Should -Be 0 -Because $r.Saida
+            ((& git -C $script:cRaiz.Remoto rev-parse refs/heads/forja) | Out-String).Trim() | Should -Be $shaForja
+            $l = Get-LinhasAuditoria $forja
+            $l.Count | Should -Be 1
+            ($l[0] | ConvertFrom-Json).id | Should -Be 'da-forja'
+            (Get-LinhasAuditoria $script:cRaiz.Trab).Count | Should -Be 0
         }
     }
 
@@ -501,6 +529,17 @@ Describe "pre-push nativo -- R20 camada 2" {
             [IO.File]::AppendAllText((Join-Path (Join-Path (Join-Path $script:cWt.Trab '.git') 'info') 'exclude'), ".percus/`n", $script:u8)
         }
         BeforeEach { Clear-Percus $script:cWt.Trab; Clear-Percus $script:cWtDir }
+
+        It "C3 git-dir do worktree mais work-tree rodado de fora passa com auth no principal" {
+            Set-Auth $script:cWt.Trab '{"id":"principal-c3","motivo":"m","timestamp_unix":{AGORA-5}}'
+            $novo = Add-Commit $script:cWtDir
+            $gd = ConvertTo-CaminhoBash (Join-Path (Join-Path (Join-Path $script:cWt.Trab '.git') 'worktrees') 'wt')
+            $corpo = "git --git-dir=`"$gd`" --work-tree=`"" + (ConvertTo-CaminhoBash $script:cWtDir) + "`" push origin wtb"
+            $r = Invoke-Sh $script:cWt.Dir $corpo
+            $r.Exit | Should -Be 0 -Because $r.Saida
+            ((& git -C $script:cWt.Remoto rev-parse refs/heads/wtb) | Out-String).Trim() | Should -Be $novo
+            (Get-LinhasAuditoria $script:cWt.Trab).Count | Should -Be 1
+        }
 
         It "auth no principal libera o push do worktree e audita NO principal" {
             Set-Auth $script:cWt.Trab '{"id":"principal","motivo":"m","timestamp_unix":{AGORA-5}}'
