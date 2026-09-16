@@ -7,7 +7,9 @@
 > além disso. **Não adotamos** a "Família de 5" documentos por feature do MDS (decisão do
 > operador, Fase 4, 2026-09-16); só as duas taxonomias abaixo entram, como material de consulta.
 
-**Origem:** `D:\Claud Automations\.claude-home\plans\mds-leitura-profunda-11-documentos.md`
+**Origem:** relatorio `mds-leitura-profunda-11-documentos.md` (estudo dos 11 documentos MDS, 2026-09-12), na
+pasta de planos da maquina do operador — fora deste repositorio. Os numeros de linha citados abaixo sao
+desse relatorio.
 (relatório de leitura funda do MDS — Modular Development Style), seções 9 (linhas 529-551) e 10
 (linhas 555-587).
 
