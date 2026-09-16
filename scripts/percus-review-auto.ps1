@@ -128,10 +128,46 @@ function Invoke-FactCheck {
 
     [Console]::Error.WriteLine("[percus-review-auto] fact-check: iniciando pipeline F3...")
     $tmpFindings = [System.IO.Path]::GetTempFileName()
+    $tmpFcOut = [System.IO.Path]::GetTempFileName()
+    $tmpFcErr = [System.IO.Path]::GetTempFileName()
     try {
         [System.IO.File]::WriteAllText($tmpFindings, $ReviewOutput, [System.Text.Encoding]::UTF8)
-        $fcOut = & $PsExe -NoProfile -ExecutionPolicy Bypass -File $factCheckScript -FindingsFile $tmpFindings 2>&1
-        $fcJson = $fcOut | ConvertFrom-Json -ErrorAction SilentlyContinue
+        # NAO usar 2>&1 aqui: com $ErrorActionPreference='Stop' (herdado do topo do script),
+        # QUALQUER linha de stderr do processo nativo (ex.: o WARN de fallback de effort que
+        # cross-claude.ps1/_cross-claude-body.ps1 escreve via [Console]::Error.WriteLine quando
+        # o modelo nao aceita o nivel pedido) vira erro terminante assim que entra no pipeline
+        # ANTES do ConvertFrom-Json rodar -- o -ErrorAction SilentlyContinue do ConvertFrom-Json
+        # nao protege contra isso, porque o erro acontece na enumeracao do array $fcOut, nao
+        # dentro do cmdlet. Reproduzido: stdout={JSON} + stderr=1 linha -> ConvertFrom-Json
+        # (mesmo com -ErrorAction SilentlyContinue) lanca "Unexpected character ... line 1,
+        # position 1" (tentando parsear a linha de stderr). Fix: redirecionar stdout e stderr
+        # pra arquivos SEPARADOS via `1>`/`2>` (sem passar pelo pipeline do PowerShell) e ler
+        # cada um depois -- stdout nunca chega misturado com stderr.
+        & $PsExe -NoProfile -ExecutionPolicy Bypass -File $factCheckScript -FindingsFile $tmpFindings 1> $tmpFcOut 2> $tmpFcErr
+        $fcExit = $LASTEXITCODE
+        # ReadAllText SEM encoding fixo (nao ".., [Text.Encoding]::UTF8"): o .NET auto-detecta
+        # BOM e cai em UTF-8 quando nao ha BOM. Forcar UTF8 aqui e furada sob powershell.exe
+        # 5.1 (Windows PowerShell), onde `>`/`2>` sobre processo nativo pode gravar UTF-16LE
+        # com BOM por padrao -- forcar UTF8 leria esse arquivo como lixo/bytes nulos, o
+        # ConvertFrom-Json cairia no catch, e com exit 0 o fact-check passaria a NUNCA ser
+        # aplicado (silencioso) so em 5.1. Achado por review R11 (Fase 5, 2026-09-16).
+        $fcStdout = ''
+        if (Test-Path $tmpFcOut) { $fcStdout = [System.IO.File]::ReadAllText($tmpFcOut) }
+        $fcStderr = ''
+        if (Test-Path $tmpFcErr) { $fcStderr = [System.IO.File]::ReadAllText($tmpFcErr) }
+        if ($fcStderr.Trim()) {
+            foreach ($linha in ($fcStderr -split "`r?`n")) {
+                if ($linha.Trim()) { [Console]::Error.WriteLine("[percus-review-auto] fact-check stderr: $linha") }
+            }
+        }
+        $fcJson = $null
+        if ($fcStdout.Trim()) {
+            try { $fcJson = $fcStdout | ConvertFrom-Json -ErrorAction Stop } catch { $fcJson = $null }
+        }
+        if ($fcExit -ne 0 -and -not $fcJson) {
+            [Console]::Error.WriteLine("[percus-review-auto] fact-check NAO rodou: fact-check.ps1 saiu com erro (exit $fcExit) e nao produziu JSON -- ver stderr acima. Passando output original sem verificacao.")
+            return $ReviewOutput
+        }
         if ($fcJson -and $fcJson.filtered_output -ne $null) {
             # `unverified` entra no resumo desde 2026-09-12. Sem ele, uma rodada em que a API do
             # fact-check falhou inteira saia como "total=4 confirmado=0 infundado=0 parcial=0" --
@@ -151,14 +187,16 @@ function Invoke-FactCheck {
             }
             return $fcJson.filtered_output
         } else {
-            [Console]::Error.WriteLine("[percus-review-auto] WARN: fact-check retornou JSON invalido — passando output original")
+            [Console]::Error.WriteLine("[percus-review-auto] fact-check NAO rodou: fact-check.ps1 nao devolveu JSON valido em stdout (exit $fcExit) -- ver stderr acima. Passando output original sem verificacao.")
             return $ReviewOutput
         }
     } catch {
-        [Console]::Error.WriteLine("[percus-review-auto] WARN: fact-check falhou: $($_.Exception.Message) — passando output original")
+        [Console]::Error.WriteLine("[percus-review-auto] fact-check NAO rodou: excecao no wrapper ao chamar fact-check.ps1: $($_.Exception.Message) — passando output original sem verificacao.")
         return $ReviewOutput
     } finally {
         Remove-Item $tmpFindings -Force -ErrorAction SilentlyContinue
+        Remove-Item $tmpFcOut -Force -ErrorAction SilentlyContinue
+        Remove-Item $tmpFcErr -Force -ErrorAction SilentlyContinue
     }
 }
 
