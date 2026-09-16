@@ -115,7 +115,8 @@ _TMP_VERBETES="${TMPDIR:-/tmp}/percus-verbetes-$$"
 _TMP_LSFILES="${TMPDIR:-/tmp}/percus-lsfiles-$$"
 _TMP_DIFF="${TMPDIR:-/tmp}/percus-diff-$$"
 _TMP_BLOB="${TMPDIR:-/tmp}/percus-blob-$$"
-trap 'rm -f "$_TMP_VERBETES" "$_TMP_LSFILES" "$_TMP_DIFF" "$_TMP_BLOB"' EXIT
+_TMP_DIFF_LC="${TMPDIR:-/tmp}/percus-difflc-$$"
+trap 'rm -f "$_TMP_VERBETES" "$_TMP_LSFILES" "$_TMP_DIFF" "$_TMP_BLOB" "$_TMP_DIFF_LC"' EXIT
 
 # UMA chamada de git por execucao do gate, em cache. A primeira versao deste bloco chamava
 # `git rev-parse` + `git ls-files` por AREA e por SITIO -- 4 spawns por execucao. Parece
@@ -144,9 +145,12 @@ fi
 #
 # Fora de repo git (ou se o git diff falhar) o diff e DESCONHECIDO e tudo bloqueia: responder
 # "nao e deste commit" sem ter como saber seria ficar verde por vacuidade.
-# Diff CONHECIDO e VAZIO (rodada manual, nada staged) e outra coisa: o commit nao muda nada, entao
-# nao ha o que ele tenha causado -- tudo sai como AVISO. Decisao consciente (R11 2026-09-16): com
-# hook, git commit -a e git commit <arquivos> preenchem o indice temporario que o diff le.
+# Diff VAZIO (rodada manual, nada staged, ou --allow-empty) tambem conta como DESCONHECIDO: e o
+# modo AUDITORIA, em que tudo bloqueia como antes da Fase 5. A primeira versao tratava diff vazio
+# como "nada foi causado" e rebaixava tudo a AVISO -- a revisao mostrou que isso tirava o dente do
+# teste "no canon de verdade": 46 defeitos reais no git (2 verbetes COMMITADOS fora do INDICE)
+# passavam verdes em lugar nenhum da suite. No pre-commit o custo e ~zero: git commit -a e
+# git commit <arquivos> preenchem o indice temporario que o diff le; so --allow-empty cai aqui.
 : > "$_TMP_DIFF"
 _DIFF_CONHECIDO=0
 _N_HERDADOS=0
@@ -156,7 +160,11 @@ if [ "$_DENTRO_GIT" = "1" ]; then
   # --relative: mesmos caminhos relativos ao cwd que o git ls-files acima devolve.
   if git diff --cached --name-only --no-renames --relative -z > "$_TMP_BLOB" 2>/dev/null; then
     tr '\000' '\n' < "$_TMP_BLOB" | tr -d '\r' > "$_TMP_DIFF"
-    _DIFF_CONHECIDO=1
+    LC_ALL=C tr 'A-Z' 'a-z' < "$_TMP_DIFF" > "$_TMP_DIFF_LC"
+    [ -s "$_TMP_DIFF" ] && _DIFF_CONHECIDO=1
+    # PERCUS_GATE_AUDITORIA=1 forca o modo auditoria mesmo com algo staged: o teste do canon real
+    # nao pode ficar verde ou vermelho conforme o que outra sessao deixou no indice.
+    [ "${PERCUS_GATE_AUDITORIA:-}" = "1" ] && _DIFF_CONHECIDO=0
   fi
 fi
 
@@ -165,11 +173,20 @@ fi
 # glob do gate, e o laco roda no shell corrente (o return sai da funcao, nao de um subshell).
 envolve_diff() {
   [ "$_DIFF_CONHECIDO" = "1" ] || return 0
+  # Sem diferenciar caixa: o Windows resolve ](Alvo.md) em alvo.md -- o [ -f ] do link concorda,
+  # entao a comparacao com o diff tambem nao pode diferenciar (senao remover alvo.md vira AVISO).
+  # Minusculas pelo tr dos DOIS lados, e nao grep -i: o grep -iF do Git Bash ABORTA (medido
+  # 2026-09-16), e erro de grep lido como "nao casou" rebaixaria bloqueio a AVISO calado.
+  # Pelo mesmo motivo, qualquer saida do grep que nao seja 1 (nao casou) conta como envolvido.
+  # Limite consciente: dobra so ASCII. Slug de verbete e ASCII por convencao, e nome com acento
+  # ja fica fora de todo o bloco 2 (git ls-files sem -z devolve o nome entre aspas).
+  _ed_lista=$(printf '%s\n' "$1" | LC_ALL=C tr 'A-Z' 'a-z')
   while IFS= read -r _ed_p; do
     [ -n "$_ed_p" ] || continue
-    grep -qxF -- "$_ed_p" "$_TMP_DIFF" && return 0
+    grep -qxF -- "$_ed_p" "$_TMP_DIFF_LC"
+    [ "$?" -ne 1 ] && return 0
   done <<EOF_ENVOLVE
-$1
+$_ed_lista
 EOF_ENVOLVE
   return 1
 }
@@ -598,7 +615,7 @@ if [ -d conhecimento/resolver ]; then
 fi
 
 
-# ---------- 3. .ps1 staged com byte > 0x7F sem BOM ----------
+# ---------- 3. .ps1/.psm1/.psd1 staged com byte > 0x7F sem BOM ----------
 # O PowerShell 5.1 le .ps1 SEM BOM como ANSI (cp1252): acento vira mojibake e string com aspa
 # tipografica ou travessao quebra o parse. A falha passou por 2 revisoes seguidas (T2 da Fase 3
 # e teste do MDS na Fase 4) e so o ps51-compat da suite inteira pegou -- regra que depende de
@@ -607,18 +624,22 @@ fi
 # So o STAGED (adicionado/modificado): .ps1 herdado nao e deste commit. Le o blob do INDICE, nao
 # o disco -- o que entra no commit e o indice. Removido no commit nao tem blob e e pulado.
 # ":./<caminho>" porque a lista do diff e relativa ao cwd (--relative), e ":<caminho>" e da raiz.
-# Sem diff conhecido (fora de repo git) a regra nao roda: ela e sobre o que entra no commit, e
-# sem indice nao ha commit -- nao ha fallback honesto pra "staged".
-if [ "$_DIFF_CONHECIDO" = "1" ]; then
+# Sem nada staged (ou fora de repo git) a regra nao roda: ela e sobre o que entra no commit.
+# .psm1 e .psd1 tem a mesma armadilha (Import-Module / Import-PowerShellDataFile no 5.1).
+# BOM UTF-16 (FF FE / FE FF) e valido no 5.1: os bytes altos sao do UTF-16, nao ANSI -- nao barra.
+# Guarda pelo ARQUIVO do diff, e nao por _DIFF_CONHECIDO: o modo auditoria zera aquela flag pra
+# endurecer o conhecimento, e nao pode por tabela desligar esta checagem (R11 2026-09-16).
+if [ -s "$_TMP_DIFF" ]; then
   while IFS= read -r _ps; do
-    case "$_ps" in *.[pP][sS]1) ;; *) continue ;; esac
+    case "$_ps" in *.[pP][sS]1|*.[pP][sS][mM]1|*.[pP][sS][dD]1) ;; *) continue ;; esac
     git cat-file blob ":./$_ps" > "$_TMP_BLOB" 2>/dev/null || continue
     _alto=$(LC_ALL=C tr -d '\000-\177' < "$_TMP_BLOB" | dd bs=1 count=1 2>/dev/null | wc -c | tr -d ' ')
     [ "$_alto" = "0" ] && continue
     _bom=$(dd if="$_TMP_BLOB" bs=3 count=1 2>/dev/null | od -An -tx1 | tr -d ' \r\n')
-    if [ "$_bom" != "efbbbf" ]; then
-      violacao "$_ps -- .ps1 com byte > 0x7F (acento/emoji) sem BOM: .ps1 com acento/emoji nasce com BOM; o PowerShell 5.1 le em ANSI e quebra. Regrave em UTF-8 com BOM (nao com python: ele come o BOM)"
-    fi
+    case "$_bom" in
+      efbbbf|fffe*|feff*) ;;
+      *) violacao "$_ps -- PowerShell (.ps1/.psm1/.psd1) com byte > 0x7F (acento/emoji) sem BOM: .ps1 com acento/emoji nasce com BOM; o PowerShell 5.1 le em ANSI e quebra. Regrave em UTF-8 com BOM (nao com python: ele come o BOM)" ;;
+    esac
   done < "$_TMP_DIFF"
 fi
 

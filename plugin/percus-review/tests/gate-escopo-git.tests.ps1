@@ -358,4 +358,93 @@ Describe "percus-gate.sh - bloqueio escopado ao diff staged + BOM de .ps1" {
         Invoke-Git $repo @('rm','-q','--','scripts/velho.ps1')
         (Invoke-GateD -Repo $repo).Exit | Should -Be 0
     }
+
+    # ---- Rodada 2 (revisao do ff3815b) ----
+
+    It "I1: NADA staged + INDICE herdado quebrado BLOQUEIA (diff vazio = auditoria, nao AVISO)" {
+        # A 1a versao rebaixava tudo a AVISO com diff vazio e o teste do canon real perdeu o dente.
+        $repo = New-RepoDiff
+        Write-Lf (Join-Path $repo "conhecimento/resolver/INDICE.md") @('# Indice','','- [Alvo](alvo.md)','- [Base](base.md)','- [Fantasma](fantasma.md)')
+        Save-Herdado $repo
+        $r = Invoke-GateD -Repo $repo
+        $r.Exit | Should -Be 1 -Because "Saida: $($r.Saida)"
+        $r.Saida | Should -Match 'BLOQUEADO.*fantasma'
+    }
+
+    It "PERCUS_GATE_AUDITORIA=1 com algo staged: herdado BLOQUEIA (auditoria independe do indice)" {
+        $repo = New-RepoDiff
+        Write-Lf (Join-Path $repo "conhecimento/resolver/INDICE.md") @('# Indice','','- [Alvo](alvo.md)','- [Base](base.md)','- [Fantasma](fantasma.md)')
+        Save-Herdado $repo
+        Add-Ps1 -Repo $repo -Caminho "scripts/x.ps1" -Bytes (Get-BytesPs1 -Ascii)
+        $auditoriaAntes = $env:PERCUS_GATE_AUDITORIA
+        $env:PERCUS_GATE_AUDITORIA = '1'
+        try { $r = Invoke-GateD -Repo $repo } finally { $env:PERCUS_GATE_AUDITORIA = $auditoriaAntes }
+        $r.Exit | Should -Be 1 -Because "Saida: $($r.Saida)"
+    }
+
+    It "PERCUS_GATE_AUDITORIA=1 NAO desliga a checagem de BOM do staged" {
+        $repo = New-RepoDiff
+        Add-Ps1 -Repo $repo -Caminho "scripts/x.ps1" -Bytes (Get-BytesPs1)
+        $auditoriaAntes = $env:PERCUS_GATE_AUDITORIA
+        $env:PERCUS_GATE_AUDITORIA = '1'
+        try { $r = Invoke-GateD -Repo $repo } finally { $env:PERCUS_GATE_AUDITORIA = $auditoriaAntes }
+        $r.Exit | Should -Be 1 -Because "Saida: $($r.Saida)"
+        $r.Saida | Should -Match 'BLOQUEADO: scripts/x\.ps1'
+    }
+
+    It "I2a: git mv do verbete-ALVO de link alheio nao tocado BLOQUEIA (rename conta o caminho antigo)" {
+        # Mutante provado: sem --no-renames o diff so mostra alvo2.md e o [[alvo]] de base.md vira AVISO.
+        $repo = New-RepoDiff
+        Invoke-Git $repo @('mv','conhecimento/resolver/alvo.md','conhecimento/resolver/alvo2.md')
+        Write-Lf (Join-Path $repo "conhecimento/resolver/alvo2.md") @('## Alvo {#alvo2}','','`tags: base`','','corpo.')
+        Write-Lf (Join-Path $repo "conhecimento/resolver/INDICE.md") @('# Indice','','- [Alvo](alvo2.md)','- [Base](base.md)')
+        Invoke-Git $repo @('add','-A')
+        $r = Invoke-GateD -Repo $repo
+        $r.Exit | Should -Be 1 -Because "Saida: $($r.Saida)"
+        $r.Saida | Should -Match 'BLOQUEADO: conhecimento/resolver/base\.md.*alvo'
+    }
+
+    It "I2b: commit remove alvo de ](../resolver/alvo.md) citado de fazer/ nao tocado BLOQUEIA" {
+        # Mutante provado: sem normaliza o caminho fica fazer/../resolver/alvo.md, nao casa o diff e vira AVISO.
+        $repo = New-RepoDiff
+        Write-Lf (Join-Path $repo "conhecimento/resolver/base.md") @('## Base {#base}','','`tags: base`','','sem link.')
+        Write-Lf (Join-Path $repo "conhecimento/fazer/base-fazer.md") @('## Base fazer {#base-fazer}','','`tags: base`','','ver [r](../resolver/alvo.md).')
+        Save-Herdado $repo
+        Invoke-Git $repo @('rm','-q','--','conhecimento/resolver/alvo.md')
+        Write-Lf (Join-Path $repo "conhecimento/resolver/INDICE.md") @('# Indice','','- [Base](base.md)')
+        Invoke-Git $repo @('add','--','conhecimento/resolver/INDICE.md')
+        $r = Invoke-GateD -Repo $repo
+        $r.Exit | Should -Be 1 -Because "Saida: $($r.Saida)"
+        $r.Saida | Should -Match 'BLOQUEADO: conhecimento/fazer/base-fazer\.md'
+    }
+
+    It "link com CAIXA diferente (](Alvo.md)) e commit remove alvo.md: BLOQUEIA" {
+        $repo = New-RepoDiff
+        Write-Lf (Join-Path $repo "conhecimento/resolver/base.md") @('## Base {#base}','','`tags: base`','','ver [a](Alvo.md).')
+        Save-Herdado $repo
+        Invoke-Git $repo @('rm','-q','--','conhecimento/resolver/alvo.md')
+        Write-Lf (Join-Path $repo "conhecimento/resolver/INDICE.md") @('# Indice','','- [Base](base.md)')
+        Invoke-Git $repo @('add','--','conhecimento/resolver/INDICE.md')
+        $r = Invoke-GateD -Repo $repo
+        $r.Exit | Should -Be 1 -Because "Saida: $($r.Saida)"
+        $r.Saida | Should -Match 'BLOQUEADO.*Alvo\.md'
+    }
+
+    It ".psm1 e .psd1 com c-cedilha sem BOM: BLOQUEIAM (mesma armadilha no 5.1)" {
+        $repo = New-RepoDiff
+        Add-Ps1 -Repo $repo -Caminho "scripts/m.psm1" -Bytes (Get-BytesPs1)
+        Add-Ps1 -Repo $repo -Caminho "scripts/d.psd1" -Bytes (Get-BytesPs1)
+        $r = Invoke-GateD -Repo $repo
+        $r.Exit | Should -Be 1 -Because "Saida: $($r.Saida)"
+        $r.Saida | Should -Match 'BLOQUEADO: scripts/m\.psm1'
+        $r.Saida | Should -Match 'BLOQUEADO: scripts/d\.psd1'
+    }
+
+    It ".ps1 UTF-16LE com BOM FF FE: passa (nao e falso positivo)" {
+        $repo = New-RepoDiff
+        $bytes = [byte[]](0xFF,0xFE) + [Text.Encoding]::Unicode.GetBytes("Write-Output '" + [char]0x00E7 + "'`n")
+        Add-Ps1 -Repo $repo -Caminho "scripts/u16.ps1" -Bytes $bytes
+        $r = Invoke-GateD -Repo $repo
+        $r.Exit | Should -Be 0 -Because "Saida: $($r.Saida)"
+    }
 }
