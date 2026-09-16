@@ -44,8 +44,26 @@ param(
     [int]$Processos = 0,
     [string[]]$Caminhos = @("plugin/percus-review/tests", "tools/__tests__"),
     [switch]$MostrarPulados,
-    [string[]]$ManterEnv = @()
+    [string[]]$ManterEnv = @(),
+    # Fase 6: por padrao a suite pula testes marcados com a tag Pester "Lento" (a matriz cara
+    # do external-action-guard, que roda o dispatcher real em 3 runtimes -- 652 testes,
+    # ~600s sozinha). -IncluirLentos roda tudo.
+    [switch]$IncluirLentos
 )
+# Injecao de teste (rodar-suite.tests.ps1), NAO um parametro do script: duas env vars, nao um
+# switch de linha de comando -- parametro publico e um canal que um operador digitaria por engano
+# e silenciaria o `git diff` real. E DUAS vars, nao uma: uma env var isolada (RODARSUITE_TESTE_MUDADOS)
+# poderia vazar sozinha de um dotfile/CI e -Afetados passaria a usar diff falso sem ninguem notar --
+# exatamente o "some quando alguem mexe no guard" que a Fase 6 existe pra evitar. Com o portao
+# duplo, as DUAS teriam que vazar juntas, o que nao acontece por acidente. (Achados R11/DeepSeek.)
+$script:TesteMudadosOverride = $null
+if ($env:RODARSUITE_TESTE_GATE -eq '1' -and $env:RODARSUITE_TESTE_MUDADOS) {
+    $script:TesteMudadosOverride = @($env:RODARSUITE_TESTE_MUDADOS -split ';' | Where-Object { $_ })
+}
+# Le uma vez e apaga do processo -- um filho (git, pwsh de teste chamado la na frente) nao pode
+# herdar nem re-ler estas duas. Reduz ainda mais a janela de vazamento. Achado R11/DeepSeek.
+Remove-Item Env:RODARSUITE_TESTE_GATE -ErrorAction SilentlyContinue
+Remove-Item Env:RODARSUITE_TESTE_MUDADOS -ErrorAction SilentlyContinue
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -68,6 +86,18 @@ try {
         }
     }
     if ($arquivos.Count -eq 0) { Write-Host "[rodar-suite] nenhum arquivo de teste encontrado."; exit 0 }
+    # Guardado ANTES do bloco -Afetados sobrescrever $arquivos com o subconjunto selecionado --
+    # reusar esta contagem evita recalcular com Get-ChildItem de so $Caminhos[0] (o default tem
+    # DOIS caminhos; recontar so o primeiro subestimava o M de "N de M arquivos". Achado R11/DeepSeek).
+    $totalArquivosAntesDeAfetados = $arquivos.Count
+
+    # Fase 6: -IncluirLentos sempre inclui. Fora isso, -Afetados com diff tocando o guard
+    # tambem inclui -- a matriz nunca pode sumir justamente quando alguem mexe no guard, mesmo
+    # sem passar -IncluirLentos explicitamente. So o guard usa a tag Lento hoje, entao a
+    # decisao e global (nao por-arquivo): se qualquer arquivo mudado bate um destes padroes,
+    # a suite inteira roda com Lento incluido nesta chamada.
+    $padroesGuard = @('external-action-guard\.', 'percus-dispatch-pre\.', 'gatilhos-pre\.txt', 'hooks-manifest\.json')
+    $incluirLentoEfetivo = [bool]$IncluirLentos
 
     if ($Afetados) {
         # Mapeamento por NOME DE BASE, nos dois sentidos:
@@ -77,9 +107,28 @@ try {
         #      teste se chama outra coisa mas exercita aquele script).
         # O segundo sentido existe porque o primeiro sozinho e otimista: a maioria dos testes
         # deste kit nao se chama como o arquivo que testa.
-        $mudados = @(& git diff HEAD --name-only 2>$null | Where-Object { $_ })
+        if ($null -ne $script:TesteMudadosOverride) {
+            # Bypass de teste tornado BARULHENTO de proposito: um portao duplo que vaza em silencio
+            # nao e portao, e "log". Achado R11/DeepSeek.
+            Write-Host "[rodar-suite] OVERRIDE DE TESTE ATIVO: diff simulado ($($script:TesteMudadosOverride -join ';'))"
+            $mudados = @($script:TesteMudadosOverride)
+        } else {
+            $mudados = @(& git diff HEAD --name-only 2>$null | Where-Object { $_ })
+        }
+        foreach ($m in $mudados) {
+            $nomeM = Split-Path $m -Leaf
+            foreach ($p in $padroesGuard) {
+                if ($nomeM -match $p) { $incluirLentoEfetivo = $true; break }
+            }
+            if ($incluirLentoEfetivo) { break }
+        }
+        # "Suite inteira" nos dois fallbacks abaixo (diff vazio / nada casou) e verdade so pra
+        # arquivos -- por padrao ainda exclui a tag Lento. Sem esta ressalva a mensagem mente por
+        # omissao: o comentario deste arquivo diz "a matriz nunca pode sumir", e sumir calado
+        # atras de "suite inteira" e exatamente isso. Achado R11/DeepSeek.
+        $ressalvaLento = $(if ($incluirLentoEfetivo) { "" } else { " (tag Lento ainda excluida -- use -IncluirLentos)" })
         if ($mudados.Count -eq 0) {
-            Write-Host "[rodar-suite] git diff HEAD vazio -- nada mudou, rodando a suite inteira."
+            Write-Host "[rodar-suite] git diff HEAD vazio -- nada mudou, rodando a suite inteira.$ressalvaLento"
         } else {
             $bases = $mudados | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) } |
                      Where-Object { $_ } | Sort-Object -Unique
@@ -98,10 +147,10 @@ try {
             }
             if ($sel.Count -eq 0) {
                 # Fail-safe deliberado: nao souber mapear NAO pode virar "nao rodou nada".
-                Write-Host "[rodar-suite] nenhum teste casou com o diff -- rodando a suite inteira por seguranca."
+                Write-Host "[rodar-suite] nenhum teste casou com o diff -- rodando a suite inteira por seguranca.$ressalvaLento"
             } else {
                 $arquivos = @($sel)
-                Write-Host "[rodar-suite] modo -Afetados: $($arquivos.Count) de $((Get-ChildItem (Join-Path $raiz $Caminhos[0]) -Filter '*.tests.ps1').Count) arquivos"
+                Write-Host "[rodar-suite] modo -Afetados: $($arquivos.Count) de $totalArquivosAntesDeAfetados arquivos"
             }
         }
     }
@@ -141,6 +190,10 @@ try {
     $saidas       = @()
     $procs        = @()
     $baldesPorSaida = @()
+    # Literal `$true`/`$false` pronto pra ir dentro do here-string do filho (que interpola
+    # variavel do processo PAI sem escape) -- [bool] normal interpolaria como "True"/"False",
+    # que nao e sintaxe valida de expressao PowerShell.
+    $incluirLentoLiteral = if ($incluirLentoEfetivo) { '$true' } else { '$false' }
     try {
     for ($i = 0; $i -lt $Processos; $i++) {
         $lista = @($baldes[$i])
@@ -163,17 +216,62 @@ foreach (`$item in (Get-ChildItem Env:PERCUS_* -ErrorAction SilentlyContinue)) {
     }
 }
 `$arqs = Get-Content -Raw '$arqJson' | ConvertFrom-Json
+`$excluidoTag = 0
+# Grep barato ANTES de pagar uma 2a passada de discovery: na imensa maioria das chamadas (rodar
+# so os arquivos que -Afetados selecionou, tipicamente sem o guard) nenhum arquivo do lote tem a
+# tag Lento, e discovery duplicado e custo de graca. So paga Run.SkipRun quando pelo menos um
+# arquivo do lote contem o texto da tag. Achado R11/DeepSeek (preferencia, mas barato de resolver).
+`$algumArquivoTemLento = `$false
+foreach (`$arqChk in `$arqs) {
+    `$txtChk = Get-Content -Raw -LiteralPath `$arqChk -ErrorAction SilentlyContinue
+    # Padrao LARGO de proposito (nao so `-Tag "Lento"` isolado): `-Tag 'Lento','Outro'` ou
+    # `-Tag "Outro","Lento"` (lista) tambem tem que disparar a passada de descoberta. Um
+    # falso-positivo aqui so custa uma discovery extra; um falso-negativo mente no resumo
+    # ("pulados por tag Lento: 0" quando na verdade excluiu). Achado R11/DeepSeek.
+    if (`$txtChk -and (`$txtChk -match '-Tag\b[^\r\n]*Lento')) { `$algumArquivoTemLento = `$true; break }
+}
+if ((-not $incluirLentoLiteral) -and `$algumArquivoTemLento) {
+    # Passada de SO descoberta (Run.SkipRun) para contar quantos testes ficam de fora por causa
+    # da tag Lento. MEDIDO (nao suposto): Filter.ExcludeTag no Pester 5 NAO tira o teste da
+    # contagem -- ele continua em `$r.TotalCount E em `$r.NotRunCount, so nao roda. Por isso
+    # NaoRodou abaixo subtrai `$excluidoTag de NotRunCount (senao um arquivo tagueado contaria
+    # como "nao rodado" duas vezes: uma aqui, outra na linha de baixo).
+    `$cd = New-PesterConfiguration
+    `$cd.Run.Path = @(`$arqs)
+    `$cd.Run.PassThru = `$true
+    `$cd.Run.SkipRun = `$true
+    `$cd.Output.Verbosity = 'None'
+    `$rd = Invoke-Pester -Configuration `$cd
+    # `$_.Tag (do proprio It) nao herda a tag do Describe -- o Pester so guarda a tag do bloco em
+    # `$_.Block.Tag. Sobe a cadeia de blocos (Describe/Context aninhado) igual o motor faz para o
+    # ExcludeTag funcionar de verdade -- medido: contar so `$_.Tag dava 0 mesmo com a tag no Describe.
+    `$excluidoTag = 0
+    foreach (`$teste in `$rd.Tests) {
+        # Tag no proprio It (`It "x" -Tag "Lento" { ... }`) tambem conta -- ExcludeTag do Pester
+        # exclui os dois casos na execucao real; contar so a cadeia de blocos deixava esse caso
+        # com ExcluidoTag=0 mentiroso. Achado R11/DeepSeek.
+        `$achouLento = (`$teste.Tag -and `$teste.Tag -contains 'Lento')
+        `$blocoAtual = `$teste.Block
+        while ((-not `$achouLento) -and `$blocoAtual) {
+            if (`$blocoAtual.Tag -and `$blocoAtual.Tag -contains 'Lento') { `$achouLento = `$true; break }
+            `$blocoAtual = `$blocoAtual.Parent
+        }
+        if (`$achouLento) { `$excluidoTag++ }
+    }
+}
 `$c = New-PesterConfiguration
 `$c.Run.Path = @(`$arqs)
 `$c.Run.PassThru = `$true
 `$c.Output.Verbosity = 'None'
+if (-not $incluirLentoLiteral) { `$c.Filter.ExcludeTag = @('Lento') }
 `$r = Invoke-Pester -Configuration `$c
 [pscustomobject]@{
     Total        = `$r.TotalCount
     Passou       = `$r.PassedCount
     Falhou       = `$r.FailedCount
     Pulou        = `$r.SkippedCount
-    NaoRodou     = `$r.NotRunCount
+    NaoRodou     = [Math]::Max(0, (`$r.NotRunCount - `$excluidoTag))
+    ExcluidoTag  = `$excluidoTag
     Nomes        = @(`$r.Failed | ForEach-Object { `$_.ExpandedPath })
     NomesPulados = @(`$r.Skipped | ForEach-Object { `$_.ExpandedPath })
     EnvRemovido  = @(`$removidos)
@@ -212,6 +310,7 @@ foreach (`$item in (Get-ChildItem Env:PERCUS_* -ErrorAction SilentlyContinue)) {
     $falhou   = ($res | Measure-Object -Property Falhou   -Sum).Sum
     $pulou    = ($res | Measure-Object -Property Pulou    -Sum).Sum
     $naoRodou = ($res | Measure-Object -Property NaoRodou -Sum).Sum
+    $excluidoTag = ($res | Measure-Object -Property ExcluidoTag -Sum).Sum
     $seg      = [Math]::Round(((Get-Date) - $inicio).TotalSeconds, 1)
 
     $envRemovido = @()
@@ -224,6 +323,15 @@ foreach (`$item in (Get-ChildItem Env:PERCUS_* -ErrorAction SilentlyContinue)) {
 
     Write-Host ""
     Write-Host "[rodar-suite] $passou/$total em ${seg}s ($Processos processos) -- pulados $pulou, nao rodados $naoRodou"
+    if ($IncluirLentos) {
+        Write-Host "[rodar-suite] pulados por tag Lento: 0 (-IncluirLentos ja incluiu tudo)"
+    } elseif ($incluirLentoEfetivo) {
+        # Achado R11/DeepSeek: nao pode dizer "-IncluirLentos" quando quem incluiu foi a
+        # auto-deteccao de -Afetados tocando o guard -- o operador nao passou esse switch.
+        Write-Host "[rodar-suite] pulados por tag Lento: 0 (auto-incluido: -Afetados detectou diff tocando o guard)"
+    } else {
+        Write-Host "[rodar-suite] pulados por tag Lento: $excluidoTag (rode com -IncluirLentos)"
+    }
     if ($MostrarPulados -and $pulou -gt 0) {
         Write-Host "[rodar-suite] PULADOS ($pulou):"
         foreach ($r in $res) { foreach ($n in $r.NomesPulados) { Write-Host "  - $n" } }

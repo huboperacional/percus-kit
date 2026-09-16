@@ -986,7 +986,7 @@ BeforeAll {
     }
 }
 
-Describe "external-action-guard -- matriz pelo dispatcher [ps51: percus-dispatch-pre.cmd]" {
+Describe "external-action-guard -- matriz pelo dispatcher [ps51: percus-dispatch-pre.cmd]" -Tag "Lento" {
     BeforeAll { $script:labPs51 = New-LabR3 }
     AfterAll { if (Test-Path -LiteralPath $script:labPs51.Lab) { [IO.Directory]::Delete($script:labPs51.Lab, $true) } }
     It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosPorRuntime['ps51'] {
@@ -995,7 +995,7 @@ Describe "external-action-guard -- matriz pelo dispatcher [ps51: percus-dispatch
     }
 }
 
-Describe "external-action-guard -- matriz pelo dispatcher [pwsh: percus-dispatch-pre.ps1]" {
+Describe "external-action-guard -- matriz pelo dispatcher [pwsh: percus-dispatch-pre.ps1]" -Tag "Lento" {
     BeforeAll { $script:labPwsh = New-LabR3 }
     AfterAll { if (Test-Path -LiteralPath $script:labPwsh.Lab) { [IO.Directory]::Delete($script:labPwsh.Lab, $true) } }
     It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosPorRuntime['pwsh'] {
@@ -1003,7 +1003,7 @@ Describe "external-action-guard -- matriz pelo dispatcher [pwsh: percus-dispatch
     }
 }
 
-Describe "external-action-guard -- matriz pelo dispatcher [sh: percus-dispatch-pre.sh]" {
+Describe "external-action-guard -- matriz pelo dispatcher [sh: percus-dispatch-pre.sh]" -Tag "Lento" {
     BeforeAll { $script:labSh = New-LabR3 }
     AfterAll { if (Test-Path -LiteralPath $script:labSh.Lab) { [IO.Directory]::Delete($script:labSh.Lab, $true) } }
     It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosPorRuntime['sh'] {
@@ -1016,7 +1016,7 @@ Describe "external-action-guard -- matriz pelo dispatcher [sh: percus-dispatch-p
 # Com resto < 32 KB a triagem via so o FIM do payload: commit/push no COMECO saia 0 sem check nenhum.
 # Tamanhos exatos do payload (KiB) com `bytes mod 131072 < 32000` -- a premissa e conferida no It.
 # Nunca calado: ou um check rodou (debug "checks rodados: N>0"), ou o dispatcher bloqueou. Push: sempre 2.
-Describe "dispatcher -- commit/push no inicio de payload grande com resto de captura < 32 KB" {
+Describe "dispatcher -- commit/push no inicio de payload grande com resto de captura < 32 KB" -Tag "Lento" {
     BeforeAll { $script:labR4 = New-LabR3 }
     AfterAll { if (Test-Path -LiteralPath $script:labR4.Lab) { [IO.Directory]::Delete($script:labR4.Lab, $true) } }
     It "[<Runtime>] <Tipo> no inicio, <KiB> KiB" -ForEach @(
@@ -1046,7 +1046,7 @@ Describe "dispatcher -- commit/push no inicio de payload grande com resto de cap
 }
 
 # Guard chamado DIRETO com JSON invalido sai != 0 (rodada 3). Pelo dispatcher ja bloqueava; direto, saia 0.
-Describe "external-action-guard -- JSON invalido chamado direto" {
+Describe "external-action-guard -- JSON invalido chamado direto" -Tag "Lento" {
     It "[<Runtime>] <Nome> sai 2" -ForEach @(
         @{ Runtime = 'ps51'; Nome = 'truncado' }
         @{ Runtime = 'pwsh'; Nome = 'truncado' }
