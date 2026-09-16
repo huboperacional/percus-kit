@@ -438,6 +438,213 @@ Describe "pre-push nativo -- R20 camada 2" {
         }
     }
 
+    Context "rodada 2 C1 -- raiz da autorizacao vem do repo publicado, nao da work tree" {
+        BeforeAll {
+            $script:cRaiz = New-Cenario 'c1-raiz'
+            # 'outro' repo com autorizacao valida propria; 'forja' = pasta qualquer com JSON forjado.
+            $script:c1Outro = Join-Path $script:cRaiz.Dir 'outro'
+            $null = & git init -q -b main $script:c1Outro 2>&1
+            $script:c1Forja = Join-Path $script:cRaiz.Dir 'forja'
+            New-Item -ItemType Directory -Force -Path $script:c1Forja | Out-Null
+        }
+        BeforeEach {
+            Clear-Percus $script:cRaiz.Trab
+            Set-Auth $script:c1Outro '{"id":"do-outro","motivo":"m","timestamp_unix":{AGORA-5}}'
+            $pd = Join-Path $script:c1Forja '.percus'; New-Item -ItemType Directory -Force -Path $pd | Out-Null
+            [IO.File]::WriteAllText((Join-Path $pd 'acao-externa-autorizada.json'),
+                ('{"id":"forjada","motivo":"m","timestamp_unix":' + ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - 5) + '}'), $script:u8bom)
+        }
+
+        It "<Rot> bloqueia (repo publicado sem .percus proprio)" -ForEach @(
+            @{ Rot = 'GIT_WORK_TREE=<outro>';  Cmd = 'GIT_WORK_TREE="{OUTRO}" git -C "{TRAB}" push origin main' }
+            @{ Rot = '--work-tree=<forja>';    Cmd = 'git -C "{TRAB}" --work-tree="{FORJA}" push origin main' }
+            @{ Rot = '-c core.worktree';       Cmd = 'git -C "{TRAB}" -c core.worktree="{FORJA}" push origin main' }
+            @{ Rot = '--git-dir de cwd=forja'; Cmd = 'cd "{FORJA}" && git --git-dir="{TRAB}/.git" push origin main' }
+            @{ Rot = 'GIT_DIR+GIT_WORK_TREE';  Cmd = 'cd "{FORJA}" && GIT_DIR="{TRAB}/.git" GIT_WORK_TREE="{FORJA}" git push origin main' }
+        ) {
+            $tb = ConvertTo-CaminhoBash $script:cRaiz.Trab
+            $corpo = $Cmd.Replace('{TRAB}', $tb).Replace('{OUTRO}', (ConvertTo-CaminhoBash $script:c1Outro)).Replace('{FORJA}', (ConvertTo-CaminhoBash $script:c1Forja))
+            $antes = Get-RefsRemoto $script:cRaiz.Remoto
+            $null = Add-Commit $script:cRaiz.Trab
+            $r = Invoke-Sh $script:cRaiz.Dir $corpo
+            $r.Exit | Should -Not -Be 0 -Because $r.Saida
+            Get-RefsRemoto $script:cRaiz.Remoto | Should -Be $antes
+            (Get-LinhasAuditoria $script:cRaiz.Trab).Count | Should -Be 0
+            (Get-LinhasAuditoria $script:c1Outro).Count | Should -Be 0
+        }
+
+        It "GIT_DIR apontando forja com hook e .percus valido nao publica (raiz vem do cwd)" {
+            # Repo sintetico completo: hook instalado, .percus valido, origin -> o remoto-alvo.
+            $forja = Join-Path $script:cRaiz.Dir 'forja'
+            $null = & git init -q -b main $forja 2>&1
+            $null = Invoke-G $forja @('config', 'user.name', 'x'); $null = Invoke-G $forja @('config', 'user.email', 'x@x')
+            $null = Invoke-G $forja @('remote', 'add', 'origin', (ConvertTo-CaminhoBash $script:cRaiz.Remoto))
+            Copy-SemCR -Origem $script:template -Destino (Join-Path (Join-Path (Join-Path $forja '.git') 'hooks') 'pre-push')
+            Set-Auth $forja '{"id":"forja","motivo":"m","timestamp_unix":{AGORA-5}}'
+            [IO.File]::WriteAllText((Join-Path $forja 'f'), 'z', $script:u8); $null = Invoke-G $forja @('add', '-A'); $null = Invoke-G $forja @($script:cm, '-q', '-m', 'f')
+            # cwd = o repo REAL (sem .percus); GIT_DIR aponta a forja.
+            $antes = Get-RefsRemoto $script:cRaiz.Remoto
+            $corpo = "GIT_DIR=`"" + (ConvertTo-CaminhoBash (Join-Path $forja '.git')) + "`" git push `"" + (ConvertTo-CaminhoBash $script:cRaiz.Remoto) + "`" main:main --force"
+            $r = Invoke-Sh $script:cRaiz.Trab $corpo
+            $r.Exit | Should -Not -Be 0 -Because $r.Saida
+            $r.Saida | Should -Match 'BLOCK \(R20\)'
+            Get-RefsRemoto $script:cRaiz.Remoto | Should -Be $antes
+            (Get-LinhasAuditoria $forja).Count | Should -Be 0
+        }
+    }
+
+    Context "rodada 2 C1 -- worktree resolve a autorizacao no checkout principal" {
+        BeforeAll {
+            $script:cWt = New-Cenario 'c1-wt'
+            $script:cWtDir = Join-Path $script:cWt.Dir 'wt'
+            $null = Invoke-G $script:cWt.Trab @('worktree', 'add', '-q', '-b', 'wtb', (ConvertTo-CaminhoBash $script:cWtDir))
+            [IO.File]::AppendAllText((Join-Path (Join-Path (Join-Path $script:cWt.Trab '.git') 'info') 'exclude'), ".percus/`n", $script:u8)
+        }
+        BeforeEach { Clear-Percus $script:cWt.Trab; Clear-Percus $script:cWtDir }
+
+        It "auth no principal libera o push do worktree e audita NO principal" {
+            Set-Auth $script:cWt.Trab '{"id":"principal","motivo":"m","timestamp_unix":{AGORA-5}}'
+            $novo = Add-Commit $script:cWtDir
+            $r = Invoke-G $script:cWtDir @('push', 'origin', 'wtb')
+            $r.Exit | Should -Be 0 -Because $r.Saida
+            (Get-LinhasAuditoria $script:cWt.Trab).Count | Should -Be 1
+            (Get-LinhasAuditoria $script:cWtDir).Count | Should -Be 0
+            ($script:cWt.Trab | ForEach-Object { (Get-LinhasAuditoria $_)[0] } | ConvertFrom-Json).id | Should -Be 'principal'
+        }
+
+        It "auth so no worktree NAO libera (o principal manda) e a mensagem aponta o .percus do principal" {
+            Set-Auth $script:cWtDir '{"id":"so-wt","motivo":"m","timestamp_unix":{AGORA-5}}'
+            $antes = Get-RefsRemoto $script:cWt.Remoto
+            $null = Add-Commit $script:cWtDir
+            $r = Invoke-G $script:cWtDir @('push', 'origin', 'wtb')
+            $r.Exit | Should -Not -Be 0 -Because $r.Saida
+            Get-RefsRemoto $script:cWt.Remoto | Should -Be $antes
+            # A mensagem imprime o caminho concreto consultado -- o do checkout PRINCIPAL, nao o worktree.
+            $principalPercus = (ConvertTo-CaminhoBash (Join-Path (Join-Path $script:cWt.Trab '.percus') 'acao-externa-autorizada.json'))
+            $r.Saida | Should -Match ([regex]::Escape($principalPercus))
+        }
+    }
+
+    Context "rodada 2 C2 -- funcoes exportadas nao sequestram o hook" {
+        BeforeAll { $script:cFn = New-Cenario 'c2-func' }
+        BeforeEach { Clear-Percus $script:cFn.Trab }
+
+        It "BASH_FUNC_date%% devolve epoch proximo do arquivo expirado -- bloqueia" {
+            # date falso = fileTS+10 (parece fresco pro `_pp_idade`); sem a blindagem, passava.
+            $expira = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - 86400
+            Set-Auth $script:cFn.Trab ('{"id":"expirada","motivo":"m","timestamp_unix":' + $expira + '}')
+            $fake = $expira + 10
+            $tb = ConvertTo-CaminhoBash $script:cFn.Trab
+            $antes = Get-RefsRemoto $script:cFn.Remoto
+            $null = Add-Commit $script:cFn.Trab
+            $corpo = "env 'BASH_FUNC_date%%=() { echo " + $fake + "; }' git -C `"$tb`" push origin main"
+            $r = Invoke-Sh $script:cFn.Trab $corpo
+            $r.Exit | Should -Not -Be 0 -Because $r.Saida
+            Get-RefsRemoto $script:cFn.Remoto | Should -Be $antes
+            (Get-LinhasAuditoria $script:cFn.Trab).Count | Should -Be 0
+        }
+
+        It "BASH_FUNC_awk%% forja saida 'ok' com ts fresco (via command date) -- bloqueia" {
+            # awk falso emite ok+ts calculado NO RUNTIME (command date +%s - 5), com auth expirada.
+            $expira = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - 86400
+            Set-Auth $script:cFn.Trab ('{"id":"expirada","motivo":"m","timestamp_unix":' + $expira + '}')
+            $tb = ConvertTo-CaminhoBash $script:cFn.Trab
+            $antes = Get-RefsRemoto $script:cFn.Remoto
+            $null = Add-Commit $script:cFn.Trab
+            $corpo = "env 'BASH_FUNC_awk%%=() { printf `"ok\n%s\nfun\nm\n`" `$(( `$(command date +%s) - 5 )); }' git -C `"$tb`" push origin main"
+            $r = Invoke-Sh $script:cFn.Trab $corpo
+            $r.Exit | Should -Not -Be 0 -Because $r.Saida
+            Get-RefsRemoto $script:cFn.Remoto | Should -Be $antes
+            (Get-LinhasAuditoria $script:cFn.Trab).Count | Should -Be 0
+        }
+
+        It "BASH_FUNC_awk%% com arquivo de autorizacao VAZIO -- bloqueia" {
+            $pd = Join-Path $script:cFn.Trab '.percus'; New-Item -ItemType Directory -Force -Path $pd | Out-Null
+            [IO.File]::WriteAllText((Join-Path $pd 'acao-externa-autorizada.json'), '', $script:u8)
+            $tb = ConvertTo-CaminhoBash $script:cFn.Trab
+            $antes = Get-RefsRemoto $script:cFn.Remoto
+            $null = Add-Commit $script:cFn.Trab
+            $corpo = "env 'BASH_FUNC_awk%%=() { printf `"ok\n%s\nfun\nm\n`" `$(( `$(command date +%s) - 5 )); }' git -C `"$tb`" push origin main"
+            $r = Invoke-Sh $script:cFn.Trab $corpo
+            $r.Exit | Should -Not -Be 0 -Because $r.Saida
+            Get-RefsRemoto $script:cFn.Remoto | Should -Be $antes
+        }
+    }
+
+    Context "rodada 2 -- a blindagem unset -f cobre os externos usados (template e instalador)" {
+        It "<Rot>: todo externo chamado esta no unset -f" -ForEach @(
+            @{ Rot = 'template';   Arq = 'template';   AteEnd = $true }
+            @{ Rot = 'instalador'; Arq = 'instalador'; AteEnd = $false }
+        ) {
+            $caminho = if ($Arq -eq 'template') { $script:template } else { $script:instalador }
+            $texto = [IO.File]::ReadAllText($caminho).Replace("`r", '')
+            $linhas = $texto -split "`n"
+            $iUnset = ($linhas | Select-String -Pattern '^\s*unset -f ' | Select-Object -First 1).LineNumber
+            $iUnset | Should -Not -BeNullOrEmpty -Because 'o script precisa blindar o ambiente com unset -f'
+            $acc = ''
+            for ($i = $iUnset - 1; $i -lt $linhas.Count; $i++) {
+                $acc += ' ' + $linhas[$i]
+                if ($linhas[$i] -match '2>/dev/null') { break }
+            }
+            $acc = $acc -replace 'unset -f', '' -replace '2>/dev/null.*', ''
+            $cobertos = @($acc -split '\s+' | ForEach-Object { $_.Trim("'", '\', '"') } | Where-Object { $_ -ne '' })
+            $catalogo = @('awk','sed','grep','tr','cat','wc','head','cut','sort','printf','echo','date',
+                'git','mkdir','mv','rm','cp','read','test','[','command','sleep','ls','stat','dirname',
+                'basename','chmod','cmp','mktemp','tee','sha1sum','sha256sum','find','xargs','touch')
+            # Corpo executavel: do unset ate o END (template) ou ate o fim (instalador), sem comentarios.
+            $fim = $linhas.Count
+            if ($AteEnd) { $fim = ($linhas | Select-String -Pattern 'PERCUS-MERGED-HOOK END' | Select-Object -First 1).LineNumber }
+            $corpo = @()
+            for ($i = $iUnset; $i -lt $fim; $i++) {
+                if ($linhas[$i] -match '^\s*#') { continue }
+                $corpo += $linhas[$i]
+            }
+            $corpoTxt = ($corpo -join "`n")
+            $faltando = @()
+            foreach ($cmd in $catalogo) {
+                $pat = if ($cmd -eq '[') { '(^|[\s;&|(`$])\[\s' } else { '(^|[\s;&|(`$])' + [regex]::Escape($cmd) + '(\s|$|;)' }
+                if ($corpoTxt -match $pat -and $cobertos -notcontains $cmd) { $faltando += $cmd }
+            }
+            $faltando -join ', ' | Should -Be '' -Because 'externo usado mas fora do unset -f pode ser sequestrado por BASH_FUNC'
+        }
+    }
+
+    Context "rodada 2 I2 -- instalador nao aceita hook GERIDO neutralizado" {
+        It "custom com 'exit 0' ANTES do BEGIN vira HIBRIDO (bloco Percus na frente) e bloqueia" {
+            $c = New-Cenario 'i2-antes' -SemHook
+            $alvo = Join-Path (Join-Path (Join-Path $c.Trab '.git') 'hooks') 'pre-push'
+            $mau = "#!/bin/sh`nexit 0`n# === PERCUS-MERGED-HOOK BEGIN ===`necho X`n# === PERCUS-MERGED-HOOK END ===`n"
+            [IO.File]::WriteAllText($alvo, $mau, $script:u8)
+            $r = Invoke-Sh $c.Trab ('sh "' + (ConvertTo-CaminhoBash $script:instalador) + '" .')
+            $r.Exit | Should -Be 0 -Because $r.Saida
+            $r.Saida | Should -Match 'modo HIBRIDO'
+            # linha 2 = BEGIN: o bloco Percus ficou na frente do 'exit 0' custom.
+            [IO.File]::ReadAllText($alvo) | Should -Match '^#!/bin/sh\n# === PERCUS-MERGED-HOOK BEGIN ==='
+            $antes = Get-RefsRemoto $c.Remoto
+            $null = Add-Commit $c.Trab
+            $s = Invoke-G $c.Trab @('push', 'origin', 'main')
+            $s.Exit | Should -Not -Be 0 -Because $s.Saida
+            $s.Saida | Should -Match 'BLOCK \(R20\)'
+            Get-RefsRemoto $c.Remoto | Should -Be $antes
+        }
+
+        It "custom 'exit 0' + marcadores dentro de comentario NAO vira GERIDO e bloqueia" {
+            $c = New-Cenario 'i2-comentario' -SemHook
+            $alvo = Join-Path (Join-Path (Join-Path $c.Trab '.git') 'hooks') 'pre-push'
+            $mau = "#!/bin/sh`nexit 0`n# === PERCUS-MERGED-HOOK BEGIN ===`n# === PERCUS-MERGED-HOOK END ===`n"
+            [IO.File]::WriteAllText($alvo, $mau, $script:u8)
+            $r = Invoke-Sh $c.Trab ('sh "' + (ConvertTo-CaminhoBash $script:instalador) + '" .')
+            $r.Exit | Should -Be 0 -Because $r.Saida
+            $r.Saida | Should -Match 'modo HIBRIDO'
+            $antes = Get-RefsRemoto $c.Remoto
+            $null = Add-Commit $c.Trab
+            $s = Invoke-G $c.Trab @('push', 'origin', 'main')
+            $s.Exit | Should -Not -Be 0 -Because $s.Saida
+            $s.Saida | Should -Match 'BLOCK \(R20\)'
+            Get-RefsRemoto $c.Remoto | Should -Be $antes
+        }
+    }
+
     Context "limites declarados: formas que o pre-push NAO ve (camada 1 tem de barrar)" {
         BeforeAll { $script:cLim = New-Cenario 'limites' }
 

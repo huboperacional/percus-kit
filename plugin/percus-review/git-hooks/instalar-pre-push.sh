@@ -16,6 +16,13 @@
 # Sempre que o alvo existe e o conteudo muda: copia em <alvo>.bak (ou .bak.<epoch> se ja houver).
 # Exit: 0 instalado/ja atualizado | 2 uso/ambiente | 3 recusado.
 
+# Blindagem de ambiente (mesma do template, C2 da revisao de ataque): a decisao NOVO/GERIDO/HIBRIDO
+# depende de `sed`/`tr`/`awk`/`grep`, e o `sh`/`bash` em modo posix importaria `BASH_FUNC_sed%%` etc.
+# do ambiente. Um `sed` forjado poderia reportar o BEGIN como linha 2 de um hook cuja linha 2 real e
+# `exit 0`, reabrindo o I2. `unset -f` (builtin especial) vence a funcao importada em modo posix.
+unset -f git sed tr awk grep cmp mv cp rm mkdir cat printf echo dirname chmod head date read test '[' \
+    command sleep ls stat basename env sh true false : 2>/dev/null || :
+
 set -u
 
 REPO="${1:-.}"
@@ -52,10 +59,18 @@ awk '/=== PERCUS-MERGED-HOOK BEGIN ===/{d=1} d{print} /=== PERCUS-MERGED-HOOK EN
 grep -q 'PERCUS-MERGED-HOOK END' "$TMP.bloco" || { echo "ERRO: template sem marcadores BEGIN/END" >&2; exit 2; }
 
 MODO=""
+# GERIDO so quando o BEGIN esta na LINHA 2 (logo apos o shebang) -- o formato que este instalador
+# produz. Sem isso (I2 da revisao de ataque), um custom com `exit 0` ANTES do BEGIN, ou marcadores
+# escondidos num comentario, virava "gerido": o instalador preservava o prefixo (com o `exit 0`) e
+# so trocava o miolo, deixando o `exit 0` rodar antes do bloco Percus -- push liberado sem
+# autorizacao. Fora desse formato, cai no ramo custom (HIBRIDO/RECUSA), que poe o bloco Percus na
+# FRENTE de tudo.
+_pp_l2=""
+[ -e "$TARGET" ] && _pp_l2=$(sed -n 2p "$TARGET" | tr -d '\r')
 if [ ! -e "$TARGET" ]; then
     MODO="NOVO"
     : # $TMP ja e o template puro
-elif grep -q '=== PERCUS-MERGED-HOOK BEGIN ===' "$TARGET" && grep -q '=== PERCUS-MERGED-HOOK END ===' "$TARGET"; then
+elif [ "$_pp_l2" = "# === PERCUS-MERGED-HOOK BEGIN ===" ] && grep -q '=== PERCUS-MERGED-HOOK END ===' "$TARGET"; then
     MODO="GERIDO"
     awk -v bloco="$TMP.bloco" '
         /=== PERCUS-MERGED-HOOK BEGIN ===/ && !feito { while ((getline l < bloco) > 0) print l; pulando=1; feito=1; next }

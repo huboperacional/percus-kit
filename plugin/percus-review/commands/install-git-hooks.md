@@ -165,7 +165,13 @@ Hook custom existente preservado. Sua lógica (typecheck, lint, etc.) roda DEPOI
 
 ## Passo 8 — Instalar também o `pre-push` (R20, camada 2)
 
+**Modelo de ameaça:** o `pre-push` é trilho contra **erro e atalho de agente/sessão**, não contra um adversário com shell na máquina. Ele fecha o que um agente dispara **sem intenção de burlar** (variável de ambiente, opção do git, função herdada). Ficam abertos, por construção (um hook de repo não os fecha): copiar o `.git` e empurrar da cópia, submódulo sem hook, renomear/remover o hook, `fetch`/`bundle`/`send-pack` direto num bare local, e junction/symlink em `.percus`.
+
 O `pre-push` exige `.percus/acao-externa-autorizada.json` válido (criado por `scripts/autorizar-acao-externa.ps1` depois da confirmação explícita do operador, janela de 60 min) em **todo** push, qualquer que seja a grafia do comando, e grava a auditoria em `.percus/autorizacoes-usadas.jsonl` com `origem:"pre-push"`, remoto e refs. Sem autorização, autorização inválida/expirada/ilegível ou falha ao gravar a auditoria → push bloqueado. Não há escape por variável de ambiente.
+
+**Onde mora a autorização (worktree):** o hook resolve a raiz pelo **repositório publicado** (`git rev-parse --path-format=absolute --git-common-dir` → pasta pai; requer **git >= 2.31**, senão fail-closed), não pela work tree — assim `GIT_WORK_TREE`, `--work-tree`, `--git-dir` e um JSON forjado noutra pasta não trocam o que ele lê. Para um push disparado de um **worktree**, isso cai no **checkout principal**: no kit, a autorização mora SEMPRE em `D:\Claud Automations\percus-kit\.percus\`, inclusive para push de worktree. Como a sessão do agente roda a partir do **checkout principal**, a camada 1 (`external-action-guard`, que lê o cwd da sessão) lê esse MESMO `.percus\` — as duas camadas concordam nesse caso. Se a sessão rodasse de dentro do próprio worktree, a camada 1 leria o `.percus\` do worktree (que não existe) e a 2 seguiria no principal: alinhar a camada 1 à mesma regra (`--git-common-dir` → pai) fica como requisito. **Submódulo com o hook instalado e repositório bare não são suportados** (o hook fail-closes: bloqueia todo push), coerente com o modelo de ameaça.
+
+**Blindagem de ambiente:** a primeira linha do bloco Percus faz `unset -f` de todo comando/builtin que usa (`date`, `awk`, `sed`, `git`, …). git invoca o hook por `sh`, e o bash em modo posix importaria funções exportadas (`BASH_FUNC_<nome>%%`) do ambiente do `git push` — um `date`/`awk` falso faria uma autorização expirada parecer fresca. `unset -f` é builtin especial e vence a função importada em modo posix.
 
 A instalação é determinística, por script (mesmo padrão deste comando: `core.hooksPath`, marcadores BEGIN/END, híbrido, `.bak`):
 
@@ -176,13 +182,19 @@ sh "${CLAUDE_PLUGIN_ROOT}/git-hooks/instalar-pre-push.sh" "<raiz do repo>"
 | Hook `pre-push` existente | Modo | Resultado |
 |---|---|---|
 | ausente | NOVO | template puro |
-| com marcadores BEGIN/END | GERIDO | troca só o bloco Percus; sufixo custom preservado |
-| custom em sh/bash | HIBRIDO | shebang + bloco Percus + corpo custom (roda depois, recebe stdin e args) |
+| BEGIN na **linha 2** (logo após o shebang) + END | GERIDO | troca só o bloco Percus; sufixo custom preservado |
+| custom em sh/bash (qualquer outro conteúdo) | HIBRIDO | shebang + bloco Percus **na frente** + corpo custom (roda depois, recebe stdin e args) |
 | custom em outra linguagem | RECUSA (exit 3) | nada muda; reporte ao operador |
+
+GERIDO exige o BEGIN na linha 2 de propósito: um custom com `exit 0` **antes** do BEGIN, ou marcadores escondidos num comentário, não vira "gerido" (senão o `exit 0` rodaria antes do bloco Percus e liberaria o push) — cai em HIBRIDO, que põe o bloco Percus na frente de tudo.
 
 Hook existente que muda vai antes para `pre-push.bak` (ou `pre-push.bak.<epoch>` se já houver `.bak`). Re-rodar sem mudança não cria backup.
 
-**Limite declarado:** `git push --no-verify`, `git -c core.hooksPath=<outro> push`, `GIT_CONFIG_COUNT/KEY/VALUE` apontando `core.hooksPath` e `git send-pack` não executam o `pre-push`. A camada 1 (`external-action-guard`) continua existindo para barrar essas formas. O hook também não prova QUEM escreveu o JSON de autorização: quem tem escrita em `.percus/` consegue criá-lo (risco aceito do desenho R20 em lote, ver `docs/superpowers/specs/2026-08-06-r20-autorizacao-lote-design.md`). A linha de auditoria registra autorização concedida no momento do hook, não push concluído: se um custom híbrido ou o remoto recusarem depois, a linha fica.
+**Limite declarado — o que NÃO executa o `pre-push`:** `git push --no-verify`; qualquer forma que troque `core.hooksPath` — inclusive **sem o texto `core.hooksPath` aparecer no comando** (via `HOME=`, `XDG_CONFIG_HOME`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `-c include.path=`, `includeIf`, `--config-env`, ou edição direta de `.git/config`); `git send-pack`/`http-push`; e cópia/clone do repo sem o hook.
+
+**Requisito PENDENTE para a camada 1 (`external-action-guard`) — esta tarefa NÃO edita o guard:** hoje o guard só cobre `-c core.hooksPath`/`GIT_CONFIG_*`/`git config`/`.git/hooks/pre-push`. Para fechar a classe acima, ele deveria passar a bloquear, **em comando que contenha `push`**, os TEXTOS: `hooksPath`, `include.path`, `includeIf`, `--config-env`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM`, `XDG_CONFIG_HOME`, `HOME=`, `send-pack`, `http-push`. Enquanto isso não for implementado, essas formas passam. **Cuidado com falso-positivo:** `HOME=`/`XDG_CONFIG_HOME` são genéricos e `GIT_CONFIG_NOSYSTEM` sozinho não muda `core.hooksPath` — o casamento deve ser escopado (só quando adjacente à invocação de `git ... push`), com fail-closed apenas no caso ambíguo, para não barrar push legítimo de CI que só repassa `HOME`.
+
+O hook também não prova QUEM escreveu o JSON de autorização: quem tem escrita em `.percus/` consegue criá-lo, e junction/symlink em `.percus` ou no `.jsonl` anula a auditoria (risco aceito do desenho R20 em lote, ver `docs/superpowers/specs/2026-08-06-r20-autorizacao-lote-design.md`). A linha de auditoria registra autorização concedida no momento do hook, não push concluído: se um custom híbrido ou o remoto recusarem depois, a linha fica.
 
 ## Notas
 

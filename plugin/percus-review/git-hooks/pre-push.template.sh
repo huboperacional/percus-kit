@@ -21,11 +21,33 @@
 # PERCUS_HOOKS_DISABLED escritos na frente do comando (`X=1 git push`) chegariam ate aqui e
 # reabririam por TEXTO o buraco que este hook fecha.
 #
-# LIMITE DECLARADO: `git push --no-verify` e `git -c core.hooksPath=<outro> push` nao executam
-# este hook. Quem barra essas formas e a camada 1 (guard) -- por isso ela continua existindo.
+# MODELO DE AMEACA (Fase 5, rodada 2): este hook e trilho contra ERRO e ATALHO de agente/sessao,
+# nao contra um adversario com shell na maquina. Limites que FICAM abertos de proposito (nao ha
+# como um hook de repo fecha-los): copiar o `.git` e empurrar da copia; submodulo sem hook;
+# renomear/remover o hook; `fetch`/`bundle`/`send-pack` direto num bare local; junction/symlink em
+# `.percus`. O que um agente dispara SEM intencao de burlar (variavel de ambiente, opcao do git,
+# funcao herdada) tem de fechar -- e o que os dois blocos abaixo fecham.
+#
+# LIMITE DECLARADO tambem para a camada 1 (guard): `--no-verify`, e qualquer troca de config que
+# mude `core.hooksPath` SEM o texto aparecer no comando (HOME=, XDG_CONFIG_HOME, GIT_CONFIG_GLOBAL,
+# GIT_CONFIG_SYSTEM, `-c include.path=`, `includeIf`, `--config-env`, edicao do `.git/config`) nao
+# executam este hook. Quem barra essas formas e a camada 1.
 #
 # Exit codes: 1 = block; allow = fall-through ao custom hook (se hibrido) ou ao `exit 0` do fim.
 # Sem jq e sem python: o parser JSON e awk estrito (awk vem com todo git-bash).
+
+# >>> percus-pp-blinda-ambiente (C2 da revisao de ataque)
+# git invoca o hook por `sh`, e o bash em modo posix IMPORTA funcoes exportadas do ambiente
+# (`BASH_FUNC_<nome>%%=() {...}`). Sem isto, `env 'BASH_FUNC_date%%=...' git push` faz o hook usar
+# um `date`/`awk` falso e uma autorizacao expirada parece fresca. `unset -f` e builtin especial e,
+# em modo posix, vence a funcao importada (medido, inclusive com `BASH_FUNC_unset%%` setado). Roda
+# ANTES de qualquer outro comando, inclusive `[`/`test` e o `cat` do stdin. As funcoes proprias
+# (percus_pp_*) sao redefinidas abaixo, mas tambem entram aqui para nao rodar a versao importada
+# antes da definicao.
+unset -f awk sed grep tr cat wc head cut sort printf echo date git mkdir mv rm cp read test '[' \
+    command sleep ls stat dirname basename env sh true false : \
+    percus_pp_bloqueia percus_pp_awk percus_pp_json_escapa percus_pp_mascara_url 2>/dev/null || :
+# <<< percus-pp-blinda-ambiente
 
 set -u
 
@@ -38,8 +60,9 @@ _pp_stdin=$(cat)
 percus_pp_bloqueia() {
     >&2 echo "$PERCUS_PP_TAG BLOCK (R20): $1"
     >&2 echo "  Push exige autorizacao explicita do operador, valida por 60 min."
-    >&2 echo "  Depois da confirmacao dele na conversa, na raiz do repo:"
-    >&2 echo "    powershell -NoProfile -File <percus-kit>/scripts/autorizar-acao-externa.ps1 -Motivo \"<motivo>\" -ProjetoRoot \"<raiz do repo>\""
+    >&2 echo "  A autorizacao mora na raiz do checkout PRINCIPAL (pai de --git-common-dir),"
+    >&2 echo "  inclusive quando o push sai de um worktree. Depois da confirmacao dele na conversa:"
+    >&2 echo "    powershell -NoProfile -File <percus-kit>/scripts/autorizar-acao-externa.ps1 -Motivo \"<motivo>\" -ProjetoRoot \"<raiz principal>\""
     >&2 echo "  (cria .percus/acao-externa-autorizada.json; o push seguinte e auditado em .percus/autorizacoes-usadas.jsonl)"
     exit 1
 }
@@ -156,8 +179,31 @@ percus_pp_mascara_url() {
     printf '%s' "$1" | sed 's#://[^/@[:space:]]*@#://***@#g'
 }
 
-_pp_top=$(git rev-parse --show-toplevel 2>/dev/null | tr -d '\r')
-[ -n "$_pp_top" ] || percus_pp_bloqueia "nao consegui resolver a raiz do repo (git rev-parse --show-toplevel)"
+# RAIZ DA AUTORIZACAO a partir do REPOSITORIO publicado, nao da work tree nem de um git dir apontado
+# pelo chamador (C1 da revisao de ataque). `--show-toplevel` obedece GIT_WORK_TREE/--work-tree, e
+# `--git-common-dir` obedece GIT_DIR/--git-dir: qualquer um deixa o chamador escolher a pasta lida, e
+# uma autorizacao forjada num repo sintetico (`GIT_DIR=<forja>/.git git push`) publicaria este
+# remoto. Por isso, ANTES de resolver, LIMPAMOS as variaveis que desviam a descoberta e deixamos o
+# git redescobrir a partir do cwd -- que o git FIXA no topo da arvore de trabalho ao chamar o hook.
+# Assim GIT_DIR/GIT_WORK_TREE forjados (e --git-dir/--work-tree, que o git repassa via essas vars ao
+# hook) nao mudam a raiz. Limpamos so no ambiente DESTE hook; o `git push` pai segue com o que tinha.
+# Em WORKTREE o common-dir aponta o `.git` PRINCIPAL, entao a autorizacao mora SEMPRE na raiz
+# principal (no kit: D:\Claud Automations\percus-kit\.percus\), inclusive para push disparado de um
+# worktree -- o mesmo lugar que a camada 1 le pelo cwd da sessao.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES 2>/dev/null || :
+# `--path-format=absolute` exige git >= 2.31; vazio -> fail-closed (bloqueia todo push), com dica.
+_pp_gitdir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null | tr -d '\r')
+[ -n "$_pp_gitdir" ] || percus_pp_bloqueia "nao consegui resolver o git dir (git rev-parse --path-format=absolute --git-common-dir; requer git >= 2.31)"
+# So o pai de um git dir que termina em `/.git` e uma raiz de checkout (repo normal e worktree, cujo
+# common-dir e o `.git` PRINCIPAL). Submodulo (common-dir `.../.git/modules/<n>`) e repo bare nao
+# terminam em `/.git`: neste hook eles NAO sao suportados e ficam fail-closed (bloqueiam) -- e o lado
+# seguro, e esta declarado no modelo de ameaca (submodulo com hook nao e escopo).
+case "$_pp_gitdir" in
+    */.git) _pp_top=${_pp_gitdir%/*} ;;
+    */.git/modules/*) percus_pp_bloqueia "push de submodulo nao e suportado pela camada 2 (git dir $_pp_gitdir); autorize/rode do super-repo" ;;
+    *) percus_pp_bloqueia "git dir nao aponta um checkout com arvore de trabalho ($_pp_gitdir); repo bare ou incomum -- fora de escopo" ;;
+esac
+[ -n "$_pp_top" ] || percus_pp_bloqueia "nao consegui resolver a raiz do repo a partir de $_pp_gitdir"
 
 _pp_auth="$_pp_top/.percus/acao-externa-autorizada.json"
 _pp_log="$_pp_top/.percus/autorizacoes-usadas.jsonl"
