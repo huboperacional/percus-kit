@@ -15,6 +15,8 @@ Cada requisito funcional é **gatilho + resposta observável**:
 
 Variações: `ENQUANTO <estado> ... DEVE ...` (condição de estado) · `DEVE SEMPRE ...` (invariante) · `SE <condição de erro> ENTÃO DEVE ...` (caminho indesejado).
 
+**Falseável:** todo FR completa *"este requisito é violado quando ___"* com um fato observável. Se não completa, o FR não reprova nada: reescreva. Ex.: "o histórico disponível é trazido" não é violado quando só 2 meses de 3,5 anos chegam; "os 3,5 anos de histórico são trazidos" é.
+
 ## Estrutura mínima
 
 1. **Problema** — o que dói hoje, com evidência. Não "seria bom ter".
@@ -37,3 +39,5 @@ O veredito volta como `PRONTA | AJUSTAR | BLOQUEADA`:
 - **Vazar o COMO para dentro do O QUÊ.** Stack, biblioteca e schema vivem no plano, não na spec.
 - **Critério de pronto que ninguém sabe medir.** Se você não sabe como verificar, o requisito ainda não existe.
 - **Spec longa como sinal de rigor.** Rigor é requisito testável, não volume.
+- **Enumeração aberta.** "como A, B e C" é exemplo, não requisito. Nomeie o conjunto exato ou a regra que o gera.
+- **Verbo que delimita mais do que parece.** "não retornar dados" proíbe leitura e não proíbe ação. Liste o que fica proibido.

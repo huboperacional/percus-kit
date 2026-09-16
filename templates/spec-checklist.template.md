@@ -21,6 +21,7 @@
 - [ ] **≤ 3** `NEEDS-CLARIFICATION` abertos (mais que isso = volte ao brainstorming).
 - [ ] Nenhum FR depende de termo ambíguo não definido (ex.: "vários", "rápido", "seguro" sem número/definição).
 - [ ] **Terminologia consistente** — o mesmo conceito tem o mesmo nome em toda a spec.
+- [ ] Todo **FR** completa "violado quando ___" com fato observável? Armadilhas de redação: `v2/loops/spec.md` § Armadilhas.
 
 ## Fronteira WHAT/HOW (regra herdada do spec-kit)
 
