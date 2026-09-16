@@ -47,13 +47,26 @@ try {
     # no desenho; e o detalhe que decide se a guarda pega.
     $cmdIni = '(?:^|[;&|(]+\s*|&&\s*|\|\|\s*|\bthen\s+|\bdo\s+)'
 
+    # git com OPCAO GLOBAL entre `git` e o subcomando (Fase 5, 2026-09-16).
+    # 🔴 Ate a 6.61.0 o padrao era `git\s+push`, e ele exige o subcomando COLADO no `git`. Medido:
+    # os dois pushes de 2026-09-16 foram `git -C "<kit>" push origin main` e sairam sem linha de
+    # auditoria -- e, pior, o mesmo comando SEM autorizacao tambem saia (exit 0): o hook nem chegava
+    # a olhar autorizacao. `-c k=v`, `--no-pager`, `git.exe` idem. `--git-dir=<x>/.git push` so
+    # bloqueava por acidente (o texto `.git push` casa o padrao velho).
+    # Valor de opcao: citado (pode ter espaco) ou nu; nu para em separador de shell.
+    # Opcoes que levam valor SEPARADO sao enumeradas; as demais so aceitam a forma colada (`--x=y`).
+    $gitValor = '(?:"[^"]*"|''[^'']*''|[^\s"'';&|]+)'
+    $gitOpcaoComValor = '(?:-C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env)'
+    $gitOpcoes = '(?:\s+' + $gitOpcaoComValor + '\s+' + $gitValor + '|\s+-(?:[^\s"'';&|]|"[^"]*"|''[^'']*'')+)*'
+    $gitPush = 'git(?:\.exe)?["'']?(?<opcoes>' + $gitOpcoes + ')\s+push'
+
     $externalPatterns = @(
         # --- interacao publica em plataforma de terceiros ---
         'gh\s+(pr|issue)\s+comment',
         'gh\s+pr\s+(close|merge)',
         'gh\s+issue\s+close',
         'slack-cli',
-        'git\s+push',
+        $gitPush,
         'mailto:',
         # --- publicar: o resultado fica visivel pra quem nao e a gente (add. 2026-08-19) ---
         #
@@ -142,6 +155,43 @@ try {
 
     $cwd = (Get-Location).Path
 
+    # Diretorio do PROJETO sobre o qual a acao age: onde se le a autorizacao e se grava a auditoria.
+    # Com `git -C <dir> push`, e o `-C` (como o git faz: relativo ao cwd, e -C seguidos se acumulam);
+    # sem `-C`, o cwd. Autorizacao e por projeto -- ler do cwd deixaria a autorizacao do projeto A
+    # liberar push no projeto B, e gravaria a auditoria no repo errado.
+    # ⚠️ PreToolUse ve o texto ANTES do shell: `-C "$W"` nao e expandido, vira um caminho que nao
+    # existe, e a autorizacao nao e achada -- bloqueia (fail-closed). Escreva o caminho literal.
+    function ConvertTo-CaminhoWindows {
+        param([string]$Caminho)
+        if ($env:OS -ne 'Windows_NT') { return $Caminho }
+        if ($Caminho -match '^/(?:cygdrive/)?([a-zA-Z])(?:/(.*))?$') {
+            return ($matches[1].ToUpper() + ':\' + ($matches[2] -replace '/', '\'))
+        }
+        return $Caminho
+    }
+    $dirsProjeto = @()
+    foreach ($m in [regex]::Matches($command, $gitPush, [Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
+        $base = $cwd
+        $tokens = [regex]::Matches($m.Groups['opcoes'].Value, '\s+(?:(?<flag>' + $gitOpcaoComValor + ')\s+(?<valor>' + $gitValor + ')|-\S+)')
+        foreach ($t in $tokens) {
+            if ($t.Groups['flag'].Value -cne '-C') { continue }
+            $v = $t.Groups['valor'].Value
+            if ($v.Length -ge 2 -and (($v[0] -eq '"' -and $v[-1] -eq '"') -or ($v[0] -eq "'" -and $v[-1] -eq "'"))) {
+                $v = $v.Substring(1, $v.Length - 2)
+            }
+            $v = ConvertTo-CaminhoWindows $v
+            if ([IO.Path]::IsPathRooted($v)) { $base = $v } else { $base = [IO.Path]::Combine($base, $v) }
+        }
+        # Normaliza antes de deduplicar: `<dir>` e `<dir>/` (ou `a/../<dir>`) sao o MESMO repo, e
+        # compara-los como texto cru barraria como "dois projetos" um push legitimo. Achado do R11.
+        # `-notcontains` ja ignora caixa, como o filesystem do Windows.
+        try { $base = [IO.Path]::GetFullPath($base) } catch { }
+        if ($base.Length -gt 3) { $base = $base.TrimEnd('\', '/') }
+        if ($dirsProjeto -notcontains $base) { $dirsProjeto += $base }
+    }
+    $dirProjeto = $cwd
+    if ($dirsProjeto.Count -eq 1) { $dirProjeto = $dirsProjeto[0] }
+
     # MASCARA credencial AQUI, antes de qualquer saida -- nao so antes de gravar. A 1a versao
     # mascarava dentro do ramo autorizado, entao o arquivo ficava limpo e o comando CRU continuava
     # saindo nas mensagens de BLOCK pelo stderr. Mascara que cobre um canal e deixa o outro aberto
@@ -185,6 +235,19 @@ try {
         exit 0
     }
 
+    # Push para MAIS DE UM projeto no mesmo comando (`git -C A push; git -C B push`): uma autorizacao
+    # so pode ser lida de um lugar, e le-la de A liberaria B sem autorizacao. Fail-closed: um projeto
+    # por comando.
+    if ($dirsProjeto.Count -gt 1) {
+        [Console]::Error.WriteLine("")
+        [Console]::Error.WriteLine("[percus:hook external-action-guard] BLOCK (R20):")
+        [Console]::Error.WriteLine("  Comando: $comandoLog")
+        [Console]::Error.WriteLine("  Razao: o comando publica em mais de um repositorio ($($dirsProjeto -join ' | ')); a autorizacao e por projeto.")
+        [Console]::Error.WriteLine("  Separe em um comando por repositorio.")
+        [Console]::Error.WriteLine("")
+        exit 2
+    }
+
     # Escape hatch: autorizacao em lote via arquivo (janela de 60min por timestamp_unix DENTRO do
     # JSON, nao LastWriteTime do filesystem -- metadado de filesystem pode mudar sem o conteudo
     # mudar; o timestamp gravado na criacao e mais confiavel). Arquivo atravessa a fronteira de
@@ -197,7 +260,7 @@ try {
     # poder BLOQUEAR. Fail-open aqui seria: permissao negada no arquivo = "ah, deu erro, libera
     # geral" -- o oposto do que devia acontecer.
     try {
-        $authFile = Join-Path $cwd ".percus/acao-externa-autorizada.json"
+        $authFile = Join-Path $dirProjeto ".percus/acao-externa-autorizada.json"
         if (Test-Path $authFile) {
             $auth = Get-Content -Encoding UTF8 $authFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
             # Comparacao em epoch puro, NUNCA converter pra hora local antes de subtrair --
@@ -215,7 +278,7 @@ try {
                 #
                 # PreToolUse roda ANTES do comando: isto registra AUTORIZACAO CONCEDIDA, nao
                 # execucao concluida -- dai o origem="hook".
-                $logPath = Join-Path $cwd ".percus/autorizacoes-usadas.jsonl"
+                $logPath = Join-Path $dirProjeto ".percus/autorizacoes-usadas.jsonl"
 
                 # $comandoLog ja vem mascarado la de cima -- a mascara e feita antes de QUALQUER
                 # saida, nao so antes desta gravacao, para cobrir tambem as mensagens de BLOCK.
@@ -292,7 +355,7 @@ try {
     }
 
     # Verifica council recente (premise_validity)
-    $councilDir = Join-Path $cwd ".deepseek/council-log"
+    $councilDir = Join-Path $dirProjeto ".deepseek/council-log"
     $councilBad = $false
     $councilBadReason = ""
 

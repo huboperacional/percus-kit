@@ -636,3 +636,230 @@ Describe "external-action-guard.ps1 hook" {
         Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
 }
+
+# -----------------------------------------------------------------------------
+# Opcao GLOBAL do git entre `git` e o subcomando (Fase 5, 2026-09-16).
+#
+# Medido: os dois pushes de 2026-09-16 foram `git -C "<kit>" push origin main` e SAIRAM sem linha de
+# auditoria. O padrao era `git\s+push`, que exige o subcomando colado no `git`; qualquer opcao global
+# no meio (-C, -c, --no-pager, git.exe) fazia o comando nao ser reconhecido como acao externa. O hook
+# saia 0 ANTES de olhar autorizacao -- ou seja, o mesmo push SEM autorizacao tambem passava. A
+# auditoria ausente era o sintoma visivel; o buraco era a guarda nao guardar.
+#
+# `--git-dir=<x>/.git push` so bloqueava por ACIDENTE: o texto `.git push` casa `git\s+push`.
+#
+# O `.percus/` e lido do diretorio do `-C` quando ha `-C`: o push age sobre aquele repo, e a
+# autorizacao e por projeto. Sem `-C`, continua o cwd.
+# -----------------------------------------------------------------------------
+Describe "external-action-guard -- opcao global do git antes do subcomando" {
+    BeforeAll {
+        $script:hookPs1 = Join-Path $PSScriptRoot ".." "hooks" "external-action-guard.ps1"
+        $script:hookSh  = Join-Path $PSScriptRoot ".." "hooks" "external-action-guard.sh"
+        $script:bashExe = @("$env:ProgramFiles\Git\bin\bash.exe", "$env:ProgramFiles\Git\usr\bin\bash.exe") |
+            Where-Object { Test-Path $_ } | Select-Object -First 1
+
+        function New-DirTeste {
+            param([string]$Prefixo = "eag-g")
+            # Espaco no nome de proposito: o kit real mora em "D:\Claud Automations".
+            $d = Join-Path ([IO.Path]::GetTempPath()) ($Prefixo + "-" + [Guid]::NewGuid().ToString("N").Substring(0,8)) "repo com espaco"
+            New-Item -ItemType Directory -Path $d -Force | Out-Null
+            return $d
+        }
+
+        function New-AutorizacaoEm {
+            param([string]$Dir)
+            $percusDir = Join-Path $Dir ".percus"
+            New-Item -ItemType Directory -Path $percusDir -Force | Out-Null
+            $quando = (Get-Date).AddMinutes(-2)
+            $auth = [pscustomobject]@{
+                id             = [guid]::NewGuid().ToString()
+                motivo         = "teste opcao global"
+                autorizado_em  = $quando.ToString("o")
+                timestamp_unix = [DateTimeOffset]::new($quando).ToUnixTimeSeconds()
+            }
+            [IO.File]::WriteAllText((Join-Path $percusDir "acao-externa-autorizada.json"), ($auth | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+            return $auth
+        }
+
+        function Get-LinhasLog {
+            param([string]$Dir)
+            $l = Join-Path $Dir ".percus\autorizacoes-usadas.jsonl"
+            if (-not (Test-Path -LiteralPath $l)) { return @() }
+            return @(Get-Content -LiteralPath $l -Encoding UTF8 | Where-Object { $_ })
+        }
+
+        function Invoke-Guard {
+            param([string]$Cwd, [string]$Comando)
+            $stdin = @{ tool_name = "Bash"; tool_input = @{ command = $Comando } } | ConvertTo-Json -Compress
+            Push-Location -LiteralPath $Cwd
+            try { $null = ($stdin | & pwsh -NoProfile -File $script:hookPs1 2>&1) } finally { Pop-Location }
+            return $LASTEXITCODE
+        }
+
+        function Remove-DirTeste {
+            param([string]$Dir)
+            $pai = Split-Path -Parent $Dir
+            if (Test-Path -LiteralPath $pai) { [IO.Directory]::Delete($pai, $true) }
+        }
+
+        # <DIR> vira o caminho do repo com barra normal (como a tool Bash escreve).
+        function Expand-Forma {
+            param([string]$Forma, [string]$Dir)
+            return $Forma.Replace("<DIR>", ($Dir -replace '\\', '/'))
+        }
+    }
+
+    It "BLOQUEIA sem autorizacao -- <Forma>" -ForEach @(
+        @{ Forma = 'git -C "<DIR>" push origin main 2>&1 | tail -15' }
+        @{ Forma = "git -C '<DIR>' push" }
+        @{ Forma = 'git -c http.sslVerify=true push origin main' }
+        @{ Forma = 'git --no-pager push' }
+        @{ Forma = 'git -C "<DIR>" -c a.b=c push origin main' }
+        @{ Forma = 'git --git-dir=/tmp/x push' }
+        @{ Forma = 'git --git-dir "/tmp/x y" --work-tree=/tmp push' }
+        @{ Forma = 'git.exe push origin main' }
+        @{ Forma = 'git push origin main' }
+        @{ Forma = 'cd "<DIR>" && git push origin main' }
+    ) {
+        $dir = New-DirTeste
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $codigo = Invoke-Guard -Cwd $dir -Comando (Expand-Forma $Forma $dir)
+        $codigo | Should -Be 2 -Because "opcao global entre git e o subcomando nao muda o que o comando faz"
+        (Get-LinhasLog $dir).Count | Should -Be 0
+        Remove-DirTeste $dir
+    }
+
+    It "NAO bloqueia git com opcao global e subcomando local -- <Forma>" -ForEach @(
+        @{ Forma = 'git -C "<DIR>" status' }
+        @{ Forma = 'git -C "<DIR>" log --oneline -3 --grep push' }
+        @{ Forma = 'git -C "<DIR>" pull origin main' }
+        @{ Forma = 'git -c core.pager=cat diff' }
+    ) {
+        $dir = New-DirTeste
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $codigo = Invoke-Guard -Cwd $dir -Comando (Expand-Forma $Forma $dir)
+        $codigo | Should -Be 0 -Because "guard que barra git local vira imposto"
+        Remove-DirTeste $dir
+    }
+
+    It "com autorizacao no repo do -C: libera e GRAVA a auditoria LA, mesmo com cwd em outro lugar -- <Forma>" -ForEach @(
+        @{ Forma = 'git -C "<DIR>" push origin main 2>&1 | tail -15' }
+        @{ Forma = "git -C '<DIR>' push" }
+        @{ Forma = 'git -C "<DIR>" -c a.b=c push origin main' }
+    ) {
+        $dir = New-DirTeste
+        $cwd = New-DirTeste -Prefixo "eag-cwd"
+        $auth = New-AutorizacaoEm $dir
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $comando = Expand-Forma $Forma $dir
+        $codigo = Invoke-Guard -Cwd $cwd -Comando $comando
+        $codigo | Should -Be 0 -Because "a autorizacao esta no repo sobre o qual o push age"
+        $linhas = @(Get-LinhasLog $dir)
+        $linhas.Count | Should -Be 1 -Because "push liberado sem auditoria e o defeito de 2026-09-16"
+        $l = $linhas[0] | ConvertFrom-Json
+        $l.origem  | Should -Be "hook"
+        $l.id      | Should -Be $auth.id
+        $l.comando | Should -Be $comando
+        (Get-LinhasLog $cwd).Count | Should -Be 0
+        Remove-DirTeste $dir; Remove-DirTeste $cwd
+    }
+
+    It "com autorizacao e -C no MESMO cwd: grava 1 linha (o caso exato de 2026-09-16)" {
+        $dir = New-DirTeste
+        New-AutorizacaoEm $dir | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $codigo = Invoke-Guard -Cwd $dir -Comando (Expand-Forma 'git -C "<DIR>" push origin main 2>&1 | tail -3' $dir)
+        $codigo | Should -Be 0
+        (Get-LinhasLog $dir).Count | Should -Be 1
+        Remove-DirTeste $dir
+    }
+
+    It "autorizacao no cwd NAO libera push com -C para OUTRO repo (escopo por projeto)" {
+        $cwd = New-DirTeste -Prefixo "eag-cwd"
+        $alvo = New-DirTeste
+        New-AutorizacaoEm $cwd | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $codigo = Invoke-Guard -Cwd $cwd -Comando (Expand-Forma 'git -C "<DIR>" push' $alvo)
+        $codigo | Should -Be 2 -Because "a autorizacao do projeto A nao pode liberar push no projeto B"
+        (Get-LinhasLog $cwd).Count | Should -Be 0
+        (Get-LinhasLog $alvo).Count | Should -Be 0
+        Remove-DirTeste $cwd; Remove-DirTeste $alvo
+    }
+
+    It "push para DOIS repos no mesmo comando bloqueia mesmo com autorizacao nos dois" {
+        $a = New-DirTeste
+        $b = New-DirTeste
+        New-AutorizacaoEm $a | Out-Null
+        New-AutorizacaoEm $b | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $comando = (Expand-Forma 'git -C "<DIR>" push; ' $a) + (Expand-Forma 'git -C "<DIR>" push' $b)
+        $codigo = Invoke-Guard -Cwd $a -Comando $comando
+        $codigo | Should -Be 2 -Because "a autorizacao de um repo nao pode liberar o outro"
+        (Get-LinhasLog $a).Count | Should -Be 0
+        (Get-LinhasLog $b).Count | Should -Be 0
+        Remove-DirTeste $a; Remove-DirTeste $b
+    }
+
+    It "o MESMO repo escrito de duas formas (barra final) conta como UM projeto" {
+        $a = New-DirTeste
+        New-AutorizacaoEm $a | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $comando = (Expand-Forma 'git -C "<DIR>" push; ' $a) + (Expand-Forma 'git -C "<DIR>/" push' $a)
+        $codigo = Invoke-Guard -Cwd $a -Comando $comando
+        $codigo | Should -Be 0 -Because "comparar caminho como texto cru barraria push legitimo (achado R11)"
+        @(Get-LinhasLog $a).Count | Should -Be 1
+        Remove-DirTeste $a
+    }
+
+    It "-C em caminho do Git Bash (/c/...) e -C relativo resolvem para o repo certo" {
+        $dir = New-DirTeste
+        New-AutorizacaoEm $dir | Out-Null
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $posix = '/' + $dir.Substring(0,1).ToLower() + ($dir.Substring(2) -replace '\\', '/')
+        $codigo = Invoke-Guard -Cwd ([IO.Path]::GetTempPath()) -Comando ('git -C "' + $posix + '" push')
+        $codigo | Should -Be 0 -Because "a tool Bash escreve /d/Claud Automations/..."
+        (Get-LinhasLog $dir).Count | Should -Be 1
+
+        $pai = Split-Path -Parent $dir
+        $codigo2 = Invoke-Guard -Cwd $pai -Comando 'git -C "repo com espaco" push'
+        $codigo2 | Should -Be 0 -Because "-C relativo e relativo ao cwd, como o git faz"
+        (Get-LinhasLog $dir).Count | Should -Be 2
+        Remove-DirTeste $dir
+    }
+
+    It "gemeo .sh bloqueia as mesmas formas sem override -- <Forma>" -ForEach @(
+        @{ Forma = 'git -C "/tmp/repo com espaco" push origin main 2>&1 | tail -15' }
+        @{ Forma = "git -C '/tmp/x' push" }
+        @{ Forma = 'git -c http.sslVerify=true push origin main' }
+        @{ Forma = 'git --no-pager push' }
+        @{ Forma = 'git --git-dir "/tmp/x y" --work-tree=/tmp push' }
+        @{ Forma = 'git.exe push origin main' }
+        @{ Forma = 'git push origin main' }
+    ) {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because "sem bash nesta maquina"; return }
+        $stdinFile = Join-Path ([IO.Path]::GetTempPath()) ("eag-sh-" + [Guid]::NewGuid().ToString("N").Substring(0,8) + ".json")
+        $stdin = @{ tool_name = "Bash"; tool_input = @{ command = $Forma } } | ConvertTo-Json -Compress
+        [IO.File]::WriteAllText($stdinFile, $stdin, (New-Object System.Text.UTF8Encoding($false)))
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $proc = Start-Process -FilePath $script:bashExe -ArgumentList @(('"' + $script:hookSh + '"')) `
+            -RedirectStandardInput $stdinFile -RedirectStandardError ($stdinFile + ".err") -NoNewWindow -PassThru -Wait
+        $proc.ExitCode | Should -Be 2 -Because "paridade: o Unix nao pode deixar passar o que o Windows barra"
+        [IO.File]::Delete($stdinFile); [IO.File]::Delete($stdinFile + ".err")
+    }
+
+    It "gemeo .sh NAO bloqueia git local com opcao global -- <Forma>" -ForEach @(
+        @{ Forma = 'git -C "/tmp/repo com espaco" status' }
+        @{ Forma = 'git -C "/tmp/x" log --grep push' }
+        @{ Forma = 'git -c core.pager=cat diff' }
+    ) {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because "sem bash nesta maquina"; return }
+        $stdinFile = Join-Path ([IO.Path]::GetTempPath()) ("eag-sh-" + [Guid]::NewGuid().ToString("N").Substring(0,8) + ".json")
+        $stdin = @{ tool_name = "Bash"; tool_input = @{ command = $Forma } } | ConvertTo-Json -Compress
+        [IO.File]::WriteAllText($stdinFile, $stdin, (New-Object System.Text.UTF8Encoding($false)))
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        $proc = Start-Process -FilePath $script:bashExe -ArgumentList @(('"' + $script:hookSh + '"')) `
+            -RedirectStandardInput $stdinFile -RedirectStandardError ($stdinFile + ".err") -NoNewWindow -PassThru -Wait
+        $proc.ExitCode | Should -Be 0
+        [IO.File]::Delete($stdinFile); [IO.File]::Delete($stdinFile + ".err")
+    }
+}

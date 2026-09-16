@@ -39,13 +39,24 @@ cmd_ini='(^|[;&|(]+[[:space:]]*|&&[[:space:]]*|\|\|[[:space:]]*|(^|[^[:alnum:]_]
 # -- exatamente a divergencia que o changelog afirmava ter fechado. Achado do review.
 cmd_fim='([[:space:]]|[;&|]|$)'
 
+# git com OPCAO GLOBAL entre `git` e o subcomando -- gemeo do $gitPush do .ps1 (Fase 5, 2026-09-16).
+# Ate a 6.61.0 era `git[[:space:]]+push`: `git -C "<dir>" push`, `git -c k=v push`, `git --no-pager
+# push` e `git.exe push` passavam SEM override, nos dois runtimes. Medido nos pushes de 2026-09-16.
+# Valor: citado (pode ter espaco) ou nu. `\\?"` aceita a aspa escapada do JSON cru, que e o que
+# sobra quando falta python3 e o fallback casa contra o stdin inteiro.
+# A resolucao do `-C` para achar o `.percus/` NAO tem gemeo aqui de proposito: este stub nao le
+# autorizacao nenhuma (so PERCUS_EXTERNAL_OVERRIDE), entao todo push reconhecido ja bloqueia.
+git_valor='(\\?"[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]"'"'"';&|]+)'
+git_opcoes='([[:space:]]+(-C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env)[[:space:]]+'"${git_valor}"'|[[:space:]]+-([^[:space:]"'"'"';&|]|"[^"]*"|'"'"'[^'"'"']*'"'"')+)*'
+git_push='git(\.exe)?["'"'"']?'"${git_opcoes}"'[[:space:]]+push'
+
 patterns=(
   # --- interacao publica em plataforma de terceiros ---
   'gh[[:space:]]+(pr|issue)[[:space:]]+comment'
   'gh[[:space:]]+pr[[:space:]]+(close|merge)'
   'gh[[:space:]]+issue[[:space:]]+close'
   'slack-cli'
-  'git[[:space:]]+push'
+  "${git_push}"
   'mailto:'
   # --- publicar: o resultado fica visivel pra quem nao e a gente ---
   #
