@@ -1054,3 +1054,5 @@ num umbrella único. Princípio declarado pelo operador: "reforço = apontamento
 34. ❌ Deployar sem smoke test pós-deploy nem rollback pronto (R24) — janela de risco sem rede de segurança
 35. ❌ Duplicar conteúdo entre docs do canon em vez de apontar pro dono canônico (R25) — cópia diverge e vira erro stale
 36. ❌ Citar arquivo efêmero/externo (`.claude-home/plans/*`, working file) como referência no canon (R25) — link morto fora da máquina de origem
+37. ❌ Avisar usuário interno (operador, equipe) por canal externo (WhatsApp, e-mail, SMS) quando o próprio sistema tem onde avisar (incidente: corolário "perda silenciosa no envio" de `conhecimento/resolver/fail-open-esconde-import-errado.md`) — o canal externo recusa o envio por regra dele e o aviso se perde
+38. ❌ Trava ou teste que confere lista curada à mão em vez de derivar do que existe (arquivos, enum, config) (R12, `conhecimento/resolver/categoria-nova-esquecida-em-lista-de-enumeracao.md`) — nasce membro novo e a trava segue verde
