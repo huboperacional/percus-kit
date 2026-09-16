@@ -57,6 +57,55 @@ Describe "deepseek-review -- fatiamento por arquivo (ponto 23)" {
             return $dir
         }
 
+        # Mesma rota do helper de pre-commit-hash-validity.tests.ps1:26-37 (e do hook): o hash sai do
+        # ARQUIVO escrito por `git diff HEAD --output=`, nunca da saida capturada pelo shell -- diff
+        # com acento produzia hash diferente entre os runtimes (medido 2026-08-19).
+        function Get-DiffHashEsperado {
+            param([string]$RepoDir)
+            $tmp = [IO.Path]::GetTempFileName()
+            try {
+                & git -C $RepoDir diff HEAD --output=$tmp 2>$null | Out-Null
+                $sha = [System.Security.Cryptography.SHA256]::Create()
+                $fs = [IO.File]::OpenRead($tmp)
+                try { return ([BitConverter]::ToString($sha.ComputeHash($fs)) -replace '-','').ToLower().Substring(0,12) }
+                finally { $fs.Dispose(); $sha.Dispose() }
+            } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
+        }
+
+        # Repo da fronteira `^diff --git ` e da classificacao de teste:
+        #   doc.md   -- commitado com uma linha `diff --git` DENTRO de bloco de codigo; a edicao vizinha
+        #               faz essa linha aparecer no diff como CONTEXTO (prefixo espaco);
+        #   doc2.md  -- arquivo novo com a mesma armadilha em linha adicionada (prefixo +);
+        #   core/main.ps1 -- codigo de verdade;
+        #   Z.Tests.ps1, api/test_x.py, lib/tests/util.ps1, web/x.spec.tsx -- as 4 formas de teste.
+        function New-RepoFronteira {
+            $dir = Join-Path $script:tmpBase ("f-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            & git -C $dir init -q 2>$null
+            & git -C $dir config user.email t@t.t 2>$null
+            & git -C $dir config user.name t 2>$null
+            & git -C $dir config core.autocrlf false 2>$null
+            $cerca = [string][char]0x60 * 3  # cerca de bloco de codigo markdown (crase e escape no PS)
+            $docBase = "# titulo`n`n" + $cerca + "text`ndiff --git a/falso.ps1 b/falso.ps1`n" + $cerca + "`nlinha alvo`n"
+            [IO.File]::WriteAllText((Join-Path $dir 'doc.md'), $docBase, $script:u8)
+            & git -C $dir add doc.md 2>$null
+            & git -C $dir @(('com' + 'mit'), '-q', '-m', 'base', '--no-verify') 2>$null
+            [IO.File]::WriteAllText((Join-Path $dir 'doc.md'), $docBase.Replace('linha alvo', 'linha alvo editada'), $script:u8)
+            [IO.File]::WriteAllText((Join-Path $dir 'doc2.md'), "# outro`n`ntext`ndiff --git a/falso2.ps1 b/falso2.ps1`nfim`n", $script:u8)
+            $novos = @(@{ Nome = 'core/main.ps1'; Linhas = 150 }, @{ Nome = 'Z.Tests.ps1'; Linhas = 30 },
+                       @{ Nome = 'api/test_x.py'; Linhas = 30 }, @{ Nome = 'lib/tests/util.ps1'; Linhas = 30 },
+                       @{ Nome = 'web/x.spec.tsx'; Linhas = 30 })
+            foreach ($a in $novos) {
+                $sb = New-Object System.Text.StringBuilder
+                for ($i = 1; $i -le ($a.Linhas - 6); $i++) { [void]$sb.Append("linha $i de $($a.Nome)`n") }
+                $alvo = Join-Path $dir $a.Nome
+                New-Item -ItemType Directory -Force -Path (Split-Path $alvo -Parent) | Out-Null
+                [IO.File]::WriteAllText($alvo, $sb.ToString(), $script:u8)
+            }
+            & git -C $dir add -A 2>$null
+            return $dir
+        }
+
         function Invoke-Revisao {
             param([string]$Rt, [string]$Repo, [string]$Url, [hashtable]$Opc = @{}, [hashtable]$Env = @{})
             $tmpCall = Join-Path $script:tmpBase ("t-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
@@ -288,6 +337,44 @@ Describe "deepseek-review -- fatiamento por arquivo (ponto 23)" {
         [IO.File]::WriteAllText((Join-Path $r.Rev 'latest.jsonl'), '{"findings":"","fatias":3}', $script:u8)
         $payload | & pwsh -NoProfile -File $script:hookPs1 2>$null | Out-Null
         $LASTEXITCODE | Should -Be 2
+    }
+
+    It "<Rt>: com 3 fatias, o d-<hash> e o hash do git diff HEAD INTEIRO (nao o de uma fatia)" -ForEach $script:runtimes {
+        # Sem este caso, uma regressao SIMETRICA (as duas camadas hasheando a fatia) ficaria verde:
+        # os outros casos so contam "1 marcador d-*" e a paridade compara ps1 x sh, ambos fatiados.
+        $r = Invoke-Caso -Rt $Rt -Arquivos $script:quatro -Roteiro @((New-Ok 10), (New-Ok 20), (New-Ok 30))
+        $r.Code | Should -Be 0 -Because $r.Err
+        $r.Requisicoes | Should -Be 3 -Because "o cenario tem de estar FATIADO para o caso valer"
+        (Get-Latest $r).fatias | Should -Be 3
+        $esp = Get-DiffHashEsperado $r.Repo
+        $esp | Should -Match '^[0-9a-f]{12}$'
+        $esp | Should -Not -Be 'e3b0c44298fc' -Because "anti-vacuidade: hash do diff vazio nao vale como prova"
+        $marcadoresHash = @($r.Marcadores | Where-Object { $_ -like 'd-*' })
+        $marcadoresHash.Count | Should -Be 1
+        $marcadoresHash[0] | Should -BeExactly "d-$esp.jsonl" -Because "o marcador tem de ser o hash do diff inteiro, nao o da 1a fatia"
+        # E o conteudo dele e o mesmo latest.jsonl fatiado (findings das 3 fatias).
+        $jHash = [IO.File]::ReadAllText((Join-Path $r.Rev $marcadoresHash[0]), $script:u8) | ConvertFrom-Json
+        $jHash.fatias | Should -Be 3
+    }
+
+    It "<Rt>: diff --git dentro de bloco de codigo .md nao abre fatia, e /tests/, test_*.py, *.spec.tsx e *.Tests.ps1 vao depois do codigo" -ForEach $script:runtimes {
+        $repo = New-RepoFronteira
+        $r = Invoke-Caso -Rt $Rt -Repo $repo -Roteiro @((New-Ok 10), (New-Ok 20)) -Opc @{ MaxLinhasFatia = 200 }
+        $r.Code | Should -Be 0 -Because $r.Err
+        $r.Requisicoes | Should -Be 2
+        $sis1 = $r.Corpos[0].messages[0].content
+        $sis2 = $r.Corpos[1].messages[0].content
+        $sis1 | Should -Match ([regex]::Escape('(arquivos: core/main.ps1, doc.md, doc2.md)')) -Because "fronteira: nenhuma linha diff --git com prefixo abre arquivo novo"
+        $sis2 | Should -Match ([regex]::Escape('(arquivos: Z.Tests.ps1, api/test_x.py, lib/tests/util.ps1, web/x.spec.tsx)')) -Because "as 4 formas de teste na ultima fatia"
+        foreach ($s in @($sis1, $sis2)) { $s | Should -Not -Match 'falso' -Because "falso.ps1/falso2.ps1 nao sao arquivos do diff" }
+        # As duas armadilhas estao DENTRO da fatia de codigo, com prefixo, e nao foram partidas.
+        $u1 = $r.Corpos[0].messages[1].content
+        $u1 | Should -Match '(?m)^ diff --git a/falso\.ps1 b/falso\.ps1$' -Because "linha de contexto (prefixo espaco)"
+        $u1 | Should -Match '(?m)^\+diff --git a/falso2\.ps1 b/falso2\.ps1$' -Because "linha adicionada (prefixo +)"
+        [regex]::Matches($u1, '(?m)^diff --git ').Count | Should -Be 3 -Because "so os 3 cabecalhos de verdade da fatia de codigo"
+        $u2 = $r.Corpos[1].messages[1].content
+        [regex]::Matches($u2, '(?m)^diff --git ').Count | Should -Be 4
+        $u2 | Should -Not -Match '(?m)^diff --git a/core/main\.ps1' -Because "fatia de teste nunca mistura codigo"
     }
 
     It "paridade: .ps1 e .sh no mesmo diff fatiado gravam o mesmo d-<hash> e os mesmos achados/usage" {
