@@ -12,10 +12,31 @@ STDIN=$(cat || true)
 [[ -z "$STDIN" ]] && exit 0
 [[ -n "$PERCUS_HOOKS_DISABLED" ]] && exit 0
 
-# Extrai o comando do JSON do hook. Fallback sem python3: usa o stdin cru (fail-closed -- ainda casa
-# os padroes perigosos abaixo, so nao isola o campo command).
-command=$(printf '%s' "$STDIN" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_input',{}).get('command',''))" 2>/dev/null)
-[[ -z "$command" ]] && command="$STDIN"
+# Entrada acima de 64 KB com `push`: bloqueia antes de qualquer parse (rodada 3, gemeo do .ps1).
+# Medido: 1 MB levava este stub a 19 s e o dispatcher .sh a >90 s -- timeout de hook nao bloqueia.
+if [[ ${#STDIN} -gt 65536 && "${STDIN,,}" == *push* ]]; then
+  echo "[percus:hook external-action-guard] BLOCK (R20): comando acima de 64 KB com 'push' -- nao e analisado (fail-closed)." >&2
+  echo "  Proxima acao: rode o push SOZINHO, na forma simples: git -C \"<caminho absoluto>\" push <remoto> <branch>" >&2
+  exit 2
+fi
+
+# Extrai o comando do JSON do hook. Com python3, JSON invalido BLOQUEIA (gemeo do .ps1, rodada 3) e
+# JSON sem `command` libera. Sem python3: fallback no stdin cru (fail-closed -- ainda casa os padroes).
+if command -v python3 >/dev/null 2>&1; then
+  command=$(printf '%s' "$STDIN" | python3 -c "import sys,json
+d=json.load(sys.stdin)
+t=d.get('tool_input',{}) if isinstance(d,dict) else {}
+c=t.get('command','') if isinstance(t,dict) else ''
+sys.stdout.write(c if isinstance(c,str) else str(c))" 2>/dev/null)
+  if [[ $? -ne 0 ]]; then
+    echo "[percus:hook external-action-guard] BLOCK (R20): entrada do hook nao e JSON valido -- nada pode ser avaliado (fail-closed)." >&2
+    echo "  Proxima acao: repita o comando; se persistir, PERCUS_DISPATCHER_BYPASS=1 mostra a cadeia antiga." >&2
+    exit 2
+  fi
+  [[ -z "$command" ]] && exit 0
+else
+  command="$STDIN"
+fi
 
 # Padroes de acao externa publica (espelham external-action-guard.ps1)
 #
@@ -65,15 +86,26 @@ if [[ "$command" == "$STDIN" ]]; then
   command="${command//\\t/ }"
   command="${command//\\r/ }"
 fi
-bruto_min=$(printf '%s' "$command" | tr '[:upper:]' '[:lower:]')
+bruto_min="${command,,}"
 normal=$(normaliza "$command")
-normal_min=$(printf '%s' "$normal" | tr '[:upper:]' '[:lower:]')
+normal_min="${normal,,}"
 fr='[^a-z0-9_]'
 re_git="(^|${fr})git(\.exe)?(${fr}|\$)"
-re_push="(^|${fr})(push|send-pack)(${fr}|\$)"
+# Rodada 3 (gemeo do .ps1): `push` so como TOKEN delimitado (espaco, aspa, =, separador, chave);
+# send-pack/http-push como substring. `pre-push.template.sh`, `push-x`, `origin/push` nao contam.
+delim=$'[[:space:]"\'=;&|(){}<>`,]'
+re_push="(^|${delim})push(${delim}|\$)|send-pack|http-push"
 re_gh="(^|${fr})gh(\.exe)?(${fr}|\$)"
 re_gh_acao="(^|${fr})(comment|close|merge|create|sync)(${fr}|\$)"
 tem_token() { [[ "$bruto_min" =~ $1 ]] || [[ "$normal_min" =~ $1 ]]; }
+# `git stash push` e `@{push}` nunca exigem autorizacao: saem antes de procurar o token push.
+tira_push_local() { printf '%s' "$1" | sed -E "s/@\\{push\\}/@{u}/g; s/(^|[^a-z0-9_-])stash([[:space:]]+)push(${delim}|\$)/\\1stash\\2salvar\\3/g"; }
+push_bruto=$(tira_push_local "$bruto_min")
+push_normal=$(tira_push_local "$normal_min")
+tem_push() { [[ "$push_bruto" =~ $re_push ]] || [[ "$push_normal" =~ $re_push ]]; }
+# Mensagem de commit/tag (-m "...", --message=, -F arq) nao e opcao: sai antes dos testes de bypass.
+sem_msg=$(printf '%s' "$command" | sed -E "s/(^|[^A-Za-z0-9_-])(-m|--message|-F|--file)(=|[[:space:]]+)(\"[^\"]*\"|'[^']*'|[^[:space:]]+)/\\1 /g")
+sem_msg_min="${sem_msg,,}"
 
 patterns=(
   # --- interacao publica em plataforma de terceiros (git/gh: deteccao larga acima) ---
@@ -142,7 +174,29 @@ http_mutation=(
 )
 
 is_external=0
-if tem_token "$re_git" && tem_token "$re_push"; then is_external=1; fi
+eh_git_push=0
+if tem_token "$re_git" && tem_push; then is_external=1; eh_git_push=1; fi
+# Atalhos que desligam a camada 2 SEM push no texto (gemeo do .ps1, rodada 3): `git config ... core.hooksPath`
+# (--unset reativa: passa) e alterar/remover/renomear algo em .git/hooks (ler e livre).
+desliga_hook=""
+# Por TRECHO: --unset so vale no mesmo `config` (achado R11).
+re_cfg_hp='(^|[^a-z0-9_-])config([^a-z0-9_-].*)?hookspath'
+re_cfg_unset='(^|[^a-z0-9_-])config([^a-z0-9_-].*)?--unset'
+if tem_token "$re_git"; then
+  while IFS= read -r trecho_cfg; do
+    if [[ "$trecho_cfg" =~ $re_cfg_hp ]] && ! [[ "$trecho_cfg" =~ $re_cfg_unset ]]; then
+      desliga_hook="$desliga_hook git-config-core.hooksPath"; break
+    fi
+  done <<< "$(printf '%s\n' "$sem_msg_min" | tr ';|&()\r' '\n\n\n\n\n\n')"
+fi
+re_hooksdir='\.git[\\/]+hooks'
+re_mexe='(^|[^a-z0-9_-])(rm|rmdir|del|erase|rd|ri|remove-item|mv|move|move-item|mi|ren|rename|rename-item|rni|chmod|cp|copy|copy-item|cpi|set-content|sc|out-file|add-content|tee|ln|truncate)([^a-z0-9_-]|$)'
+if [[ "$sem_msg_min" =~ $re_hooksdir ]]; then
+  sem_redir="${sem_msg_min//[12]>&[12]/}"
+  sem_redir="${sem_redir//>&[12]/}"
+  if [[ "$sem_msg_min" =~ $re_mexe || "$sem_redir" == *'>'* ]]; then desliga_hook="$desliga_hook alterar-.git/hooks"; fi
+fi
+[[ -n "$desliga_hook" ]] && is_external=1
 if tem_token "$re_gh" && tem_token "$re_gh_acao"; then is_external=1; fi
 if [[ "$is_external" -eq 0 ]]; then
   for p in "${patterns[@]}"; do
@@ -170,31 +224,55 @@ fi
 # Formas que DESLIGAM o hook pre-push do git (camada 2, f440c4d): bloqueiam SEMPRE, antes do
 # override -- gemeo do bloco do .ps1. --no-v (abreviacao de --no-verify), -n no trecho do git,
 # core.hooksPath, GIT_CONFIG*, include.path/includeIf.
-if tem_token "$re_git" && tem_token "$re_push"; then
-  tudo="${bruto_min}"$'\n'"${normal_min}"
+if [[ -n "$desliga_hook" ]]; then
+  {
+    echo ""
+    echo "[percus:hook external-action-guard] BLOCK (R20):"
+    echo "  Comando: $command"
+    echo "  Razao:${desliga_hook}: essas formas desligam o hook pre-push do git (camada 2) e NAO sao aceitas,"
+    echo "  nem com PERCUS_EXTERNAL_OVERRIDE."
+    echo "  Proxima acao: nao mexa no hook. Se o pre-push barrou um envio, leia a mensagem dele e peca ao operador"
+    echo "  a autorizacao para o push na forma simples: git -C \"<caminho absoluto>\" push <remoto> <branch>"
+    echo ""
+  } >&2
+  exit 2
+fi
+
+if [[ "$eh_git_push" -eq 1 ]]; then
+  normal_sem_msg=$(normaliza "$sem_msg")
+  tudo="${sem_msg_min}"$'\n'"${normal_sem_msg,,}"
   bypass=""
-  [[ "$tudo" == *--no-v* ]] && bypass="$bypass --no-verify"
-  [[ "$tudo" == *hookspath* ]] && bypass="$bypass hooksPath"
-  [[ "$tudo" == *--config-env* ]] && bypass="$bypass --config-env"
-  [[ "$tudo" == *git_config* ]] && bypass="$bypass GIT_CONFIG*"
-  [[ "$tudo" == *include.path* || "$tudo" == *includeif* ]] && bypass="$bypass include.path/includeIf"
-  re_home='xdg_config_home|home[[:space:]]*='
+  [[ "$tudo" == *send-pack* || "$tudo" == *http-push* ]] && bypass="$bypass send-pack/http-push(use-git-push)"
+  re_nov='(^|[^a-z0-9_-])--no-v'
+  [[ "$tudo" =~ $re_nov ]] && bypass="$bypass --no-verify"
+  re_hp='(^|[^a-z0-9_/\\-])hookspath([^a-z0-9_.-]|$)'
+  [[ "$tudo" =~ $re_hp ]] && bypass="$bypass hooksPath"
+  re_ce='(^|[^a-z0-9_-])--config-env([^a-z0-9_-]|$)'
+  [[ "$tudo" =~ $re_ce ]] && bypass="$bypass --config-env"
+  re_gc='(^|[^a-z0-9_])git_config[a-z0-9_]*[[:space:]]*='
+  [[ "$tudo" =~ $re_gc ]] && bypass="$bypass GIT_CONFIG*"
+  re_inc='(^|[^a-z0-9_/\\-])include(\.path|if\.[^[:space:]=]*)[[:space:]]*='
+  [[ "$tudo" =~ $re_inc ]] && bypass="$bypass include.path/includeIf"
+  re_home='(^|[^a-z0-9_])(xdg_config_home|home)[[:space:]]*='
   [[ "$tudo" =~ $re_home ]] && bypass="$bypass HOME/XDG_CONFIG_HOME"
   re_copia='(^|[^a-z0-9_-])(cp|robocopy|xcopy|copy|copy-item|cpi|rsync|mv|move|move-item|tar)([^a-z0-9_-]|$)'
   re_dotgit='\.git([^a-z0-9_]|$)'
   [[ "$tudo" =~ $re_copia ]] && [[ "$tudo" =~ $re_dotgit ]] && bypass="$bypass copia-do-.git"
+  # -n so quando push e o SUBCOMANDO do git (git log -n, git grep -n push, tail -n nao contam).
   re_n='(^|[^A-Za-z0-9_-])-[A-Za-z]*n[A-Za-z]*([^A-Za-z0-9_-]|$)'
+  re_subpush='(^|[[:space:]])([^[:space:]]*[\\/])?git(\.exe)?([[:space:]]+-c[[:space:]]+("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)|[[:space:]]+--?[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)'
   while IFS= read -r trecho; do
-    trecho_min=$(printf '%s' "$trecho" | tr '[:upper:]' '[:lower:]')
-    if [[ "$trecho_min" =~ $re_git ]] && [[ "$trecho" =~ $re_n ]]; then bypass="$bypass -n"; break; fi
-  done < <(printf '%s\n%s\n' "$command" "$normal" | tr ';|&()\r' '\n\n\n\n\n\n')
+    trecho_min="${trecho,,}"
+    if [[ "$trecho_min" =~ $re_subpush ]] && [[ "$trecho" =~ $re_n ]]; then bypass="$bypass -n"; break; fi
+  done <<< "$(printf '%s\n%s\n' "$sem_msg" "$normal_sem_msg" | tr ';|&()\r' '\n\n\n\n\n\n')"
   if [[ -n "$bypass" ]]; then
     {
       echo ""
       echo "[percus:hook external-action-guard] BLOCK (R20):"
       echo "  Comando: $command"
       echo "  Razao:${bypass}: essas formas desligam o hook pre-push do git (camada 2) e NAO sao aceitas,"
-      echo "  nem com PERCUS_EXTERNAL_OVERRIDE. Rode sem elas: git -C \"<caminho absoluto>\" push <remoto> <branch>"
+      echo "  nem com PERCUS_EXTERNAL_OVERRIDE."
+      echo "  Proxima acao: rode sem elas, na forma simples: git -C \"<caminho absoluto>\" push <remoto> <branch>"
       echo ""
     } >&2
     exit 2
@@ -213,11 +291,16 @@ if tem_token "$re_git" || tem_token "$re_gh"; then
   [[ "$bruto_min" =~ $re_var ]] && ambiguo="$ambiguo %VAR%"
   [[ "$command" == *'`'* ]] && ambiguo="$ambiguo crase"
   [[ "$bruto_min" == *--git-dir* || "$bruto_min" == *--work-tree* || "$bruto_min" == *git_dir* || "$bruto_min" == *git_work_tree* ]] && ambiguo="$ambiguo --git-dir"
+  # Parenteses/subexpressao e splatting fora de aspas (tool PowerShell), gemeo do .ps1 (rodada 3).
+  fora_aspas=$(printf '%s' "$command" | sed -E "s/\"[^\"]*\"|'[^']*'/\"\"/g")
+  [[ "$fora_aspas" == *'('* || "$fora_aspas" == *')'* ]] && ambiguo="$ambiguo parenteses"
+  re_splat='(^|[^a-z0-9_@])@[a-z_]'
+  [[ "${fora_aspas,,}" =~ $re_splat ]] && ambiguo="$ambiguo splatting"
   n_trechos=0
   while IFS= read -r trecho; do
     trecho_min=$(printf '%s' "$trecho" | tr '[:upper:]' '[:lower:]')
     if [[ "$trecho_min" =~ $re_git ]] || [[ "$trecho_min" =~ $re_gh ]]; then n_trechos=$((n_trechos + 1)); fi
-  done < <(printf '%s\n' "$command" | tr ';|&()\r' '\n\n\n\n\n\n')
+  done <<< "$(printf '%s\n' "$command" | tr ';|&()\r' '\n\n\n\n\n\n')"
   [[ "$n_trechos" -gt 1 ]] && ambiguo="$ambiguo $n_trechos-trechos"
   if [[ -n "$ambiguo" && "$PERCUS_EXTERNAL_OVERRIDE" == "1" ]]; then
     {

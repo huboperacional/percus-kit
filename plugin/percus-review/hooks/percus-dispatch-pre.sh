@@ -76,6 +76,18 @@ kb() {
 [ "${PERCUS_DISPATCHER_BYPASS:-}" = "1" ] && legado
 [ -f "$HDIR/gatilhos-pre.txt" ] || legado
 
+# Substring sem caixa (os dois lados ja vem em minuscula). O `case *"g"*` do bash e quadratico em
+# texto grande: medido na Fase 5 (rodada 3), 300 KB levavam ~50 s so na triagem e 1 MB passava de
+# 90 s -- e timeout de hook NAO bloqueia, entao lento = fail-open. Acima de 32 KB (o mesmo corte do
+# .cmd) usa `grep -F`, linear; abaixo fica o `case`, sem custo de processo.
+contem() {
+  if [ "${#1}" -lt 32000 ]; then
+    case "$1" in *"$2"*) return 0 ;; esac
+    return 1
+  fi
+  printf '%s' "$1" | grep -qF -- "$2"
+}
+
 # --- Triagem: alguem PODERIA disparar? Casa contra o JSON inteiro, sem caixa. -----
 BRUTO_LC="${BRUTO,,}"
 TEM_GATILHO=0
@@ -84,7 +96,7 @@ while IFS= read -r g || [ -n "$g" ]; do
   g="${g%$'\r'}"
   [ -z "${g//[[:space:]]/}" ] && continue
   TEM_GATILHO=1
-  case "$BRUTO_LC" in *"${g,,}"*) CASOU=1; break ;; esac
+  if contem "$BRUTO_LC" "${g,,}"; then CASOU=1; break; fi
 done < "$HDIR/gatilhos-pre.txt"
 # Arquivo sem gatilho nenhum e o analogo do findstr com erro: fail-OPEN, roda a camada 2.
 [ "$TEM_GATILHO" -eq 1 ] && [ "$CASOU" -eq 0 ] && exit 0
@@ -95,7 +107,9 @@ if ! command -v jq >/dev/null 2>&1; then
   legado
 fi
 
-[ -z "${BRUTO//[[:space:]]/}" ] && exit 0
+# `[[ =~ ]]` e nao `${BRUTO//[[:space:]]/}`: a substituicao e quadratica e custava ~45 s com 300 KB
+# (medido na Fase 5, rodada 3) -- lento = timeout = fail-open.
+[[ "$BRUTO" =~ [^[:space:]] ]] || exit 0
 
 if ! printf '%s' "$BRUTO" | jq empty >/dev/null 2>&1; then
   echo "[percus:dispatch-pre] BLOCK: payload nao parseia como JSON ($(kb ${#BRUTO}) KB)." >&2
@@ -164,7 +178,7 @@ for linha in "${CHECKS[@]}"; do
     casou=0
     IFS=$'\x1f' read -r -a lista <<< "$gats"
     for g in "${lista[@]}"; do
-      case "$COMANDO_LC" in *"${g,,}"*) casou=1; break ;; esac
+      if contem "$COMANDO_LC" "${g,,}"; then casou=1; break; fi
     done
     [ "$casou" -eq 0 ] && continue
   fi

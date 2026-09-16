@@ -68,6 +68,14 @@ if %TAM% LSS 200 goto :legado
 
 if not exist "%PDIR%gatilhos-pre.txt" goto :legado
 
+REM --- Payload grande vai direto para a camada 2 (Fase 5, rodada 3). Medido: com ~300 KB a captura
+REM     `findstr "^"` fica em ~45 KB numa linha so, a triagem acusa "linha muito longa", devolve
+REM     rc=1 e a cadeia saia 0 SEM rodar check nenhum -- um push no comeco passava. Acima de 32 KB
+REM     a camada 2 decide: JSON truncado falha alto, e o guard barra >64 KB com push.
+set "PSIZE=0"
+for %%A in ("%PAYLOAD%") do if not "%%~zA"=="" set "PSIZE=%%~zA"
+if %PSIZE% GEQ 32000 goto :camada2
+
 REM --- Triagem: UM findstr sobre a uniao dos gatilhos de todos os checks.
 REM     /I e OBRIGATORIO: o -match do PowerShell e case-insensitive, entao um
 REM     payload em MAIUSCULA dispara os checks mas nao casaria a triagem sem /I.

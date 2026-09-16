@@ -1,6 +1,11 @@
 commit
 push
-git
+send-pack
+http-push
+hookspath
+no-verify
+.git/hooks
+hooks
 gh
 slack
 mailto
