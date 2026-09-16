@@ -48,7 +48,8 @@ if errorlevel 1 (
   goto :legado_sem_payload
 )
 set "PAYLOAD=%PBOX%\p.json"
-findstr "^" > "%PAYLOAD%"
+set "CAPERR=%PBOX%\cap.err"
+findstr "^" > "%PAYLOAD%" 2> "%CAPERR%"
 
 REM     Se o payload NAO existe (TEMP inexistente, sem permissao, disco cheio), o findstr
 REM     da triagem devolveria rc=1 -- indistinguivel de "nenhum gatilho casou" -- e a
@@ -75,6 +76,16 @@ REM     a camada 2 decide: JSON truncado falha alto, e o guard barra >64 KB com 
 set "PSIZE=0"
 for %%A in ("%PAYLOAD%") do if not "%%~zA"=="" set "PSIZE=%%~zA"
 if %PSIZE% GEQ 32000 goto :camada2
+
+REM --- Captura que reclamou vai direto para a camada 2 (Fase 5, rodada 4). Medido: com linha longa o
+REM     `findstr "^"` JOGA FORA blocos de 131 072 bytes, guarda so o resto e ainda sai 0 -- o unico
+REM     sinal e o "linha muito longa" no stderr. Com resto < 32 KB o corte acima nao pegava: a triagem
+REM     olhava so o FIM do payload e um commit/push no comeco passava calado (135, 147, 150, 391 KB).
+REM     stderr sumido ou nao vazio = captura suspeita = camada 2, que falha alto no JSON truncado.
+if not exist "%CAPERR%" goto :camada2
+set "CESIZE=0"
+for %%A in ("%CAPERR%") do if not "%%~zA"=="" set "CESIZE=%%~zA"
+if not "%CESIZE%"=="0" goto :camada2
 
 REM --- Triagem: UM findstr sobre a uniao dos gatilhos de todos os checks.
 REM     /I e OBRIGATORIO: o -match do PowerShell e case-insensitive, entao um

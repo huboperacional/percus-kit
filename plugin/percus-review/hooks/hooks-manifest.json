@@ -114,7 +114,6 @@
         "http-push",
         "hookspath",
         "no-verify",
-        ".git/hooks",
         "hooks",
         "mailto",
         "wrangler",

@@ -80,26 +80,37 @@ kb() {
 # texto grande: medido na Fase 5 (rodada 3), 300 KB levavam ~50 s so na triagem e 1 MB passava de
 # 90 s -- e timeout de hook NAO bloqueia, entao lento = fail-open. Acima de 32 KB (o mesmo corte do
 # .cmd) usa `grep -F`, linear; abaixo fica o `case`, sem custo de processo.
-contem() {
-  if [ "${#1}" -lt 32000 ]; then
-    case "$1" in *"$2"*) return 0 ;; esac
+# contem_algum TEXTO G1 G2 ...: verdade se QUALQUER gatilho e substring. No ramo grande e UM processo
+# so, com um `-e` por gatilho (rodada 4): um `grep` por gatilho custava ~50 ms cada no Windows e levou
+# o comando de 40 KB sem gatilho de 147 para 989 ms. Gatilho vazio casaria tudo nos dois ramos (como antes);
+# os chamadores ja o filtram.
+contem_algum() {
+  local texto="$1" g
+  shift
+  [ "$#" -eq 0 ] && return 1
+  if [ "${#texto}" -lt 32000 ]; then
+    for g in "$@"; do
+      case "$texto" in *"$g"*) return 0 ;; esac
+    done
     return 1
   fi
-  printf '%s' "$1" | grep -qF -- "$2"
+  local args=()
+  for g in "$@"; do args+=(-e "$g"); done
+  # Pipe e NAO here-string: o here-string poupa ~20 ms, mas grava em $TMPDIR, e TMPDIR indisponivel
+  # daria stdin vazio -> "nenhum gatilho" -> exit 0 calado (achado do R11, rodada 4).
+  printf '%s' "$texto" | grep -qF "${args[@]}"
 }
 
 # --- Triagem: alguem PODERIA disparar? Casa contra o JSON inteiro, sem caixa. -----
 BRUTO_LC="${BRUTO,,}"
-TEM_GATILHO=0
-CASOU=0
+GATILHOS=()
 while IFS= read -r g || [ -n "$g" ]; do
   g="${g%$'\r'}"
   [ -z "${g//[[:space:]]/}" ] && continue
-  TEM_GATILHO=1
-  if contem "$BRUTO_LC" "${g,,}"; then CASOU=1; break; fi
+  GATILHOS+=("${g,,}")
 done < "$HDIR/gatilhos-pre.txt"
 # Arquivo sem gatilho nenhum e o analogo do findstr com erro: fail-OPEN, roda a camada 2.
-[ "$TEM_GATILHO" -eq 1 ] && [ "$CASOU" -eq 0 ] && exit 0
+[ "${#GATILHOS[@]}" -gt 0 ] && ! contem_algum "$BRUTO_LC" "${GATILHOS[@]}" && exit 0
 
 # --- Decisao precisa (a camada 2 do .ps1) ---------------------------------------
 if ! command -v jq >/dev/null 2>&1; then
@@ -175,12 +186,8 @@ for linha in "${CHECKS[@]}"; do
 
   # Sem gatilho declarado => roda sempre (default seguro). Com gatilho, casa so o COMANDO.
   if [ -n "$gats" ]; then
-    casou=0
     IFS=$'\x1f' read -r -a lista <<< "$gats"
-    for g in "${lista[@]}"; do
-      if contem "$COMANDO_LC" "${g,,}"; then casou=1; break; fi
-    done
-    [ "$casou" -eq 0 ] && continue
+    contem_algum "$COMANDO_LC" "${lista[@],,}" || continue
   fi
 
   if [ "$(wc -c < "$script")" -lt 200 ]; then

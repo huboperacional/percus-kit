@@ -924,9 +924,13 @@ BeforeAll {
         return $Forma.Replace('<BIG100>', ('a ' * 50000)).Replace('<BIG300>', ('a ' * 150000)).Replace('<AESC>', ($fa -replace ' ', '\ ')).Replace('<APOSIX>', $posix).Replace('<AWIN>', $Lab.A).Replace('<A>', $fa).Replace('<B>', $fb).Replace('<LF>', "`n").Replace('<TAB>', "`t")
     }
     # Pelo dispatcher de cada runtime, com o payload completo do PreToolUse e sem PERCUS_CANON_DIR.
+    function New-JsonR3 {
+        param([string]$Cwd, [string]$Comando)
+        return ([ordered]@{ session_id = "r3"; transcript_path = "C:\t\r3.jsonl"; cwd = $Cwd; permission_mode = "default"; hook_event_name = "PreToolUse"; tool_name = "Bash"; tool_input = [ordered]@{ command = $Comando; description = "Executa caso" } } | ConvertTo-Json -Compress)
+    }
     function Invoke-DispatcherR3 {
         param([string]$Runtime, [string]$Cwd, [string]$Comando, $Lab)
-        $json = [ordered]@{ session_id = "r3"; transcript_path = "C:\t\r3.jsonl"; cwd = $Cwd; permission_mode = "default"; hook_event_name = "PreToolUse"; tool_name = "Bash"; tool_input = [ordered]@{ command = $Comando; description = "Executa caso" } } | ConvertTo-Json -Compress
+        $json = New-JsonR3 -Cwd $Cwd -Comando $Comando
         $entrada = Join-Path $Lab.Lab ("in-" + [Guid]::NewGuid().ToString("N").Substring(0,8) + ".json")
         [IO.File]::WriteAllText($entrada, $json, (New-Object System.Text.UTF8Encoding($false)))
         $erro = $entrada + ".err"
@@ -1005,6 +1009,39 @@ Describe "external-action-guard -- matriz pelo dispatcher [sh: percus-dispatch-p
     It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosPorRuntime['sh'] {
         if (-not $script:bashR3) { Set-ItResult -Skipped -Because "sem bash"; return }
         Test-CasoR3 -Runtime $Runtime -Esperado $Esperado -MsgPrePush $MsgPrePush -QualquerBloqueio $QualquerBloqueio -Auth $Auth -Cwd $Cwd -Forma $Forma -Lab $script:labSh
+    }
+}
+
+# Rodada 4: a captura `findstr "^"` do .cmd JOGA FORA blocos de 131 072 bytes em linha longa e sai 0.
+# Com resto < 32 KB a triagem via so o FIM do payload: commit/push no COMECO saia 0 sem check nenhum.
+# Tamanhos exatos do payload (KiB) com `bytes mod 131072 < 32000` -- a premissa e conferida no It.
+# Nunca calado: ou um check rodou (debug "checks rodados: N>0"), ou o dispatcher bloqueou. Push: sempre 2.
+Describe "dispatcher -- commit/push no inicio de payload grande com resto de captura < 32 KB" {
+    BeforeAll { $script:labR4 = New-LabR3 }
+    AfterAll { if (Test-Path -LiteralPath $script:labR4.Lab) { [IO.Directory]::Delete($script:labR4.Lab, $true) } }
+    It "[<Runtime>] <Tipo> no inicio, <KiB> KiB" -ForEach @(
+        foreach ($rtR4 in 'ps51', 'pwsh', 'sh') { foreach ($kibR4 in 135, 147, 150, 391) { foreach ($tipoR4 in 'commit', 'push') {
+            @{ Runtime = $rtR4; KiB = $kibR4; Tipo = $tipoR4 }
+        } } }
+    ) {
+        if ($Runtime -eq 'ps51' -and -not $script:ps51R3) { Set-ItResult -Skipped -Because "sem powershell.exe"; return }
+        if ($Runtime -eq 'sh' -and -not $script:bashR3) { Set-ItResult -Skipped -Because "sem bash"; return }
+        $cwdR4 = $script:labR4.E
+        $prefixo = $(if ($Tipo -eq 'commit') { "git " + ('com' + 'mit') + " -m `"x`" && echo `"" } else { "git " + ('pu' + 'sh') + " origin main && echo `"" })
+        $alvo = $KiB * 1024
+        $vazio = [Text.Encoding]::UTF8.GetByteCount((New-JsonR3 -Cwd $cwdR4 -Comando ($prefixo + '"')))
+        $comando = $prefixo + ('a' * ($alvo - $vazio)) + '"'
+        [Text.Encoding]::UTF8.GetByteCount((New-JsonR3 -Cwd $cwdR4 -Comando $comando)) | Should -Be $alvo
+        ($alvo % 131072) | Should -BeLessThan 32000 -Because "o caso so vale com resto de captura abaixo do corte de 32 KB"
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        Clear-EstadoR3 $script:labR4
+        $env:PERCUS_DISPATCH_DEBUG = '1'
+        try { $r = Invoke-DispatcherR3 -Runtime $Runtime -Cwd $cwdR4 -Comando $comando -Lab $script:labR4 }
+        finally { Remove-Item env:PERCUS_DISPATCH_DEBUG -ErrorAction SilentlyContinue }
+        $r.Codigo | Should -Not -Be -1 -Because "timeout de hook NAO bloqueia: lento e fail-open"
+        $rodou = $r.Stderr -match 'checks rodados: [1-9]'
+        ($rodou -or $r.Codigo -eq 2) | Should -BeTrue -Because "saiu $($r.Codigo) sem check nenhum: $($r.Stderr)"
+        if ($Tipo -eq 'push') { $r.Codigo | Should -Be 2 -Because "stderr: $($r.Stderr)" }
     }
 }
 
