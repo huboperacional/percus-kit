@@ -1,16 +1,17 @@
 ﻿#requires -Version 5.1
-# MDS, peca 11: anti-padroes #10 (avisar usuario interno por canal externo) e #14 (trava que confere
-# lista curada) -- numeracao da lista MDS, nao a do canon -- entram ao fim do "Resumo dos anti-padroes
-# mais comuns" de 01_REGRAS_INEGOCIAVEIS.md, com a numeracao que o proprio resumo tiver.
+# MDS, peca 11: o anti-padrao #14 (trava que confere lista curada) -- numeracao da lista MDS, nao a do
+# canon -- entra ao fim do "Resumo dos anti-padroes mais comuns" de 01_REGRAS_INEGOCIAVEIS.md, com a
+# numeracao que o proprio resumo tiver. O #10 (avisar usuario interno por canal externo) foi DESCARTADO
+# na revisao; a guarda do descarte e heuristica (casa a expressao "canal externo" do MDS), nao trava a classe.
 #
 # O que esta guarda prende:
 # - a numeracao do resumo e continua (1..N sem buraco nem repeticao), com N DERIVADO do arquivo --
 #   escrever "36" ou "38" fixo aqui seria cometer o proprio #14;
 # - o item da lista curada aponta R12 e um verbete de conhecimento/resolver que existe;
-# - o item do canal externo, se presente, aponta um verbete que existe;
+# - nenhum item proibe aviso interno por canal externo (descarte do #10);
 # - todo caminho entre crases nos itens novos existe na raiz do kit (ponteiro morto nao vale).
 
-Describe "anti-padroes MDS #10 e #14 no resumo do canon" {
+Describe "anti-padroes MDS no resumo do canon (#14 entra, #10 descartado)" {
 
     BeforeAll {
         $script:raiz = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
@@ -81,16 +82,17 @@ Describe "anti-padroes MDS #10 e #14 no resumo do canon" {
         }
     }
 
-    It "o item do canal externo (#10), se presente, e unico e aponta um verbete que existe" {
-        $script:itemCanal.Count | Should -BeLessOrEqual 1
-        foreach ($item in $script:itemCanal) {
-            $caminhos = @(Get-CaminhosCrase $item.Texto | Where-Object { $_ -like 'conhecimento/resolver/*.md' })
-            $caminhos.Count | Should -BeGreaterThan 0 -Because "anti-padrao entra com a fonte do incidente, nao por importacao"
-        }
+    It "o #10 do MDS (aviso interno por canal externo) continua descartado: nenhum item do resumo o proibe" {
+        # Descarte da revisao do Lote C: o unico incidente achado ensina falha silenciosa de envio (MDS #5),
+        # nao canal errado, e o projeto de origem manteve o canal externo para o operador por decisao propria.
+        # Voltar com o item exige incidente da classe certa -- e editar esta guarda de proposito.
+        # Deteccao: item cujo texto casa (?i)canal externo (a expressao do proprio MDS #10); texto com outra
+        # redacao escapa desta guarda e fica para a revisao humana.
+        $script:itemCanal.Count | Should -Be 0 -Because "o #10 foi descartado por falta de incidente da classe; nao entra por importacao"
     }
 
     It "todo caminho entre crases nos itens novos existe na raiz do kit" {
-        $novos = @($script:itemLista) + @($script:itemCanal)
+        $novos = @($script:itemLista)
         $novos.Count | Should -BeGreaterThan 0
         foreach ($item in $novos) {
             foreach ($c in (Get-CaminhosCrase $item.Texto)) {
