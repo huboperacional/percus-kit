@@ -39,24 +39,45 @@ cmd_ini='(^|[;&|(]+[[:space:]]*|&&[[:space:]]*|\|\|[[:space:]]*|(^|[^[:alnum:]_]
 # -- exatamente a divergencia que o changelog afirmava ter fechado. Achado do review.
 cmd_fim='([[:space:]]|[;&|]|$)'
 
-# git com OPCAO GLOBAL entre `git` e o subcomando -- gemeo do $gitPush do .ps1 (Fase 5, 2026-09-16).
-# Ate a 6.61.0 era `git[[:space:]]+push`: `git -C "<dir>" push`, `git -c k=v push`, `git --no-pager
-# push` e `git.exe push` passavam SEM override, nos dois runtimes. Medido nos pushes de 2026-09-16.
-# Valor: citado (pode ter espaco) ou nu. `\\?"` aceita a aspa escapada do JSON cru, que e o que
-# sobra quando falta python3 e o fallback casa contra o stdin inteiro.
-# A resolucao do `-C` para achar o `.percus/` NAO tem gemeo aqui de proposito: este stub nao le
-# autorizacao nenhuma (so PERCUS_EXTERNAL_OVERRIDE), entao todo push reconhecido ja bloqueia.
-git_valor='(\\?"[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]"'"'"';&|]+)'
-git_opcoes='([[:space:]]+(-C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env)[[:space:]]+'"${git_valor}"'|[[:space:]]+-([^[:space:]"'"'"';&|]|"[^"]*"|'"'"'[^'"'"']*'"'"')+)*'
-git_push='git(\.exe)?["'"'"']?'"${git_opcoes}"'[[:space:]]+push'
+# git e gh: DETECCAO LARGA -- gemeo da do .ps1 (Fase 5, rodada 2, 2026-09-16).
+# Enumerar formas (`git -C x push`, `git -c k=v push`...) nunca fechou: a revisao achou 20+ formas
+# que passavam. Regra: normaliza (tira aspas, barra invertida, continuacao de linha, ${IFS}),
+# poe em minuscula e trata como acao externa todo comando com token `git` E token `push`/`send-pack`
+# em qualquer posicao; idem token `gh` com comment/close/merge/create/sync. Falso positivo aceito.
+# Fronteira de token: nao-[a-z0-9_] dos dois lados (identica ao .ps1).
+# Este stub nao le autorizacao (so PERCUS_EXTERNAL_OVERRIDE): toda acao detectada bloqueia, entao
+# o escopo por repositorio do .ps1 nao tem gemeo aqui.
+normaliza() {
+  local s="$1"
+  s="${s//$'\\\r\n'/ }"
+  s="${s//$'\\\n'/ }"
+  s="${s//'${IFS}'/ }"
+  s="${s//'$IFS'/ }"
+  s="${s//\"/}"
+  s="${s//\'/}"
+  s="${s//\\/}"
+  printf '%s' "$s"
+}
+# Fallback sem python3: o texto e o JSON cru, onde quebra de linha e tab sao `\n`/`\t` literais.
+# Sem trocar por espaco, a remocao da barra colaria `git\npush` em `gitnpush`.
+if [[ "$command" == "$STDIN" ]]; then
+  command="${command//\\n/ }"
+  command="${command//\\t/ }"
+  command="${command//\\r/ }"
+fi
+bruto_min=$(printf '%s' "$command" | tr '[:upper:]' '[:lower:]')
+normal=$(normaliza "$command")
+normal_min=$(printf '%s' "$normal" | tr '[:upper:]' '[:lower:]')
+fr='[^a-z0-9_]'
+re_git="(^|${fr})git(\.exe)?(${fr}|\$)"
+re_push="(^|${fr})(push|send-pack)(${fr}|\$)"
+re_gh="(^|${fr})gh(\.exe)?(${fr}|\$)"
+re_gh_acao="(^|${fr})(comment|close|merge|create|sync)(${fr}|\$)"
+tem_token() { [[ "$bruto_min" =~ $1 ]] || [[ "$normal_min" =~ $1 ]]; }
 
 patterns=(
-  # --- interacao publica em plataforma de terceiros ---
-  'gh[[:space:]]+(pr|issue)[[:space:]]+comment'
-  'gh[[:space:]]+pr[[:space:]]+(close|merge)'
-  'gh[[:space:]]+issue[[:space:]]+close'
+  # --- interacao publica em plataforma de terceiros (git/gh: deteccao larga acima) ---
   'slack-cli'
-  "${git_push}"
   'mailto:'
   # --- publicar: o resultado fica visivel pra quem nao e a gente ---
   #
@@ -121,9 +142,13 @@ http_mutation=(
 )
 
 is_external=0
-for p in "${patterns[@]}"; do
-  if [[ "$command" =~ $p ]]; then is_external=1; break; fi
-done
+if tem_token "$re_git" && tem_token "$re_push"; then is_external=1; fi
+if tem_token "$re_gh" && tem_token "$re_gh_acao"; then is_external=1; fi
+if [[ "$is_external" -eq 0 ]]; then
+  for p in "${patterns[@]}"; do
+    if [[ "$command" =~ $p ]] || [[ "$normal" =~ $p ]]; then is_external=1; break; fi
+  done
+fi
 
 if [[ "$is_external" -eq 0 ]]; then
   for p in "${http_mutation[@]}"; do
@@ -142,6 +167,71 @@ fi
 
 [[ "$is_external" -eq 0 ]] && exit 0
 
+# Formas que DESLIGAM o hook pre-push do git (camada 2, f440c4d): bloqueiam SEMPRE, antes do
+# override -- gemeo do bloco do .ps1. --no-v (abreviacao de --no-verify), -n no trecho do git,
+# core.hooksPath, GIT_CONFIG*, include.path/includeIf.
+if tem_token "$re_git" && tem_token "$re_push"; then
+  tudo="${bruto_min}"$'\n'"${normal_min}"
+  bypass=""
+  [[ "$tudo" == *--no-v* ]] && bypass="$bypass --no-verify"
+  [[ "$tudo" == *hookspath* ]] && bypass="$bypass hooksPath"
+  [[ "$tudo" == *--config-env* ]] && bypass="$bypass --config-env"
+  [[ "$tudo" == *git_config* ]] && bypass="$bypass GIT_CONFIG*"
+  [[ "$tudo" == *include.path* || "$tudo" == *includeif* ]] && bypass="$bypass include.path/includeIf"
+  re_home='xdg_config_home|home[[:space:]]*='
+  [[ "$tudo" =~ $re_home ]] && bypass="$bypass HOME/XDG_CONFIG_HOME"
+  re_copia='(^|[^a-z0-9_-])(cp|robocopy|xcopy|copy|copy-item|cpi|rsync|mv|move|move-item|tar)([^a-z0-9_-]|$)'
+  re_dotgit='\.git([^a-z0-9_]|$)'
+  [[ "$tudo" =~ $re_copia ]] && [[ "$tudo" =~ $re_dotgit ]] && bypass="$bypass copia-do-.git"
+  re_n='(^|[^A-Za-z0-9_-])-[A-Za-z]*n[A-Za-z]*([^A-Za-z0-9_-]|$)'
+  while IFS= read -r trecho; do
+    trecho_min=$(printf '%s' "$trecho" | tr '[:upper:]' '[:lower:]')
+    if [[ "$trecho_min" =~ $re_git ]] && [[ "$trecho" =~ $re_n ]]; then bypass="$bypass -n"; break; fi
+  done < <(printf '%s\n%s\n' "$command" "$normal" | tr ';|&()\r' '\n\n\n\n\n\n')
+  if [[ -n "$bypass" ]]; then
+    {
+      echo ""
+      echo "[percus:hook external-action-guard] BLOCK (R20):"
+      echo "  Comando: $command"
+      echo "  Razao:${bypass}: essas formas desligam o hook pre-push do git (camada 2) e NAO sao aceitas,"
+      echo "  nem com PERCUS_EXTERNAL_OVERRIDE. Rode sem elas: git -C \"<caminho absoluto>\" push <remoto> <branch>"
+      echo ""
+    } >&2
+    exit 2
+  fi
+fi
+
+# Escopo ambiguo nao e liberado nem pelo override (gemeo do bloco do .ps1): cd, variavel, crase,
+# --git-dir/--work-tree/GIT_DIR, ou mais de um trecho com git/gh. O .ps1 ainda exige a forma
+# simples do git; este stub nao, porque sem override ele ja bloqueia tudo.
+if tem_token "$re_git" || tem_token "$re_gh"; then
+  ambiguo=""
+  re_cd='(^|[^a-z0-9_-])(cd|pushd|popd|chdir|set-location|push-location)([^a-z0-9_-]|$)'
+  re_var='%[a-z_][a-z0-9_]*%'
+  [[ "$bruto_min" =~ $re_cd ]] && ambiguo="$ambiguo cd"
+  [[ "$command" == *'$'* ]] && ambiguo="$ambiguo variavel"
+  [[ "$bruto_min" =~ $re_var ]] && ambiguo="$ambiguo %VAR%"
+  [[ "$command" == *'`'* ]] && ambiguo="$ambiguo crase"
+  [[ "$bruto_min" == *--git-dir* || "$bruto_min" == *--work-tree* || "$bruto_min" == *git_dir* || "$bruto_min" == *git_work_tree* ]] && ambiguo="$ambiguo --git-dir"
+  n_trechos=0
+  while IFS= read -r trecho; do
+    trecho_min=$(printf '%s' "$trecho" | tr '[:upper:]' '[:lower:]')
+    if [[ "$trecho_min" =~ $re_git ]] || [[ "$trecho_min" =~ $re_gh ]]; then n_trechos=$((n_trechos + 1)); fi
+  done < <(printf '%s\n' "$command" | tr ';|&()\r' '\n\n\n\n\n\n')
+  [[ "$n_trechos" -gt 1 ]] && ambiguo="$ambiguo $n_trechos-trechos"
+  if [[ -n "$ambiguo" && "$PERCUS_EXTERNAL_OVERRIDE" == "1" ]]; then
+    {
+      echo ""
+      echo "[percus:hook external-action-guard] BLOCK (R20):"
+      echo "  Comando: $command"
+      echo "  Razao: escopo ambiguo --${ambiguo}. PERCUS_EXTERNAL_OVERRIDE nao libera escopo ambiguo."
+      echo "  use a forma simples: git -C \"<caminho absoluto>\" push <remoto> <branch>"
+      echo ""
+    } >&2
+    exit 2
+  fi
+fi
+
 # Escape hatch: operador autorizou explicitamente
 if [[ "$PERCUS_EXTERNAL_OVERRIDE" == "1" ]]; then
   echo "[percus:hook external-action-guard] PERCUS_EXTERNAL_OVERRIDE setado -- permitindo." >&2
@@ -156,6 +246,8 @@ fi
   echo "  Razao: acao externa publica requer aprovacao explicita do operador (R20)"
   echo ""
   echo "  Para autorizar: setar PERCUS_EXTERNAL_OVERRIDE=1 com motivo declarado no commit/log."
+  echo "  Deteccao LARGA: git + a palavra push (ou gh + comment/close/merge/create/sync) em qualquer posicao."
+  echo "  Falso positivo (ex.: git log --grep push) libera do mesmo jeito: PERCUS_EXTERNAL_OVERRIDE=1."
   echo "  (Stub Unix fail-closed -- a versao completa com check de council e o .ps1 no Windows.)"
   echo ""
 } >&2

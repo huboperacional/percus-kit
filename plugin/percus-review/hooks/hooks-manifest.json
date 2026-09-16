@@ -110,6 +110,7 @@
         "gh",
         "slack",
         "push",
+        "git",
         "mailto",
         "wrangler",
         "docker",

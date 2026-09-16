@@ -1,5 +1,6 @@
 commit
 push
+git
 gh
 slack
 mailto

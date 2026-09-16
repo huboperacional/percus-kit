@@ -2,11 +2,14 @@
 # Hook PreToolUse Percus (Layer 1 R20 enforcement).
 # Bloqueia tools externos publicos quando council recente tem premise_validity != ok
 # OU quando findings criticos nao tem fact_check: CONFIRMADO.
-# Falha graceful: qualquer erro -> exit 0 (nao bloqueia injustamente).
+# Erro interno: exit 0 SO se o comando nao foi (nem poderia ser) acao externa. Depois de detectada
+# a acao externa, qualquer excecao bloqueia (exit 2) -- ver o catch no fim (Fase 5, rodada 2).
 
 $ErrorActionPreference = "Continue"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+$detectado = $false
+$command = $null
 try {
     $stdin = [Console]::In.ReadToEnd()
     if (-not $stdin -or $stdin.Trim() -eq '') { exit 0 }
@@ -47,26 +50,42 @@ try {
     # no desenho; e o detalhe que decide se a guarda pega.
     $cmdIni = '(?:^|[;&|(]+\s*|&&\s*|\|\|\s*|\bthen\s+|\bdo\s+)'
 
-    # git com OPCAO GLOBAL entre `git` e o subcomando (Fase 5, 2026-09-16).
-    # 🔴 Ate a 6.61.0 o padrao era `git\s+push`, e ele exige o subcomando COLADO no `git`. Medido:
-    # os dois pushes de 2026-09-16 foram `git -C "<kit>" push origin main` e sairam sem linha de
-    # auditoria -- e, pior, o mesmo comando SEM autorizacao tambem saia (exit 0): o hook nem chegava
-    # a olhar autorizacao. `-c k=v`, `--no-pager`, `git.exe` idem. `--git-dir=<x>/.git push` so
-    # bloqueava por acidente (o texto `.git push` casa o padrao velho).
-    # Valor de opcao: citado (pode ter espaco) ou nu; nu para em separador de shell.
-    # Opcoes que levam valor SEPARADO sao enumeradas; as demais so aceitam a forma colada (`--x=y`).
-    $gitValor = '(?:"[^"]*"|''[^'']*''|[^\s"'';&|]+)'
-    $gitOpcaoComValor = '(?:-C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env)'
-    $gitOpcoes = '(?:\s+' + $gitOpcaoComValor + '\s+' + $gitValor + '|\s+-(?:[^\s"'';&|]|"[^"]*"|''[^'']*'')+)*'
-    $gitPush = 'git(?:\.exe)?["'']?(?<opcoes>' + $gitOpcoes + ')\s+push'
+    # git e gh: DETECCAO LARGA, nao enumeracao de forma (Fase 5, rodada 2, 2026-09-16).
+    # 🔴 Historico medido: `git\s+push` exigia o subcomando colado no `git`, e `git -C "<kit>" push`
+    # saiu SEM autorizacao e sem auditoria. A 1a correcao enumerou opcoes globais e a revisao de
+    # seguranca achou 20+ formas que ainda passavam (`git "push"`, `git -C x 2>/dev/null push`,
+    # `git -c alias.x=push x`, `\`+LF, `bash -c` com aspa escapada...) e um fail-open novo sob PS 5.1.
+    # Lista textual nunca fecha. Regra agora: normaliza o texto (tira aspas, barra invertida,
+    # continuacao de linha, ${IFS}) e trata como acao externa TODO comando com um token `git` E um
+    # token `push`/`send-pack` em qualquer posicao; idem token `gh` com comment/close/merge/create/sync.
+    # FALSO POSITIVO E ACEITO de proposito (`git log --grep push` pede autorizacao). A mensagem de
+    # bloqueio diz como liberar. Ofuscacao que nem assim aparece fica para o hook pre-push do git.
+    # Fronteira de token: nao-[A-Za-z0-9_] dos dois lados (identica no .sh).
+    $fronteira = '[^A-Za-z0-9_]'
+    $reGit    = '(?i)(?:^|' + $fronteira + ')git(?:\.exe)?(?:' + $fronteira + '|$)'
+    $rePush   = '(?i)(?:^|' + $fronteira + ')(?:push|send-pack)(?:' + $fronteira + '|$)'
+    $reGh     = '(?i)(?:^|' + $fronteira + ')gh(?:\.exe)?(?:' + $fronteira + '|$)'
+    $reGhAcao = '(?i)(?:^|' + $fronteira + ')(?:comment|close|merge|create|sync)(?:' + $fronteira + '|$)'
+
+    function ConvertTo-TextoNormal {
+        param([string]$Texto)
+        $t = $Texto -replace '\\\r?\n', ' '
+        $t = $t -replace '\$\{IFS\}|\$IFS', ' '
+        $t = $t -replace '["'']', ''
+        $t = $t -replace '\\(.)', '$1'
+        return $t
+    }
+    # Testa o texto CRU e o NORMALIZADO: a normalizacao apaga a barra de caminho Windows
+    # (`D:\x\git.exe` vira `D:xgit.exe`), e o cru nao ve `git p\ush`. Um dos dois basta.
+    function Test-Token {
+        param([string]$Texto, [string]$Re)
+        if ($Texto -match $Re) { return $true }
+        return ((ConvertTo-TextoNormal $Texto) -match $Re)
+    }
 
     $externalPatterns = @(
-        # --- interacao publica em plataforma de terceiros ---
-        'gh\s+(pr|issue)\s+comment',
-        'gh\s+pr\s+(close|merge)',
-        'gh\s+issue\s+close',
+        # --- interacao publica em plataforma de terceiros (git/gh: ver deteccao larga acima) ---
         'slack-cli',
-        $gitPush,
         'mailto:',
         # --- publicar: o resultado fica visivel pra quem nao e a gente (add. 2026-08-19) ---
         #
@@ -129,68 +148,95 @@ try {
         "$cmdIni(sudo\s+)?curl\b[^|;]*\s--request\s+[`"']?(POST|PUT|PATCH|DELETE)"
     )
 
-    $isExternalAction = $false
-    foreach ($p in $externalPatterns) {
-        if ($command -match $p) { $isExternalAction = $true; break }
-    }
-
-    if (-not $isExternalAction) {
-        foreach ($p in $httpMutationPatterns) {
-            if ($command -match $p) { $isExternalAction = $true; break }
+    # Acao externa das listas "por padrao" (tudo que nao e git/gh). Isencao de host local: mutacao
+    # HTTP contra a propria maquina nao sai daqui, e bloquear isso transformaria o guard em imposto
+    # sobre desenvolvimento normal -- guard barulhento acaba desligado (licao da 6.41.0).
+    # Conservador: basta UMA url externa no texto para continuar valendo.
+    function Test-ExternoPorPadrao {
+        param([string]$Texto)
+        foreach ($padrao in $externalPatterns) {
+            if ($Texto -match $padrao) { return $true }
         }
-        # Isencao de host local: mutacao HTTP contra a propria maquina nao sai daqui, e bloquear
-        # isso transformaria o guard em imposto sobre desenvolvimento normal -- guard barulhento
-        # acaba desligado, que e pior que guard ausente (licao das travas de invocacao da 6.41.0).
-        # Conservador: basta UMA url externa no comando para continuar valendo.
-        if ($isExternalAction) {
-            $urls = [regex]::Matches($command, '(?i)https?://[^\s"''`)]+')
-            if ($urls.Count -gt 0) {
+        foreach ($padrao in $httpMutationPatterns) {
+            if ($Texto -match $padrao) {
+                $urls = [regex]::Matches($Texto, '(?i)https?://[^\s"''`)]+')
+                if ($urls.Count -eq 0) { return $true }
                 $externas = @($urls | Where-Object { $_.Value -notmatch '(?i)://(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])' })
-                if ($externas.Count -eq 0) { $isExternalAction = $false }
+                return ($externas.Count -gt 0)
             }
         }
+        return $false
     }
 
+    $temGit = Test-Token $command $reGit
+    $temGh  = Test-Token $command $reGh
+    $ehGitPush = $temGit -and (Test-Token $command $rePush)
+    $ehGh      = $temGh -and (Test-Token $command $reGhAcao)
+    $isExternalAction = $ehGitPush -or $ehGh -or (Test-ExternoPorPadrao $command) -or (Test-ExternoPorPadrao (ConvertTo-TextoNormal $command))
+
     if (-not $isExternalAction) { exit 0 }
+    # A partir daqui NENHUMA excecao libera: o catch do fim ve esta flag e sai 2.
+    $detectado = $true
 
     $cwd = (Get-Location).Path
 
-    # Diretorio do PROJETO sobre o qual a acao age: onde se le a autorizacao e se grava a auditoria.
-    # Com `git -C <dir> push`, e o `-C` (como o git faz: relativo ao cwd, e -C seguidos se acumulam);
-    # sem `-C`, o cwd. Autorizacao e por projeto -- ler do cwd deixaria a autorizacao do projeto A
-    # liberar push no projeto B, e gravaria a auditoria no repo errado.
-    # ⚠️ PreToolUse ve o texto ANTES do shell: `-C "$W"` nao e expandido, vira um caminho que nao
-    # existe, e a autorizacao nao e achada -- bloqueia (fail-closed). Escreva o caminho literal.
-    function ConvertTo-CaminhoWindows {
-        param([string]$Caminho)
-        if ($env:OS -ne 'Windows_NT') { return $Caminho }
-        if ($Caminho -match '^/(?:cygdrive/)?([a-zA-Z])(?:/(.*))?$') {
-            return ($matches[1].ToUpper() + ':\' + ($matches[2] -replace '/', '\'))
-        }
-        return $Caminho
+    # ESCOPO: de qual repositorio e a acao. A autorizacao e o log sao por projeto, entao o hook so
+    # libera o que consegue atribuir a UM repositorio SEM interpretar shell. Tudo que exigiria
+    # interpretar (cd, variavel, --git-dir, -C relativo ou com `..`, duas acoes, redirecionamento,
+    # aspas no meio) e AMBIGUO e bloqueia MESMO COM autorizacao. A revisao mediu o que acontece
+    # quando o hook tenta resolver: `cd B && git -C . push` e `git -C "$X/.." push` liberavam push
+    # em B com a autorizacao de A, e `IsPathRooted` lancava sob PS 5.1 e caia no fail-open.
+    # Forma liberavel: `git -C "<caminho absoluto>" <subcomando> <args simples>` (ou sem -C = cwd),
+    # e para gh: `[VAR=valor ...] gh <args>` no cwd.
+    $motivos = @()
+    $escopoRepo = $temGit -or $temGh
+    if ($command -match '(?i)--git-dir|--work-tree|GIT_DIR|GIT_WORK_TREE') { $motivos += '--git-dir/--work-tree/GIT_DIR' }
+    if ($escopoRepo) {
+        if ($command -match '(?i)(?:^|[^A-Za-z0-9_-])(?:cd|pushd|popd|chdir|Set-Location|Push-Location)(?:[^A-Za-z0-9_-]|$)') { $motivos += 'cd no comando' }
+        if ($command -match '\$') { $motivos += 'variavel ($) no comando' }
+        if ($command -match '%[A-Za-z_][A-Za-z0-9_]*%') { $motivos += 'variavel (%VAR%) no comando' }
+        if ($command.Contains([string][char]96)) { $motivos += 'crase no comando' }
     }
-    $dirsProjeto = @()
-    foreach ($m in [regex]::Matches($command, $gitPush, [Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
-        $base = $cwd
-        $tokens = [regex]::Matches($m.Groups['opcoes'].Value, '\s+(?:(?<flag>' + $gitOpcaoComValor + ')\s+(?<valor>' + $gitValor + ')|-\S+)')
-        foreach ($t in $tokens) {
-            if ($t.Groups['flag'].Value -cne '-C') { continue }
-            $v = $t.Groups['valor'].Value
-            if ($v.Length -ge 2 -and (($v[0] -eq '"' -and $v[-1] -eq '"') -or ($v[0] -eq "'" -and $v[-1] -eq "'"))) {
-                $v = $v.Substring(1, $v.Length - 2)
-            }
-            $v = ConvertTo-CaminhoWindows $v
-            if ([IO.Path]::IsPathRooted($v)) { $base = $v } else { $base = [IO.Path]::Combine($base, $v) }
-        }
-        # Normaliza antes de deduplicar: `<dir>` e `<dir>/` (ou `a/../<dir>`) sao o MESMO repo, e
-        # compara-los como texto cru barraria como "dois projetos" um push legitimo. Achado do R11.
-        # `-notcontains` ja ignora caixa, como o filesystem do Windows.
-        try { $base = [IO.Path]::GetFullPath($base) } catch { }
-        if ($base.Length -gt 3) { $base = $base.TrimEnd('\', '/') }
-        if ($dirsProjeto -notcontains $base) { $dirsProjeto += $base }
-    }
+
+    # Segmentos por separador de shell. `2>&1` sai antes (o `&` dele nao separa comando).
+    $semRedir = $command -replace '(?<=\s)[12]?>&[12](?=\s|$)', ' '
+    $segmentos = @($semRedir -split '&&|\|\||[;|&\r\n()]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    # Relevante = trecho com token git, token gh ou padrao externo. `push` SOLTO (`... | grep push`) nao
+    # conta: push so executa via git, e aspas que atravessam separador deixam o trecho do git fora da
+    # forma simples (ela nao aceita aspa aberta) -- ex. `git -C "a|b" push` continua ambiguo. Achado R11.
+    $relevantes = @($segmentos | Where-Object {
+        (Test-Token $_ $reGit) -or (Test-Token $_ $reGh) -or (Test-ExternoPorPadrao $_)
+    })
+    if ($relevantes.Count -ne 1) { $motivos += "$($relevantes.Count) trechos de acao externa no comando (um por comando)" }
+
     $dirProjeto = $cwd
-    if ($dirsProjeto.Count -eq 1) { $dirProjeto = $dirsProjeto[0] }
+    if ($motivos.Count -eq 0 -and $escopoRepo) {
+        $trecho = $relevantes[0]
+        # Subcomando NU logo depois do `git` (ou do unico -C); argumentos depois dele podem vir citados
+        # inteiros (`commit -m "corrige push"`) -- argumento de subcomando nao muda o repositorio.
+        # `(?i:git)`: `Git.exe` e o mesmo binario no Windows; `-C` segue sensivel a caixa (`-c` e outra coisa).
+        $reGitSimples = '^(?i:git(?:\.exe)?)(?:\s+-C\s+(?:"(?<dir>[^"]*)"|''(?<dir>[^'']*)''|(?<dir>[^\s"''$%<>|&;*?]+)))?\s+[A-Za-z][A-Za-z0-9-]*(?:\s+(?:[A-Za-z0-9_./:+@^~=,-]+|"[^"]*"|''[^'']*''))*$'
+        $reGhSimples  = '^(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*gh(?:\.exe)?\s+\S'
+        if (Test-Token $trecho $reGit) {
+            $mGit = [regex]::Match($trecho, $reGitSimples)
+            if (-not $mGit.Success) {
+                $motivos += 'git fora da forma simples'
+            } elseif ($mGit.Groups['dir'].Success) {
+                $dirC = $mGit.Groups['dir'].Value
+                if ($dirC -notmatch '^(?:[A-Za-z]:[\\/]|/)') { $motivos += '-C relativo' }
+                elseif ($dirC -match '(?:^|[\\/])\.{1,2}(?:[\\/]|$)') { $motivos += '-C com . ou ..' }
+                elseif ($dirC -match '[$%<>|&;*?"''\t]') { $motivos += '-C com caractere especial' }
+                else {
+                    if ($env:OS -eq 'Windows_NT' -and $dirC -match '^/(?:cygdrive/)?([a-zA-Z])(?:/(.*))?$') {
+                        $dirC = $matches[1].ToUpper() + ':\' + ($matches[2] -replace '/', '\')
+                    }
+                    $dirProjeto = $dirC
+                }
+            }
+        } elseif ($trecho -notmatch $reGhSimples) {
+            $motivos += 'gh fora da forma simples'
+        }
+    }
 
     # MASCARA credencial AQUI, antes de qualquer saida -- nao so antes de gravar. A 1a versao
     # mascarava dentro do ramo autorizado, entao o arquivo ficava limpo e o comando CRU continuava
@@ -229,23 +275,64 @@ try {
     #    `Authorization: token <PAT>` mascarava a palavra "token" e deixava o PAT depois dela.
     $comandoLog = [regex]::Replace($comandoLog, '(?i)((?:authorization|x-api-key|x-auth-token|private-token)\s*:\s*)((?:bearer|basic|token|digest)\s+)?' + $VALOR, '${1}${2}***')
 
+    # LIMITE DECLARADO (R11): so enxerga o MESMO comando. Config persistente feita antes, em outro
+    # comando (`git config --global core.hooksPath x`, `setx GIT_CONFIG_GLOBAL`), nao aparece aqui.
+    # `-n` em push e --dry-run (inofensivo) e bloqueia mesmo assim, por decisao do controlador.
+    # Formas que DESLIGAM o hook pre-push do git (camada 2, commit f440c4d, medido): bloqueiam SEMPRE,
+    # antes do override e da autorizacao -- aceitar qualquer uma delas faria a camada 2 nao existir.
+    # `--no-v...` cobre a abreviacao que o git aceita (`--no-verif`); `-n` em push (em cluster
+    # tambem, `-fn`); core.hooksPath por -c/--config-env/`git config`; GIT_CONFIG* (COUNT/KEY/VALUE/
+    # PARAMETERS/GLOBAL) e include.path/includeIf, que carregam um hooksPath de outro arquivo.
+    if ($ehGitPush) {
+        $textoBypass = $command + "`n" + (ConvertTo-TextoNormal $command)
+        $bypass = @()
+        if ($textoBypass -match '(?i)--no-v') { $bypass += '--no-verify' }
+        # `-n` so no trecho do git (`| tail -n 3` e de outro comando).
+        foreach ($trechoGit in @($textoBypass -split '&&|\|\||[;|&\r\n()]' | Where-Object { $_ -match $reGit })) {
+            if ($trechoGit -cmatch '(?<![A-Za-z0-9_-])-[A-Za-z]*n[A-Za-z]*(?![A-Za-z0-9_-])') { $bypass += '-n'; break }
+        }
+        # Sem exigir `core.`: `-c CORE.HOOKSPATH`, `--config-env`, include e arquivos de config
+        # alternativos (GIT_CONFIG_GLOBAL/SYSTEM/NOSYSTEM, XDG_CONFIG_HOME, HOME=) trocam o hooksPath
+        # sem o texto `core.hooksPath` aparecer (revisao de ataque da camada 2, achado 3).
+        if ($textoBypass -match '(?i)hookspath') { $bypass += 'hooksPath' }
+        if ($textoBypass -match '(?i)--config-env') { $bypass += '--config-env' }
+        if ($textoBypass -match '(?i)GIT_CONFIG') { $bypass += 'GIT_CONFIG*' }
+        if ($textoBypass -match '(?i)include\.path|includeif') { $bypass += 'include.path/includeIf' }
+        if ($textoBypass -match '(?i)XDG_CONFIG_HOME|home\s*=') { $bypass += 'HOME/XDG_CONFIG_HOME' }
+        # Copia do .git no mesmo comando: a copia leva a config sem o hook, e o push sai dela.
+        if (($textoBypass -match '(?i)(?:^|[^A-Za-z0-9_-])(?:cp|robocopy|xcopy|copy|copy-item|cpi|rsync|mv|move|move-item|tar)(?:[^A-Za-z0-9_-]|$)') -and
+            ($textoBypass -match '(?i)\.git(?:[^A-Za-z0-9_]|$)')) { $bypass += 'copia do .git' }
+        if ($bypass.Count -gt 0) {
+            [Console]::Error.WriteLine("")
+            [Console]::Error.WriteLine("[percus:hook external-action-guard] BLOCK (R20):")
+            [Console]::Error.WriteLine("  Comando: $comandoLog")
+            [Console]::Error.WriteLine("  Razao: $($bypass -join ', '): essas formas desligam o hook pre-push do git (camada 2) e NAO sao aceitas,")
+            [Console]::Error.WriteLine("  nem com autorizacao nem com PERCUS_EXTERNAL_OVERRIDE. Rode sem elas: git -C `"<caminho absoluto>`" push <remoto> <branch>")
+            [Console]::Error.WriteLine("")
+            exit 2
+        }
+    }
+
+    # Escopo ambiguo bloqueia ANTES do override e da autorizacao: liberar aqui seria atribuir a acao a
+    # um repositorio que o hook nao conseguiu determinar -- e o override nem grava auditoria. Achado
+    # R11 (rodada 2): com o override antes, `cd B && git -C . push` saia 0 sem linha nenhuma.
+    if ($motivos.Count -gt 0) {
+        [Console]::Error.WriteLine("")
+        [Console]::Error.WriteLine("[percus:hook external-action-guard] BLOCK (R20):")
+        [Console]::Error.WriteLine("  Comando: $comandoLog")
+        [Console]::Error.WriteLine("  Razao: escopo ambiguo -- $($motivos -join '; '). A autorizacao e por projeto e o hook so libera o que atribui a UM repositorio sem interpretar shell.")
+        [Console]::Error.WriteLine("  use a forma simples: git -C `"<caminho absoluto>`" push <remoto> <branch>")
+        [Console]::Error.WriteLine("  (uma acao externa por comando; sem cd, sem variavel, sem --git-dir/--work-tree, sem aspas fora do -C)")
+        [Console]::Error.WriteLine("  Nem autorizacao nem PERCUS_EXTERNAL_OVERRIDE liberam escopo ambiguo. Falso positivo (ex.: git log --grep push")
+        [Console]::Error.WriteLine("  junto de outro comando)? Rode o comando sozinho na forma simples, com autorizacao.")
+        [Console]::Error.WriteLine("")
+        exit 2
+    }
+
     # Escape hatch: operador autorizou explicitamente
     if ($env:PERCUS_EXTERNAL_OVERRIDE -eq "1") {
         [Console]::Error.WriteLine("[percus:hook external-action-guard] PERCUS_EXTERNAL_OVERRIDE setado — permitindo.")
         exit 0
-    }
-
-    # Push para MAIS DE UM projeto no mesmo comando (`git -C A push; git -C B push`): uma autorizacao
-    # so pode ser lida de um lugar, e le-la de A liberaria B sem autorizacao. Fail-closed: um projeto
-    # por comando.
-    if ($dirsProjeto.Count -gt 1) {
-        [Console]::Error.WriteLine("")
-        [Console]::Error.WriteLine("[percus:hook external-action-guard] BLOCK (R20):")
-        [Console]::Error.WriteLine("  Comando: $comandoLog")
-        [Console]::Error.WriteLine("  Razao: o comando publica em mais de um repositorio ($($dirsProjeto -join ' | ')); a autorizacao e por projeto.")
-        [Console]::Error.WriteLine("  Separe em um comando por repositorio.")
-        [Console]::Error.WriteLine("")
-        exit 2
     }
 
     # Escape hatch: autorizacao em lote via arquivo (janela de 60min por timestamp_unix DENTRO do
@@ -254,8 +341,8 @@ try {
     # processo do hook; env var da sessao do Claude nao atravessa (achado 2026-07-31).
     #
     # IMPORTANTE: try/catch AQUI, LOCAL -- nao deixar erro desta checagem cair no catch generico
-    # do fim do script. O catch generico do hook e fail-OPEN de proposito (erro interno do script
-    # nao pode travar a maquina). Mas erro NESTA checagem especifica (arquivo ilegivel, JSON
+    # do fim do script. (O catch generico era fail-OPEN; desde a Fase 5 ele bloqueia depois da
+    # deteccao, mas a mensagem daqui e mais util.) Erro NESTA checagem especifica (arquivo ilegivel, JSON
     # corrompido, campo faltando) tem que continuar pro fluxo normal do R20 -- ou seja, tem que
     # poder BLOQUEAR. Fail-open aqui seria: permissao negada no arquivo = "ah, deu erro, libera
     # geral" -- o oposto do que devia acontecer.
@@ -396,11 +483,23 @@ try {
     [Console]::Error.WriteLine("  Comando: $comandoLog")
     [Console]::Error.WriteLine("  Razao: acao externa publica requer aprovacao explicita do operador (R20)")
     [Console]::Error.WriteLine("")
-    [Console]::Error.WriteLine("  Para autorizar: setar PERCUS_EXTERNAL_OVERRIDE=1 com motivo declarado no commit/log.")
+    [Console]::Error.WriteLine("  Para autorizar: scripts/autorizar-acao-externa.ps1 -Motivo '<motivo>' (vale 60 min, por projeto)")
+    [Console]::Error.WriteLine("  ou PERCUS_EXTERNAL_OVERRIDE=1 com motivo declarado no commit/log.")
+    [Console]::Error.WriteLine("  Deteccao e LARGA de proposito: qualquer comando com git + a palavra push (ou gh + comment/close/merge/create/sync)")
+    [Console]::Error.WriteLine("  conta como acao externa. Falso positivo (ex.: git log --grep push) libera do mesmo jeito, com autorizacao.")
     [Console]::Error.WriteLine("")
     exit 2
 } catch {
-    # Falha graceful — nao bloqueia injustamente
-    [Console]::Error.WriteLine("[percus:hook external-action-guard] erro interno (skip): $($_.Exception.Message)")
+    # Erro interno. Libera SO o que nao e (nem pode ser) acao externa: depois da deteccao, ou com
+    # texto que um dos gatilhos casaria, excecao BLOQUEIA. A revisao da Fase 5 mediu o contrario:
+    # `IsPathRooted` lancava sob PS 5.1 com `>` no `-C`, caia aqui e liberava o push (exit 0).
+    $erroMsg = $_.Exception.Message
+    $gatilho = $false
+    try { $gatilho = ($command -and ([string]$command -match '(?i)push|send-pack|gh|git|slack|mailto|wrangler|docker|vercel|netlify|kubectl|ssh|vps|curl')) } catch { $gatilho = $true }
+    if ($detectado -or $gatilho) {
+        [Console]::Error.WriteLine("[percus:hook external-action-guard] BLOCK (R20): erro interno ao avaliar possivel acao externa -- bloqueando (fail-closed): $erroMsg")
+        exit 2
+    }
+    [Console]::Error.WriteLine("[percus:hook external-action-guard] erro interno (skip): $erroMsg")
     exit 0
 }
