@@ -48,13 +48,17 @@ Responda só com (até 15 linhas): Status (DONE | DONE_WITH_CONCERNS | BLOCKED |
 commits (sha + assunto), resumo de testes em 1 linha, preocupações, caminho do relatório.
 ```
 
-> Ação do controlador, fora do despacho ao implementador: antes de aceitar o relatório, rode
-> `scripts/sdd-conferir.ps1 -Base {sha-base} -Head {sha-final}` no worktree (uma chamada, uma linha
-> por checagem) em vez das 7 conferências manuais de fim de tarefa.
+> Ação do controlador, fora do despacho ao implementador — PASSO OBRIGATÓRIO, antes de mandar revisar
+> ou integrar: ao receber DONE, rode `scripts/sdd-conferir.ps1 -Base <BASE da tarefa> -Head <commit>
+> -Repo <worktree>` e leia o `RESUMO`. `FALHA` → devolve ao implementador antes da revisão (revisão
+> não é lugar de achar encoding). `AVISO r11-marcador` em worktree irmão é esperado (a checagem só vê
+> o marcador do próprio worktree) — não é falha.
 
 ## Revisor (variação)
 
 - Troque só os "Contratos 3 e 4" por: **só leitura** (não altera árvore, índice, HEAD nem branch); leia o
   `review-package` uma vez; não rode a suíte. **O contrato 6 continua valendo:** grave o relatório
   (até ~150 linhas) antes de responder. Resposta em até 40 linhas começando pelo veredito.
+- O revisor recebe o RESUMO do `sdd-conferir` junto do review-package e não gasta tempo com
+  encoding/fim de linha.
 - Revisão escopada de conserto pequeno (até ~200 linhas): `model: haiku` nos trilhos P e M.
