@@ -19,7 +19,7 @@ fase-introducao: Fase 6
 ## Princípios não-negociáveis
 
 1. **Toda feature aplicada em 2+ projetos é uma "feature global"** e DEVE aparecer em `catalog-info.yaml`.
-2. **Toda decisão arquitetural significativa** (escolha de pattern, mudança de stack, sunset de tecnologia) DEVE ter ADR.
+2. **Toda decisão que passe no critério de § "Quando criar ADR"** DEVE ter ADR. O critério é verificável, não "significativa" no olho.
 3. **Slugs canônicos** (kebab-case, sem prefixo de projeto): `oauth-v3`, `lead-form-v2`, `auth-otp-whatsapp`, `tracking-15-campos`.
 4. **Single source of truth**: o `catalog-info.yaml` é fonte; o Painel é cache. Quem está errado é sempre o cache.
 5. **Não existe "implementei e esqueci de declarar"** — hook `catalog-publish` empurra automaticamente.
@@ -95,11 +95,22 @@ O que foi decidido.
 Lista curta dos outros caminhos descartados, com motivo de descarte.
 ```
 
-**Quando criar ADR (e não só atualizar yaml):**
-- Decisão é polêmica (alternativa real foi considerada).
-- Decisão é irreversível ou cara de reverter.
-- Decisão muda contrato cross-projeto (ex: novo schema de token, novo endpoint padrão).
-- Sunset de tecnologia (vai parar de usar X em favor de Y).
+**Quando criar ADR (e não só atualizar yaml):** abra ADR se **pelo menos uma** resposta for "sim".
+1. **Outro projeto precisa mudar código** por causa desta decisão?
+2. **Quebra contrato ou API** que alguém de fora deste repositório consome (outro projeto, cliente, integração)?
+3. **Muda de forma irreversível dado já gravado** (migração destrutiva, reescrita de formato, remoção de campo com dado)?
+4. **Deixa dívida registrada em backlog, com dono** (ex.: "fica em X até Y; quem migra é Z")?
+
+Se as quatro forem "não", **não é ADR**: registre no changelog e na mensagem do commit.
+
+**Sinais de alerta** (não obrigam sozinhos — quando aparecer um, faça as 4 perguntas): decisão polêmica, com
+alternativa real considerada; decisão cara de reverter; mudança de contrato entre projetos; sunset de tecnologia.
+Exemplo dos dois lados: aposentar o LDAP do `auth-service`, usado por 3 projetos, **é ADR** (pergunta 1); subir
+o TypeScript de 5.0 para 5.1 num projeto só **não é** (nenhuma das 4).
+
+> Decidido em 2026-09-16 pelo operador, com o conselho (DeepSeek, Llama e Cross-Claude, 3/3 no meio-termo).
+> Substitui dois critérios que se contradiziam: "cada situação basta" (este arquivo) e "os três critérios
+> juntos" (`v2/artefatos/ADR-FORMAT.md`), que deixava sem registro o sunset que afeta vários projetos.
 
 ADRs nascem em **um** projeto, mas `Applied-to:` lista os N que adotaram. O crawler do Painel agrupa por slug.
 

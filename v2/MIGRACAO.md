@@ -53,7 +53,7 @@ Teste: `plugin/percus-review/tests/migracao-quem-manda.tests.ps1`.
 | PLANO e status | R2 (+ R1, forma visual) — § R2; `05_FEATURE_TRACKING.md` § "Arquivos canônicos por projeto" | `v2/artefatos/PLANO-FORMAT.md` | V1 | formato V2 não cita a forma visual da R1 (`UI-verified`) |
 | Drift | R2 (hook `state-drift-check`); `plugin/percus-review/commands/drift-detect.md` (canon × projeto); `05_FEATURE_TRACKING.md` § "Drift detector" | `v2/loops/drift.md` (auditoria interna do canon) | V2 | homônimos sem ponteiro entre si; a checagem de índice do loop ainda é a do monólito |
 | Conhecimento | R23 — `01_REGRAS_INEGOCIAVEIS.md` § R23 | só ponteiro: `v2/referencia/conhecimento/README.md` | V1 | — (resolvido 2026-09-16: o ponteiro V2 descreve um arquivo por verbete, INDICE gerado e consulta por grep) |
-| ADR | `05_FEATURE_TRACKING.md` § "Princípios não-negociáveis" (item 2) e § "Quando criar ADR" | `v2/artefatos/ADR-FORMAT.md` | V1 | critério de abertura diverge: o V2 exige os três critérios juntos, o V1 lista cada um como suficiente |
+| ADR | `05_FEATURE_TRACKING.md` § "Princípios não-negociáveis" (item 2) e § "Quando criar ADR" | `v2/artefatos/ADR-FORMAT.md` | V1 | — (resolvido 2026-09-16: critério único de 4 perguntas verificáveis no V1; o gate de três saiu do V2) |
 | CONTEXT (glossário) | — (só V2) | `v2/artefatos/CONTEXT-FORMAT.md` | V2 | — |
 | Infra, stack, auth e tracking | R6, R7, R18, R22; `02_INFRA_E_STACK_PERCUS.md`; `03_TRACKING_ATTRIBUITION.md` | só ponteiro: `v2/referencia/infra.md`, `v2/referencia/auth.md` | V1 | — (resolvido 2026-09-16: os dois pontos do V2 apontam a exceção de SPA pura da R7) |
 

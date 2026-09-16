@@ -20,7 +20,7 @@
 
 ## Como ler o resultado
 
-- **3/3 no mesmo ponto** → trate como decisão. Se for difícil de reverter, vira ADR.
+- **3/3 no mesmo ponto** → trate como decisão. Se passar no critério de ADR (`05_FEATURE_TRACKING.md` § "Quando criar ADR"), vira ADR.
 - **2/3** → sinal, não veredito. **Diga que foi 2/3.**
 - **Divergência total** → a pergunta estava mal formulada. Reescreva antes de rodar de novo.
 - **Um membro falhou** → reporte "2 de 3 responderam". Nunca apresente conselho parcial como completo.

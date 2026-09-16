@@ -13,22 +13,23 @@
 - `Feature-slug:` — liga ao `catalog-info.yaml`
 - Seções: **Context · Decision · Consequences · Alternatives considered**
 
-## O que o V2 acrescenta: o gate de três
+## Quando abrir: o critério é do V1
 
-O V1 já manda registrar decisão significativa, mas "significativa" é elástico — e o resultado observado foi **projeto sem nenhum ADR**. O gate: **abra ADR só quando os TRÊS forem verdade.**
+**Quando** abrir ADR é obrigação e mora em `05_FEATURE_TRACKING.md` § "Quando criar ADR": quatro perguntas
+verificáveis; basta um "sim". Este arquivo cuida só do **como** escrever.
 
-1. **Difícil de reverter** — mudar de ideia depois custa caro.
-2. **Surpreendente sem contexto** — um leitor futuro vai perguntar "por que fizeram assim?".
-3. **Resultado de trade-off real** — havia alternativa concreta e você escolheu uma por motivos específicos.
+O V2 tinha aqui um "gate de três" (difícil de reverter + surpreendente + trade-off real, os três juntos). Ele
+nasceu para resolver um problema real — "significativa" era elástico e havia projeto sem nenhum ADR —, mas
+contradizia o V1 e deixava sem registro o sunset que afeta vários projetos. Saiu em 2026-09-16; o critério
+verificável do V1 resolve o mesmo problema sem a contradição.
 
-**Faltando um dos três, não faça ADR.** Sem esse corte, ou ninguém escreve (o caso de hoje) ou todo mundo escreve e ninguém lê.
+## Teste rápido (ajuda a escrever o Context, não decide se abre)
 
-## Teste rápido
-
-*"Se me perguntarem isso de novo daqui a três meses, eu vou querer ter onde apontar?"* — se sim, os três critérios provavelmente estão presentes.
+*"Se me perguntarem isso de novo daqui a três meses, eu vou querer ter onde apontar?"* — a resposta vira o
+primeiro parágrafo do Context.
 
 ## Regras
 
 - **Numeração sequencial**, nunca reutilizada. Decisão revogada vira `Superseded by`, não é apagada.
 - **Escreva no momento em que a decisão cristaliza** (durante o `grilling`), não no fim do projeto.
-- **Registre também o descarte consciente.** "Vamos NÃO fazer X, por causa de Y" é ADR — é o tipo que mais economiza rediscussão.
+- **O descarte consciente também passa pelo critério.** "Vamos NÃO fazer X, por causa de Y" vira ADR quando responde "sim" a uma das 4 perguntas do V1 — tipicamente a 4 (fica a dívida, com dono). É o tipo que mais economiza rediscussão.

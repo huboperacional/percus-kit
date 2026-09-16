@@ -18,7 +18,7 @@ Grilling não termina em conversa — termina em artefato:
 
 | O que emergiu | Vai para |
 |---|---|
-| Decisão difícil de reverter, surpreendente, com trade-off real | `docs/adrs/` |
+| Decisão que passa no critério de ADR (`05_FEATURE_TRACKING.md` § "Quando criar ADR") | `docs/adrs/` |
 | Termo de domínio ambíguo que vocês fixaram | `CONTEXT.md` |
 | O que construir, com critério de pronto | spec (`loops/spec.md`) |
 | O que ficou fora | spec, seção "não-objetivos" |
