@@ -46,7 +46,7 @@ abaixo é o do trilho G**.
 6. Lotes de 2–4 tarefas por implementador (despacho por `templates/DESPACHO_SUBAGENTE.template.md`); TDD em endpoint novo; `-Afetados` por lote.
 7. Um commit por lote: R11 sobre o diff staged do lote (wrapper com `-NoFactCheck`) + revisão por lote (sonnet); até 2 rodadas de conserto — crítico/importante ainda aberto → pare e promova o trilho, nunca commite.
 8. Revisão final do branch (sonnet) + suíte inteira uma vez.
-9. R1 (CRUD; visual se não persiste dado) + G2 → `[5-T]` (sem `✓`), com PLANO e HANDOFF juntos.
+9. R1 (CRUD; visual se não persiste dado) + G2 (grade de QA só se a entrega tem tela) → `[5-T]` (sem `✓`), com PLANO e HANDOFF juntos.
 
 ---
 
@@ -214,6 +214,13 @@ Se a resposta tem qualquer "talvez" ou "depende", **não está em `[5-T]`**.
 **Alcance** — só quando a entrega cria tela, rota, menu, ação ou ponto de entrada **novo** para um papel humano; sem isso o bloco não se aplica (não é item pulado e não pede `N/A: <motivo>`). Uso = R1, com a mesma evidência (sessão real, depois de F5).
 - [ ] **Navegação:** há caminho na interface a partir de onde o papel entra de verdade (login → tela inicial desse papel) até a peça, sem digitar URL.
 - [ ] **Autonomia do papel:** o papel chega e usa sozinho, sem link colado, instrução no chat ou alguém ao lado.
+
+**Grade de QA** — trilho G, sempre; trilho M, só se a entrega tem tela (item 9 do M); trilho P, fora. Caixa que não se aplica leva `N/A: <motivo>` no PLANO ou no commit (cabeçalho); entrega sem tela escreve **um** `N/A: entrega sem tela` para a grade inteira, não cinco.
+- [ ] **Visual:** tela conferida contra o draft aprovado (R10/G0) e nos dois temas, se o projeto tiver dois.
+- [ ] **Segurança:** papel sem permissão tenta a ação e recebe negação, e o dado de outro tenant não aparece (R7).
+- [ ] **Performance:** o SC de tempo da spec foi medido; só quando a spec tem SC de tempo.
+- [ ] **Mobile:** a operação crítica foi feita em viewport estreita.
+- [ ] **Regressão:** `scripts/rodar-suite.ps1 -Afetados` verde, mais uma ação do fluxo vizinho refeita à mão.
 
 ### G3. Atualize HANDOFF e mock-audit (se frontend)
 
