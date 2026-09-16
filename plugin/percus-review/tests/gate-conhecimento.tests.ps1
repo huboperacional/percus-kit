@@ -691,10 +691,18 @@ Describe "percus-gate.sh — no canon de verdade" {
 
         $bash = Get-Command bash -ErrorAction SilentlyContinue
         $exe = if ($bash) { $bash.Source } else { "$env:ProgramFiles\Git\bin\bash.exe" }
+        # Modo AUDITORIA explicito (Fase 5): sem ele, o que estiver staged no checkout rebaixaria os
+        # problemas de conhecimento a AVISO e o teste ficaria verde por afrouxamento.
+        $auditoriaAntes = $env:PERCUS_GATE_AUDITORIA
+        $env:PERCUS_GATE_AUDITORIA = '1'
         Push-Location $kit
         try {
             $saida = & $exe (Join-Path $kit "v2\gates\percus-gate.sh") 2>&1 | Out-String
             $LASTEXITCODE | Should -Be 0 -Because "Saida do gate: $($saida.Trim())"
-        } finally { Pop-Location }
+            $saida | Should -Not -Match 'AVISO \(herdado' -Because "em auditoria nada e rebaixado a aviso"
+        } finally {
+            Pop-Location
+            $env:PERCUS_GATE_AUDITORIA = $auditoriaAntes
+        }
     }
 }
