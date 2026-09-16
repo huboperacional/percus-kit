@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.60.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.61.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -34,6 +34,37 @@
 > (mudança em `plugin/percus-review/skills/` ou `commands/`).
 
 (nenhuma entrada pendente)
+
+---
+
+## Changelog v6.61.0 — 2026-09-16
+
+### Fase 4 — pendências do operador depois do programa dos 32 pontos
+
+**skill muda: não.** Só texto do canon e um teste novo; nenhum hook muda.
+
+- **As 4 contradições V1×V2 mapeadas na 6.60.0 foram resolvidas**, pelo critério da tabela
+  "Quem manda em quê" (`v2/MIGRACAO.md`): V1 manda na obrigação, V2 no procedimento. Nenhum texto de regra foi
+  copiado entre as metades (R25); a coluna "Ponteiro que falta" das 4 linhas foi esvaziada.
+  - **HANDOFF:** `v2/artefatos/HANDOFF-FORMAT.md` passa a espelhar o PLANO pela R8 (antes aceitava só o que não
+    estava `[5-T]`), com nota registrando a tensão prática de HANDOFF curto.
+  - **Conhecimento:** `v2/referencia/conhecimento/README.md` descrevia o contrato do monólito antigo, que a R23
+    proíbe; agora descreve o que existe (um arquivo por verbete, INDICE gerado por script, consulta por grep de tags).
+  - **`localStorage`:** `v2/CONSTITUICAO.md` e `v2/referencia/auth.md` vetavam sempre; passam a citar por ponteiro
+    a exceção de SPA pura da R7, que continua sendo exceção.
+  - **Critério de ADR (decisão do operador com o conselho, 3/3 no meio-termo):** `05_FEATURE_TRACKING.md`
+    § "Quando criar ADR" vira **4 perguntas verificáveis, basta um "sim"**: outro projeto precisa mudar código;
+    quebra contrato ou API consumido de fora; muda de forma irreversível dado já gravado; deixa dívida registrada
+    com dono. Se as quatro forem "não", é changelog e commit. As 4 situações antigas (polêmica, cara de reverter,
+    contrato entre projetos, sunset) viram sinais de alerta. O "gate de três" de `v2/artefatos/ADR-FORMAT.md`
+    (os três critérios juntos) saiu: contradizia o V1 e deixava sem registro o sunset que afeta vários projetos.
+    `v2/loops/grilling.md` e `v2/loops/conselho.md` passam a apontar o critério do V1.
+- **MDS — "N/A escrito" nos checklists de feature:** item pulado exige `N/A: <motivo>` em
+  `checklists/CHECKLIST_FEATURE_NOVA.md` e `templates/spec-checklist.template.md` (antes, só nos gatilhos do dia 1).
+  É texto, não bloqueio de hook. Teste: `plugin/percus-review/tests/na-escrito-checklist-feature.tests.ps1`.
+- **MDS — listas de referência:** `v2/referencia/artefatos-mds.md` traz o catálogo de tipos de artefato e o formato
+  de jornada do MDS como **material de consulta, sem obrigação**. A "Família de 5" não foi adotada (decisão do
+  operador). Ponteiro em `v2/MIGRACAO.md`.
 
 ---
 

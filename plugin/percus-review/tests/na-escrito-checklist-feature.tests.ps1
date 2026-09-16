@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Fase 4, decisao 1 do operador (MDS, "N/A escrito" estendido aos checklists de feature).
 #
 # Ate a Fase 3, o N/A por escrito so era exigido nos 4 gatilhos do dia 1 (templates\CLAUDE.template.md).
