@@ -57,6 +57,8 @@ Teste: `plugin/percus-review/tests/migracao-quem-manda.tests.ps1`.
 | CONTEXT (glossário) | — (só V2) | `v2/artefatos/CONTEXT-FORMAT.md` | V2 | — |
 | Infra, stack, auth e tracking | R6, R7, R18, R22; `02_INFRA_E_STACK_PERCUS.md`; `03_TRACKING_ATTRIBUITION.md` | só ponteiro: `v2/referencia/infra.md`, `v2/referencia/auth.md` | V1 | `v2/referencia/auth.md` e `v2/CONSTITUICAO.md` §7 vetam `localStorage` sem a exceção de SPA pura da R7 |
 
+Catálogo de tipos de artefato e formato de jornada (MDS, referência consultável, não obrigação — decisão do operador, Fase 4): `v2/referencia/artefatos-mds.md`.
+
 ## Piloto-1 — tiatendo (FECHADO 2026-07-20, commit `70c9347`)
 
 | Métrica | Antes | Depois |
