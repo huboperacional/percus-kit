@@ -203,7 +203,7 @@ run_fact_check() {
         return 0
     fi
     if [ ! -f "$FACT_CHECK" ]; then
-        >&2 echo "[percus-review-auto] WARN: fact-check.sh nao encontrado em $FACT_CHECK — passando output direto"
+        >&2 echo "[percus-review-auto] fact-check NAO rodou: fact-check.sh nao encontrado em $FACT_CHECK — passando output direto sem verificacao."
         printf '%s' "$REVIEW_OUTPUT"
         return 0
     fi
@@ -211,7 +211,39 @@ run_fact_check() {
     # temp UNICO por invocacao: nome fixo em /tmp colide entre sessoes no mesmo checkout e
     # devolve o aviso da rodada anterior (mesma classe do stale de council-q.txt).
     _FC_WARN="${TMPDIR:-/tmp}/percus-fc-warn-$$-$RANDOM"
-    FC_OUT=$(printf '%s' "$REVIEW_OUTPUT" | bash "$FACT_CHECK" 2>/dev/null)
+    # stderr de fact-check.sh vai pra ARQUIVO separado (nunca 2>&1 misturado no stdout que
+    # o python3 abaixo vai tentar json.load): mesma classe de defeito medida no .ps1
+    # (percus-review-auto.ps1/Invoke-FactCheck) -- la, `2>&1` antes do parse fazia o
+    # ConvertFrom-Json quebrar com "Unexpected character ... line 1, position 1" porque
+    # a primeira linha vinda do pipeline era stderr, nao JSON. Aqui a chamada ja usava
+    # 2>/dev/null (nunca teve a corrupcao), mas isso tambem enterrava o erro sem avisar
+    # ninguem -- agora fica visivel.
+    _FC_STDERR="${TMPDIR:-/tmp}/percus-fc-stderr-$$-$RANDOM"
+    FC_OUT=$(printf '%s' "$REVIEW_OUTPUT" | bash "$FACT_CHECK" 2>"$_FC_STDERR")
+    FC_RC=$?
+    if [ -s "$_FC_STDERR" ]; then
+        # `|| [ -n "$_fcerrline" ]` cobre a ULTIMA linha quando ela nao termina em newline
+        # (caso real: [Console]::Error.WriteLine sem `\n` final, ou `echo -n`) -- sem isso
+        # `while read` descarta essa linha calado, paridade quebrada com o -split do .ps1
+        # (que cobre a ultima linha sem terminador).
+        while IFS= read -r _fcerrline || [ -n "$_fcerrline" ]; do
+            [ -z "$_fcerrline" ] || >&2 echo "[percus-review-auto] fact-check stderr: $_fcerrline"
+        done < "$_FC_STDERR"
+    fi
+    rm -f "$_FC_STDERR" 2>/dev/null || true
+    # So trata como falha terminal quando NEM exit=0 NEM ha stdout NAO-VAZIO -- mesmo espirito
+    # do .ps1 (`if ($fcExit -ne 0 -and -not $fcJson)`), mas NAO identico: o .ps1 exige JSON
+    # que PARSEOU; aqui so exige stdout nao-vazio, e o parse de verdade fica a cargo do
+    # python3 mais abaixo (se o stdout for lixo, cai no ramo final "nao retornou
+    # filtered_output"). Antes deste fix: qualquer FC_RC!=0 descartava um FC_OUT com JSON
+    # parseavel (ex.: fact-check.sh sair com codigo de aviso mas ainda ter emitido o
+    # resultado) -- regressao em relacao ao comportamento anterior do .sh, que nem checava
+    # exit e aproveitava o JSON quando existia.
+    if [ "$FC_RC" -ne 0 ] && [ -z "$FC_OUT" ]; then
+        >&2 echo "[percus-review-auto] fact-check NAO rodou: fact-check.sh saiu com erro (exit $FC_RC) e sem stdout aproveitavel -- ver stderr acima. Passando output original sem verificacao."
+        printf '%s' "$REVIEW_OUTPUT"
+        return 0
+    fi
     if [ -n "$FC_OUT" ]; then
         # Extrair filtered_output do JSON via python3 (best-effort)
         FILTERED=$(printf '%s' "$FC_OUT" | python3 -c "
@@ -245,7 +277,7 @@ except Exception:
             return 0
         fi
     fi
-    >&2 echo "[percus-review-auto] WARN: fact-check nao retornou filtered_output — passando output original"
+    >&2 echo "[percus-review-auto] fact-check NAO rodou: nao retornou filtered_output (JSON vazio, sem python3, ou parse falhou) — passando output original sem verificacao."
     printf '%s' "$REVIEW_OUTPUT"
 }
 
