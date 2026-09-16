@@ -112,7 +112,10 @@ _AREAS_CONHECIMENTO="conhecimento/resolver conhecimento/fazer referencia/conheci
 # se perde ao sair -- o gate passaria a nao ver verbete nenhum e ficaria verde por vacuidade,
 # que e o pior modo de falhar pra um gate.
 _TMP_VERBETES="${TMPDIR:-/tmp}/percus-verbetes-$$"
-trap 'rm -f "$_TMP_VERBETES" "$_TMP_LSFILES"' EXIT
+_TMP_LSFILES="${TMPDIR:-/tmp}/percus-lsfiles-$$"
+_TMP_DIFF="${TMPDIR:-/tmp}/percus-diff-$$"
+_TMP_BLOB="${TMPDIR:-/tmp}/percus-blob-$$"
+trap 'rm -f "$_TMP_VERBETES" "$_TMP_LSFILES" "$_TMP_DIFF" "$_TMP_BLOB"' EXIT
 
 # UMA chamada de git por execucao do gate, em cache. A primeira versao deste bloco chamava
 # `git rev-parse` + `git ls-files` por AREA e por SITIO -- 4 spawns por execucao. Parece
@@ -121,11 +124,66 @@ trap 'rm -f "$_TMP_VERBETES" "$_TMP_LSFILES"' EXIT
 # acelerar o ciclo tinha desacelerado ele. Medido, nao suposto.
 _DENTRO_GIT=0
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 && _DENTRO_GIT=1
-_TMP_LSFILES="${TMPDIR:-/tmp}/percus-lsfiles-$$"
 : > "$_TMP_LSFILES"
 if [ "$_DENTRO_GIT" = "1" ]; then
   git ls-files > "$_TMP_LSFILES" 2>/dev/null || :
 fi
+
+# ---------- Escopo do BLOQUEIO: o diff staged (Fase 5, 2026-09-16) ----------
+# Medido: em ~40 commits de 2026-09-15/16 foi preciso PERCUS_GATE_OVERSIZE pelo MESMO motivo --
+# INDICE.md listando verbete de outra sessao e link morto em verbete ja commitado, problemas que
+# o commit nao tocou. Escape de rotina e o sinal de desenho errado que este proprio gate descreve
+# no rodape. Contrato: as checagens de CONHECIMENTO que dependem de estado de outras sessoes
+# (2b link, 2d INDICE x arquivos) BLOQUEIAM so quando o problema envolve arquivo do diff staged --
+# a origem do link, o alvo removido, o verbete ou o INDICE da area. Problema herdado vira AVISO,
+# com a lista: continua visivel, so deixa de cobrar de quem nao o causou.
+#
+# Continuam bloqueando FORA do diff, de proposito: tetos de tamanho (1, 1b), higiene do verbete
+# (2: tags, slug, ancora, vazio -- gate-escopo-git caso 3), posicao (2e), monolito (2c) e versao (4).
+# Nenhuma delas depende de rascunho de outra sessao estar ou nao commitado.
+#
+# Fora de repo git (ou se o git diff falhar) o diff e DESCONHECIDO e tudo bloqueia: responder
+# "nao e deste commit" sem ter como saber seria ficar verde por vacuidade.
+# Diff CONHECIDO e VAZIO (rodada manual, nada staged) e outra coisa: o commit nao muda nada, entao
+# nao ha o que ele tenha causado -- tudo sai como AVISO. Decisao consciente (R11 2026-09-16): com
+# hook, git commit -a e git commit <arquivos> preenchem o indice temporario que o diff le.
+: > "$_TMP_DIFF"
+_DIFF_CONHECIDO=0
+_N_HERDADOS=0
+if [ "$_DENTRO_GIT" = "1" ]; then
+  # -z: nome com espaco ou acento sai cru (sem as aspas do core.quotePath). --no-renames: rename
+  # vira remocao + adicao, e o caminho ANTIGO tambem conta (link para ele morreu neste commit).
+  # --relative: mesmos caminhos relativos ao cwd que o git ls-files acima devolve.
+  if git diff --cached --name-only --no-renames --relative -z > "$_TMP_BLOB" 2>/dev/null; then
+    tr '\000' '\n' < "$_TMP_BLOB" | tr -d '\r' > "$_TMP_DIFF"
+    _DIFF_CONHECIDO=1
+  fi
+fi
+
+# Algum dos caminhos (um por linha em $1) esta no diff staged? Diff desconhecido: SIM (conservador).
+# Lista por linha e here-doc, e nao "$@" + set --: nao mexe nos parametros posicionais nem no
+# glob do gate, e o laco roda no shell corrente (o return sai da funcao, nao de um subshell).
+envolve_diff() {
+  [ "$_DIFF_CONHECIDO" = "1" ] || return 0
+  while IFS= read -r _ed_p; do
+    [ -n "$_ed_p" ] || continue
+    grep -qxF -- "$_ed_p" "$_TMP_DIFF" && return 0
+  done <<EOF_ENVOLVE
+$1
+EOF_ENVOLVE
+  return 1
+}
+
+# $1 = mensagem; $2 = caminhos envolvidos no problema, um por linha.
+violacao_do_diff() {
+  _vd_m=$1
+  if envolve_diff "$2"; then
+    violacao "$_vd_m"
+  else
+    _N_HERDADOS=$((_N_HERDADOS + 1))
+    printf '  AVISO (herdado, fora do diff -- nao barra): %s\n' "$_vd_m" >&2
+  fi
+}
 
 # Este arquivo pertence ao escopo do gate? Mesma regra do listar_verbetes_git, so que pra um
 # arquivo so: FORA de repo git a resposta e SIM (fallback conservador -- gate que responde
@@ -255,6 +313,19 @@ fi
 # caminho -- nao precisam de caso especial, e caso especial e o que apodrece.
 if [ -n "$_lista" ]; then
   _links=$(printf '%s' "$_lista" | tr '\n' '\0' | xargs -0 awk '
+    # Resolve os segmentos . e .. do caminho: o alvo removido NESTE commit so e reconhecido no
+    # diff staged pela forma canonica (conhecimento/fazer/x.md, nunca resolver/../fazer/x.md).
+    function normaliza(p,   n, i, s, k, out) {
+      n = split(p, s, "/"); k = 0
+      for (i = 1; i <= n; i++) {
+        if (s[i] == "" || s[i] == ".") continue
+        if (s[i] == ".." && k > 0 && pilha[k] != "..") { k--; continue }
+        pilha[++k] = s[i]
+      }
+      out = ""
+      for (i = 1; i <= k; i++) out = out (i > 1 ? "/" : "") pilha[i]
+      return out
+    }
     FNR == 1 { fence = 0; if (substr($0, 1, 3) == "\357\273\277") $0 = substr($0, 4) }
     { linha = $0; sub(/\r$/, "", linha) }
     linha ~ /^```/ { fence = !fence; next }
@@ -279,7 +350,7 @@ if [ -n "$_lista" ]; then
         sub(/#.*$/, "", alvo)
         if (alvo == "") continue
         d = FILENAME; sub(/\/[^\/]*$/, "", d)
-        print FILENAME "\t" d "/" alvo "\t" alvo
+        print FILENAME "\t" normaliza(d "/" alvo) "\t" alvo
       }
       # Link de ANCORA ](#slug): era a forma dominante de cross-ref no monolito, onde origem e
       # destino moravam no mesmo arquivo. Com um arquivo por verbete a ancora deixou de existir
@@ -334,7 +405,8 @@ if [ -n "$_lista" ]; then
       _rest=${_rest#*	}
       _cam=${_rest%%	*}; _alvo=${_rest#*	}
       if [ -f "$_cam" ]; then
-        violacao "$_arq -- ](#$_alvo) aponta pra um verbete que existe; com um arquivo por verbete a ancora nao resolve. Use ](${_alvo}.md). Se for MESMO ancora de secao interna, renomeie a secao: o gate nao consegue distinguir quando existe um verbete com o mesmo slug"
+        violacao_do_diff "$_arq -- ](#$_alvo) aponta pra um verbete que existe; com um arquivo por verbete a ancora nao resolve. Use ](${_alvo}.md). Se for MESMO ancora de secao interna, renomeie a secao: o gate nao consegue distinguir quando existe um verbete com o mesmo slug" "$_arq
+$_cam"
       fi
     elif [ "$_tipo" = "WIKI" ]; then
       # [[slug]] nao carrega caminho -- e a notacao DOMINANTE da base: 287 dos 288 cross-refs
@@ -351,23 +423,35 @@ if [ -n "$_lista" ]; then
       if [ ! -f "$_cam" ]; then
         _slug=${_cam##*/}; _slug=${_slug%.md}
         _achados=""; _n=0
+        # Candidatos em TODAS as areas, existindo ou nao: remover (ou adicionar) o slug em
+        # qualquer area neste commit e o que mata (ou torna ambiguo) o link alheio.
+        _cands=""
         for _a in $_AREAS_CONHECIMENTO; do
+          _cands="$_cands
+$_a/$_slug.md"
           [ -f "$_a/$_slug.md" ] || continue
           _achados="$_achados $_a"
           _n=$((_n + 1))
         done
         if [ "$_n" = "0" ]; then
-          violacao "$_arq -- link para '$_alvo' nao resolve num arquivo existente (link morto nasce calado)"
+          _envolvidos="$_arq
+$_cam$_cands"
+        else
+          _envolvidos="$_arq$_cands"
+        fi
+        if [ "$_n" = "0" ]; then
+          violacao_do_diff "$_arq -- link para '$_alvo' nao resolve num arquivo existente (link morto nasce calado)" "$_envolvidos"
         elif [ "$_n" -gt 1 ]; then
           # Escolher uma area no escuro seria mentir que sabe. O gate diz que NAO sabe, e a
           # saida honesta e o caminho explicito -- que nenhuma das leituras deixa ambiguo.
-          violacao "$_arq -- '$_alvo' e ambiguo: o slug existe em$_achados. [[slug]] nao diz qual -- cite por caminho: ](../<area>/$_slug.md)"
+          violacao_do_diff "$_arq -- '$_alvo' e ambiguo: o slug existe em$_achados. [[slug]] nao diz qual -- cite por caminho: ](../<area>/$_slug.md)" "$_envolvidos"
         fi
       fi
     else
       _cam=${_rest%%	*}; _alvo=${_rest#*	}
       if [ ! -f "$_cam" ]; then
-        violacao "$_arq -- link para '$_alvo' nao resolve num arquivo existente (link morto nasce calado)"
+        violacao_do_diff "$_arq -- link para '$_alvo' nao resolve num arquivo existente (link morto nasce calado)" "$_arq
+$_cam"
       fi
     fi
     IFS='
@@ -474,10 +558,12 @@ for _d in $_AREAS_CONHECIMENTO; do
   for _s in $_dif; do
     if [ -f "$_d/$_s.md" ]; then
       if verbete_do_git "$_d/$_s.md"; then
-        violacao "$_d/$_s.md -- verbete FORA do INDICE.md (rode scripts/gerar-indice-conhecimento.ps1)"
+        violacao_do_diff "$_d/$_s.md -- verbete FORA do INDICE.md (rode scripts/gerar-indice-conhecimento.ps1)" "$_d/$_s.md
+$_idx"
       fi
     else
-      violacao "$_idx -- lista '$_s.md', que nao existe (rode scripts/gerar-indice-conhecimento.ps1)"
+      violacao_do_diff "$_idx -- lista '$_s.md', que nao existe (rode scripts/gerar-indice-conhecimento.ps1)" "$_idx
+$_d/$_s.md"
     fi
   done
 done
@@ -511,6 +597,30 @@ if [ -d conhecimento/resolver ]; then
   done
 fi
 
+
+# ---------- 3. .ps1 staged com byte > 0x7F sem BOM ----------
+# O PowerShell 5.1 le .ps1 SEM BOM como ANSI (cp1252): acento vira mojibake e string com aspa
+# tipografica ou travessao quebra o parse. A falha passou por 2 revisoes seguidas (T2 da Fase 3
+# e teste do MDS na Fase 4) e so o ps51-compat da suite inteira pegou -- regra que depende de
+# alguem lembrar ja falhou (Sec. 6).
+#
+# So o STAGED (adicionado/modificado): .ps1 herdado nao e deste commit. Le o blob do INDICE, nao
+# o disco -- o que entra no commit e o indice. Removido no commit nao tem blob e e pulado.
+# ":./<caminho>" porque a lista do diff e relativa ao cwd (--relative), e ":<caminho>" e da raiz.
+# Sem diff conhecido (fora de repo git) a regra nao roda: ela e sobre o que entra no commit, e
+# sem indice nao ha commit -- nao ha fallback honesto pra "staged".
+if [ "$_DIFF_CONHECIDO" = "1" ]; then
+  while IFS= read -r _ps; do
+    case "$_ps" in *.[pP][sS]1) ;; *) continue ;; esac
+    git cat-file blob ":./$_ps" > "$_TMP_BLOB" 2>/dev/null || continue
+    _alto=$(LC_ALL=C tr -d '\000-\177' < "$_TMP_BLOB" | dd bs=1 count=1 2>/dev/null | wc -c | tr -d ' ')
+    [ "$_alto" = "0" ] && continue
+    _bom=$(dd if="$_TMP_BLOB" bs=3 count=1 2>/dev/null | od -An -tx1 | tr -d ' \r\n')
+    if [ "$_bom" != "efbbbf" ]; then
+      violacao "$_ps -- .ps1 com byte > 0x7F (acento/emoji) sem BOM: .ps1 com acento/emoji nasce com BOM; o PowerShell 5.1 le em ANSI e quebra. Regrave em UTF-8 com BOM (nao com python: ele come o BOM)"
+    fi
+  done < "$_TMP_DIFF"
+fi
 
 # ---------- 4. Conteudo de kit staged sem bump de versao ----------
 # Os 6 testes de version-alignment provam que os 4 arquivos de versao CONCORDAM.
@@ -589,6 +699,10 @@ if [ -n "$v_origin" ]; then
 fi
 
 # ---------- Resultado ----------
+if [ "$_N_HERDADOS" -gt 0 ]; then
+  printf '\n  %s problema(s) de conhecimento HERDADO(S), fora do diff staged: listados acima como AVISO, nao barram.\n' "$_N_HERDADOS" >&2
+  printf '  Corrija em commit proprio (INDICE: scripts/gerar-indice-conhecimento.ps1).\n' >&2
+fi
 if [ "$FAIL" -ne 0 ]; then
   printf '\n  Gate Percus V2 barrou o commit.\n' >&2
   printf '  Corrija, ou declare o motivo:  PERCUS_GATE_OVERSIZE="por que" git commit ...\n' >&2
