@@ -13,12 +13,15 @@
 - [ ] Todo cenário de usuário está em **Given-When-Then** e tem prioridade (P1/P2/P3).
 - [ ] Existe ao menos **1 cenário P1** (sem ele a feature não tem MVP).
 - [ ] **Edge cases** enumerados e cada um linka a um FR.
+- [ ] **Suficiência:** quem recebe esta spec sem ter participado da conversa implementaria sem voltar para perguntar? Se não, as lacunas estão listadas e fechadas **na spec**, não no chat.
+- [ ] **Artefatos-fonte:** para cada artefato que o pedido trouxe (planilha, sistema existente, export, documento do cliente), a estrutura dele (colunas, abas, entidades, período de histórico) está nos FR ou em "Entidades-chave", e não só o resultado visível? Pedido sem artefato: `N/A: <motivo>`.
 
 ## Clareza
 
 - [ ] **≤ 3** `NEEDS-CLARIFICATION` abertos (mais que isso = volte ao brainstorming).
 - [ ] Nenhum FR depende de termo ambíguo não definido (ex.: "vários", "rápido", "seguro" sem número/definição).
 - [ ] **Terminologia consistente** — o mesmo conceito tem o mesmo nome em toda a spec.
+- [ ] Todo **FR** completa "violado quando ___" com fato observável? Armadilhas de redação: `v2/loops/spec.md` § Armadilhas.
 
 ## Fronteira WHAT/HOW (regra herdada do spec-kit)
 
