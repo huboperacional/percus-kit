@@ -28,6 +28,14 @@
 
 **A conclusão que vale guardar:** quando não há desperdício para espremer — 1 review por commit, sub-centavo cada, cache no teto — a pergunta deixa de ser *"como gastar menos fazendo o mesmo"* e vira *"quanta revisão queremos comprar"*. São decisões diferentes, e só a segunda é honesta nesse cenário.
 
+**Consequência adotada (2026-09-15, ponto 23):** o `deepseek-review` (`.ps1` e `.sh`) passou a **fatiar o diff por arquivo** em vez de mandar tudo numa chamada só. Acima de `-MaxLinhasFatia` (env `PERCUS_R11_MAX_LINHAS_FATIA`, padrão 1500, mín. 200) ele parte nas fronteiras `diff --git`, empacota de forma gulosa até o teto — **código primeiro, teste depois, sem misturar** — e faz uma chamada por fatia, cada uma com o timeout/retry de sempre. O orçamento de atenção deixa de ser por commit e passa a ser por fatia: a densidade de achados volta à faixa boa sem exigir que o operador pique o commit à mão. Limites e garantias:
+- teto de `-MaxFatias` (env `PERCUS_R11_MAX_FATIAS`, padrão 8). Acima dele **não** fatia: revisa inteiro como antes e avisa na stderr (`WARN: diff de <N> linhas precisaria de <k> fatias`) — o remédio aí é dividir o commit, não pagar 20 chamadas;
+- arquivo sozinho maior que o teto vira fatia própria, **sem corte** (cortar diff é a classe [#r11-diff-truncation-silent]);
+- **um** `latest.jsonl` no fim, com `findings` de todas as fatias (`### Fatia i/n — <arquivos>`), `usage` somado campo a campo e `fatias: n`; o `d-<hash>` continua sendo o hash de `git diff HEAD` inteiro. Fatia que falha encerra com o código de sempre (4/3/1) + `(fatia i/n)` e **não grava marcador nenhum** — marcador parcial liberaria commit meio revisado;
+- telemetria: uma linha de spend por fatia, com `fatia`, `fatias` e `latency_ms`.
+
+⏱️ **Ao chamar a review de um agente:** 8 fatias × até 180 s não cabem no teto padrão de 120 s do Bash tool. Use **timeout 600000** ou background com espera explícita — senão a chamada é morta no meio e a review some sem marcador.
+
 **Relacionado:** [#taxa-de-cache-tem-teto-estrutural] (medição irmã, mesma investigação) · [#r11-diff-truncation-silent] (diff grande também pode ser truncado, e aí a review parece limpa).
 
 **Ref:** percus-kit, investigação do gasto DeepSeek de 2026-08-24. Base: 1.009 reviews e 1.026 commits em 13 projetos, 19–24/08.
