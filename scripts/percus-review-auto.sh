@@ -1,14 +1,14 @@
 #!/bin/sh
 # Wrapper kit-level pra agente Claude Code auto-disparar /percus-review:review
-# via Bash tool, sem precisar de paste do usuário no chat.
+# via Bash tool, sem precisar de paste do usuario no chat.
 #
-# Resolve plugin percus-review instalado a nível usuário, dispatch via
-# review-router + deepseek-review da versão mais recente. Path absoluto estável.
+# Resolve plugin percus-review instalado a nivel usuario, dispatch via
+# review-router + deepseek-review da versao mais recente. Path absoluto estavel.
 #
-# Quando decisão é cross-claude ou dual, emite marker __PERCUS_NEEDS_CROSS_CLAUDE__
-# no stderr -- agente lê e dispatch Sonnet subagent via Agent tool.
+# Quando decisao e cross-claude ou dual, emite marker __PERCUS_NEEDS_CROSS_CLAUDE__
+# no stderr -- agente le e dispatch Sonnet subagent via Agent tool.
 #
-# F3 — Fact-check pipeline obrigatorio: apos reviewer principal, findings [SEV: risco|bug]
+# F3 -- Fact-check pipeline obrigatorio: apos reviewer principal, findings [SEV: risco|bug]
 # sao validados via fact-check.sh. Findings INFUNDADO sao filtrados antes do output
 # principal. Audit block preserva todos os veredictos. Opt-out via --no-fact-check.
 #
@@ -49,7 +49,7 @@ if [ ! -d "$PLUGINS_DIR" ]; then
     exit 1
 fi
 
-# Pega versão mais recente (semver-sorted)
+# Pega versao mais recente (semver-sorted)
 CURRENT=""
 for d in "$PLUGINS_DIR"/*; do
     [ -d "$d" ] || continue
@@ -75,7 +75,7 @@ if [ -z "$CURRENT" ]; then
 fi
 
 # A versao real e a do plugin.json; o NOME DA PASTA reflete o ultimo republish e fica
-# legitimamente atras (republish descartado em 01/07/2026 — ver CANON_VERSION.md).
+# legitimamente atras (republish descartado em 01/07/2026 -- ver CANON_VERSION.md).
 MANIFEST_VERSION="?"
 if [ -f "$CURRENT/plugin.json" ]; then
     MANIFEST_VERSION=$(sed -n 's/.*"version"[ ]*:[ ]*"\([^"]*\)".*/\1/p' "$CURRENT/plugin.json" | head -1)
@@ -150,7 +150,7 @@ elif command -v python3 >/dev/null 2>&1; then
     WARN_LINES=$(printf '%s' "$DECISION_JSON" | python3 -c 'import json,sys
 for w in (json.load(sys.stdin).get("warnings") or []): print(w)' 2>/dev/null || true)
 elif printf '%s' "$DECISION_JSON" | tr -d ' \n' | grep -q '"warnings":\["'; then
-    WARN_LINES="router emitiu avisos e nao ha jq/python3 para le-los — rode o router direto"
+    WARN_LINES="router emitiu avisos e nao ha jq/python3 para le-los -- rode o router direto"
 fi
 if [ -n "$WARN_LINES" ]; then
     printf '%s\n' "$WARN_LINES" | while IFS= read -r w; do
@@ -203,7 +203,7 @@ run_fact_check() {
         return 0
     fi
     if [ ! -f "$FACT_CHECK" ]; then
-        >&2 echo "[percus-review-auto] fact-check NAO rodou: fact-check.sh nao encontrado em $FACT_CHECK — passando output direto sem verificacao."
+        >&2 echo "[percus-review-auto] fact-check NAO rodou: fact-check.sh nao encontrado em $FACT_CHECK -- passando output direto sem verificacao."
         printf '%s' "$REVIEW_OUTPUT"
         return 0
     fi
@@ -265,7 +265,7 @@ try:
         print('[percus-review-auto] WARN: %s de %s finding(s) ficaram SEM verificacao -- confira a mao antes de descartar.' % (nv, tot), file=s.stderr)
     if inf and inf > 0:
         import sys as s
-        print(f'[percus-review-auto] WARN: {inf} finding(s) INFUNDADO(s) filtrado(s) do output — ver bloco Audit', file=s.stderr)
+        print(f'[percus-review-auto] WARN: {inf} finding(s) INFUNDADO(s) filtrado(s) do output -- ver bloco Audit', file=s.stderr)
     print(d.get('filtered_output', ''), end='')
 except Exception:
     pass
@@ -277,7 +277,7 @@ except Exception:
             return 0
         fi
     fi
-    >&2 echo "[percus-review-auto] fact-check NAO rodou: nao retornou filtered_output (JSON vazio, sem python3, ou parse falhou) — passando output original sem verificacao."
+    >&2 echo "[percus-review-auto] fact-check NAO rodou: nao retornou filtered_output (JSON vazio, sem python3, ou parse falhou) -- passando output original sem verificacao."
     printf '%s' "$REVIEW_OUTPUT"
 }
 
@@ -326,7 +326,7 @@ case "$DECISION" in
 
     council)
         # Fase 6 v6.1.0+: o router emite "council" (sensivel + grande/from-DS) desde a
-        # v6.1.0, mas este case nunca existiu aqui — so no .ps1. Resultado: quem rodava
+        # v6.1.0, mas este case nunca existiu aqui -- so no .ps1. Resultado: quem rodava
         # o wrapper por bash caia em "decisao desconhecida" e o review NAO acontecia.
         # Encontrado em 2026-07-27 rodando o proprio gate sobre este commit.
         # Semantica identica a do .ps1: DeepSeek local + Llama via orchestrator + marker
@@ -382,7 +382,7 @@ case "$DECISION" in
     cross-claude)
         # R11: DeepSeek nao pode auto-revisar. Placeholder pra liberar hook TTL,
         # agente DEVE dispatchar Sonnet via Agent tool.
-        # Nota: fact-check nao aplicavel aqui — sem output de reviewer local.
+        # Nota: fact-check nao aplicavel aqui -- sem output de reviewer local.
         write_deferred_review_placeholder "cross-claude" "decision=cross-claude (commit from DeepSeek). R11 anti auto-revisao -- so Sonnet revisa."
         >&2 echo "__PERCUS_NEEDS_CROSS_CLAUDE__: commit veio de DeepSeek (decision=cross-claude). DEVE dispatchar Sonnet subagent via Agent tool agora -- DeepSeek NAO revisa proprio output (R11).$INSTRUCAO_REGISTRO"
         ;;
