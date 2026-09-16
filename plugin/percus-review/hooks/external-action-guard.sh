@@ -19,7 +19,7 @@ command=$(printf '%s' "$STDIN" | python3 -c "import sys,json; print(json.load(sy
 
 # Padroes de acao externa publica (espelham external-action-guard.ps1)
 #
-# ⚠️ PARIDADE: esta lista TEM que acompanhar a do .ps1. Nao e zelo abstrato -- na 6.36.2 um
+#  PARIDADE: esta lista TEM que acompanhar a do .ps1. Nao e zelo abstrato -- na 6.36.2 um
 # parametro foi removido de tres arquivos e esquecido no quarto, e o teste de paridade nao pegou
 # porque comparava MODELOS, nao parametros. Aqui a divergencia seria pior: o Unix pararia de
 # barrar exatamente o que o Windows barra.
@@ -29,7 +29,7 @@ command=$(printf '%s' "$STDIN" | python3 -c "import sys,json; print(json.load(sy
 
 # Inicio de comando: comeco da string, ou logo depois de um separador de shell. Serve para
 # distinguir EXECUTAR de MENCIONAR -- ver o bloco "publicar" abaixo.
-# ⚠️ `then`/`do` com fronteira de palavra a mao (`(^|[^[:alnum:]_])`): sem ela, `heathen deploy`
+#  `then`/`do` com fronteira de palavra a mao (`(^|[^[:alnum:]_])`): sem ela, `heathen deploy`
 # casa pela substring "then " e vira falso positivo -- e o irmao .ps1 usa `\b`, que ERE nao tem.
 # Achado do review, e e a MESMA classe de divergencia que esta versao diz ter eliminado.
 cmd_ini='(^|[;&|(]+[[:space:]]*|&&[[:space:]]*|\|\|[[:space:]]*|(^|[^[:alnum:]_])then[[:space:]]+|(^|[^[:alnum:]_])do[[:space:]]+)'
@@ -60,7 +60,7 @@ patterns=(
   'mailto:'
   # --- publicar: o resultado fica visivel pra quem nao e a gente ---
   #
-  # ⚠️ ANCORADOS em posicao de comando ($cmd_ini). Sem a ancora, a primeira versao destes padroes
+  #  ANCORADOS em posicao de comando ($cmd_ini). Sem a ancora, a primeira versao destes padroes
   # bloqueou a REDACAO de um documento que apenas CITAVA um comando de deploy dentro de uma tag
   # HTML -- guard que impede escrever sobre deploy vira imposto, e imposto acaba desligado.
   # Os padroes de cima (gh/git/slack) ficam sem ancora de proposito: ja sao especificos.
@@ -72,22 +72,22 @@ patterns=(
   "${cmd_ini}(sudo[[:space:]]+)?kubectl[[:space:]]+(apply|rollout|delete)"
   # --- executar em OUTRA maquina: o efeito nao fica nesta (ancorado pelo mesmo motivo) ---
   #
-  # ⚠️ NAO exige `user@host`. A primeira versao exigia, e o review pegou: `ssh vps 'cmd'`, com
+  #  NAO exige `user@host`. A primeira versao exigia, e o review pegou: `ssh vps 'cmd'`, com
   # alias do ~/.ssh/config, e a forma MAIS comum de execucao remota e nao tem arroba. O
   # [[:space:]] depois de `ssh` ja exclui ssh-keygen/ssh-add.
   # O host pode terminar em espaco, em separador de comando OU no fim da string: `ssh host;` e
   # `ssh host &` sao execucao remota igual, e a 1a versao exigia espaco -- as duas escapavam.
-  # ⚠️ `ssh -p 22 host` casa com `22` no lugar do host e bloqueia igual. E CONSERVADOR DE
+  #  `ssh -p 22 host` casa com `22` no lugar do host e bloqueia igual. E CONSERVADOR DE
   # PROPOSITO: continua sendo execucao remota, e errar para o lado de pedir o operador custa um
   # round-trip; errar para o outro custou um deploy em producao sem gate.
   "${cmd_ini}(sudo[[:space:]]+)?ssh[[:space:]]+(-[^[:space:]]+[[:space:]]+)*[^[:space:]-][^[:space:]]*${cmd_fim}"
-  # ⚠️ Wrapper LOCAL que abre sessao remota -- gemeo do padrao no .ps1, add. 2026-08-21.
+  #  Wrapper LOCAL que abre sessao remota -- gemeo do padrao no .ps1, add. 2026-08-21.
   # Medido: o guard barrou o `ssh` direto e o MESMO efeito passou pelo wrapper do projeto
   # (`python scripts/vps_exec.py`), porque o texto do comando nao carrega a palavra procurada.
   # O sinal e o NOME do script declarar destino remoto (vps/ssh), nao o conteudo dele.
-  # ⛔ Exige INTERPRETADOR na frente: sem isso `cat scripts/vps_exec.py` bloquearia, e guard que
+  #  Exige INTERPRETADOR na frente: sem isso `cat scripts/vps_exec.py` bloquearia, e guard que
   # impede LER o wrapper vira imposto. Ha teste para os dois lados no .tests.ps1.
-  # ⚠️ ERE nao tem \b nem \w: `[_[:alnum:]]*` faz o papel do \w*, e a fronteira final vem do
+  #  ERE nao tem \b nem \w: `[_[:alnum:]]*` faz o papel do \w*, e a fronteira final vem do
   # ponto da extensao. Divergir do irmao .ps1 aqui e exatamente como a guarda vaza -- e a
   # primeira versao DIVERGIU: ela usava `[^[:space:]]*(vps|ssh)`, sem exigir fronteira, enquanto
   # o .ps1 usa `\S*\b(vps|ssh)`. O review cross-provider pegou: `myvps.py` bloqueava aqui e
@@ -96,7 +96,7 @@ patterns=(
   # remoto. Falso positivo assim vira imposto, e imposto acaba desligado.
   # `([^[:space:]]*[^[:alnum:]])?` = prefixo opcional que TERMINA em nao-alfanumerico; e o que
   # faz `scripts/vps_exec.py` e `deploy-vps.sh` casarem e `myvps.py` nao.
-  # ⛔ A fronteira e explicita dos DOIS lados e identica ao gemeo .ps1 (que usa lookaround):
+  #  A fronteira e explicita dos DOIS lados e identica ao gemeo .ps1 (que usa lookaround):
   # nao-alfanumerico antes de vps/ssh, e nao-alfanumerico (ou fim) depois da extensao. A 1a
   # versao errou nos dois pontos e o review cross-provider pegou: `my_vps.py` e
   # `vps_exec.pyfoo` casavam aqui e nao la, cada um um bypass pelo outro provedor.
@@ -111,7 +111,7 @@ patterns=(
 #
 #     GET fica de fora DE PROPOSITO: ler e livre, escrever e que precisa do operador. Ancorados
 #     como os de deploy: prosa que CITA `curl -X POST` nao e um POST.
-# ⚠️ Sem `\b` aqui: ERE do bash nao tem. A 1a versao usou `([[:space:]]|$)` no lugar, e isso
+#  Sem `\b` aqui: ERE do bash nao tem. A 1a versao usou `([[:space:]]|$)` no lugar, e isso
 # CONSOME um caractere -- o padrao passou a exigir DOIS espacos e `curl -X POST` deixou de casar.
 # Falha silenciosa e para o lado errado (guard que libera). Pego pelo teste comportamental, nao
 # por leitura: os dois irmaos tinham o mesmo texto e comportamentos diferentes.
