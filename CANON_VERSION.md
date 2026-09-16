@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.59.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.60.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -34,6 +34,90 @@
 > (mudança em `plugin/percus-review/skills/` ou `commands/`).
 
 (nenhuma entrada pendente)
+
+---
+
+## Changelog v6.60.0 — 2026-09-15
+
+### Fase 3 — medição, Gemini leitor e fatiamento do R11 (branch `worktree-fase3`)
+
+**Pontos desta leva:** 11 (T5), 17 resto (T3), 20 (T1 + U1), 23 (T4), mais a ferramenta de inventário de PLANO
+(T2) e o corte de tempo do teste do mock-scan (T7). **Descartados com medição:** ponto 8 (trailer de verificação
+em ~5.800 commits, sem data de início nos PLANOs para medir antes/depois); injeção do 11 (o que o agente já
+recebe são só títulos, 1.631 chars); telemetria do 17 além do preço (resta centavo). Plano:
+`D:\Claud Automations\.claude-home\plans\2026-09-15-fase3-plano-contrato.md`.
+
+**skill muda: não.**
+
+- **Ponto 20 — Gemini como leitor de documento longo (T1).** `scripts/gemini-ler-longo.ps1`: lê documento longo
+  via `agy` (Gemini headless) exigindo citação de linha, fatia por `-MaxLinhas` cortando em títulos `## ` fora de
+  cerca de código, grava `.md` + `.json` (`citacoes_total`, `citacoes_fora_da_fatia`, `fatias_falhas`) e uma linha
+  de telemetria por chamada. Exits 0/2/3/4. Testes: `plugin/percus-review/tests/gemini-ler-longo.tests.ps1`
+  (10 verdes + 1 pulado com motivo, `PERCUS_TESTE_AGY_VIVO`), com `agy` falso e fixtures sem segredo.
+  **Aceite medido (U1):** reanálise do relatório MDS recuperou 5 dos 6 achados do gabarito e as 4 tensões,
+  0 citações fora da fatia em 45, e 10 de 10 citações sorteadas batem com a linha real; 1 chamada, 69.275 tokens,
+  80 s, 1% da cota semanal. **Limites medidos:** exit 0 e `status:SUCCESS` NÃO provam cobertura — uma fatia
+  grande truncou em silêncio (33 de 58 seções) na U2; e o modelo só sabe o que está na mensagem, então toda
+  afirmação dele sobre o repositório é hipótese até alguém abrir o arquivo. Verbete:
+  `conhecimento/fazer/gemini-agy-leitor-de-documento-longo.md`.
+
+- **Inventário de PLANO (T2).** `scripts/plano-inventario.ps1`: inventário determinístico das seções `## ` de um
+  PLANO (classes FECHADA / ABERTA / CONTRADITORIA / SEM-MARCADOR, conferência de refs de commit e de caminho) e
+  modo de arquivamento byte a byte das seções FECHADAS para um histórico, preservando BOM e fim de linha, com
+  escrita atômica e recusa (exit 3) de seção que não seja FECHADA. Teste:
+  `plugin/percus-review/tests/plano-inventario.tests.ps1`. **Limitação medida em 5 PLANOs reais (477 seções):**
+  `refs_ausentes` tem muito falso positivo (revisão do Alembic de 12 hex tomada por commit, caminho de VPS, glob,
+  caminho relativo a subprojeto) e `CONTRADITORIA` dispara em seção que apenas lista tarefas ou registra escada de
+  ADR — serve para triagem humana, não como medida de status falso. PLANO cujo corpo é blockquote (`> ###`) fica
+  invisível ao inventário.
+
+- **Ponto 17 (resto) — preço com vigência (T3).** `scripts/analyze_council_spend.py`: `PRICING_PER_MTOKEN` vira
+  lista de períodos por modelo (`vigente_desde`, `in_hit`, `in_miss`, `out`, `pico`, `fonte`), e o período é
+  escolhido pelo timestamp da entrada — log de agosto deixa de ser calculado com preço de setembro. DeepSeek:
+  período de agosto com os valores medidos contra a fatura (2026-08-24); de 2026-09-15 em diante, a página oficial
+  conferida no dia (o preço caiu). Entrada sem timestamp usa o período mais caro e conta `SEM_TIMESTAMP`;
+  timestamp sem fuso não recebe multiplicador de horário e conta `SEM_FUSO`. 25 testes em
+  `scripts/tests/test_analyze_council_spend.py`. Aferido em 19–24/08: $8,4951, +5,14% sobre os $8,08 de
+  referência (dentro da faixa aceita pelo controlador).
+
+- **Ponto 23 — R11 com teto e fatiamento (T4).** `plugin/percus-review/scripts/deepseek-review.ps1`/`.sh` fatiam o
+  diff por arquivo acima de `-MaxLinhasFatia` (env `PERCUS_R11_MAX_LINHAS_FATIA`, padrão 1500, mínimo 200): corte
+  nas fronteiras `diff --git`, código antes de teste sem misturar, empacotamento guloso até o teto, arquivo maior
+  que o teto em fatia própria sem corte, uma chamada por fatia com o timeout e o retry de sempre. Acima de
+  `-MaxFatias` (env `PERCUS_R11_MAX_FATIAS`, padrão 8) **não** fatia: revisa inteiro e avisa na stderr. Sucesso
+  grava **um** `latest.jsonl` (findings com `### Fatia i/n — arquivos`, `usage` somado campo a campo, campo novo
+  `fatias`), e o `d-<hash>` continua sendo o hash de `git diff HEAD` inteiro. Falha em qualquer fatia encerra com
+  o código de sempre (4/3/1) acrescido de `(fatia i/n)` e **sem** marcador nem telemetria de sucesso — nenhuma
+  escrita persistente acontece antes de todas as fatias passarem (conferido na revisão, nas duas camadas).
+  Telemetria ganha uma linha por fatia (`fatia`, `fatias`, `latency_ms`). **Ao chamar a review de um agente, use
+  timeout 600000:** 8 fatias × 180 s não cabem nos 120 s padrão. Testes:
+  `plugin/percus-review/tests/deepseek-review-fatiado.tests.ps1` (24 casos, com sabotagem provando que o hash é do
+  diff inteiro). Limites registrados: depende de `truncate`; glob lexicográfico de resposta com mais de 9 fatias;
+  teto de 256 KB do marcador (fail-closed).
+
+- **Ponto 11 — V1/V2: quem manda em quê (T5).** `v2/MIGRACAO.md` ganha a seção "Quem manda em quê (por tema)":
+  V1 manda na **obrigação** (R-número, enforcement), V2 no **procedimento** (loops, formatos); infra, stack, auth
+  e tracking só V1. Tabela de 14 temas com "Em conflito vence" e "Ponteiro que falta". `v2/CONSTITUICAO.md` §2
+  aponta a tabela (R25: ponteiro, não cópia). Teste: `plugin/percus-review/tests/migracao-quem-manda.tests.ps1`
+  (todo loop e formato do V2 tem linha; caminhos e R-números existem; pasta ausente ou varredura curta reprovam).
+  **13 contradições V1×V2 levantadas e nenhuma corrigida nesta versão** (a tarefa é mapear, não reescrever
+  regra); 4 delas deixam o leitor sem saída e vão ao operador: formato do HANDOFF; README do conhecimento contra
+  a R23; critério de ADR no sunset; `localStorage` (V2 veta sempre, R7 abre exceção para SPA pura).
+
+- **Tempo da suíte (T7).** `plugin/percus-review/tests/mock-scan.tests.ps1`: a perna `sh LC_ALL=C` saiu (duplicava
+  a perna sh padrão nesta máquina) e restou um caso de controle explícito; a perna `LC_ALL=C.UTF-8` roda só os
+  casos marcados como sensíveis a locale (10 de 31); as três pernas principais seguem com a tabela inteira.
+  198,1 s → 106,2 s (−46%), com as sabotagens da T10 continuando vermelhas pelo motivo certo.
+
+- **Encoding.** `scripts/plano-inventario.ps1` e seu teste nasceram sem BOM tendo bytes > 0x7F, o que deixava o
+  `ps51-compat` vermelho; corrigido nesta versão (regra do kit: `.ps1` com byte acima de 0x7F nasce com BOM).
+
+**U2 — reconciliação dos PLANOs gigantes (nos projetos, não no kit).** 477 seções inventariadas em 5 projetos.
+Só `Plexco Tasks` estava elegível: 5 frentes FECHADAS verificadas foram para `docs/historico/`, PLANO de 3.846
+para 3.560 linhas, commit local sem push. `tiatendo`, `Paid Midia Automation`, `Familia-Milionaria` e
+`Empresa-Milionaria` ficaram fora pela regra de elegibilidade (branch de outra sessão ou arquivo alheio
+modificado), com relatório e propostas registradas. Relatórios em
+`D:\Claud Automations\.claude-home\plans\2026-09-15-plano-reconciliacao\`.
 
 ---
 
