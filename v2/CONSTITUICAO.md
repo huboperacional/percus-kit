@@ -62,7 +62,7 @@ Escape reincidente não é indisciplina: é sinal de desenho errado. O `loops/dr
 
 ## 7. Restrições inegociáveis
 
-- **Auth:** padrão único Percus; validação local por JWKS. Token em `localStorage` é **vetado por padrão** — a única exceção (SPA pura) está na R7. → `referencia/auth.md`
+- **Auth:** padrão único Percus; validação local por JWKS. Token em `localStorage` é **vetado por padrão** — a única exceção (SPA pura) está em `01_REGRAS_INEGOCIAVEIS.md` § R7. → `referencia/auth.md`
 - **Sem mock ou stub em caminho de produção.** Mock existe em teste.
 - **Banco, role e namespace dedicados por projeto.** Nunca reaproveitar de outro. → `referencia/infra.md`
 - **Nunca escreva em outro repositório.** Propagação é caixa de texto para o operador aplicar.
