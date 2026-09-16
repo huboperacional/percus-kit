@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.61.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.62.0`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -34,6 +34,80 @@
 > (mudança em `plugin/percus-review/skills/` ou `commands/`).
 
 (nenhuma entrada pendente)
+
+---
+
+## Changelog v6.62.0 — 2026-09-16
+
+### Fase 5 — R20 em duas camadas, gate que julga o commit, e as 5 peças do MDS
+
+**skill muda: sim — `commands/install-git-hooks.md` (instalação do `pre-push`); só vale após push + autoUpdate.**
+
+**Achado que motivou a fase (Crítico, medido):** o `external-action-guard` casava a publicação por um padrão
+de subcomando colado ao `git`. Com qualquer opção global no meio (`git -C "<dir>" push`, `git -c k=v push`,
+`git --no-pager push`, `git.exe push`) ele não via ação externa e saía 0 **sem autorização e sem auditoria**,
+nas duas camadas. Os 2 pushes de 2026-09-16 passaram assim (a autorização existia; o hook nunca a leu).
+Verbete: `conhecimento/resolver/opcao-global-do-git-antes-do-subcomando-engana-guarda-de-texto.md`.
+
+**Modelo de ameaça declarado:** os hooks do R20 são trilho contra erro e atalho de agente ou sessão, não
+segurança contra adversário com shell. Limites que ficam: copiar o `.git` e publicar da cópia; submódulo sem
+hook; remover ou renomear o hook; `bundle`/`fetch` direto em repositório bare local; junction em `.percus`.
+
+- **Camada 1 — `external-action-guard` fail-closed** (`.ps1`, `.sh`): deixa de enumerar formas. Comando com
+  invocação de `git` e a palavra do subcomando de publicação em qualquer posição (depois de normalizar aspas e
+  barras) exige autorização; exceção depois de detectada a ação bloqueia (antes, no powershell.exe 5.1, um `-C`
+  com `>` ou `|` caía no catch genérico e liberava); escopo ambíguo (`cd`, variável, `-C` relativo ou com `..`,
+  `--git-dir`, subexpressão do PowerShell, mais de uma ação) bloqueia mesmo com autorização — só a forma simples
+  com `-C` absoluto libera. **Bloqueiam sempre**, com ou sem autorização, as formas que desligam a camada 2:
+  `--no-verify`, `hooksPath` e grafias equivalentes (`include.path`, `includeIf`, `--config-env`,
+  `GIT_CONFIG_*`, `XDG_CONFIG_HOME`, `HOME=`), `send-pack`, `http-push`, cópia do `.git`, e — mesmo sem
+  publicação no texto — `git config core.hooksPath` e remover `.git/hooks`. Comando acima de 64 KB com a palavra
+  do subcomando bloqueia antes do parse. Matriz de 191 casos pelo dispatcher real sob powershell.exe 5.1,
+  pwsh 7 e `.sh`: 0 liberações sem autorização e 0 bypass com autorização. **Livres:** `git stash push`,
+  `@{push}`. **Falsos positivos que ficam (pedem autorização ou forma simples):** `git log --grep` com a palavra,
+  `git commit -m` que a cita (9 em 300 mensagens do kit), ler `core.hooksPath`, `git push -n`.
+- **Dispatcher de PreToolUse:** saiu o gatilho `git` (custava +500–800 ms em ~11% dos comandos; `git status`
+  666 → 82 ms no `.cmd`); entram gatilhos específicos (`push`, `send-pack`, `http-push`, `hookspath`,
+  `no-verify`, `hooks`). A forma ofuscada que não acorda a camada 1 é coberta pela camada 2. `.cmd`: acima de
+  ~128 KB o `findstr` descartava o começo do comando e ~24% dos tamanhos saíam 0 sem check — agora o aviso de
+  linha longa manda para a camada 2, que bloqueia. `.sh`: uma busca só para todos os gatilhos (40 KB sem gatilho
+  1.091 → 172 ms) e fim da substituição quadrática (300 KB 45 s → 1,4 s). Nenhum outro hook foi silenciado: os
+  demais checks usam só o gatilho `commit`.
+- **Camada 2 — hook git `pre-push`** (`plugin/percus-review/git-hooks/pre-push.template.sh`, instalador
+  `instalar-pre-push.sh`): o próprio git o executa em toda publicação, em qualquer grafia. Exige
+  `.percus/acao-externa-autorizada.json` válido (menos de 3600 s, sem data futura), grava a auditoria com remoto
+  e refs e bloqueia se não conseguir gravar. Sem escape por variável de ambiente. A autorização é lida a partir do
+  repositório publicado (`--git-common-dir`, mantendo o `GIT_DIR` que o git entrega): **no kit ela mora sempre em
+  `percus-kit\.percus\`, inclusive para publicação feita de worktree**, e a autorização de um repositório não
+  publica outro. `unset -f` no topo contra função exportada no ambiente. Instalador trata como híbrido o hook
+  custom com `exit 0` antes do bloco ou com marcadores em comentário. 87 testes, inclusive os ataques das três
+  rodadas de revisão. `--separate-git-dir` bloqueia sempre.
+- **Gate V2 julga o que o commit muda** (`v2/gates/percus-gate.sh`): problema de conhecimento herdado (INDICE e
+  link morto fora do diff) vira AVISO; o que o commit toca bloqueia — inclusive remover o alvo de um link de outro
+  verbete e `git mv` que quebra link. Diff vazio continua bloqueando. Tetos, higiene, posição, monólito e versão
+  seguem bloqueando fora do diff. `.ps1`, `.psm1` e `.psd1` com byte acima de 0x7F sem BOM **bloqueiam no
+  commit** (blob do índice; UTF-16 `FF FE` não é falso positivo). Erro do `grep` conta como envolver o diff
+  (o `grep -i` do Git Bash aborta). `PERCUS_GATE_AUDITORIA=1` só endurece. Efeito: o escape
+  `PERCUS_GATE_OVERSIZE`, usado em quase todo commit por herança de outras sessões, deixa de ser necessário.
+- **Fact-check do wrapper R11** (`scripts/percus-review-auto.ps1`/`.sh`): `2>&1` com `ErrorActionPreference=Stop`
+  transformava qualquer linha de stderr do fact-check em erro antes do parse do JSON, e a revisão seguia sem
+  checagem de fatos, calada. Stdout e stderr separados; falha vira linha visível "fact-check NAO rodou: <motivo>".
+- **`sdd-conferir.ps1` obrigatório por tarefa** (`templates/DESPACHO_SUBAGENTE.template.md`): o controlador roda
+  antes de mandar revisar ou integrar. No primeiro uso pegou dois `.sh` com caractere fora de ASCII.
+- **MDS (5 peças, decisão do operador):** `templates/spec-checklist.template.md` ganha pergunta de suficiência e
+  checagem de artefatos-fonte; `v2/loops/spec.md` ganha falseabilidade do requisito e 2 armadilhas nomeadas; o
+  G2 de `checklists/CHECKLIST_FEATURE_NOVA.md` ganha "Alcance" (navegação e autonomia do papel) e "Grade de QA"
+  (visual, segurança, performance, mobile a 390 px, regressão) — trilho P fora, trilho M só quando a entrega tem
+  tela, mudança só no kit fica fora sem N/A. Anti-padrão 37 em `01_REGRAS_INEGOCIAVEIS.md`: trava que confere
+  lista curada à mão. **Descartado:** o anti-padrão MDS #10 (aviso interno por canal externo) — o incidente
+  encontrado ensinava outra regra (não gravar contador antes de confirmar a entrega) e o `tiatendo` usa o padrão
+  de propósito; o item faria o projeto violar o canon.
+- **Conhecimento:** verbete `variavel-p-na-sessao-do-invoke-pester-sobrescreve-o-modulo-global.md` (um agente
+  sobrescreveu o módulo Pester global da máquina); `INDICE.md` regerado pelo conteúdo do repositório.
+
+**Como chega:** hooks `.ps1` e gate V2 valem nesta máquina no merge (trampolim e `v2` da main); dispatcher
+`.cmd`/`.sh`, gatilhos e `commands/` só após push + autoUpdate; o `pre-push` só onde for instalado (kit nesta
+versão; projetos numa rodada de reinstalação).
 
 ---
 
