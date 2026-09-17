@@ -23,6 +23,24 @@ Describe "rodar-suite.ps1" {
             $saida = & pwsh @listaArgs 2>&1
             [pscustomobject]@{ Saida = ($saida | Out-String); Exit = $LASTEXITCODE }
         }
+
+        # A fixture usa o MESMO nome de arquivo que o guard real ("external-action-guard.tests.ps1")
+        # de proposito: e o nome que -Afetados casa por base ("external-action-guard.ps1" mudado ->
+        # basename "external-action-guard") e tambem o padrao de guard que forca incluir Lento. Duas
+        # mecanicas, um nome, porque e assim que -Afetados se comporta pro guard de verdade.
+        function New-FixtureComLento {
+            param([string]$Dir)
+            $f = Join-Path $Dir "external-action-guard.tests.ps1"
+            @'
+Describe "a" {
+    It "passa" { 1 | Should -Be 1 }
+}
+Describe "lento" -Tag "Lento" {
+    It "so roda com Lento incluido" { 1 | Should -Be 1 }
+}
+'@ | Set-Content -Path $f -Encoding utf8
+            return $f
+        }
     }
 
     AfterAll { foreach ($d in $script:temps) { Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue } }
@@ -151,4 +169,60 @@ Describe "a" {
         }
         $r.Exit | Should -Be 1 -Because $r.Saida
     }
+
+    # --- Fase 6: tag Lento (matriz cara do guard tirada da suite padrao) --------------------
+    It "sem parametro exclui Lento e anuncia quantos" {
+        $d = New-DirTeste
+        New-FixtureComLento -Dir $d | Out-Null
+        $r = Invoke-RodarSuite -Dir $d -ArgsExtra @("-Processos", "1")
+        $r.Exit | Should -Be 0 -Because $r.Saida
+        $r.Saida | Should -Match "1/2" -Because $r.Saida
+        $r.Saida | Should -Match "pulados por tag Lento: 1" -Because $r.Saida
+    }
+
+    It "-IncluirLentos roda o teste marcado Lento tambem" {
+        $d = New-DirTeste
+        New-FixtureComLento -Dir $d | Out-Null
+        $r = Invoke-RodarSuite -Dir $d -ArgsExtra @("-Processos", "1", "-IncluirLentos")
+        $r.Exit | Should -Be 0 -Because $r.Saida
+        $r.Saida | Should -Match "2/2" -Because $r.Saida
+        $r.Saida | Should -Match "pulados por tag Lento: 0" -Because $r.Saida
+    }
+
+    It "-Afetados com diff tocando o guard inclui o Lento mesmo sem -IncluirLentos" {
+        $d = New-DirTeste
+        New-FixtureComLento -Dir $d | Out-Null
+        # Portao duplo (env, nao parametro): rodar-suite.ps1 so honra RODARSUITE_TESTE_MUDADOS
+        # quando RODARSUITE_TESTE_GATE=1 tambem esta setada -- so este proprio teste
+        # deveria por acaso ter as DUAS. O `pwsh` que Invoke-RodarSuite invoca (o proprio
+        # rodar-suite.ps1, processo filho direto desta sessao Pester) herda as duas do ambiente.
+        $env:RODARSUITE_TESTE_GATE = "1"
+        $env:RODARSUITE_TESTE_MUDADOS = "hooks/external-action-guard.ps1"
+        try {
+            $r = Invoke-RodarSuite -Dir $d -ArgsExtra @("-Processos", "1", "-Afetados")
+        } finally {
+            Remove-Item Env:RODARSUITE_TESTE_MUDADOS -ErrorAction SilentlyContinue
+            Remove-Item Env:RODARSUITE_TESTE_GATE -ErrorAction SilentlyContinue
+        }
+        $r.Exit | Should -Be 0 -Because $r.Saida
+        $r.Saida | Should -Match "2/2" -Because $r.Saida
+        $r.Saida | Should -Match "pulados por tag Lento: 0" -Because $r.Saida
+    }
+
+    It "-Afetados com diff que NAO toca o guard continua excluindo o Lento" {
+        $d = New-DirTeste
+        New-FixtureComLento -Dir $d | Out-Null
+        $env:RODARSUITE_TESTE_GATE = "1"
+        $env:RODARSUITE_TESTE_MUDADOS = "algum-outro-arquivo.txt"
+        try {
+            $r = Invoke-RodarSuite -Dir $d -ArgsExtra @("-Processos", "1", "-Afetados")
+        } finally {
+            Remove-Item Env:RODARSUITE_TESTE_MUDADOS -ErrorAction SilentlyContinue
+            Remove-Item Env:RODARSUITE_TESTE_GATE -ErrorAction SilentlyContinue
+        }
+        $r.Exit | Should -Be 0 -Because $r.Saida
+        $r.Saida | Should -Match "1/2" -Because $r.Saida
+        $r.Saida | Should -Match "pulados por tag Lento: 1" -Because $r.Saida
+    }
+
 }

@@ -638,6 +638,66 @@ Describe "external-action-guard.ps1 hook" {
         ($saida -join " ") | Should -Match "fim do dia, autorizado"
         Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
+
+    # -------------------------------------------------------------------------
+    # Nucleo rapido -- 3 classes que so existiam na matriz -Tag "Lento" (achado da revisao,
+    # suite-review.md 2026-09-16): sem estes casos, uma regressao nas 3 classes mais sensiveis
+    # (camada 2 do pre-push, escopo ambiguo, falso-positivo do stash) so era pega quando a matriz
+    # inteira rodava (-IncluirLentos ou -Afetados tocando o guard). Um caso de sanidade por
+    # classe, direto no hook .ps1 (sem dispatcher, sem os 3 runtimes) -- rapido de proposito.
+    # -------------------------------------------------------------------------
+
+    It "bypass do pre-push (--no-verify) bloqueia MESMO com autorizacao em lote fresca" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-AutorizacaoFixture -Dir $dir -IdadeMinutos 5 | Out-Null
+        # Salva/restaura em vez de so remover: um PERCUS_EXTERNAL_OVERRIDE que ja estivesse setado
+        # no ambiente (execucao local de diagnostico) nao pode sumir pro resto do processo Pester.
+        # Achado R11/DeepSeek.
+        $antigoOverride = $env:PERCUS_EXTERNAL_OVERRIDE
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        try {
+            $dirFwd = $dir -replace '\\', '/'
+            $stdin = '{"tool_input":{"command":"git -C \"' + $dirFwd + '\" push --no-verify origin main"}}'
+            $saida = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+            $LASTEXITCODE | Should -Be 2 -Because "camada 2 (formas que desligam o pre-push) bloqueia sempre, mesmo com autorizacao"
+            ($saida -join " ") | Should -Match "no-verify" -Because "a razao do bloqueio tem que apontar o bypass, nao um generico"
+        } finally {
+            if ($null -ne $antigoOverride) { $env:PERCUS_EXTERNAL_OVERRIDE = $antigoOverride } else { Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue }
+            Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+        }
+    }
+
+    It "escopo ambiguo (cd no comando) bloqueia MESMO com autorizacao em lote fresca" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-AutorizacaoFixture -Dir $dir -IdadeMinutos 5 | Out-Null
+        $antigoOverride = $env:PERCUS_EXTERNAL_OVERRIDE
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        try {
+            $dirFwd = $dir -replace '\\', '/'
+            $stdin = '{"tool_input":{"command":"cd \"' + $dirFwd + '\" && git push origin main"}}'
+            $saida = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+            $LASTEXITCODE | Should -Be 2 -Because "escopo ambiguo bloqueia ANTES do override e da autorizacao -- autorizacao e por projeto e o hook nao interpreta shell"
+            ($saida -join " ") | Should -Match "escopo ambiguo" -Because "a razao do bloqueio tem que ser a ambiguidade de escopo, nao outra"
+        } finally {
+            if ($null -ne $antigoOverride) { $env:PERCUS_EXTERNAL_OVERRIDE = $antigoOverride } else { Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue }
+            Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+        }
+    }
+
+    It "git stash push NAO exige autorizacao (falso positivo aceito)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $antigoOverride = $env:PERCUS_EXTERNAL_OVERRIDE
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        try {
+            $stdin = '{"tool_input":{"command":"git stash push -m wip"}}'
+            $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+            $LASTEXITCODE | Should -Be 0 -Because "'git stash push' e falso-positivo aceito -- nunca exige autorizacao"
+        } finally {
+            if ($null -ne $antigoOverride) { $env:PERCUS_EXTERNAL_OVERRIDE = $antigoOverride } else { Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue }
+            Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 # -----------------------------------------------------------------------------
@@ -986,7 +1046,7 @@ BeforeAll {
     }
 }
 
-Describe "external-action-guard -- matriz pelo dispatcher [ps51: percus-dispatch-pre.cmd]" {
+Describe "external-action-guard -- matriz pelo dispatcher [ps51: percus-dispatch-pre.cmd]" -Tag "Lento" {
     BeforeAll { $script:labPs51 = New-LabR3 }
     AfterAll { if (Test-Path -LiteralPath $script:labPs51.Lab) { [IO.Directory]::Delete($script:labPs51.Lab, $true) } }
     It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosPorRuntime['ps51'] {
@@ -995,7 +1055,7 @@ Describe "external-action-guard -- matriz pelo dispatcher [ps51: percus-dispatch
     }
 }
 
-Describe "external-action-guard -- matriz pelo dispatcher [pwsh: percus-dispatch-pre.ps1]" {
+Describe "external-action-guard -- matriz pelo dispatcher [pwsh: percus-dispatch-pre.ps1]" -Tag "Lento" {
     BeforeAll { $script:labPwsh = New-LabR3 }
     AfterAll { if (Test-Path -LiteralPath $script:labPwsh.Lab) { [IO.Directory]::Delete($script:labPwsh.Lab, $true) } }
     It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosPorRuntime['pwsh'] {
@@ -1003,7 +1063,7 @@ Describe "external-action-guard -- matriz pelo dispatcher [pwsh: percus-dispatch
     }
 }
 
-Describe "external-action-guard -- matriz pelo dispatcher [sh: percus-dispatch-pre.sh]" {
+Describe "external-action-guard -- matriz pelo dispatcher [sh: percus-dispatch-pre.sh]" -Tag "Lento" {
     BeforeAll { $script:labSh = New-LabR3 }
     AfterAll { if (Test-Path -LiteralPath $script:labSh.Lab) { [IO.Directory]::Delete($script:labSh.Lab, $true) } }
     It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosPorRuntime['sh'] {
@@ -1016,7 +1076,7 @@ Describe "external-action-guard -- matriz pelo dispatcher [sh: percus-dispatch-p
 # Com resto < 32 KB a triagem via so o FIM do payload: commit/push no COMECO saia 0 sem check nenhum.
 # Tamanhos exatos do payload (KiB) com `bytes mod 131072 < 32000` -- a premissa e conferida no It.
 # Nunca calado: ou um check rodou (debug "checks rodados: N>0"), ou o dispatcher bloqueou. Push: sempre 2.
-Describe "dispatcher -- commit/push no inicio de payload grande com resto de captura < 32 KB" {
+Describe "dispatcher -- commit/push no inicio de payload grande com resto de captura < 32 KB" -Tag "Lento" {
     BeforeAll { $script:labR4 = New-LabR3 }
     AfterAll { if (Test-Path -LiteralPath $script:labR4.Lab) { [IO.Directory]::Delete($script:labR4.Lab, $true) } }
     It "[<Runtime>] <Tipo> no inicio, <KiB> KiB" -ForEach @(
@@ -1046,7 +1106,7 @@ Describe "dispatcher -- commit/push no inicio de payload grande com resto de cap
 }
 
 # Guard chamado DIRETO com JSON invalido sai != 0 (rodada 3). Pelo dispatcher ja bloqueava; direto, saia 0.
-Describe "external-action-guard -- JSON invalido chamado direto" {
+Describe "external-action-guard -- JSON invalido chamado direto" -Tag "Lento" {
     It "[<Runtime>] <Nome> sai 2" -ForEach @(
         @{ Runtime = 'ps51'; Nome = 'truncado' }
         @{ Runtime = 'pwsh'; Nome = 'truncado' }
