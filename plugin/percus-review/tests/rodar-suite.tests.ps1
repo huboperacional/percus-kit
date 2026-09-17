@@ -93,6 +93,39 @@ Describe "morre" {
         $r.Saida | Should -Match "morre\.tests\.ps1" -Because $r.Saida
     }
 
+    # 6.62.2: baldes por peso medido, nao round-robin por nome. Com a.tests=100, b.tests=90 e
+    # morre.tests=10 em 2 processos: por peso, morre cai no balde de b (o mais leve); round-robin
+    # por nome poria morre junto de a. O processo que morre denuncia com quem ele dividiu o balde.
+    It "reparte por peso: arquivo leve vai para o balde mais leve, nao para o proximo da fila" {
+        $d = New-DirTeste
+        foreach ($n in @("a", "b")) {
+            "Describe `"$n`" { It `"passa`" { 1 | Should -Be 1 } }" | Set-Content -Path (Join-Path $d "$n.tests.ps1") -Encoding utf8
+        }
+        @'
+Describe "morre" {
+    BeforeAll { [Environment]::Exit(9) }
+    It "nunca roda" { 1 | Should -Be 1 }
+}
+'@ | Set-Content -Path (Join-Path $d "morre.tests.ps1") -Encoding utf8
+        $pesos = Join-Path $d "pesos.json"
+        '{ "a.tests.ps1": 100, "b.tests.ps1": 90, "morre.tests.ps1": 10 }' | Set-Content -Path $pesos -Encoding utf8
+        $r = Invoke-RodarSuite -Dir $d -ArgsExtra @("-Processos", "2", "-ArquivoPesos", $pesos)
+        $r.Exit | Should -Be 1 -Because $r.Saida
+        $r.Saida | Should -Match "nao devolveram resultado: b\.tests\.ps1, morre\.tests\.ps1" -Because $r.Saida
+        $r.Saida | Should -Match "3 de 3 com peso medido" -Because $r.Saida
+    }
+
+    It "arquivo de pesos ausente nao quebra: todos recebem o mesmo peso e a suite roda" {
+        $d = New-DirTeste
+        foreach ($n in @("a", "b", "c")) {
+            "Describe `"$n`" { It `"passa`" { 1 | Should -Be 1 } }" | Set-Content -Path (Join-Path $d "$n.tests.ps1") -Encoding utf8
+        }
+        $r = Invoke-RodarSuite -Dir $d -ArgsExtra @("-Processos", "2", "-ArquivoPesos", (Join-Path $d "nao-existe.json"))
+        $r.Exit | Should -Be 0 -Because $r.Saida
+        $r.Saida | Should -Match "3/3" -Because $r.Saida
+        $r.Saida | Should -Match "0 de 3 com peso medido" -Because $r.Saida
+    }
+
     It "mantem o comportamento atual: teste que falha reporta FALHAS e sai 1" {
         $d = New-DirTeste
         $f = Join-Path $d "a.tests.ps1"

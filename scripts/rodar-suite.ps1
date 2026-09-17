@@ -48,7 +48,10 @@ param(
     # Fase 6: por padrao a suite pula testes marcados com a tag Pester "Lento" (a matriz cara
     # do external-action-guard, que roda o dispatcher real em 3 runtimes -- 652 testes,
     # ~600s sozinha). -IncluirLentos roda tudo.
-    [switch]$IncluirLentos
+    [switch]$IncluirLentos,
+    # 6.62.2: segundos medidos por arquivo de teste, para repartir os baldes por peso.
+    # Default: scripts/rodar-suite-pesos.json. Ausente ou ilegivel = todos com o mesmo peso.
+    [string]$ArquivoPesos = ""
 )
 # Injecao de teste (rodar-suite.tests.ps1), NAO um parametro do script: duas env vars, nao um
 # switch de linha de comando -- parametro publico e um canal que um operador digitaria por engano
@@ -161,14 +164,41 @@ try {
     }
     $Processos = [Math]::Min($Processos, $arquivos.Count)
 
-    # Distribuicao round-robin, nao em blocos contiguos: os arquivos caros estao agrupados por
-    # nome (gate-*, external-*), e fatiar em blocos jogaria todos eles no mesmo processo --
-    # o paralelismo existiria no papel e o tempo total continuaria sendo o do pior bucket.
-    $baldes = @{}
-    for ($i = 0; $i -lt $Processos; $i++) { $baldes[$i] = New-Object System.Collections.ArrayList }
-    for ($i = 0; $i -lt $arquivos.Count; $i++) { [void]$baldes[$i % $Processos].Add($arquivos[$i]) }
+    # O tempo total e o do balde MAIS LENTO. Round-robin por nome (ate 6.62.1) deixava os baldes
+    # em 492/360/546/355 s -- medido 2026-09-17: os dois arquivos mais caros (160 s e 157 s) caiam
+    # juntos. Por peso (maior primeiro, sempre no balde mais leve) a mesma medicao da 438 s em
+    # cada um. Arquivo sem peso medido recebe a mediana: novo nao vira nem gratis nem gigante.
+    if (-not $ArquivoPesos) { $ArquivoPesos = Join-Path $PSScriptRoot "rodar-suite-pesos.json" }
+    $pesos = @{}
+    if (Test-Path $ArquivoPesos) {
+        try {
+            $lidos = Get-Content -Raw $ArquivoPesos | ConvertFrom-Json
+            foreach ($prop in $lidos.PSObject.Properties) { $pesos[$prop.Name] = [double]$prop.Value }
+        } catch {
+            Write-Host "[rodar-suite] AVISO: $ArquivoPesos ilegivel ($($_.Exception.Message)) -- todos com o mesmo peso."
+            $pesos = @{}
+        }
+    }
+    $conhecidos = @($arquivos | Where-Object { $pesos.ContainsKey((Split-Path $_ -Leaf)) })
+    $valores = @($conhecidos | ForEach-Object { $pesos[(Split-Path $_ -Leaf)] } | Sort-Object)
+    $mediana = if ($valores.Count -gt 0) { $valores[[int][Math]::Floor($valores.Count / 2)] } else { 1.0 }
+    $comPeso = @($arquivos | ForEach-Object {
+        $nome = Split-Path $_ -Leaf
+        $w = if ($pesos.ContainsKey($nome)) { $pesos[$nome] } else { $mediana }
+        [pscustomobject]@{ Caminho = $_; Nome = $nome; Peso = $w }
+    } | Sort-Object @{ Expression = 'Peso'; Descending = $true }, @{ Expression = 'Nome'; Descending = $false })
 
-    Write-Host "[rodar-suite] $($arquivos.Count) arquivos em $Processos processo(s)..."
+    $baldes = @{}
+    $carga = New-Object 'double[]' $Processos
+    for ($i = 0; $i -lt $Processos; $i++) { $baldes[$i] = New-Object System.Collections.ArrayList }
+    foreach ($a in $comPeso) {
+        $m = 0
+        for ($k = 1; $k -lt $Processos; $k++) { if ($carga[$k] -lt $carga[$m]) { $m = $k } }
+        [void]$baldes[$m].Add($a.Caminho)
+        $carga[$m] += $a.Peso
+    }
+
+    Write-Host "[rodar-suite] $($arquivos.Count) arquivos em $Processos processo(s), baldes por peso ($($conhecidos.Count) de $($arquivos.Count) com peso medido)..."
     $inicio = Get-Date
 
     # PROCESSOS de verdade (Start-Process pwsh), nao Start-Job. Start-Job roda em runspace dentro

@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.62.1`
+**Versão canônica em `huboperacional/percus-kit`:** `6.62.2`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -34,6 +34,28 @@
 > (mudança em `plugin/percus-review/skills/` ou `commands/`).
 
 (nenhuma entrada pendente)
+
+---
+
+## Changelog v6.62.2 — 2026-09-17
+
+### Suíte com baldes por peso — folga de volta sob o teto de 10 min
+
+**skill muda: não.**
+
+- **`scripts/rodar-suite.ps1` reparte os arquivos por peso medido, não por round-robin de nome.** O tempo
+  total é o do balde mais lento; medido em 2026-09-17, o round-robin deixava os 4 baldes em
+  492/360/546/355 s porque os dois arquivos mais caros (`pre-commit-marcador-classificacao` 160 s,
+  `deepseek-review-retry-sh` 157 s) caíam juntos. Agora: maior primeiro, sempre no balde mais leve. Pesos em
+  `scripts/rodar-suite-pesos.json` (segundos por arquivo, medição de 2026-09-17); arquivo sem peso recebe a
+  mediana; arquivo de pesos ausente ou ilegível deixa todos com o mesmo peso e a suíte roda igual.
+  `-ArquivoPesos` troca a fonte. A linha inicial anuncia `N de M com peso medido`.
+- **Medido:** suíte padrão **598 s → 529 s**, 0 falhas (1.372 passam, 849 excluídos por tag Lento). A
+  simulação sem contenção prometia 438 s; a diferença é CPU disputada com os pesados rodando ao mesmo tempo.
+- **Nenhum teste saiu da suíte padrão.** Marcar mais arquivos como Lento foi descartado: os mais pesados são
+  justamente o `pre-push-hook` e os gates.
+- **Manutenção:** peso desatualizado não quebra nada, só desequilibra. Refazer a medição quando a suíte voltar
+  a passar de ~570 s.
 
 ---
 
