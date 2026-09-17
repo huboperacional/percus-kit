@@ -684,6 +684,38 @@ Describe "external-action-guard.ps1 hook" {
         }
     }
 
+    It "nucleo rapido: LER core.hooksPath libera e GRAVAR bloqueia (Fase 6)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $antigoOverride = $env:PERCUS_EXTERNAL_OVERRIDE
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        try {
+            $null = Invoke-HookEmDir -Dir $dir -Stdin '{"tool_input":{"command":"git config --get core.hooksPath"}}'
+            $LASTEXITCODE | Should -Be 0 -Because "so ler core.hooksPath nao desliga o pre-push"
+            $null = Invoke-HookEmDir -Dir $dir -Stdin '{"tool_input":{"command":"git config core.hooksPath x"}}'
+            $LASTEXITCODE | Should -Not -Be 0 -Because "gravar core.hooksPath desliga o pre-push"
+        } finally {
+            if ($null -ne $antigoOverride) { $env:PERCUS_EXTERNAL_OVERRIDE = $antigoOverride } else { Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue }
+            Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+        }
+    }
+
+    It "nucleo rapido: copiar de .git/hooks para FORA libera e para DENTRO bloqueia (Fase 6)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $antigoOverride = $env:PERCUS_EXTERNAL_OVERRIDE
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        try {
+            $null = Invoke-HookEmDir -Dir $dir -Stdin '{"tool_input":{"command":"cp \".git/hooks/pre-push\" \"/tmp/pre-push.copia\""}}'
+            $LASTEXITCODE | Should -Be 0 -Because "copiar o hook para fora nao altera .git/hooks"
+            $null = Invoke-HookEmDir -Dir $dir -Stdin '{"tool_input":{"command":"cp \"/tmp/x\" \".git/hooks/pre-push\""}}'
+            $LASTEXITCODE | Should -Not -Be 0 -Because "gravar dentro de .git/hooks troca o pre-push"
+        } finally {
+            if ($null -ne $antigoOverride) { $env:PERCUS_EXTERNAL_OVERRIDE = $antigoOverride } else { Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue }
+            Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+        }
+    }
+
     It "git stash push NAO exige autorizacao (falso positivo aceito)" {
         $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
@@ -1172,7 +1204,7 @@ Describe "external-action-guard -- matriz pelo dispatcher [sh: percus-dispatch-p
     }
 }
 
-Describe "external-action-guard -- fase 6 leitura de hooksPath e copia de .git/hooks [ps51: percus-dispatch-pre.cmd]" {
+Describe "external-action-guard -- fase 6 leitura de hooksPath e copia de .git/hooks [ps51: percus-dispatch-pre.cmd]" -Tag "Lento" {
     BeforeAll { $script:labF6Ps51 = New-LabR3 }
     AfterAll { if (Test-Path -LiteralPath $script:labF6Ps51.Lab) { [IO.Directory]::Delete($script:labF6Ps51.Lab, $true) } }
     It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosFase6PorRuntime['ps51'] {
@@ -1181,7 +1213,7 @@ Describe "external-action-guard -- fase 6 leitura de hooksPath e copia de .git/h
     }
 }
 
-Describe "external-action-guard -- fase 6 leitura de hooksPath e copia de .git/hooks [pwsh: percus-dispatch-pre.ps1]" {
+Describe "external-action-guard -- fase 6 leitura de hooksPath e copia de .git/hooks [pwsh: percus-dispatch-pre.ps1]" -Tag "Lento" {
     BeforeAll { $script:labF6Pwsh = New-LabR3 }
     AfterAll { if (Test-Path -LiteralPath $script:labF6Pwsh.Lab) { [IO.Directory]::Delete($script:labF6Pwsh.Lab, $true) } }
     It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosFase6PorRuntime['pwsh'] {
@@ -1189,7 +1221,7 @@ Describe "external-action-guard -- fase 6 leitura de hooksPath e copia de .git/h
     }
 }
 
-Describe "external-action-guard -- fase 6 leitura de hooksPath e copia de .git/hooks [sh: percus-dispatch-pre.sh]" {
+Describe "external-action-guard -- fase 6 leitura de hooksPath e copia de .git/hooks [sh: percus-dispatch-pre.sh]" -Tag "Lento" {
     BeforeAll { $script:labF6Sh = New-LabR3 }
     AfterAll { if (Test-Path -LiteralPath $script:labF6Sh.Lab) { [IO.Directory]::Delete($script:labF6Sh.Lab, $true) } }
     It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosFase6PorRuntime['sh'] {
