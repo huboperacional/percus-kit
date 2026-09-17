@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.62.0`
+**Versão canônica em `huboperacional/percus-kit`:** `6.62.1`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -34,6 +34,39 @@
 > (mudança em `plugin/percus-review/skills/` ou `commands/`).
 
 (nenhuma entrada pendente)
+
+---
+
+## Changelog v6.62.1 — 2026-09-16
+
+### Fase 6 — falsos positivos do guard e suíte que volta a caber numa chamada
+
+**skill muda: não.**
+
+- **Guard de ação externa: dois falsos positivos da 6.62.0 liberados, sem abrir escrita.** Passam a ser
+  livres: **ler** `core.hooksPath` (`git config core.hooksPath` sem valor, `--get`, `--get-all`,
+  `--get-regexp`, `-l`/`--list`, `--show-origin`, `--show-scope`) e **copiar** um arquivo de `.git/hooks`
+  para fora (`cp`, `Copy-Item`, `copy`, com destino textualmente fora de `.git/hooks`). Continuam
+  bloqueando, com ou sem autorização: gravar `core.hooksPath` (inclusive `--get` com 2 posicionais, valor
+  vazio e `-c`), e gravar, mover, apagar ou editar dentro de `.git/hooks` (destino dentro, `-t`, 3 caminhos,
+  diferença de caixa, variável ou glob). Duas formas que liberavam passam a bloquear: `sed -i` em
+  `.git/hooks` e `core.hooks""Path` com valor. Revisão de ataque Cross-Claude: nenhuma escrita liberada nos
+  3 runtimes; matriz antiga 822/822. Limites declarados: junction ou symlink no destino que aponte para
+  `.git/hooks`; destino Windows com `\` sem aspas bloqueia (lado seguro).
+- **Suíte:** a matriz multi-runtime do guard (e do dispatcher) ganha a tag Pester `Lento` e sai da suíte padrão
+  — `rodar-suite.ps1` anuncia `pulados por tag Lento: <n> (rode com -IncluirLentos)`. `-IncluirLentos`
+  inclui tudo; **`-Afetados` inclui a matriz quando o diff toca `external-action-guard.*`,
+  `percus-dispatch-pre.*`, `gatilhos-pre.txt`, `hooks-manifest.json` ou o próprio arquivo de teste**. A
+  contagem de excluídos vem da estrutura do Pester, não de texto. Um núcleo rápido sem tag (57 testes) cobre
+  cada classe: publicação sem autorização bloqueia; forma simples com autorização passa; bypass do pre-push
+  bloqueia; escopo ambíguo bloqueia; `git stash push` livre; ler hooksPath passa e gravar bloqueia; copiar de
+  `.git/hooks` para fora passa e para dentro bloqueia. Suíte padrão: **598 s** (era ~1.000 s), 1365 passam,
+  849 excluídos por tag, 5 falhas de ambiente conhecidas.
+- **Conhecimento:** volta o verbete `conhecimento/resolver/conteiner-com-npm-como-pid-1-acumula-zumbis-e-trava-o-vps.md`,
+  apagado por corrida entre sessões num commit de conhecimento de outra sessão.
+
+**Fora do kit, no mesmo dia:** hook `pre-push` final instalado no percus-kit e nos 13 projetos Percus (todo
+push passa a exigir `.percus/acao-externa-autorizada.json` válido na raiz do repositório publicado).
 
 ---
 
