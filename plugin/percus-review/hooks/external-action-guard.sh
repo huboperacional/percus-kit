@@ -179,22 +179,144 @@ if tem_token "$re_git" && tem_push; then is_external=1; eh_git_push=1; fi
 # Atalhos que desligam a camada 2 SEM push no texto (gemeo do .ps1, rodada 3): `git config ... core.hooksPath`
 # (--unset reativa: passa) e alterar/remover/renomear algo em .git/hooks (ler e livre).
 desliga_hook=""
-# Por TRECHO: --unset so vale no mesmo `config` (achado R11).
+
+# Fase 6 (gemeo do .ps1): LER core.hooksPath e COPIAR de .git/hooks para fora passam, so na forma que da
+# para decidir sem interpretar shell. Tokens: palavra nua ou citada INTEIRA; aspa no meio = falha.
+# Preenche TOKS (valor) e TOKQ (1 = citado).
+tokeniza() {
+  local resto="$1" re_tok
+  re_tok=$'^("([^"]*)"|\'([^\']*)\'|([^[:space:]"\']+))([[:space:]]+|$)'
+  TOKS=(); TOKQ=()
+  resto="${resto#"${resto%%[![:space:]]*}"}"
+  resto="${resto%"${resto##*[![:space:]]}"}"
+  while [[ -n "$resto" ]]; do
+    [[ "$resto" =~ $re_tok ]] || return 1
+    if [[ -n "${BASH_REMATCH[4]}" ]]; then TOKS+=("${BASH_REMATCH[4]}"); TOKQ+=(0)
+    else TOKS+=("${BASH_REMATCH[2]}${BASH_REMATCH[3]}"); TOKQ+=(1); fi
+    resto="${resto:${#BASH_REMATCH[0]}}"
+  done
+  return 0
+}
+re_proib_leitura='[`$%{}()@<>*?]|\[|\]'
+re_opt_leitura='^(--global|--system|--local|--worktree|--get|--get-all|--get-regexp|-l|--list|--show-origin|--show-scope|--includes|--no-includes|-z|--null|--name-only|--all|--regexp|--bool|--int|--bool-or-int|--path|--no-type|--type=(bool|int|bool-or-int|path|expiry-date|color))$'
+# `git [-C dir] config [get|list] [opcoes de leitura] [chave]`, no maximo UM posicional.
+leitura_hookspath() {
+  local t="$1" n i v pos=0
+  [[ "$t" =~ $re_proib_leitura ]] && return 1
+  tokeniza "$t" || return 1
+  n=${#TOKS[@]}
+  [[ $n -ge 2 ]] || return 1
+  case "${TOKS[0],,}" in git|git.exe) ;; *) return 1 ;; esac
+  i=1
+  if [[ "${TOKS[1]}" == "-C" ]]; then [[ $n -ge 4 ]] || return 1; i=3; fi
+  [[ "${TOKS[$i],,}" == "config" ]] || return 1
+  i=$((i + 1))
+  if [[ $i -lt $n ]]; then case "${TOKS[$i],,}" in get|list) i=$((i + 1)) ;; esac; fi
+  while [[ $i -lt $n ]]; do
+    v="${TOKS[$i]}"
+    [[ "$v" == *\\* ]] && return 1
+    if [[ "$v" == -* ]]; then
+      [[ "${v,,}" =~ $re_opt_leitura ]] || return 1
+    else
+      pos=$((pos + 1))
+    fi
+    i=$((i + 1))
+  done
+  [[ $pos -le 1 ]]
+}
+# Comando INTEIRO = cp/Copy-Item/copy/cpi com 1 origem e 1 destino; destino absoluto, sem ./.., sem .git e
+# sem hooks (barra invertida lida como separador E como escape). Citado com `\` nu: tem de ser absoluto sem ela.
+re_proib_copia=$'[;&|()<>`$%*?{}@,+\r\n]|\\[|\\]'
+copia_para_fora() {
+  local c="$1" n i v prog espera="" fim=0 dst dstq com_barra sem_barra
+  local -a origens=() destinos=() destq=() posic=() posq=()
+  [[ "$c" =~ $re_proib_copia ]] && return 1
+  tokeniza "$c" || return 1
+  n=${#TOKS[@]}
+  [[ $n -ge 3 ]] || return 1
+  prog="${TOKS[0],,}"
+  if [[ "$prog" == "cp" ]]; then
+    local re_opt_cp='^(-[prRfv]+|--(preserve|recursive|force|verbose|no-clobber))$'
+    for ((i = 1; i < n; i++)); do
+      v="${TOKS[$i]}"
+      if [[ $fim -eq 0 && "$v" == "--" ]]; then fim=1; continue; fi
+      if [[ $fim -eq 0 && "$v" == -* ]]; then [[ "$v" =~ $re_opt_cp ]] || return 1; continue; fi
+      posic+=("$v"); posq+=("${TOKQ[$i]}")
+    done
+    [[ ${#posic[@]} -eq 2 ]] || return 1
+    origens=("${posic[0]}"); destinos=("${posic[1]}"); destq=("${posq[1]}")
+  elif [[ "$prog" == "copy-item" || "$prog" == "copy" || "$prog" == "cpi" ]]; then
+    for ((i = 1; i < n; i++)); do
+      v="${TOKS[$i]}"
+      if [[ "$espera" == origem ]]; then origens+=("$v"); espera=""; continue; fi
+      if [[ "$espera" == destino ]]; then destinos+=("$v"); destq+=("${TOKQ[$i]}"); espera=""; continue; fi
+      case "${v,,}" in
+        -path|-literalpath) espera=origem; continue ;;
+        -destination) espera=destino; continue ;;
+        -force|-recurse|-passthru|-verbose|/y|/-y|/v|/b) continue ;;
+      esac
+      [[ "$v" == -* ]] && return 1
+      posic+=("$v"); posq+=("${TOKQ[$i]}")
+    done
+    [[ -z "$espera" ]] || return 1
+    for ((i = 0; i < ${#posic[@]}; i++)); do
+      if [[ ${#origens[@]} -eq 0 ]]; then origens+=("${posic[$i]}")
+      elif [[ ${#destinos[@]} -eq 0 ]]; then destinos+=("${posic[$i]}"); destq+=("${posq[$i]}")
+      else return 1; fi
+    done
+  else
+    return 1
+  fi
+  [[ ${#origens[@]} -eq 1 && ${#destinos[@]} -eq 1 ]] || return 1
+  dst="${destinos[0]}"; dstq="${destq[0]}"
+  [[ -n "$dst" ]] || return 1
+  com_barra="${dst//\\//}"
+  sem_barra="${dst//\\/}"
+  local re_dst_proib='\.git|hooks' re_abs='^([a-z]:/|/|~/)' re_pontos='(^|/)\.{1,2}(/|$)'
+  [[ "${com_barra,,}" =~ $re_dst_proib || "${sem_barra,,}" =~ $re_dst_proib ]] && return 1
+  [[ "${com_barra,,}" =~ $re_abs ]] || return 1
+  if [[ "$dstq" == 0 && "$dst" == *\\* ]]; then [[ "${sem_barra,,}" =~ $re_abs ]] || return 1; fi
+  [[ "$com_barra" =~ $re_pontos ]] && return 1
+  return 0
+}
+
+# Por TRECHO: --unset so vale no mesmo `config` (achado R11). Fase 6: trecho de LEITURA passa se a mensagem
+# nao tirou nada do comando e o comando nao tem `$ % {} () @ < > * ? []`/crase; mais trechos config+hooksPath
+# no texto NORMALIZADO do que no cru (`core.hooks""Path x`) = ofuscacao = bloqueia.
 re_cfg_hp='(^|[^a-z0-9_-])config([^a-z0-9_-].*)?hookspath'
 re_cfg_unset='(^|[^a-z0-9_-])config([^a-z0-9_-].*)?--unset'
 if tem_token "$re_git"; then
+  texto_cfg=$(printf '%s' "$sem_msg" | sed -E 's/(^|[[:space:]])[12]?>&[12]([[:space:]]|$)/\1 \2/g; s/(^|[[:space:]])2>[[:space:]]*(\/dev\/null|nul|NUL)([[:space:]]|$)/\1 \3/g')
+  cfg_cru=0; cfg_normal=0; cfg_escrita=0
   while IFS= read -r trecho_cfg; do
-    if [[ "$trecho_cfg" =~ $re_cfg_hp ]] && ! [[ "$trecho_cfg" =~ $re_cfg_unset ]]; then
-      desliga_hook="$desliga_hook git-config-core.hooksPath"; break
+    tmin="${trecho_cfg,,}"
+    if [[ "$tmin" =~ $re_cfg_hp ]] && ! [[ "$tmin" =~ $re_cfg_unset ]]; then
+      cfg_cru=$((cfg_cru + 1))
+      leitura_hookspath "$trecho_cfg" || cfg_escrita=1
     fi
-  done <<< "$(printf '%s\n' "$sem_msg_min" | tr ';|&()\r' '\n\n\n\n\n\n')"
+  done <<< "$(printf '%s\n' "$texto_cfg" | tr ';|&()\r' '\n\n\n\n\n\n')"
+  texto_cfg_normal=$(normaliza "$texto_cfg")
+  while IFS= read -r trecho_cfg; do
+    tmin="${trecho_cfg,,}"
+    if [[ "$tmin" =~ $re_cfg_hp ]] && ! [[ "$tmin" =~ $re_cfg_unset ]]; then cfg_normal=$((cfg_normal + 1)); fi
+  done <<< "$(printf '%s\n' "$texto_cfg_normal" | tr ';|&()\r' '\n\n\n\n\n\n')"
+  if [[ $cfg_cru -gt 0 ]] && [[ "$sem_msg" != "$command" || "$texto_cfg" =~ $re_proib_leitura ]]; then cfg_escrita=1; fi
+  if [[ $cfg_escrita -eq 1 || $cfg_normal -gt $cfg_cru ]]; then
+    desliga_hook="$desliga_hook git-config-core.hooksPath"
+  fi
 fi
+# `.git/hooks` + verbo no texto cru OU normalizado. Fase 6: sed/perl/new-item/ni/clear-content/clc entram;
+# copia PARA FORA sai (copia_para_fora).
 re_hooksdir='\.git[\\/]+hooks'
-re_mexe='(^|[^a-z0-9_-])(rm|rmdir|del|erase|rd|ri|remove-item|mv|move|move-item|mi|ren|rename|rename-item|rni|chmod|cp|copy|copy-item|cpi|set-content|sc|out-file|add-content|tee|ln|truncate)([^a-z0-9_-]|$)'
-if [[ "$sem_msg_min" =~ $re_hooksdir ]]; then
-  sem_redir="${sem_msg_min//[12]>&[12]/}"
+re_mexe='(^|[^a-z0-9_-])(rm|rmdir|del|erase|rd|ri|remove-item|mv|move|move-item|mi|ren|rename|rename-item|rni|chmod|cp|copy|copy-item|cpi|set-content|sc|out-file|add-content|tee|ln|truncate|sed|perl|new-item|ni|clear-content|clc)([^a-z0-9_-]|$)'
+sem_msg_normal=$(normaliza "$sem_msg")
+texto_hooks="${sem_msg_min}"$'\n'"${sem_msg_normal,,}"
+if [[ "$texto_hooks" =~ $re_hooksdir ]]; then
+  sem_redir="${texto_hooks//[12]>&[12]/}"
   sem_redir="${sem_redir//>&[12]/}"
-  if [[ "$sem_msg_min" =~ $re_mexe || "$sem_redir" == *'>'* ]]; then desliga_hook="$desliga_hook alterar-.git/hooks"; fi
+  if [[ "$texto_hooks" =~ $re_mexe || "$sem_redir" == *'>'* ]]; then
+    copia_para_fora "$command" || desliga_hook="$desliga_hook alterar-.git/hooks"
+  fi
 fi
 [[ -n "$desliga_hook" ]] && is_external=1
 if tem_token "$re_gh" && tem_token "$re_gh_acao"; then is_external=1; fi

@@ -869,15 +869,115 @@ BeforeDiscovery {
 2*|2*|none|E|<BIG300> ; git push origin main
 2*|2*|A|A|git -C "<A>" push origin main <BIG300>
 '@
+    # Fase 6 (2026-09-16): dois falsos positivos medidos em uso real, e o que tem de continuar bloqueado.
+    # Matriz SEPARADA (Describe proprio) para rodar sozinha; o formato e o mesmo da matriz acima.
+    # 1. LER core.hooksPath (`git config [opcoes de leitura] core.hooksPath`, sem valor) libera. Qualquer
+    #    duvida sobre ser leitura (valor, --add/--file/-e/set/unset, -c antes, VAR= na frente, $, (), @,
+    #    `\`+LF, `>`) bloqueia.
+    # 2. COPIAR de .git/hooks para FORA (cp/Copy-Item/copy/cpi, um comando so, 2 caminhos, destino absoluto
+    #    sem `.git`/`hooks`) libera. Destino dentro, mv/rm/ln/sed/tee/`>`, glob, variavel, 3 caminhos,
+    #    destino relativo, -t/-s/-l, subexpressao ou outro comando junto: bloqueia.
+    $matrizFase6 = @'
+# --- FP 1: leitura de core.hooksPath libera ---
+0|0|none|E|git -C "<A>" config core.hooksPath
+0|0|none|E|git config --get core.hooksPath
+0|0|none|E|git -C "<A>" config --get-all core.hooksPath
+0|0|none|E|git config --global --get-regexp hookspath
+0|0|none|E|git -C "<A>" config --show-origin --show-scope --get core.hooksPath
+0|0|none|E|git -C "<AWIN>" config get core.hooksPath
+0|0|none|E|git -C "<A>" config core.hooksPath 2>&1
+0|0|none|E|git config --local --get core.hooksPath 2>/dev/null
+0|0|none|E|git -C "<A>" config --list --show-origin | grep -i hookspath
+0|0|none|E|git config -l | Select-String hooksPath
+0|0|none|E|git -C "<A>" config --get core.hooksPath; git -C "<A>" status
+0A0B0|0|A|A|git -C "<A>" config --get core.hooksPath
+# --- FP 1: escrita, ou duvida sobre ser leitura, bloqueia ---
+2!|2!|none|E|git config --add core.hooksPath D:/x
+2!|2!|none|E|git config --replace-all core.hooksPath D:/x
+2!|2!|none|E|git config set core.hooksPath D:/x
+2!|2!|none|E|git config unset core.hooksPath
+2!|2!|none|E|git config --get core.hooksPath D:/x
+2!|2!|none|E|git config --file D:/x.cfg core.hooksPath D:/x
+2!|2!|none|E|git config -f D:/x.cfg core.hooksPath
+2!|2!|none|E|git config --file D:/x.cfg core.hooksPath
+2!|2!|none|E|git config core.hooksPath --file D:/x
+2!|2!|none|E|git config core.hooksPath -m D:/x
+2!|2!|none|E|git config --edit --get core.hooksPath
+2!|2!|none|E|git config -e core.hooksPath
+2!|2!|none|E|git config core.hooksPath ""
+2!|2!|none|E|git config "core.hooksPath" "D:/x"
+2!|2!|none|E|git config core.hooksPath${IFS}D:/x
+2!|2!|none|E|git config core.hooksPath (Get-Item D:/x)
+2!|2!|none|E|git config core.hooksPath @args
+2!|2!|none|E|git config core.hooksPath \<LF> D:/x
+2!|2!|none|E|git config core.hooksPath*
+2!|2!|none|E|git config --get core.hooksPath > D:/x.txt
+2!|2!|none|E|git -c core.hooksPath=D:/x config --get core.hooksPath
+2!|2!|none|E|GIT_CONFIG_GLOBAL=D:/x.cfg git config --get core.hooksPath
+2!|2!|none|E|git config --get core.hooksPath; git config core.hooksPath D:/x
+2!|2!|none|E|git config --get core.hooksPath && git config --global core.hooksPath D:/x
+2!|2!|none|E|git config core.hooks""Path D:/x
+2!|2!|none|E|git config --get core.hooksPath; git config core.hooks""Path D:/x
+2A0B0!|2!|A|A|git -C "<A>" config --add core.hooksPath D:/x
+2!|2!|OV|A|git -C "<A>" config set core.hooksPath D:/x
+# --- FP 2: copiar de .git/hooks para fora libera ---
+0|0|none|E|cp -p "<A>/.git/hooks/pre-push" "D:/tmp/x"
+0|0|none|E|cp -p "<A>/.git/hooks/pre-push" "<B>/pre-push.antes"
+0|0|none|E|cp -r "<A>/.git/hooks" "<B>/bk"
+0|0|none|E|Copy-Item "<AWIN>\.git\hooks\pre-push" "<BWIN>\x" -Force
+0|0|none|E|Copy-Item -LiteralPath "<A>/.git/hooks/pre-push" -Destination "<B>/x"
+0|0|none|E|copy "<AWIN>\.git\hooks\pre-push" "<BWIN>\x"
+0|0|none|E|cpi .git/hooks/pre-push "<B>/x"
+0A0B0|0|A|A|cp -p "<A>/.git/hooks/pre-push" "<B>/x"
+# --- FP 2: para dentro, mover, remover, editar, ou origem/destino indecidivel: bloqueia ---
+2!|2!|none|E|cp "<B>/x" "<A>/.git/hooks/pre-push"
+2!|2!|none|E|cp -r "<B>/hooks" "<A>/.git/hooks"
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" "<A>/.git/hooks/pre-push.bak"
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" .git/hooks/x
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" "<A>/.git/hook\s/x"
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" D:\tmp\x
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" <B>/x
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" "<A>/.git/hooks/a" "<B>/x"
+2!|2!|none|E|cp "<A>/.git/hooks/*" "<B>/bk"
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" "$HOME/x"
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" (Get-Item D:/x)
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" x.bak
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" "D:/tmp/../x"
+2!|2!|none|E|cp -t "<B>" "<A>/.git/hooks/pre-push"
+2!|2!|none|E|cp -s "<A>/.git/hooks/pre-push" "<B>/x"
+2!|2!|none|E|cp -l "<A>/.git/hooks/pre-push" "<B>/x"
+2!|2!|none|E|cp -i "<A>/.git/hooks/pre-push" "<B>/x"
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" "<B>/x" && rm "<A>/.git/hooks/pre-push"
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" "<B>/x"; echo x > "<A>/.git/hooks/pre-push"
+2!|2!|none|E|cp "<A>/.git/hooks/pre-push" "<B>/x" 2>&1
+2!|2!|none|E|Copy-Item "<B>/x" -Destination "<A>/.git/hooks/pre-push"
+2!|2!|none|E|Copy-Item -Destination "<B>/x" "<A>/.git/hooks/pre-push" "<A>/.git/hooks/y"
+2!|2!|none|E|Copy-Item -Dest "<B>/x" "<A>/.git/hooks/pre-push"
+2!|2!|none|E|copy "<BWIN>\x" "<AWIN>\.git\hooks\pre-push"
+2!|2!|none|E|mv "<A>/.git/hooks/pre-push" "<B>/x"
+2!|2!|none|E|Move-Item "<AWIN>\.git\hooks\pre-push" "<BWIN>\x"
+2!|2!|none|E|rm "<A>/.git/hooks/pre-push"
+2!|2!|none|E|Rename-Item "<AWIN>\.git\hooks\pre-push" off
+2!|2!|none|E|ln -sf "<B>/x" "<A>/.git/hooks/pre-push"
+2!|2!|none|E|sed -i s/exit/true/ "<A>/.git/hooks/pre-push"
+2!|2!|none|E|echo exit 0 | tee "<A>/.git/hooks/pre-push"
+2!|2!|none|E|echo exit 0 >> "<A>/.git/hooks/pre-push"
+2!|2!|none|E|cat "<B>/x" > "<A>/.git/hooks/pre-push"
+2A0B0!|2!|A|A|cp "<B>/x" "<A>/.git/hooks/pre-push"
+2!|2!|OV|A|cp "<B>/x" "<A>/.git/hooks/pre-push"
+'@
     $script:casosPorRuntime = @{ ps51 = @(); pwsh = @(); sh = @() }
-    foreach ($linhaCaso in ($matrizTexto -split "`r?`n" | Where-Object { $_ -and -not $_.StartsWith('#') })) {
-        $partes = $linhaCaso.Split('|', 5)
-        foreach ($rt in @('ps51', 'pwsh', 'sh')) {
-            $esp = $partes[0]
-            if ($rt -eq 'sh') { $esp = $partes[1] }
-            $script:casosPorRuntime[$rt] += @{
-                Runtime = $rt; Esperado = $esp.Replace('!', '').Replace('*', ''); MsgPrePush = $esp.Contains('!')
-                QualquerBloqueio = $esp.Contains('*'); Auth = $partes[2]; Cwd = $partes[3]; Forma = $partes[4]
+    $script:casosFase6PorRuntime = @{ ps51 = @(); pwsh = @(); sh = @() }
+    foreach ($par in @(@($matrizTexto, $script:casosPorRuntime), @($matrizFase6, $script:casosFase6PorRuntime))) {
+        foreach ($linhaCaso in ($par[0] -split "`r?`n" | Where-Object { $_ -and -not $_.StartsWith('#') })) {
+            $partes = $linhaCaso.Split('|', 5)
+            foreach ($rt in @('ps51', 'pwsh', 'sh')) {
+                $esp = $partes[0]
+                if ($rt -eq 'sh') { $esp = $partes[1] }
+                $par[1][$rt] += @{
+                    Runtime = $rt; Esperado = $esp.Replace('!', '').Replace('*', ''); MsgPrePush = $esp.Contains('!')
+                    QualquerBloqueio = $esp.Contains('*'); Auth = $partes[2]; Cwd = $partes[3]; Forma = $partes[4]
+                }
             }
         }
     }
@@ -921,7 +1021,7 @@ BeforeAll {
         $fa = $Lab.A -replace '\\', '/'
         $fb = $Lab.B -replace '\\', '/'
         $posix = '/' + $Lab.A.Substring(0,1).ToLower() + ($Lab.A.Substring(2) -replace '\\', '/')
-        return $Forma.Replace('<BIG100>', ('a ' * 50000)).Replace('<BIG300>', ('a ' * 150000)).Replace('<AESC>', ($fa -replace ' ', '\ ')).Replace('<APOSIX>', $posix).Replace('<AWIN>', $Lab.A).Replace('<A>', $fa).Replace('<B>', $fb).Replace('<LF>', "`n").Replace('<TAB>', "`t")
+        return $Forma.Replace('<BIG100>', ('a ' * 50000)).Replace('<BIG300>', ('a ' * 150000)).Replace('<AESC>', ($fa -replace ' ', '\ ')).Replace('<APOSIX>', $posix).Replace('<AWIN>', $Lab.A).Replace('<BWIN>', $Lab.B).Replace('<A>', $fa).Replace('<B>', $fb).Replace('<LF>', "`n").Replace('<TAB>', "`t")
     }
     # Pelo dispatcher de cada runtime, com o payload completo do PreToolUse e sem PERCUS_CANON_DIR.
     function New-JsonR3 {
@@ -1009,6 +1109,32 @@ Describe "external-action-guard -- matriz pelo dispatcher [sh: percus-dispatch-p
     It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosPorRuntime['sh'] {
         if (-not $script:bashR3) { Set-ItResult -Skipped -Because "sem bash"; return }
         Test-CasoR3 -Runtime $Runtime -Esperado $Esperado -MsgPrePush $MsgPrePush -QualquerBloqueio $QualquerBloqueio -Auth $Auth -Cwd $Cwd -Forma $Forma -Lab $script:labSh
+    }
+}
+
+Describe "external-action-guard -- fase 6 leitura de hooksPath e copia de .git/hooks [ps51: percus-dispatch-pre.cmd]" {
+    BeforeAll { $script:labF6Ps51 = New-LabR3 }
+    AfterAll { if (Test-Path -LiteralPath $script:labF6Ps51.Lab) { [IO.Directory]::Delete($script:labF6Ps51.Lab, $true) } }
+    It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosFase6PorRuntime['ps51'] {
+        if (-not $script:ps51R3) { Set-ItResult -Skipped -Because "sem powershell.exe"; return }
+        Test-CasoR3 -Runtime $Runtime -Esperado $Esperado -MsgPrePush $MsgPrePush -QualquerBloqueio $QualquerBloqueio -Auth $Auth -Cwd $Cwd -Forma $Forma -Lab $script:labF6Ps51
+    }
+}
+
+Describe "external-action-guard -- fase 6 leitura de hooksPath e copia de .git/hooks [pwsh: percus-dispatch-pre.ps1]" {
+    BeforeAll { $script:labF6Pwsh = New-LabR3 }
+    AfterAll { if (Test-Path -LiteralPath $script:labF6Pwsh.Lab) { [IO.Directory]::Delete($script:labF6Pwsh.Lab, $true) } }
+    It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosFase6PorRuntime['pwsh'] {
+        Test-CasoR3 -Runtime $Runtime -Esperado $Esperado -MsgPrePush $MsgPrePush -QualquerBloqueio $QualquerBloqueio -Auth $Auth -Cwd $Cwd -Forma $Forma -Lab $script:labF6Pwsh
+    }
+}
+
+Describe "external-action-guard -- fase 6 leitura de hooksPath e copia de .git/hooks [sh: percus-dispatch-pre.sh]" {
+    BeforeAll { $script:labF6Sh = New-LabR3 }
+    AfterAll { if (Test-Path -LiteralPath $script:labF6Sh.Lab) { [IO.Directory]::Delete($script:labF6Sh.Lab, $true) } }
+    It "auth=<Auth> cwd=<Cwd> :: <Forma> -> <Esperado>" -ForEach $script:casosFase6PorRuntime['sh'] {
+        if (-not $script:bashR3) { Set-ItResult -Skipped -Because "sem bash"; return }
+        Test-CasoR3 -Runtime $Runtime -Esperado $Esperado -MsgPrePush $MsgPrePush -QualquerBloqueio $QualquerBloqueio -Auth $Auth -Cwd $Cwd -Forma $Forma -Lab $script:labF6Sh
     }
 }
 
