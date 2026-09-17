@@ -638,6 +638,66 @@ Describe "external-action-guard.ps1 hook" {
         ($saida -join " ") | Should -Match "fim do dia, autorizado"
         Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
+
+    # -------------------------------------------------------------------------
+    # Nucleo rapido -- 3 classes que so existiam na matriz -Tag "Lento" (achado da revisao,
+    # suite-review.md 2026-09-16): sem estes casos, uma regressao nas 3 classes mais sensiveis
+    # (camada 2 do pre-push, escopo ambiguo, falso-positivo do stash) so era pega quando a matriz
+    # inteira rodava (-IncluirLentos ou -Afetados tocando o guard). Um caso de sanidade por
+    # classe, direto no hook .ps1 (sem dispatcher, sem os 3 runtimes) -- rapido de proposito.
+    # -------------------------------------------------------------------------
+
+    It "bypass do pre-push (--no-verify) bloqueia MESMO com autorizacao em lote fresca" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-AutorizacaoFixture -Dir $dir -IdadeMinutos 5 | Out-Null
+        # Salva/restaura em vez de so remover: um PERCUS_EXTERNAL_OVERRIDE que ja estivesse setado
+        # no ambiente (execucao local de diagnostico) nao pode sumir pro resto do processo Pester.
+        # Achado R11/DeepSeek.
+        $antigoOverride = $env:PERCUS_EXTERNAL_OVERRIDE
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        try {
+            $dirFwd = $dir -replace '\\', '/'
+            $stdin = '{"tool_input":{"command":"git -C \"' + $dirFwd + '\" push --no-verify origin main"}}'
+            $saida = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+            $LASTEXITCODE | Should -Be 2 -Because "camada 2 (formas que desligam o pre-push) bloqueia sempre, mesmo com autorizacao"
+            ($saida -join " ") | Should -Match "no-verify" -Because "a razao do bloqueio tem que apontar o bypass, nao um generico"
+        } finally {
+            if ($null -ne $antigoOverride) { $env:PERCUS_EXTERNAL_OVERRIDE = $antigoOverride } else { Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue }
+            Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+        }
+    }
+
+    It "escopo ambiguo (cd no comando) bloqueia MESMO com autorizacao em lote fresca" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-AutorizacaoFixture -Dir $dir -IdadeMinutos 5 | Out-Null
+        $antigoOverride = $env:PERCUS_EXTERNAL_OVERRIDE
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        try {
+            $dirFwd = $dir -replace '\\', '/'
+            $stdin = '{"tool_input":{"command":"cd \"' + $dirFwd + '\" && git push origin main"}}'
+            $saida = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+            $LASTEXITCODE | Should -Be 2 -Because "escopo ambiguo bloqueia ANTES do override e da autorizacao -- autorizacao e por projeto e o hook nao interpreta shell"
+            ($saida -join " ") | Should -Match "escopo ambiguo" -Because "a razao do bloqueio tem que ser a ambiguidade de escopo, nao outra"
+        } finally {
+            if ($null -ne $antigoOverride) { $env:PERCUS_EXTERNAL_OVERRIDE = $antigoOverride } else { Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue }
+            Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+        }
+    }
+
+    It "git stash push NAO exige autorizacao (falso positivo aceito)" {
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("eag-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $antigoOverride = $env:PERCUS_EXTERNAL_OVERRIDE
+        Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue
+        try {
+            $stdin = '{"tool_input":{"command":"git stash push -m wip"}}'
+            $null = Invoke-HookEmDir -Dir $dir -Stdin $stdin
+            $LASTEXITCODE | Should -Be 0 -Because "'git stash push' e falso-positivo aceito -- nunca exige autorizacao"
+        } finally {
+            if ($null -ne $antigoOverride) { $env:PERCUS_EXTERNAL_OVERRIDE = $antigoOverride } else { Remove-Item env:PERCUS_EXTERNAL_OVERRIDE -ErrorAction SilentlyContinue }
+            Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 # -----------------------------------------------------------------------------

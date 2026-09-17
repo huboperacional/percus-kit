@@ -217,20 +217,19 @@ foreach (`$item in (Get-ChildItem Env:PERCUS_* -ErrorAction SilentlyContinue)) {
 }
 `$arqs = Get-Content -Raw '$arqJson' | ConvertFrom-Json
 `$excluidoTag = 0
-# Grep barato ANTES de pagar uma 2a passada de discovery: na imensa maioria das chamadas (rodar
-# so os arquivos que -Afetados selecionou, tipicamente sem o guard) nenhum arquivo do lote tem a
-# tag Lento, e discovery duplicado e custo de graca. So paga Run.SkipRun quando pelo menos um
-# arquivo do lote contem o texto da tag. Achado R11/DeepSeek (preferencia, mas barato de resolver).
-`$algumArquivoTemLento = `$false
-foreach (`$arqChk in `$arqs) {
-    `$txtChk = Get-Content -Raw -LiteralPath `$arqChk -ErrorAction SilentlyContinue
-    # Padrao LARGO de proposito (nao so `-Tag "Lento"` isolado): `-Tag 'Lento','Outro'` ou
-    # `-Tag "Outro","Lento"` (lista) tambem tem que disparar a passada de descoberta. Um
-    # falso-positivo aqui so custa uma discovery extra; um falso-negativo mente no resumo
-    # ("pulados por tag Lento: 0" quando na verdade excluiu). Achado R11/DeepSeek.
-    if (`$txtChk -and (`$txtChk -match '-Tag\b[^\r\n]*Lento')) { `$algumArquivoTemLento = `$true; break }
-}
-if ((-not $incluirLentoLiteral) -and `$algumArquivoTemLento) {
+# Rodada 2 (revisao suite-review.md 2026-09-16): a versao anterior fazia um grep ANTES de pagar
+# a passada de discovery, pra pular o custo quando nenhum arquivo do lote tinha a tag -- o
+# padrao usado era LARGO por design (`-Tag\b[^\r\n]*Lento`, nao so `-Tag "Lento"` isolado), mas
+# ainda assim regex por LINHA: um `-Tag @(` multi-linha (tag numa linha, "Lento" na proxima) nao
+# batia em nenhum dos dois padroes -- a passada de discovery nao rodava, `excluidoTag` ficava 0
+# e o resumo mentia calado ("pulados por tag Lento: 0" com o Filter.ExcludeTag excluindo de
+# verdade por baixo). ESCOLHA: tirar o grep (largo ou estreito, tanto faz -- o problema e ser
+# TEXTUAL) e SEMPRE rodar Run.SkipRun quando a tag pode estar excluida -- a contagem fica 100%
+# estrutural (Tag do Test/Block, nunca texto), sem heuristica pra divergir do que o Pester
+# realmente filtra. Custo medido: discovery de ~700 testes leva <1s; a suite inteira do kit (76
+# arquivos, 4 processos) ja media 681s com este mesmo esquema -- a segunda passada e uma fracao
+# pequena do total.
+if (-not $incluirLentoLiteral) {
     # Passada de SO descoberta (Run.SkipRun) para contar quantos testes ficam de fora por causa
     # da tag Lento. MEDIDO (nao suposto): Filter.ExcludeTag no Pester 5 NAO tira o teste da
     # contagem -- ele continua em `$r.TotalCount E em `$r.NotRunCount, so nao roda. Por isso
