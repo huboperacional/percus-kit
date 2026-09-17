@@ -215,22 +215,146 @@ try {
     #   - `git config [--global|--system|--local] core.hooksPath X` (`--unset` REATIVA o hook: passa);
     #   - remover, mover, renomear, sobrescrever ou tirar permissao de algo em `.git/hooks` / `.git\hooks`.
     # Ler (`cat`, `ls`, `Get-Content`) continua livre. Medido pela revisao: saiam 0 sem autorizacao.
+    # Fase 6: LER o valor (`git config --get core.hooksPath`) e COPIAR de .git/hooks para fora tambem passam,
+    # so na forma que o hook decide sem interpretar shell (ver Test-LeituraHooksPath / Test-CopiaParaFora).
     $semMensagem = Remove-Mensagem $command
     $desligaHook = @()
+
+    # Fase 6 (2026-09-16): dois falsos positivos medidos em uso real barravam LEITURA -- `git config
+    # core.hooksPath` sem valor e `cp` de .git/hooks para fora. As isencoes abaixo so reconhecem a forma
+    # que da para decidir SEM interpretar shell; qualquer outra coisa continua bloqueando (fail-closed).
+    # Tokens: palavra nua ou citada INTEIRA, separados por espaco. Aspa no meio do token (`a"b"`) = $null.
+    function Split-TokenSimples {
+        param([string]$Texto)
+        $toks = @()
+        $resto = $Texto.Trim()
+        while ($resto.Length -gt 0) {
+            $m = [regex]::Match($resto, '^(?:"(?<v>[^"]*)"|''(?<v>[^'']*)''|(?<n>[^\s"'']+))(?:\s+|$)')
+            if (-not $m.Success) { return $null }
+            if ($m.Groups['n'].Success) { $toks += ,@($m.Groups['n'].Value, $false) }
+            else { $toks += ,@($m.Groups['v'].Value, $true) }
+            $resto = $resto.Substring($m.Length)
+        }
+        return ,$toks
+    }
+    # LEITURA de core.hooksPath: `git [-C dir] config [get|list] [opcoes de leitura] [chave]`, no maximo UM
+    # argumento posicional (com dois o git GRAVA). Fora da lista (--add, --replace-all, --file/-f, -e,
+    # set/unset, -c antes do config, VAR= na frente, `$`, `()`, `@`, `\`, `>`, glob): nao e leitura.
+    function Test-LeituraHooksPath {
+        param([string]$Trecho)
+        if ($Trecho -match '[`$%{}()@<>*?\[\]]') { return $false }
+        $tk = Split-TokenSimples $Trecho
+        if ($null -eq $tk -or $tk.Count -lt 2) { return $false }
+        if ($tk[0][0] -notmatch '^(?i)git(?:\.exe)?$') { return $false }
+        $i = 1
+        if ($tk[1][0] -ceq '-C') { if ($tk.Count -lt 4) { return $false }; $i = 3 }
+        if ($tk[$i][0] -notmatch '^(?i)config$') { return $false }
+        $i++
+        if ($i -lt $tk.Count -and $tk[$i][0] -match '^(?i)(?:get|list)$') { $i++ }
+        $posicionais = 0
+        for (; $i -lt $tk.Count; $i++) {
+            $v = $tk[$i][0]
+            if ($v.Contains('\')) { return $false }
+            if ($v.StartsWith('-')) {
+                if ($v -notmatch '^(?i)(?:--global|--system|--local|--worktree|--get|--get-all|--get-regexp|-l|--list|--show-origin|--show-scope|--includes|--no-includes|-z|--null|--name-only|--all|--regexp|--bool|--int|--bool-or-int|--path|--no-type|--type=(?:bool|int|bool-or-int|path|expiry-date|color))$') { return $false }
+            } else { $posicionais++ }
+        }
+        return ($posicionais -le 1)
+    }
+    # COPIA de .git/hooks para FORA: o comando INTEIRO e um cp/Copy-Item/copy/cpi, com exatamente uma
+    # origem e um destino; destino absoluto, sem `.`/`..`, sem `.git` e sem `hooks` (com a barra invertida
+    # lida como separador E como escape do bash). Sem separador, redirecionamento, variavel, glob, `()`.
+    function Test-CopiaParaFora {
+        param([string]$Cmd)
+        if ($Cmd -match '[;&|()<>`$%*?{}@,+\[\]\r\n]') { return $false }
+        $tk = Split-TokenSimples $Cmd
+        if ($null -eq $tk -or $tk.Count -lt 3) { return $false }
+        $prog = $tk[0][0].ToLowerInvariant()
+        $origens = @(); $destinos = @(); $posic = @()
+        if ($prog -eq 'cp') {
+            $fimOpcoes = $false
+            for ($i = 1; $i -lt $tk.Count; $i++) {
+                $v = $tk[$i][0]
+                if (-not $fimOpcoes -and $v -eq '--') { $fimOpcoes = $true; continue }
+                if (-not $fimOpcoes -and $v.StartsWith('-')) {
+                    if ($v -cnotmatch '^(?:-[prRfv]+|--(?:preserve|recursive|force|verbose|no-clobber))$') { return $false }
+                    continue
+                }
+                $posic += ,$tk[$i]
+            }
+            if ($posic.Count -ne 2) { return $false }
+            $origens = @(,$posic[0]); $destinos = @(,$posic[1])
+        } elseif ($prog -in @('copy-item', 'copy', 'cpi')) {
+            $espera = ''
+            for ($i = 1; $i -lt $tk.Count; $i++) {
+                $v = $tk[$i][0]
+                if ($espera -eq 'origem') { $origens += ,$tk[$i]; $espera = ''; continue }
+                if ($espera -eq 'destino') { $destinos += ,$tk[$i]; $espera = ''; continue }
+                $vl = $v.ToLowerInvariant()
+                if ($vl -eq '-path' -or $vl -eq '-literalpath') { $espera = 'origem'; continue }
+                if ($vl -eq '-destination') { $espera = 'destino'; continue }
+                if ($vl -in @('-force', '-recurse', '-passthru', '-verbose', '/y', '/-y', '/v', '/b')) { continue }
+                if ($v.StartsWith('-')) { return $false }
+                $posic += ,$tk[$i]
+            }
+            if ($espera) { return $false }
+            foreach ($pp in $posic) {
+                if ($origens.Count -eq 0) { $origens += ,$pp }
+                elseif ($destinos.Count -eq 0) { $destinos += ,$pp }
+                else { return $false }
+            }
+        } else { return $false }
+        if ($origens.Count -ne 1 -or $destinos.Count -ne 1) { return $false }
+        $dst = [string]$destinos[0][0]
+        $dstCitado = [bool]$destinos[0][1]
+        if (-not $dst) { return $false }
+        $comBarra = $dst -replace '\\', '/'
+        $semBarra = $dst -replace '\\', ''
+        foreach ($forma in @($comBarra, $semBarra)) {
+            if ($forma -match '(?i)\.git|hooks') { return $false }
+        }
+        if ($comBarra -notmatch '^(?:[A-Za-z]:/|/|~/)') { return $false }
+        if (-not $dstCitado -and $dst.Contains('\') -and $semBarra -notmatch '^(?:[A-Za-z]:/|/|~/)') { return $false }
+        if ($comBarra -match '(?:^|/)\.{1,2}(?:/|$)') { return $false }
+        return $true
+    }
+
     # Por TRECHO: `--unset` so vale no mesmo `config` (achado R11: `git config --unset core.hooksPath;
     # git config core.hooksPath x` escapava quando o teste olhava o comando inteiro).
+    # Fase 6: trecho de LEITURA (Test-LeituraHooksPath) passa, se a mensagem nao tirou nada do comando
+    # (`--file x`/`-m x` somem no Remove-Mensagem e fariam escrita parecer leitura). O texto NORMALIZADO
+    # (sem aspas/escape) tambem conta: `core.hooks""Path x` so vira hooksPath depois da normalizacao, e
+    # mais trechos de config+hooksPath no normalizado do que no cru = ofuscacao = bloqueia.
     if ($temGit) {
-        foreach ($trechoCfg in @($semMensagem -split '&&|\|\||[;|&\r\n()]')) {
-            if ($trechoCfg -match '(?i)(?<![A-Za-z0-9_-])config(?![A-Za-z0-9_-]).*hookspath' -and
-                $trechoCfg -notmatch '(?i)(?<![A-Za-z0-9_-])config(?![A-Za-z0-9_-]).*--unset') {
-                $desligaHook += 'git config core.hooksPath'
-                break
+        $reCfgHp    = '(?i)(?<![A-Za-z0-9_-])config(?![A-Za-z0-9_-]).*hookspath'
+        $reCfgUnset = '(?i)(?<![A-Za-z0-9_-])config(?![A-Za-z0-9_-]).*--unset'
+        $textoCfg = $semMensagem -replace '(^|\s)[12]?>&[12](\s|$)', '$1 $2'
+        $textoCfg = $textoCfg -creplace '(^|\s)2>\s*(?:/dev/null|nul|NUL)(\s|$)', '$1 $2'
+        $cfgCru = 0; $cfgNormal = 0; $cfgEscrita = $false
+        foreach ($trechoCfg in @($textoCfg -split '&&|\|\||[;|&\r\n()]')) {
+            if ($trechoCfg -match $reCfgHp -and $trechoCfg -notmatch $reCfgUnset) {
+                $cfgCru++
+                if (-not (Test-LeituraHooksPath $trechoCfg)) { $cfgEscrita = $true }
             }
         }
+        foreach ($trechoCfg in @((ConvertTo-TextoNormal $textoCfg) -split '&&|\|\||[;|&\r\n()]')) {
+            if ($trechoCfg -match $reCfgHp -and $trechoCfg -notmatch $reCfgUnset) { $cfgNormal++ }
+        }
+        # O corte em `(`/`)` tira a subexpressao do trecho (`git config core.hooksPath (Get-Item x)` deixaria
+        # `git config core.hooksPath ` lido como leitura): com isencao em jogo, o comando INTEIRO nao pode ter
+        # `$ % {} () @ < > * ? []` nem crase (o `2>&1` e o `2>/dev/null` ja sairam do texto).
+        if ($cfgCru -gt 0 -and ($semMensagem -cne $command -or $textoCfg -match '[`$%{}()@<>*?\[\]]')) { $cfgEscrita = $true }
+        if ($cfgEscrita -or $cfgNormal -gt $cfgCru) {
+            $desligaHook += 'git config core.hooksPath'
+        }
     }
-    if ($semMensagem -match '(?i)\.git[\\/]+hooks' -and
-        ($semMensagem -match '(?i)(?:^|[^A-Za-z0-9_-])(?:rm|rmdir|del|erase|rd|ri|remove-item|mv|move|move-item|mi|ren|rename|rename-item|rni|chmod|cp|copy|copy-item|cpi|set-content|sc|out-file|add-content|tee|ln|truncate)(?:[^A-Za-z0-9_-]|$)' -or
-         ($semMensagem -replace '[12]?>&[12]', '').Contains('>'))) {
+    # `.git/hooks` e verbo no texto cru OU normalizado (`r""m`, `.git/ho""oks`). Fase 6: `sed`/`perl` (-i),
+    # `New-Item`/`ni` (-Force trunca) e `Clear-Content`/`clc` entram na lista; copia PARA FORA sai (Test-CopiaParaFora).
+    $textoHooks = $semMensagem + "`n" + (ConvertTo-TextoNormal $semMensagem)
+    if ($textoHooks -match '(?i)\.git[\\/]+hooks' -and
+        ($textoHooks -match '(?i)(?:^|[^A-Za-z0-9_-])(?:rm|rmdir|del|erase|rd|ri|remove-item|mv|move|move-item|mi|ren|rename|rename-item|rni|chmod|cp|copy|copy-item|cpi|set-content|sc|out-file|add-content|tee|ln|truncate|sed|perl|new-item|ni|clear-content|clc)(?:[^A-Za-z0-9_-]|$)' -or
+         ($textoHooks -replace '[12]?>&[12]', '').Contains('>')) -and
+        -not (Test-CopiaParaFora $command)) {
         $desligaHook += 'alterar .git/hooks'
     }
 
@@ -359,7 +483,8 @@ try {
         [Console]::Error.WriteLine("  nem com autorizacao nem com PERCUS_EXTERNAL_OVERRIDE.")
         [Console]::Error.WriteLine("  Proxima acao: nao mexa no hook. Se o pre-push barrou um envio, leia a mensagem dele e peca ao operador a")
         [Console]::Error.WriteLine("  autorizacao (scripts/autorizar-acao-externa.ps1) para o push na forma simples: git -C `"<caminho absoluto>`" push <remoto> <branch>")
-        [Console]::Error.WriteLine("  (Ler .git/hooks e livre; 'git config --unset core.hooksPath' reativa o hook e passa.)")
+        [Console]::Error.WriteLine("  (Ler .git/hooks e livre; 'git config --unset core.hooksPath' reativa o hook e passa. Ler o valor: git -C `"<caminho>`" config --get core.hooksPath,")
+        [Console]::Error.WriteLine("  sozinho. Copiar para fora: cp `"<repo>/.git/hooks/<arquivo>`" `"<destino absoluto fora de .git>`", sozinho.)")
         [Console]::Error.WriteLine("")
         exit 2
     }
