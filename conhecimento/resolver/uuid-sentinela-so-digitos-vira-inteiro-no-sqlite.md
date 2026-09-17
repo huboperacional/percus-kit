@@ -42,3 +42,21 @@ uuid.UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
 (`a`-`f`) ou misto — nunca só dígitos decimais. Vale para qualquer projeto Percus que rode a
 suíte padrão em SQLite com um `TypeDecorator` de UUID (ou qualquer tipo cuja representação em
 texto possa "parecer" numérica).
+
+### Complemento (Empresa Milionária, 17/09/2026): `UUID(int=n)` é o mesmo defeito, com outra mensagem
+
+**Reprodução:** teste de **ordem** de trava (V2.3 Task 4) precisava de ids crescentes e intercalados entre dois
+pedidos, e usou `uuid.UUID(int=1)`, `uuid.UUID(int=2)`... O hex de `UUID(int=n)` com `n` pequeno é **só dígitos**
+(`00000000000000000000000000000001`). O `INSERT` passou calado, e a leitura quebrou no processador de UUID do
+SQLAlchemy 2 com **`AttributeError: 'int' object has no attribute 'replace'`** (`sqltypes.py`, `_python_UUID(value)`),
+mensagem diferente das duas citadas acima. Quem procura pela mensagem não acha este verbete, e por isso ele fica aqui.
+
+**Receita que preserva a ORDEM** (o caso em que o sentinela precisa ser comparável, não só identidade): prefixo fixo
+com letra e sufixo numérico de largura fixa.
+
+```python
+def _uuid(n: int) -> uuid.UUID:
+    return uuid.UUID(f"aaaaaaaa-0000-4000-8000-{n:012d}")   # TEXT garantido; ordena por n
+```
+
+A ordem continua a mesma no SQLite (texto hex de largura fixa) e no Postgres (`uuid` compara byte a byte).

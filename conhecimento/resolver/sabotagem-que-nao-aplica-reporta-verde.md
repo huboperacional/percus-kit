@@ -6,7 +6,7 @@
 
 **Causa raiz:** a ferramenta que edita falhou **em silêncio**. O caso medido: `sed -i 's/^        await marcarPapelProvado.*$/        pass/' arquivo.py` casou **zero** ocorrências porque o arquivo estava em **CRLF** — o `$` ancorava antes do `\r`, que não estava no padrão. `sed` **não reclama quando não casa nada**: sai `0`, sem saída, indistinguível de sucesso. O arquivo tinha vindo por `git archive`, que entrega o conteúdo com a conversão de fim de linha do repositório (ver [[git-archive-windows-crlf-mata-entrypoint]] e [[regex-multiline-crlf-dollar-nao-casa]]).
 
-A mesma classe aparece sem CRLF nenhum: `cp` para um caminho que só o outro runtime enxerga (`/tmp` diverge entre bash e Python no Windows), `patch` que aplica com offset em outro bloco, `sed` cujo padrão casa uma linha vizinha.
+A mesma classe aparece sem CRLF nenhum: `cp` para um caminho que só o outro runtime enxerga (`/tmp` diverge entre bash e Python no Windows; e o Python do Windows **não abre** o caminho `/d/...` do Git Bash — o script morre com `FileNotFoundError`, a contagem de marcas dá 0, e a rodada seguinte vem `1 passed` como se a sabotagem tivesse sido absorvida, medido em 16/09 na Empresa Milionária), `patch` que aplica com offset em outro bloco, `sed` cujo padrão casa uma linha vizinha.
 
 **Solução:** **provar a aplicação antes de ler o resultado**, sempre, e no mesmo par de comandos:
 

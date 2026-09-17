@@ -51,5 +51,16 @@ errado e do `assert` por faixa: critério que parece medir e não discrimina.
    sabotagem faz a coleção **crescer**, a igualdade falha pelo motivo errado e **esconde** a
    violação real. Use `>= 1`.
 
+**Variante: o CORPO do teste é a guarda que absorve (Empresa Milionária, 2026-09-15).** Harness de
+isolamento multi-tenant: o ataque manda um corpo "legítimo" à rota de outra empresa e aceita qualquer 4xx
+como recusa. O plano prescrevia, para as confirmações de atalho, o corpo `{"esperado": []}` — que a regra de
+negócio recusa com **409 de prévia envelhecida** antes de a checagem de empresa importar. Contraprova medida:
+removido o filtro de empresa, o ataque seguiu **verde** (`1 passed`). A recusa vinha da regra de negócio, não
+do isolamento. Correção: um corpo que a regra de negócio **aceitaria** na empresa certa (células vazias que
+batem com o estado real), para que só o isolamento possa recusá-lo — com ele, a mesma sabotagem ficou
+vermelha. Onde nenhum corpo passa pela regra (a origem vazia sempre dá 422), o 404 exato vai para um teste
+dedicado que asserte o `detail`, nunca a faixa 4xx. Regra: **o corpo de um ataque tem de ser válido para
+tudo MENOS a guarda atacada**, e isso se prova derrubando a guarda com esse corpo.
+
 **Custo de ignorar:** a lista de sabotagens continua afirmando cobertura que não existe, e a regra
 que ela deveria proteger pode ser removida numa "simplificação" sem nenhum teste ficar vermelho.

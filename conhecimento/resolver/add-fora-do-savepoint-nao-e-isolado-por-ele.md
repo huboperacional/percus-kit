@@ -63,5 +63,25 @@ vencedora quando consulta) e deixe só o índice de pé. ⚠️ Não neutralize 
 conferências junto: se as tabelas dependentes também colidirem, o teste morre no índice
 errado e passa verde sem nunca exercitar o caminho que existe para provar.
 
+**Segundo mecanismo, medido em 2026-09-15 (Empresa Milionária, grade do Orçado, FR-262):** mesmo **sem** consulta no
+`except`, o `add` fora do bloco já falha — porque o próprio `begin_nested()` faz autoflush do pendente **antes** de
+emitir o `SAVEPOINT`. O INSERT sai fora do savepoint, a colisão estoura na abertura do bloco e a sessão inteira
+precisa de rollback. SQL capturado por `before_cursor_execute` num script mínimo (SQLite em memória, SQLAlchemy 2.0):
+
+| Onde está o `add` | SQL emitido | Resultado do retry no `except` |
+|---|---|---|
+| antes do `async with session.begin_nested():` | `SELECT INSERT INSERT` (sem `SAVEPOINT`) | `PendingRollbackError` |
+| dentro do bloco, antes do `flush` | `SELECT INSERT SAVEPOINT INSERT ROLLBACK SELECT UPDATE SELECT` | retry OK |
+
+No Postgres a diferença é pior: a colisão fora do savepoint aborta a **transação inteira** (`current transaction is
+aborted`), não só a sessão. A correção é a mesma do topo — `add` dentro do bloco. Um plano de implementação chegou a
+prescrever o `add` fora; o review cross-provider pegou antes da execução, e a sabotagem que move o `add` para fora
+virou prova obrigatória da task.
+
+**Como testar esse caso:** grave a cópia concorrente ANTES da chamada, fora do savepoint, e faça a conferência prévia
+devolver `None` só na primeira chamada; asserte que a conferência foi chamada DUAS vezes (prova de que o `except`
+rodou). Não simule inserindo a concorrente dentro de um `flush` interceptado: ela nasceria dentro do savepoint e cairia
+no rollback junto com o INSERT.
+
 Relacionado: [[unit-of-work-sem-relationship-nao-ordena-insert-por-fk]],
 `commit-num-handler-pj-mata-o-contexto-de-rls` (verbete nao escrito).

@@ -24,6 +24,17 @@ GOOGLE_DRIVE_ROOT_FOLDER_ID: str = ""   # existe mesmo sem consumidor
 
 🔴 **NÃO troque para `extra="ignore"` para calar o sintoma.** O `forbid` existe para pegar **typo de variável de ambiente** — `DATABSE_URL` no `.env` de produção com `ignore` ligado é silêncio, e o app sobe com o default. Desligar a guarda para não declarar um campo troca cinco segundos de digitação por uma classe de bug invisível.
 
+⚠️ **Mas o `forbid` só vigia o ARQUIVO `.env` — variável do ambiente do processo passa calada** (medido em 2026-09-16,
+Empresa Milionária, `pydantic-settings` com `case_sensitive=True`). Um `BaseSettings` mínimo com `extra` padrão:
+`os.environ["VARIAVEL_DESCONHECIDA"]="true"` → **aceita, sem erro**; a mesma variável numa linha do `.env` → `extra_forbidden`.
+A fonte de ambiente só lê os nomes dos campos declarados. Consequências:
+
+- O typo `DATABSE_URL` só é pego se estiver no **arquivo**. Em Docker/Swarm com `environment:` (ou `-e`), ele é ignorado e o
+  app sobe com o default — exatamente o silêncio que o parágrafo acima atribui ao `ignore`.
+- Teste que prova "o campo precisa estar declarado" tem de carregar por **`.env` temporário**
+  (`Settings(_env_file=str(tmp_path / ".env"))`), com controle: uma variável inventada no mesmo arquivo tem de derrubar.
+  Pelo `monkeypatch.setenv`, esse controle nunca fica vermelho: a variável inventada no ambiente não derruba nada.
+
 **A ordem importa em DEPLOY, e é o inverso:** a variável só pode entrar no `.env` de **produção** DEPOIS de a imagem que conhece o campo estar de pé. Se o Swarm/K8s rolar de volta para a imagem anterior, ela não conhece o campo e o boot morre — o rollback vira outage. Campo primeiro (código), variável depois (ambiente).
 
 **Como se descobre rápido:** `python -c "import app.core.config"`. Se o `.env` tem sobra, a mensagem nomeia cada variável.

@@ -35,6 +35,16 @@ harmonizar com a lista fechada do R11 e por quê.
 **desconhecido**, não os casos da lista. Passe um item que não está em lugar nenhum e verifique que
 ele cai no lado alto.
 
+**Caso: guarda escopada por uma lista à mão (Empresa Milionária, 2026-09-15).** A guarda
+`test_modelo_pj_novo_entra_no_baseline` só olhava os módulos de `MODULOS_DO_DOMINIO_PJ` — uma allowlist de
+ESCOPO da própria guarda. O item desconhecido (módulo novo esquecido na lista) caía no lado mudo: a guarda
+simplesmente não o via. Medido: **17 módulos** acumulados fora da lista em vários planos seguidos, sem teste
+nenhum acusar. A correção não foi "revisar a lista", foi **fechar por baixo** com uma guarda derivada do
+registro, que não depende de alguém lembrar: todo mapper com `empresa_id` tem de morar num módulo listado (ou
+numa classificação já existente e declarada, ali `TABELAS_DO_CANAL`). O vermelho listou exatamente os 17. Regra
+geral: quando a lista define **onde uma guarda olha**, escreva também a guarda de que a lista está completa,
+derivada da fonte (registry, metadata, glob) — senão a guarda protege só o que alguém já lembrou de proteger.
+
 **Relacionado:** [#regra-duplicada-ps1-sh] (a mesma lista em dois interpretadores diverge calada) ·
 [#conselho-agent-marker-chamado-por-http] (o caso que originou isto, com a matriz medida) ·
 [#cross-claude-400-sampling] (a classe irmã: parâmetro novo demais para o modelo).

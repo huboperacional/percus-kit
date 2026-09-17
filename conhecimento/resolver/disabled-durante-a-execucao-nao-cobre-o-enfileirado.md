@@ -63,4 +63,13 @@ depois disso o defeito da fila se prova como se deve: **cronometrando o `disable
 com o contador síncrono ele fecha em t+0,5s, ou seja, no instante do clique e não quando a
 gravação sai da fila.
 
+**Variante: a CHAVE da fila é menor que o que a resposta reescreve (Empresa Milionária, 2026-09-15).**
+Grade de orçado: cada gravação de célula devolve um recorte com a linha, a soma do GRUPO e os totais da SEÇÃO.
+A fila foi chaveada por linha — e duas linhas irmãs gravando em paralelo podiam responder fora de ordem, com o
+recorte velho aplicado por último fazendo a soma do grupo e os totais retrocederem. Regra: **a chave da fila é
+o maior escopo que a RESPOSTA reescreve, não o escopo do que foi pedido** (ali, a seção). Teste que prova: duas
+linhas irmãs, a primeira resposta retida, e asserir que o segundo pedido NÃO saiu enquanto a primeira não voltou;
+recortes com somas sentinelas distintas para a tela terminar com a do mais novo. E a mesma sessão achou o irmão
+de teclado: **Esc não pode soltar célula "gravando"** — a resposta, ao chegar, apaga a reedição que o Esc liberou.
+
 Ver também [[fix-depois-do-teardown-herda-o-verde]].
