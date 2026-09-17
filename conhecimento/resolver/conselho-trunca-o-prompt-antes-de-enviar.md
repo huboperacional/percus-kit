@@ -23,4 +23,17 @@ Nenhum dos três leu o documento inteiro; a Llama leu **menos de um quarto**. E 
 3. **Nunca escreva "o conselho aprovou a task N"** quando o corte pode tê-la deixado de fora. A frase honesta é *"nenhum provider comentou a task N, e o prompt foi truncado"* — e é ela que impede a próxima sessão de tratar silêncio como aval.
 4. **Para documento longo, o conselho acha defeito no que ele LEU.** A cobertura continua sendo sua: rode a auto-revisão do `writing-plans` sobre o documento inteiro, que não passa pelo teto.
 
+5. **O truncamento também FABRICA achado — de ausência.** Medido em 17/09/2026 (Empresa Milionária, spec de devolução
+   de mercadoria, 7 rodadas de `analyze`): nas rodadas em que o log marcava `truncado: true`, dois provedores
+   devolveram HIGH e CRITICAL dizendo *"não há critérios de sucesso"* e *"a dependência não está declarada"* — sobre
+   seções que **existiam no arquivo**, nas linhas cortadas. O erro do verbete até aqui era só "silêncio não é
+   aprovação"; o simétrico é este: **acusação de ausência vinda de rodada truncada não é defeito**, e corrigir por ela
+   é escrever de novo o que já estava escrito. Confira no arquivo antes de aceitar qualquer achado cujo verbo seja
+   "falta", "não há" ou "não declara".
+6. **Conserto prático: mande um RECORTE que caiba, não o documento inteiro.** Na mesma medição, passar a enviar só a
+   parte que decide (dependências, critérios, requisitos e perguntas — 214 linhas) fez o log voltar a `truncado:
+   false`, e os achados voltaram a ser sobre conteúdo: contradição entre dois requisitos, definição circular, teto que
+   ignorava um caso. O recorte leva um cabeçalho de três linhas com o contexto que ficou de fora, e a revisão do
+   documento inteiro continua sendo sua.
+
 **Verbete irmão, do mesmo dia e do mesmo desenho:** um plano **não** deve conter código deliberadamente errado com aviso *"não copie sem pensar"* — foi exatamente o que o Cross-Claude pegou naquela rodada, e com razão. Subagente fresco não tem o contexto do aviso: ele copia. Se a intenção é ensinar, escreva a versão certa e explique o erro **em prosa**, fora do bloco de código.
