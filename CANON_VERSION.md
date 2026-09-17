@@ -1,6 +1,6 @@
 # Canon Percus — versão atual
 
-**Versão canônica em `huboperacional/percus-kit`:** `6.62.2`
+**Versão canônica em `huboperacional/percus-kit`:** `6.62.3`
 
 > Esta versão refere-se ao **kit Percus completo** (canon `_Novo_Projeto/` + plugin `percus-review`).
 >
@@ -36,6 +36,22 @@
 (nenhuma entrada pendente)
 
 ---
+
+## Changelog v6.62.3 — 2026-09-17
+
+### Handoff para os projetos: o que mudou da 6.57 à 6.62.2
+
+**skill muda: não.** Só documentação.
+
+- **Novo `docs/handoffs/HANDOFF_CONSUMIDORES_v6.62.md`:** um arquivo para enviar às sessões dos projetos. Resume
+  o que muda no trabalho de um projeto (checkpoint só do operador, trilhos P/M/G, `UI-verified` com hora, R11
+  fatiado com timeout 600000, ADR por 4 perguntas, N/A escrito, push em duas camadas, gate V2 pelo diff, Alcance e
+  Grade de QA) e traz 6 conferências com correção quando cabe: versão adotada, `pre-push` pelo sha256 do
+  template, tipo do `pre-commit` (sem edição à mão), bloco dos trilhos no `CLAUDE.md`, texto antigo de
+  checkpoint, `.percus/` no `.gitignore`. Formato de retorno ao operador em 3 linhas.
+- **Fora do kit, 2026-09-17:** `pre-push` instalado em Empresa-Milionaria (pela sessão dela),
+  Familia-Milionaria, GHL-GOWA-WhatsApp, huboperacional-site, Painel Gestao e Afiliados e WhatsApp-API-Oficial,
+  que tinham ficado fora dos 13 da 6.62.0. Total: 19 projetos.
 
 ## Changelog v6.62.2 — 2026-09-17
 
