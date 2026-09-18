@@ -55,4 +55,50 @@ silenciado, o aviso de que existe um silêncio morre junto).
 memória e alarme de bypass, o mecanismo morre calado justamente nos dias em que o banco está
 agitado — mesma família de [[fail-open-esconde-teste-vacuo]].
 
-**Onde isto foi medido:** `Familia-Milionaria/docs/superpowers/specs/2026-09-17-guarda-anti-loop-whatsapp-design.md`.
+### Armadilhas que custaram caro construindo isto (valem para qualquer projeto que repita a receita)
+
+⚠️ **Fail-open com sessão própria de banco vira bypass em TODA a suíte de teste**, não só no
+caminho feliz. Se o guard abre a própria sessão em vez de reusar a do request, e o motor de
+produção em ambiente de teste é um banco vazio (SQLite sem as tabelas do guard), toda chamada cai
+no `except` e libera — a suíte inteira passa a testar "guard desligado" sem nenhum teste avisar.
+Some com isso: injete a sessão de teste no guard também, e tenha **um** teste que prova
+explicitamente que o guard bloqueia dentro da suíte, não só em produção. Estado de processo
+(contadores em memória do teto de fail-open) também vaza entre testes se não for resetado por
+teste — mesma classe.
+
+⚠️ **Replay que roda a lógica REAL do guard dispara os efeitos colaterais dela.** "Só leitura do
+banco" não cobre a saída HTTP: o primeiro replay do histórico contra o detector de verdade
+disparou um WhatsApp real ao operador, porque o guard bloqueou um número no replay e o aviso ao
+operador não sabe que está sendo simulado. Replay de detecção precisa mockar o ponto de envio, não
+só abrir uma transação que dá rollback — o envio já saiu antes do rollback existir.
+
+⚠️ **Isenção por remetente escrita no plano pode nomear o canal errado.** O plano desta guarda
+isentava um remetente que não é o que o call-site real do aviso ao operador usa; o aviso real
+saía com o remetente default, que ficaria **fora** da isenção e seria silenciado pelo próprio
+guard que ele deveria denunciar. Confira a isenção contra o `remetente=` escrito no call-site, não
+contra o nome do canal no plano.
+
+⚠️ **`ON CONFLICT DO NOTHING` num episódio cuja linha vencida não é apagada protege UMA VEZ SÓ por
+chave.** Se o claim durável do aviso ao operador é `INSERT ... ON CONFLICT DO NOTHING` numa chave
+por número e a linha nunca é removida (silêncio expira, mas o registro do aviso fica), o segundo
+episódio do mesmo número — dias depois — encontra a chave já ocupada e não dispara aviso nenhum.
+Dedupe durável precisa de uma chave que inclua o **episódio** (janela de tempo, não só o número),
+ou de uma limpeza explícita quando o episódio fecha.
+
+⚠️ **Número de telefone no banco aparece COM e SEM `+`.** Filtrar por `LIKE 'faixa%'` sem `%` na
+frente não exclui nada quando a coluna tem o `+` na frente — ver
+[[filtro-de-telefone-sem-o-mais-nunca-casa-e-a-medicao-mente]], achado na mesma sessão calibrando
+os limiares acima.
+
+### Prova e medição (18/09/2026, em produção)
+
+Replay do histórico real (7 números, 238 mensagens, 22/07 a 17/09) acusou **só** o C6 — zero falso
+positivo. Teste do incidente por mutação (reintroduz o defeito pré-hotfix): guard ligado deixa sair
+**2** mensagens, desligado deixa sair **23**. Smoke em produção **14/14** por estado. Latência do
+guard (`registrarEDecidir`, Postgres, 150-200 números distintos): mediana **6,4 ms** / p95
+**10,7 ms** isolado, **7,8 / 12,8 ms** com commit — poda e cada consulta custam ~0,5 ms cada, o
+mesmo que um `SELECT 1`: o custo é o número de idas ao banco, não o commit em si.
+
+**Onde isto foi medido:** `Familia-Milionaria/docs/superpowers/specs/2026-09-17-guarda-anti-loop-whatsapp-design.md`
+e `Familia-Milionaria/docs/handoffs/HANDOFF_CONSUMIDORES_antiloop.md` (handoff cross-projeto, com a
+conferência que cada consumidor do guard deve rodar).
