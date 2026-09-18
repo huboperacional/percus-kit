@@ -6,7 +6,7 @@
 limpo e pequeno — e está errada nas duas direções. Medido no tIAtendo em 18/09 (`§00ar`): a 1ª versão
 da sonda achou **46 rotas e nenhuma do painel**; o painel inteiro tinha 326.
 
-**Causa — três lugares onde a guarda mora, e dois deles escapam de busca textual:**
+**Causa — quatro lugares onde a guarda mora, e três deles escapam de busca textual:**
 
 1. **Sub-aplicação montada.** `app.mount("/admin", dashboardApp)` não aparece em `app.routes` como
    `APIRoute`: vira um `Mount` com a sua própria lista. Quem itera só `APIRoute` perde tudo o que está
@@ -17,6 +17,16 @@ da sonda achou **46 rotas e nenhuma do painel**; o painel inteiro tinha 326.
 3. **Checagem à mão no corpo.** `if session.get("role") != "super_admin": raise HTTPException(403)`
    não é dependência nenhuma. Sem AST do corpo, a rota aparece como "só login" e o inventário
    **superestima** o buraco.
+4. 🔴 **Checagem em FUNÇÃO AUXILIAR chamada no corpo** (`_checkTenantAccess(...)`,
+   `_requireSuperAdmin(...)`, nomes locais de cada módulo). **Esta é a que a sonda do tIAtendo
+   perdeu, e o erro foi de quem escreveu este verbete:** ela procurava uma LISTA FIXA de nomes de
+   guarda no corpo e só nas rotas "só login". Resultado medido por outra sessão (`tiatendo-36`,
+   18/09), relendo rota a rota: "15 expostas + 28 latentes" eram, de verdade, **14 expostas, 8
+   latentes e 21 protegidas à mão**. O inventário superestimou por 20 rotas — e o desenho que saiu
+   dele quase devolveu a um papel uma permissão que um ADR tinha tirado de propósito.
+   **Regra:** procure checagem no corpo em TODAS as rotas, não só nas que parecem abertas, e siga
+   as chamadas do corpo até a função que levanta 403 (ou leia rota a rota as que sobrarem). Lista
+   fixa de nomes envelhece no primeiro auxiliar novo.
 
 **Solução:** importar o app real (sem subir servidor, sem banco), descer recursivamente em `Mount`
 prefixando o caminho, ler as guardas da árvore `dependant` (a fábrica `requireAbility(X)` devolve uma
